@@ -37,8 +37,8 @@ Contains the setup for the virtual workspace used to validate the controller.
 
 **💡 Sidenote: What I am doing / What I am going to do**
 
-*   **Current Progress:** Implementation in Python is slower than expected. To improve performance, I am investigating moving the bottleneck projection step to a closed-form analytical solution.
-*   **Future Roadmap:** 
+*   **Current Progress:** Implementation in Python is slower than expected. 
+*   **Future Roadmap:** Better Visualization on Motion Planning (Desired Goal), Understand what makes the implementation slow
 ***
 
 ### 📚 Citations
