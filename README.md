@@ -44,6 +44,9 @@ Contains the setup for the virtual workspace used to validate the controller.
 
 ### 📚 Citations
  H. Bui et al., **"Push Anything: Single- and Multi-Object Pushing From First Sight with Contact-Implicit MPC,"** *arXiv preprint arXiv:2510.19974v2*, 2025.
+
  A. Aydinoglu, A. Wei, W.-C. Huang, and M. Posa, **"Consensus complementarity control for multi-contact mpc,"** *IEEE Transactions on Robotics*, vol. 40, pp. 3879–3896, 2024.
+
  W. Yang and W. Jin, **"ContactSDF: Signed Distance Functions as Multi-Contact Models for Dexterous Manipulation,"** *arXiv preprint arXiv:2408.09612v2*, 2024.
+ 
  W. Heemels, J. M. Schumacher, and S. Weiland, **"Linear complementarity systems,"** *SIAM Journal on Applied Mathematics*, vol. 60, no. 4, pp. 1234–1269, 2000.
