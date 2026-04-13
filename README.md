@@ -38,8 +38,7 @@ Contains the setup for the virtual workspace used to validate the controller.
 **💡 Sidenote: What I am doing / What I am going to do**
 
 *   **Current Progress:** Implementation in Python is slower than expected. To improve performance, I am investigating moving the bottleneck projection step to a closed-form analytical solution.
-*   **Future Roadmap:** I plan to integrate **ContactSDF** representations to replace the optimization-based collision detection with differentiable signed distance functions, which could increase control frequency.
-
+*   **Future Roadmap:** 
 ***
 
 ### 📚 Citations
@@ -48,5 +47,5 @@ Contains the setup for the virtual workspace used to validate the controller.
  A. Aydinoglu, A. Wei, W.-C. Huang, and M. Posa, **"Consensus complementarity control for multi-contact mpc,"** *IEEE Transactions on Robotics*, vol. 40, pp. 3879–3896, 2024.
 
  W. Yang and W. Jin, **"ContactSDF: Signed Distance Functions as Multi-Contact Models for Dexterous Manipulation,"** *arXiv preprint arXiv:2408.09612v2*, 2024.
- 
+
  W. Heemels, J. M. Schumacher, and S. Weiland, **"Linear complementarity systems,"** *SIAM Journal on Applied Mathematics*, vol. 60, no. 4, pp. 1234–1269, 2000.
