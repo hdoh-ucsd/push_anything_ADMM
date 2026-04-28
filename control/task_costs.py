@@ -22,7 +22,7 @@ import numpy as np
 class ManipulationCost:
     """
     Callable cost function shared by all three manipulation tasks.
-    Instantiated once per run and injected into BaseMPC.
+    Instantiated once per run and injected into C3MPC.
 
     Parameters
     ----------
