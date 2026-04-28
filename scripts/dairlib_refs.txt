@@ -1,0 +1,982 @@
+================================================================
+FILE: examples/sampling_c3/README.md
+================================================================
+# Approximating Global Contact-Implicit MPC via Sampling and Local Complementarity
+This is an implementation of our paper currently available on Arxiv.
+
+[[Project webpage](https://approximating-global-ci-mpc.github.io/)] [[Arxiv](https://arxiv.org/abs/2505.13350)] [[Supplemental video](https://youtu.be/rv9n8Uyvoh0)]
+
+## Abstract
+> To achieve general-purpose dexterous manipulation, robots must rapidly devise and execute contact-rich behaviors. Existing model-based controllers are incapable of globally optimizing in real-time over the exponential number of possible contact sequences. Instead, recent progress in contact-implicit control has leveraged simpler models that, while still hybrid, make local approximations. However, the use of local models inherently limits the controller to only exploit nearby interactions, potentially requiring intervention to richly explore the space of possible contacts. We present a novel approach which leverages the strengths of local complementarity-based control in combination with low-dimensional, but global, sampling of possible end-effector locations. Our key insight is to consider a contact-free stage preceding a contact-rich stage at every control loop. Our algorithm, in parallel, samples end effector locations to which the contact-free stage can move the robot, then considers the cost predicted by contact-rich MPC local to each sampled location. The result is a globally-informed, contact-implicit controller capable of real-time dexterous manipulation. We demonstrate our controller on precise, non-prehensile manipulation of non-convex objects using a Franka Panda arm.
+
+## Bibtex
+```
+@article{venkatesh2025approximating,
+ title={Approximating Global Contact-Implicit MPC via Sampling and Local Complementarity},
+ author={Sharanya Venkatesh* and Bibit Bianchini* and Alp Aydinoglu and William Yang and Michael Posa},
+ year={2025},
+ journal={arXiv preprint arXiv:2505.13350},
+ website={https://approximating-global-ci-mpc.github.io/}
+}
+```
+
+## Simulation Experiments
+
+1. Start the procman script containing a list of relevant processes.  There's a different one for each demo, currently the 3D jack or planar push T:
+```
+bot-procman-sheriff -l examples/sampling_c3/jacktoy/franka_sim_jack.pmd  # Jack example
+bot-procman-sheriff -l examples/sampling_c3/push_t/franka_sim_t.pmd      # T example
+```
+
+2. In the procman window, start the meshcat visualizer by starting the `visualizer` command under the `operator` group.  The meshcat visualizer can be viewed by opening a browser and navigating to `localhost:7000`.
+
+3. The examples with the sampling C3 controller can be run using the script `script:start_experiment_no_logs`. Scripts are located in the top bar of the procman window. This script spawns three processes:
+   - `bazel-bin/examples/sampling_c3/franka_sim`: Simulated environment which takes in torques commands from `franka_osc` and publishes the state of the system via LCM on various channels.
+   - `bazel-bin/examples/sampling_c3/franka_osc_controller`: Low-level task-space controller that tracks task-space trajectories it receives from the MPC.
+   - `bazel-bin/examples/sampling_c3/franka_sampling_c3_controller`: Contact Implicit MPC controller that takes in the state of the system and publishes end effector trajectories to be tracked by the OSC.
+
+4. The simulator and controller can be stopped using the script `script:end_experiment`.
+
+
+### MJPC Comparison
+A comparison using the sampling based MPC controllers from the [MuJoCo MPC controllers](https://github.com/google-deepmind/mujoco_mpc) is currently implemented in `dairlib`'s `jack_mjpc` branch [here](https://github.com/DAIRLab/dairlib/tree/jack_mjpc).  Bringing this code into `sampling_based_c3_public` is WIP.
+
+The MJPC comparison extracts out just the controller portion of the MJPC code base and runs in on the identical task in the Drake simulator. [Our MJPC fork](https://github.com/ebianchi/mujoco_mpc) needs to be installed for this to run properly.  Instructions are WIP.
+
+## Hardware Experiments
+
+### Network Setup
+We use a two computer setup with a Franka robot arm:
+  1. Computer 1:  Runs sampling C3 controller and [our fork of FoundationPose](https://github.com/dairlab/foundationpose) for object tracking.  Requires a GPU to run FoundationPose.
+     - Connected via ethernet to Computer 2.
+
+  2. Computer 2:  Runs our OSC, Franka drivers, and webcam recording.  Requires a realtime kernel for communicating with the Franka.  We rely on [drake-franka-driver](https://github.com/RobotLocomotion/drake-franka-driver), which works via LCM. Much thanks to the Drake developers who provided this!  No ROS/ROS2 involved.
+
+  3. Ethernet connections:
+     - Computer 1 <--> Computer 2 with link-local network settings.
+     - Computer 2 <--> Franka control box with iPv4 manual network settings matching the Franka IP.
+
+  4. USB connections:
+     - RealSense for FoundationPose <--> Computer 1
+     - USB webcams for experiment recording <--> Computer 2
+
+### Franka Driver:  Installing `drake-franka-driver`
+```
+git clone https://github.com/RobotLocomotion/drake-franka-driver
+cd drake-franka-driver
+bazel build ...
+```
+
+### Object Pose Estimation via FoundationPose
+[Our fork of FoundationPose](https://github.com/dairlab/foundationpose) handles converting the object pose estimate to world coordinates given access to a camera extrinsic calibration, and it publishes these poses over LCM.  For camera calibration, see [the process documented here](https://github.com/ebianchi/ci_mpc_utils/tree/main?tab=readme-ov-file#camera-calibration).
+
+### Running Experiments
+
+1. Start the procman script containing a list of relevant processes.  The primary differences from the simulation `franka_sim_jack.pmd`/`franka_sim_t.pmd` scripts are the lcm_channels and the drake-franka-driver and corresponding translators to communicate with the Franka via LCM.
+
+   - In the root of dairlib on Computer 1, start the procman sheriff (can use `jack` or `t` examples):
+    
+    ```
+    export LCM_DEFAULT_URL=udpm://239.255.76.67:7667?ttl=1
+    bot-procman-sheriff -l examples/sampling_c3/jacktoy/franka_hardware_jack.pmd
+    ```
+
+   - In the root of dairlib on Computer 1, start the procman deputy:
+
+    ```
+    export LCM_DEFAULT_URL=udpm://239.255.76.67:7667?ttl=1  # required for python xbox script
+    bot-procman-deputy -n sampling_c3_localhost --lcmurl=udpm://239.255.76.67:7667?ttl=1
+    ```
+
+   - In the root of drake-franka-driver on Computer 2, start the procman deputy for the Franka driver:    
+    
+    ```
+    bot-procman-deputy -n drake_franka_driver --lcmurl=udpm://239.255.76.67:7667?ttl=1
+    ```
+ 
+   - In the root of dairlib on Computer 2, start the procman deputy for the OSC:
+   
+    ```
+    bot-procman-deputy -n franka_control --lcmurl=udpm://239.255.76.67:7667?ttl=1
+    ```
+
+2. Start object tracking with FoundationPose.  Can use `jack` or `t` system names.
+    ```
+    bash docker/run_container.sh
+    cd FoundationPose
+    python run_live_demo.py --debug=0 --system=jack
+    ```
+
+3. In the procman window, start the operator processes (meshcat visualizer and xbox controller) using the script `script:start_operator_commands`. Scripts are located in the top bar of the procman window.  The meshcat visualizer can be viewed by opening a browser and navigating to `localhost:7000`
+
+4. Run the script `script:init_experiment` to slowly move the Franka to an initial configuration.
+
+5. Begin the experiment using the script `script:start_experiment`. This spawns the following processes:
+   - `start_logging.py`: Starts a lcm-logger with an automatic naming convention for the log number.
+   - `record_video.py`: Streams all available webcams to a .mp4 file corresponding to the log number.
+   - `torque_driver`: `drake-franka-driver` in torque control mode.
+   - `franka_driver_`(in/out): communicates with `drake-franka-driver` to receive/publish franka state information and torque commands. This is just a translator between Drake's Franka Panda specific lcm messages and the standardized robot commands that we use. 
+   - `bazel-bin/examples/sampling_c3/franka_osc_controller`: Low-level task-space controller that tracks task-space trajectories it receives from the MPC.
+   - `bazel-bin/examples/sampling_c3/franka_sampling_c3_controller`: Contact Implicit MPC controller that takes in the state of the system and publishes end effector trajectories to be tracked by the OSC.
+   - `bazel-bin/examples/sampling_c3/xbox_script`: This gets started with `script:start_operator_commands` but gets restarted with `script:start_experiment` to ensure the experiment starts in teleop mode as a safety precaution.
+
+6. Using the xbox controller, switch from tracking the teleop commands to the MPC plan by pressing "A".  Do this after checking that the plans look reasonable in the visualizer.
+7. Stop the experiment using `script:stop_experiment`. This also stops logging and recording.
+
+
+
+================================================================
+FILE: examples/sampling_c3/jacktoy/parameters/progress_params.yaml
+================================================================
+# Ways of computing C3 costs after solving the MPC problem (defined as
+# C3CostComputationType enum in c3_options.h):
+#  0. kSimLCS:                       Simulate the LCS dynamics from the planned
+#                                    inputs.
+#  1. kUseC3Plan:                    Use the C3 planned trajectory and inputs.
+#  2. kSimLCSReplaceC3EEPlan:        Simulate the LCS dynamics from the planned
+#                                    inputs only for the object; use the planned
+#                                    EE trajectory.
+#  3. kSimImpedance:                 Try to emulate the real cost of the system
+#                                    associated not only applying the planned
+#                                    inputs, but also tracking the planned EE
+#                                    trajectory with an impedance controller.
+#  4. kSimImpedanceReplaceC3EEPlan:  The same as kSimImpedance except the EE
+#                                    states are replaced with the plan from C3
+#                                    at the end.
+#  5. kSimImpedanceObjectCostOnly:   The same as kSimImpedance except only the
+#                                    object terms contribute to the final cost.
+cost_type: 3
+cost_type_position: 2
+
+# Progress metric to use to determine if C3 is making progress, all phrased as
+# improvement requirements over a number of control loops (defined as
+# ProgressMetric enum in progress_params.h)
+#  0. kC3Cost:            C3 cost.
+#  1. kConfigCost:        Current object configuration cost.
+#  2. kPosOrRotCost:      Current position or rotation error.
+#  3. kConfigCostDrop:    Drop in object configuration cost (this is the same as
+#                         kConfigCost if the required drop is 0; a more
+#                         aggressive drop cuts C3 off earlier).
+track_c3_progress_via: 3
+
+# Ignore orientation errors when object is beyond this threshold from the goal.
+cost_switching_threshold_distance: 0.50
+
+# Penalize repositioning distance.
+travel_cost_per_meter: 0
+
+# Number of control loops to wait before cutting off C3 due to unproductivity.
+# Used for kC3Cost, kConfigCost, kPosOrRotCost.
+num_control_loops_to_wait: 14
+num_control_loops_to_wait_position: 20
+
+# kConfigCostDrop parameters.
+progress_enforced_cost_drop: 0.018
+progress_enforced_over_n_loops: 12
+
+### Hysteresis parameters for switching between C3 and repositioning modes.
+finished_reposition_cost: 1000000000
+
+hyst_c3_to_repos: 300000
+hyst_c3_to_repos_position: 300000
+hyst_repos_to_c3: 200000
+hyst_repos_to_c3_position: 200000
+hyst_repos_to_repos: 60000000000000
+hyst_repos_to_repos_position: 60000000000000
+
+# Relative hysteresis is in terms of a fraction of the current cost.
+use_relative_hysteresis: true
+hyst_c3_to_repos_frac: 0.85
+hyst_c3_to_repos_frac_position: 0.6
+hyst_repos_to_c3_frac: 0.3
+hyst_repos_to_c3_frac_position: 0.5
+hyst_repos_to_repos_frac: 0.1
+hyst_repos_to_repos_frac_position: 0.1
+
+================================================================
+FILE: examples/sampling_c3/jacktoy/parameters/sampling_params.yaml
+================================================================
+# Sampling strategies (defined as SamplingStrategy enum in sampling_params.h):
+#   0. kRadiallySymmetric:  radially distributed samples on a planar circle.
+#   1. kRandomOnCircle:     random samples on a planar circle.
+#   2. kRandomOnSphere:     random samples on a spherical surface.
+#   3. kFixed:              fixed set of samples.
+#   4. kRandomOnPerimeter:  random samples on a perimeter offset past the object
+#                           surface (roughly planar).
+#   5. kRandomOnShell:      random samples on a shell offset past the object
+#                           surface.
+sampling_strategy: 2
+
+### Parameters relevant for all sampling strategies.
+filter_samples_for_safety: true
+
+# Number of samples.  Add 2 for repositioning (current location, previous
+# repositioning target) and 1 for C3 (current location) to get total sample
+# number solved in parallel for each control loop.
+num_additional_samples_repos: 1
+num_additional_samples_c3: 2
+
+# Sample buffer parameters.
+consider_best_buffer_sample_when_leaving_c3: true
+N_sample_buffer: 100
+pos_error_sample_retention: 0.005
+ang_error_sample_retention: 0.087  # 0.087 rad = 5 deg
+
+# Shared across multiple sampling strategies.
+sampling_radius: 0.10  # kRadiallySymmetric, kRandomOnCircle, kRandomOnSphere
+sampling_height: 0.04  # kRadiallySymmetric, kRandomOnCircle, kRandomOnPerimeter
+sample_projection_clearance: 0.008  # kRandomOnPerimeter, kRandomOnShell
+min_angle_from_vertical: 0.2        # kRandomOnSphere, kRandomOnShell
+max_angle_from_vertical: 1.95       # kRandomOnSphere, kRandomOnShell
+
+# kFixed parameters.
+fixed_sample_locations: [[0.45, 0.340, 0.04],    # sample 1
+                         [0.27, 0.455, 0.04],   # sample 2
+                         [0.27, 0.225, 0.04]]   # sample 3
+
+# kRandomOnPerimeter parameters.
+grid_x_limits: [-0.16, 0.16]
+grid_y_limits: [-0.16, 0.16]
+
+# kRandomOnShell parameters.
+min_sampling_radius: 0.07
+max_sampling_radius: 0.10
+
+z_height: 0
+
+buffer_distance: 0
+max_attempts: 0
+barycentric_bias: 0  
+================================================================
+FILE: examples/sampling_c3/jacktoy/parameters/sampling_c3_controller_params.yaml
+================================================================
+sampling_c3_options_file: examples/sampling_c3/jacktoy/parameters/sampling_c3plus_options.yaml
+reposition_params_file: examples/sampling_c3/jacktoy/parameters/reposition_params.yaml
+progress_params_file: examples/sampling_c3/jacktoy/parameters/progress_params_c3plus.yaml
+sampling_params_file: examples/sampling_c3/jacktoy/parameters/sampling_params.yaml
+goal_params_file: examples/sampling_c3/jacktoy/parameters/goal_params.yaml
+
+sim_params_file: examples/sampling_c3/jacktoy/parameters/sim_params.yaml
+vis_params_file: examples/sampling_c3/jacktoy/parameters/vis_params.yaml
+osc_params_file: examples/sampling_c3/shared_parameters/osc_params.yaml
+osqp_settings_file: examples/sampling_c3/shared_parameters/sampling_c3_qp_settings.yaml
+osc_qp_settings_file: examples/sampling_c3/shared_parameters/osc_qp_settings.yaml
+franka_driver_channels_file: common/parameters/franka_drake_lcm_driver_channels.yaml
+lcm_channels_hardware_file: examples/sampling_c3/shared_parameters/lcm_channels_hardware.yaml
+lcm_channels_simulation_file: examples/sampling_c3/shared_parameters/lcm_channels_simulation.yaml
+
+# Note:  Use capsule_1 body name as representative of the pose of the entire
+# jack model.  This works because capsule_1's origin is the same as the jack's.
+object_model: examples/sampling_c3/urdf/jack_control.sdf
+object_body_name: capsule_1
+#Note: base_name is required for sampling_c3/anything, but not used in jacktoy.
+base_name: dummy
+
+include_end_effector_orientation: false
+
+control_loop_delay_ms: 0
+
+================================================================
+FILE: examples/sampling_c3/jacktoy/parameters/reposition_params.yaml
+================================================================
+# Repositioning trajectory type options (defined as RepositioningTrajectoryType
+# enum in reposition_params.h):
+#   0. kSpline:           move from current to target with spline that distorts
+#                         around the object.
+#   1. kSpherical:        move away from object to a radius, along the spherical
+#                         surface to outside target, then in to target.
+#   2. kCircular:         (planar) move away from object to a planar radius,
+#                         along the circle to outside target, then in to target.
+#   3. kPiecewiseLinear:  move up to waypoint height, over to above target, then
+#                         down.
+traj_type: 1
+
+### Parameters used for multiple repositioning trajectory types.
+speed: 0.20    # m/s
+
+# Thresholds for switching to straight line trajectories.
+use_straight_line_traj_under_spline: 0.12             # xyz meters for spline
+use_straight_line_traj_within_angle: 0.3              # rad for circle/sphere
+use_straight_line_traj_under_piecewise_linear: 0.008  # xy meters for PWL
+
+# Spline-specific parameters.
+spline_width: 0.17
+
+# Spherical-specific parameters.
+sphere_radius: 0.12
+
+# Circular-specific parameters.
+circle_radius: 0.20
+circle_height: 0.00
+
+# Piecewise-linear-specific parameters.
+pwl_waypoint_height: 0.06
+
+================================================================
+FILE: examples/sampling_c3/parameter_headers/progress_params.h
+================================================================
+#pragma once
+
+#include "drake/common/yaml/yaml_read_archive.h"
+
+#include "common/file_utils.h"
+#include "solvers/c3_options.h"
+
+
+/* C3 progress metric options, all phrased as improvement requirements over a
+   number of control loops:
+  0. kC3Cost:           C3 cost.
+  1. kConfigCost:       Current object configuration cost.
+  2. kPosOrRotCost:     Current position or rotation error.
+  3. kConfigCostDrop:   Drop in object configuration cost (this is the same as
+                        kConfigCost if the required drop is 0; a more aggressive
+                        drop cuts C3 off earlier).
+*/
+enum ProgressMetric {
+  kC3Cost,
+  kConfigCost,
+  kPosOrRotCost,
+  kConfigCostDrop
+};
+
+
+struct SamplingC3ProgressParams {
+  C3CostComputationType cost_type;
+  C3CostComputationType cost_type_position;
+  int num_control_loops_to_wait;
+  int num_control_loops_to_wait_position;
+  ProgressMetric track_c3_progress_via;
+  double progress_enforced_cost_drop;
+  int progress_enforced_over_n_loops;
+  double cost_switching_threshold_distance;
+  double travel_cost_per_meter;
+  double hyst_c3_to_repos;
+  double hyst_c3_to_repos_position;
+  double finished_reposition_cost;
+  double hyst_repos_to_c3;
+  double hyst_repos_to_c3_position;
+  double hyst_repos_to_repos;
+  double hyst_repos_to_repos_position;
+  bool use_relative_hysteresis;
+  double hyst_c3_to_repos_frac;
+  double hyst_repos_to_c3_frac;
+  double hyst_repos_to_repos_frac;
+  double hyst_c3_to_repos_frac_position;
+  double hyst_repos_to_c3_frac_position;
+  double hyst_repos_to_repos_frac_position;
+
+  template <typename Archive>
+  void Serialize(Archive* a) {
+    ENUM_DESERIALIZE(a, cost_type);
+    ENUM_DESERIALIZE(a, cost_type_position);
+    ENUM_DESERIALIZE(a, track_c3_progress_via);
+    a->Visit(DRAKE_NVP(num_control_loops_to_wait));
+    a->Visit(DRAKE_NVP(num_control_loops_to_wait_position));
+    a->Visit(DRAKE_NVP(progress_enforced_cost_drop));
+    a->Visit(DRAKE_NVP(progress_enforced_over_n_loops));
+    a->Visit(DRAKE_NVP(cost_switching_threshold_distance));
+    a->Visit(DRAKE_NVP(travel_cost_per_meter));
+    a->Visit(DRAKE_NVP(hyst_c3_to_repos));
+    a->Visit(DRAKE_NVP(hyst_c3_to_repos_position));
+    a->Visit(DRAKE_NVP(finished_reposition_cost));
+    a->Visit(DRAKE_NVP(hyst_repos_to_c3));
+    a->Visit(DRAKE_NVP(hyst_repos_to_c3_position));
+    a->Visit(DRAKE_NVP(hyst_repos_to_repos));
+    a->Visit(DRAKE_NVP(hyst_repos_to_repos_position));
+    a->Visit(DRAKE_NVP(use_relative_hysteresis));
+    a->Visit(DRAKE_NVP(hyst_c3_to_repos_frac));
+    a->Visit(DRAKE_NVP(hyst_repos_to_c3_frac));
+    a->Visit(DRAKE_NVP(hyst_repos_to_repos_frac));
+    a->Visit(DRAKE_NVP(hyst_c3_to_repos_frac_position));
+    a->Visit(DRAKE_NVP(hyst_repos_to_c3_frac_position));
+    a->Visit(DRAKE_NVP(hyst_repos_to_repos_frac_position));
+  }
+};
+
+================================================================
+FILE: examples/sampling_c3/parameter_headers/sampling_params.h
+================================================================
+#pragma once
+
+#include "common/file_utils.h"
+#include "drake/common/yaml/yaml_read_archive.h"
+
+
+/* Sample generation options:
+  0. kRadiallySymmetric:  radially distributed samples on a planar circle.
+  1. kRandomOnCircle:     random samples on a planar circle.
+  2. kRandomOnSphere:     random samples on a spherical surface.
+  3. kFixed:              fixed set of samples.
+  4. kRandomOnPerimeter:  random samples on a perimeter offset past the object
+                          surface (roughly planar).
+  5. kRandomOnShell:      random samples on a shell offset past the object
+                          surface.
+  6. kMeshNormal:         random samples on a mesh surface using the mesh
+                          face normal projection offset from the mesh.
+*/
+enum SamplingStrategy {
+  kRadiallySymmetric,
+  kRandomOnCircle,
+  kRandomOnSphere,
+  kFixed,
+  kRandomOnPerimeter,
+  kRandomOnShell,
+  kMeshNormal
+};
+
+struct SamplingParams {
+  SamplingStrategy sampling_strategy;
+
+  /// Parameters relevant for all sampling strategies.
+  bool filter_samples_for_safety;
+
+  /// Number of samples.  Add 2 for repositioning (current location, previous
+  /// repositioning target) and 1 for C3 (current location) to get total number
+  /// solved in parallel for each control loop.
+  int num_additional_samples_repos;
+  int num_additional_samples_c3;
+
+  /// Sample buffer parameters.
+  bool consider_best_buffer_sample_when_leaving_c3;
+  int N_sample_buffer;
+  double pos_error_sample_retention;
+  double ang_error_sample_retention;
+
+  /// Shared across multiple sampling strategies.
+  double sampling_radius;               // kRadiallySymmetric, kRandomOnCircle,
+                                        // kRandomOnSphere
+  double sampling_height;               // kRadiallySymmetric, kRandomOnCircle
+                                        // kRandomOnPerimeter
+  double sample_projection_clearance;   // kRandomOnPerimeter, kRandomOnShell, kMeshNormal
+  double min_angle_from_vertical;       // kRandomOnSphere, kRandomOnShell
+  double max_angle_from_vertical;       // kRandomOnSphere, kRandomOnShell
+
+  /// kFixed parameters.
+  Eigen::MatrixXd fixed_sample_locations;   // n_samples rows, 3 columns
+
+  /// kRandomOnPerimeter parameters.
+  std::vector<double> grid_x_limits;
+  std::vector<double> grid_y_limits;
+
+  /// kRandomOnShell parameters.
+  double min_sampling_radius;
+  double max_sampling_radius;
+
+  // kMeshNormal parameters
+  double buffer_distance;
+  int max_attempts; 
+  double barycentric_bias;
+
+  double z_height;
+
+
+
+  template <typename Archive>
+  void Serialize(Archive* a) {
+    ENUM_DESERIALIZE(a, sampling_strategy);
+    a->Visit(DRAKE_NVP(filter_samples_for_safety));
+    a->Visit(DRAKE_NVP(fixed_sample_locations));
+    a->Visit(DRAKE_NVP(sampling_radius));
+    a->Visit(DRAKE_NVP(min_angle_from_vertical));
+    a->Visit(DRAKE_NVP(max_angle_from_vertical));
+    a->Visit(DRAKE_NVP(sampling_height));
+    a->Visit(DRAKE_NVP(grid_x_limits));
+    a->Visit(DRAKE_NVP(grid_y_limits));
+    a->Visit(DRAKE_NVP(sample_projection_clearance));
+    a->Visit(DRAKE_NVP(min_sampling_radius));
+    a->Visit(DRAKE_NVP(max_sampling_radius));
+    a->Visit(DRAKE_NVP(num_additional_samples_repos));
+    a->Visit(DRAKE_NVP(num_additional_samples_c3));
+    a->Visit(DRAKE_NVP(consider_best_buffer_sample_when_leaving_c3));
+    a->Visit(DRAKE_NVP(N_sample_buffer));
+    a->Visit(DRAKE_NVP(pos_error_sample_retention));
+    a->Visit(DRAKE_NVP(ang_error_sample_retention));
+    a->Visit(DRAKE_NVP(sample_projection_clearance));
+    a->Visit(DRAKE_NVP(buffer_distance));
+    a->Visit(DRAKE_NVP(max_attempts));
+    a->Visit(DRAKE_NVP(barycentric_bias));
+    a->Visit(DRAKE_NVP(z_height));
+  }
+};
+
+================================================================
+FILE: examples/sampling_c3/parameter_headers/sampling_c3_controller_params.h
+================================================================
+#pragma once
+
+#include "examples/sampling_c3/parameter_headers/sampling_c3_options.h"
+#include "examples/sampling_c3/parameter_headers/reposition_params.h"
+#include "examples/sampling_c3/parameter_headers/progress_params.h"
+#include "examples/sampling_c3/parameter_headers/sampling_params.h"
+#include "examples/sampling_c3/parameter_headers/goal_params.h"
+
+#include "drake/common/yaml/yaml_read_archive.h"
+#include <drake/common/yaml/yaml_io.h>
+
+
+struct SamplingC3ControllerParams {
+  std::string sampling_c3_options_file;   // C3 mode params
+  std::string reposition_params_file;     // repositioning mode params
+  std::string progress_params_file;       // mode switching params
+  std::string sampling_params_file;       // sampling params
+  std::string goal_params_file;           // goal checking/setting params
+
+  std::string sim_params_file;            // simulation params
+  std::string vis_params_file;            // visualization params
+  std::string osc_params_file;            // OSC params
+  std::string osqp_settings_file;
+  std::string osc_qp_settings_file;
+  std::string franka_driver_channels_file;
+  std::string lcm_channels_hardware_file;
+  std::string lcm_channels_simulation_file;
+
+  std::string object_model;               // path to the controller sdf file
+  std::string object_body_name;           // name of the body in the sdf file 
+  std::string base_name;                  // name of the obj file to generate sdfs
+
+  double workspace_margin;
+  bool include_end_effector_orientation;
+  int control_loop_delay_ms;
+
+  /// Store sub-parameter classes internally.
+  SamplingC3Options sampling_c3_options;
+  SamplingC3RepositionParams reposition_params;
+  SamplingC3ProgressParams progress_params;
+  SamplingParams sampling_params;
+  SamplingC3GoalParams goal_params;
+
+  template <typename Archive>
+  void Serialize(Archive* a) {
+    a->Visit(DRAKE_NVP(sampling_c3_options_file));
+    a->Visit(DRAKE_NVP(reposition_params_file));
+    a->Visit(DRAKE_NVP(progress_params_file));
+    a->Visit(DRAKE_NVP(sampling_params_file));
+    a->Visit(DRAKE_NVP(goal_params_file));
+    a->Visit(DRAKE_NVP(sim_params_file));
+    a->Visit(DRAKE_NVP(vis_params_file));
+    a->Visit(DRAKE_NVP(osc_params_file));
+    a->Visit(DRAKE_NVP(osqp_settings_file));
+    a->Visit(DRAKE_NVP(osc_qp_settings_file));
+    a->Visit(DRAKE_NVP(franka_driver_channels_file));
+    a->Visit(DRAKE_NVP(lcm_channels_hardware_file));
+    a->Visit(DRAKE_NVP(lcm_channels_simulation_file));
+    a->Visit(DRAKE_NVP(object_model));
+    a->Visit(DRAKE_NVP(object_body_name));
+    a->Visit(DRAKE_NVP(base_name));
+    a->Visit(DRAKE_NVP(include_end_effector_orientation));
+    a->Visit(DRAKE_NVP(control_loop_delay_ms));
+
+    /// Store individual parameter classes internally.
+    sampling_c3_options = drake::yaml::LoadYamlFile<SamplingC3Options>(
+      sampling_c3_options_file);
+    reposition_params = drake::yaml::LoadYamlFile<SamplingC3RepositionParams>(
+      reposition_params_file);
+    progress_params = drake::yaml::LoadYamlFile<SamplingC3ProgressParams>(
+      progress_params_file);
+    sampling_params = drake::yaml::LoadYamlFile<SamplingParams>(
+      sampling_params_file);
+    goal_params = drake::yaml::LoadYamlFile<SamplingC3GoalParams>(
+      goal_params_file);
+  }
+};
+
+================================================================
+FILE: examples/sampling_c3/parameter_headers/reposition_params.h
+================================================================
+#pragma once
+
+#include "drake/common/yaml/yaml_read_archive.h"
+
+#include "common/file_utils.h"
+
+
+/* Repositioning trajectory type options:
+  0. kSpline:           move from current to target with spline that distorts
+                        around the object.
+  1. kSpherical:        move away from object to a radius, along the spherical
+                        surface to outside target, then in to target.
+  2. kCircular:         (planar) move away from object to a planar radius,
+                        along the circle to outside target, then in to target.
+  3. kPiecewiseLinear:  move up to waypoint height, over to above target, then
+                        down.
+*/
+enum RepositioningTrajectoryType {
+  kSpline,
+  kSpherical,
+  kCircular,
+  kPiecewiseLinear
+};
+
+struct SamplingC3RepositionParams {
+  RepositioningTrajectoryType traj_type;
+
+  /// Parameters used for multiple repositioning trajectory types.
+  double speed;
+
+  /// Thresholds for switching to straight line trajectories.
+  double use_straight_line_traj_under_spline;
+  double use_straight_line_traj_within_angle;
+  double use_straight_line_traj_under_piecewise_linear;
+
+  /// Spline-specific parameters.
+  double spline_width;
+
+  /// Sphere-specific parameters.
+  double sphere_radius;
+
+  /// Circle-specific parameters.
+  double circle_radius;
+  double circle_height;
+
+  /// Piecewise-linear-specific parameters.
+  double pwl_waypoint_height;
+
+  template <typename Archive>
+  void Serialize(Archive* a) {
+    ENUM_DESERIALIZE(a, traj_type);
+    a->Visit(DRAKE_NVP(speed));
+    a->Visit(DRAKE_NVP(use_straight_line_traj_under_spline));
+    a->Visit(DRAKE_NVP(use_straight_line_traj_within_angle));
+    a->Visit(DRAKE_NVP(use_straight_line_traj_under_piecewise_linear));
+    a->Visit(DRAKE_NVP(spline_width));
+    a->Visit(DRAKE_NVP(sphere_radius));
+    a->Visit(DRAKE_NVP(circle_radius));
+    a->Visit(DRAKE_NVP(circle_height));
+    a->Visit(DRAKE_NVP(pwl_waypoint_height));
+  }
+};
+
+================================================================
+FILE: examples/sampling_c3/sampling_c3_utils.h
+================================================================
+#pragma once
+
+#include <string>
+#include <Eigen/Dense>
+
+#include "drake/multibody/plant/multibody_plant.h"
+
+namespace dairlib {
+
+/// Constants for the Franka and end effector.
+static constexpr const char* kFrankaModel =
+  "package://drake_models/franka_description/urdf/panda_arm.urdf";
+static constexpr const char* kEndEffectorModel =
+  "examples/sampling_c3/urdf/end_effector_full.urdf";
+static constexpr const char* kEndEffectorSimpleModel =
+  "examples/sampling_c3/urdf/end_effector_simple_model.urdf";
+static constexpr const char* kEndEffectorName = "end_effector_tip";
+static constexpr const char* kGroundModel =
+  "examples/sampling_c3/urdf/ground.urdf";
+static constexpr const char* kPlatformModel =
+  "examples/sampling_c3/urdf/platform.urdf";
+
+/// This is the offset from the Panda's link7 frame to its flange where an end
+/// effector can be attached.
+static const Eigen::Vector3d kToolAttachmentFrame = {0, 0, 0.107};
+
+static const Eigen::Vector3d kFrankaToGroundOffset = {0, 0, -0.029};
+static const Eigen::Vector3d kFrankaToPlatformOffset = {0, 0, -0.0145};
+static const Eigen::Vector3d kWorldToFrankaOffset = {0, 0, 0};
+static const Eigen::Vector3d kWorldToGroundOffset = kWorldToFrankaOffset +
+                                                    kFrankaToGroundOffset;
+
+/// Add the Franka to a given multibody plant and scene graph.
+/// @param plant a pointer to the MultibodyPlant
+/// @param scene_graph a pointer to the SceneGraph--may be nullptr (or omitted)
+/// @param include_ground_and_platform whether to include the ground and
+/// platform in the plant. If false, only the Franka and end effector will be
+/// added.
+/// @return the ModelInstanceIndex of the Franka in the plant
+drake::multibody::ModelInstanceIndex AddFrankaToPlant(
+    drake::multibody::MultibodyPlant<double>* plant,
+    drake::geometry::SceneGraph<double>* scene_graph = nullptr,
+    const bool& include_ee = true,
+    const bool& include_ground_and_platform = true);
+
+/// Add an object to a given multibody plant and scene graph.
+/// @param plant a pointer to the MultibodyPlant
+/// @param scene_graph a pointer to the SceneGraph--may be nullptr (or omitted)
+/// @param object_model the model of the object to add to the plant
+/// @return the ModelInstanceIndex of the object in the plant
+drake::multibody::ModelInstanceIndex AddObjectToPlant(
+    drake::multibody::MultibodyPlant<double>* plant,
+    drake::geometry::SceneGraph<double>* scene_graph = nullptr,
+    const std::string& object_model = "");
+
+/// Add LCS models to a given multibody plant and scene graph.
+/// @param plant a pointer to the MultibodyPlant
+/// @param scene_graph a pointer to the SceneGraph--may be nullptr (or omitted)
+/// @param object_model the model of the object to add to the plant
+/// @param include_end_effector_orientation whether to include the end effector
+/// orientation as DOFs in the plant. True is currently unimplemented.
+void AddLCSModelsToPlant(
+    drake::multibody::MultibodyPlant<double>* plant,
+    drake::geometry::SceneGraph<double>* scene_graph = nullptr,
+    const std::string& object_model = "",
+    const bool& include_end_effector_orientation = false);
+
+}   // namespace dairlib
+
+================================================================
+FILE: examples/sampling_c3/reposition.h
+================================================================
+#include <Eigen/Core>
+
+#include "examples/sampling_c3/parameter_headers/reposition_params.h"
+#include "examples/sampling_c3/parameter_headers/sampling_c3_options.h"
+
+namespace dairlib {
+namespace systems {
+
+/// Public function for generating a set of repositioning knot points.  If the
+/// repositioning trajectory gets to the target within a single timestep,
+/// finished_reposition_flag is set to true.
+Eigen::MatrixXd Reposition(
+    const int& n_q,
+    const int& n_x,
+    const int& N,
+    const Eigen::VectorXd& x_lcs,
+    const Eigen::Vector3d& repos_target,
+    const double& dt,
+    const bool& is_doing_c3,
+    bool& finished_reposition_flag,
+    const SamplingC3RepositionParams& reposition_params,
+    const SamplingC3Options& sampling_c3_options
+);
+
+/// Individual repositioning functions for each type of trajectory.  Each sets
+/// the knot points and finished_reposition_flag appropriately.
+void RepositionStraightLine(
+    Eigen::MatrixXd& knots,
+    const int& n_q,
+    const int& n_x,
+    const int& N,
+    const Eigen::VectorXd& x_lcs,
+    const Eigen::Vector3d& repos_target,
+    const double& dt,
+    const bool& is_doing_c3,
+    bool& finished_reposition_flag,
+    const SamplingC3RepositionParams& reposition_params
+);
+void RepositionSpline(
+    Eigen::MatrixXd& knots,
+    const int& n_q,
+    const int& N,
+    const Eigen::VectorXd& x_lcs,
+    const Eigen::Vector3d& repos_target,
+    const double& dt,
+    const bool& is_doing_c3,
+    bool& finished_reposition_flag,
+    const SamplingC3RepositionParams& reposition_params,
+    const SamplingC3Options& sampling_c3_options);
+void RepositionSpherical(
+    Eigen::MatrixXd& knots,
+    const int& n_q,
+    const int& N,
+    const Eigen::VectorXd& x_lcs,
+    const Eigen::Vector3d& repos_target,
+    const double& dt,
+    const bool& is_doing_c3,
+    bool& finished_reposition_flag,
+    const SamplingC3RepositionParams& reposition_params,
+    const SamplingC3Options& sampling_c3_options);
+void RepositionCircular(
+    Eigen::MatrixXd& knots,
+    const int& n_q,
+    const int& N,
+    const Eigen::VectorXd& x_lcs,
+    const Eigen::Vector3d& repos_target,
+    const double& dt,
+    const bool& is_doing_c3,
+    bool& finished_reposition_flag,
+    const SamplingC3RepositionParams& reposition_params);
+void RepositionPiecewiseLinear(
+    Eigen::MatrixXd& knots,
+    const int& N,
+    const Eigen::VectorXd& x_lcs,
+    const Eigen::Vector3d& repos_target,
+    const double& dt,
+    const bool& is_doing_c3,
+    bool& finished_reposition_flag,
+    const SamplingC3RepositionParams& reposition_params);
+
+}   // namespace systems
+}   // namespace dairlib
+
+================================================================
+FILE: examples/sampling_c3/generate_samples.h
+================================================================
+#include <random>
+
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <numbers>
+
+#include "common/math_utils.h"
+#include "common/update_context.h"
+#include "examples/sampling_c3/parameter_headers/sampling_c3_options.h"
+#include "examples/sampling_c3/parameter_headers/sampling_params.h"
+#include "multibody/geom_geom_collider.h"
+#include "multibody/multibody_utils.h"
+#include "solvers/c3_options.h"
+#include <drake/geometry/query_object.h>
+#include "systems/controllers/face.h"
+
+using Eigen::Vector3d;
+using Eigen::VectorXd;
+using dairlib::systems::Face;
+
+namespace dairlib {
+namespace systems {
+
+/// Public function
+std::vector<Eigen::VectorXd> GenerateSampleStates(
+    const int& n_q,
+    const int& n_v,
+    const int& n_u,
+    const Eigen::VectorXd& x_lcs,
+    const bool& is_doing_c3,
+    const SamplingParams& sampling_params,
+    const SamplingC3Options& sampling_c3_options,
+    drake::multibody::MultibodyPlant<double>& plant,
+    drake::systems::Context<double>* context,
+    drake::multibody::MultibodyPlant<drake::AutoDiffXd>& plant_ad,
+    drake::systems::Context<drake::AutoDiffXd>* context_ad,
+    const std::vector<
+        std::vector<drake::SortedPair<drake::geometry::GeometryId>>>&
+        contact_geoms,
+    std::vector<Face> faces,
+    std::vector<double> face_bins
+);
+
+/// Individual sampling strategies returning 3D EE position
+Eigen::Vector3d RadiallySymmetricSampling(
+    const int& n_q,
+    const int& n_v,
+    const Eigen::VectorXd& x_lcs,
+    const int& num_samples,
+    const int& i,
+    const double& sampling_radius,
+    const double& sampling_height
+);
+
+Eigen::Vector3d RandomOnCircleSampling(
+    const int& n_q,
+    const int& n_v,
+    const Eigen::VectorXd& x_lcs,
+    const double& sampling_radius,
+    const double& sampling_height
+);
+
+Eigen::Vector3d RandomOnSphereSampling(
+    const int& n_q,
+    const int& n_v,
+    const Eigen::VectorXd& x_lcs,
+    const double& sampling_radius,
+    const double& min_angle_from_vertical,
+    const double& max_angle_from_vertical
+);
+
+Eigen::Vector3d FixedSample(
+    const Eigen::Vector3d& fixed_sample_location
+);
+
+Eigen::Vector3d PerimeterSampling(
+    const int& n_q,
+    const int& n_v,
+    const int& n_u,
+    const Eigen::VectorXd& x_lcs,
+    drake::multibody::MultibodyPlant<double>& plant,
+    drake::systems::Context<double>* context,
+    drake::multibody::MultibodyPlant<drake::AutoDiffXd>& plant_ad,
+    drake::systems::Context<drake::AutoDiffXd>* context_ad,
+    const std::vector<
+        std::vector<drake::SortedPair<drake::geometry::GeometryId>>>&
+        contact_geoms,
+    const SamplingParams& sampling_params,
+    const SamplingC3Options sampling_c3_options
+);
+
+Eigen::Vector3d ShellSampling(
+    const int& n_q,
+    const int& n_v,
+    const int& n_u,
+    const Eigen::VectorXd& x_lcs,
+    drake::multibody::MultibodyPlant<double>& plant,
+    drake::systems::Context<double>* context,
+    drake::multibody::MultibodyPlant<drake::AutoDiffXd>& plant_ad,
+    drake::systems::Context<drake::AutoDiffXd>* context_ad,
+    const std::vector<
+        std::vector<drake::SortedPair<drake::geometry::GeometryId>>>&
+        contact_geoms,
+    const SamplingParams& sampling_params,
+    const SamplingC3Options sampling_c3_options
+);
+
+Eigen::VectorXd MeshNormalSampling(
+    const int& n_q,
+    const int& n_v,
+    const int& n_u,
+    const Eigen::VectorXd& x_lcs,
+    drake::multibody::MultibodyPlant<double>& plant, 
+    drake::systems::Context<double>* context, 
+    drake::multibody::MultibodyPlant<drake::AutoDiffXd>& plant_ad,
+    drake::systems::Context<drake::AutoDiffXd>* context_ad,
+    const SamplingParams& sampling_params,
+    const drake::geometry::QueryObject<double>& query_object,
+    std::vector<Face> faces,
+    std::vector<double> face_bins);
+
+/// Whether the candidate state's EE location is within the robot workspace.
+bool IsSampleInWorkspace(
+    const Eigen::VectorXd& candidate_state,
+    const SamplingC3Options& sampling_c3_options
+);
+
+/// Find and return the end effector radius from the plant.
+/// WARNING:  assumes EE-object pairs are first in contact_geoms.
+double GetEERadiusFromPlant(
+    const drake::multibody::MultibodyPlant<double>& plant,
+    const drake::systems::Context<double>& context,
+    const std::vector<
+        std::vector<drake::SortedPair<drake::geometry::GeometryId>>>&
+        contact_geoms
+);
+
+/// Whether the candidate state's EE location is within a clearance distance of
+/// the surface of the object.  Can factor in the EE radius if a real clearance
+/// distance between the EE and the object is desired; otherwise this is the
+/// distance from the center of the EE to the surface of the object.
+bool IsSampleWithinDistanceOfSurface(
+    const int& n_q,
+    const int& n_v,
+    const int& n_u,
+    const double& clearance_distance,
+    const Eigen::VectorXd& candidate_state,
+    drake::multibody::MultibodyPlant<double>& plant,
+    drake::systems::Context<double>* context,
+    drake::multibody::MultibodyPlant<drake::AutoDiffXd>& plant_ad,
+    drake::systems::Context<drake::AutoDiffXd>* context_ad,
+    const std::vector<
+        std::vector<drake::SortedPair<drake::geometry::GeometryId>>>&
+        contact_geoms,
+    SamplingC3Options sampling_c3_options,
+    int& min_distance_index
+);
+
+/// Project an EE candidate location outside the object such that the clearance
+/// distance in the sampling parameters is satisfied.
+Eigen::VectorXd ProjectSampleOutsideObject(
+    Eigen::VectorXd& candidate_state,
+    int min_distance_index,
+    const SamplingParams& sampling_params,
+    const drake::multibody::MultibodyPlant<double>& plant,
+    const drake::systems::Context<double>& context,
+    const std::vector<
+        std::vector<drake::SortedPair<drake::geometry::GeometryId>>>&
+        contact_geoms
+);
+
+}  // namespace systems
+}  // namespace dairlib

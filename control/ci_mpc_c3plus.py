@@ -1,61 +1,88 @@
+"""
+C3+ MPC: MPPI-style sampled trajectory optimizer using C3+ contact physics.
+
+Algorithm per control step:
+  1. Sample K Gaussian-noise perturbations around the nominal plan.
+  2. Roll out each sample through Drake plant + ADMM (in private context).
+  3. Weight samples via the MPPI information-theoretic rule.
+  4. Update nominal plan as the weighted noise correction.
+  5. Return u[0] as the next torque command and shift plan forward.
+"""
 import numpy as np
 from .base_mpc import BaseMPC
 
+
 class C3PlusMPC(BaseMPC):
     """
-    Sampled C3+.
-    Uses MPPI to evaluate parallel trajectories.
-    Easily bypasses local minima by exploring multiple contact modes.
+    Parameters (beyond BaseMPC)
+    ---------------------------
+    num_samples  : int   Number of parallel candidate trajectories.
+    noise_std    : float Torque perturbation standard deviation (Nm).
+    torque_limit : float Hard torque clamp applied to all samples (Nm).
+    temperature  : float MPPI temperature lambda (lower = greedier weighting).
     """
-    def __init__(self, n_u, n_v, n_q, formulator, admm_solver, horizon=10, dt=0.01, num_samples=50):
-        super().__init__(n_u, n_v, n_q, formulator, admm_solver, horizon, dt)
-        self.num_samples = num_samples
-        
-        # Reduced noise to prevent physical instability ("Exploding Robot" bug)
-        self.noise_std = 2.0 
-        
-        # Franka physical torque limits (approximate safe bounds)
-        self.torque_limit = 30.0
 
-    def compute_control(self, current_context, current_q, current_v, target_q):
-        # 1. Generate random sample sequences
-        noise = np.random.normal(0, self.noise_std, (self.num_samples, self.horizon, self.n_u))
-        U_samples = self.U_nominal + noise
-        
-        # Clip samples to physical limits so we don't simulate impossible physics
-        U_samples = np.clip(U_samples, -self.torque_limit, self.torque_limit)
-        
-        sample_costs = np.zeros(self.num_samples)
+    def __init__(self, n_u, n_v, n_q, formulator, admm_solver,
+                 diagram, cost_fn,
+                 horizon: int = 8, dt: float = 0.03,
+                 num_samples: int = 10, noise_std: float = 2.0,
+                 torque_limit: float = 30.0, temperature: float = 1.0):
+        super().__init__(n_u, n_v, n_q, formulator, admm_solver,
+                         diagram, cost_fn, horizon, dt)
+        self.num_samples  = num_samples
+        self.noise_std    = noise_std
+        self.torque_limit = torque_limit
+        self.temperature  = temperature
 
-        # 2. Rollout all samples
-        for k in range(self.num_samples):
-            sample_costs[k] = self.rollout_trajectory(
-                current_context, current_q, current_v, U_samples[k], target_q)
+    def compute_control(self, current_q: np.ndarray,
+                        current_v: np.ndarray,
+                        target_xy: np.ndarray) -> np.ndarray:
+        """
+        Parameters
+        ----------
+        current_q : (n_q,) real plant positions
+        current_v : (n_v,) real plant velocities
+        target_xy : (2,)   goal [x_goal, y_goal] in world frame
 
-        self.formulator.plant.SetPositions(current_context, current_q)
-        self.formulator.plant.SetVelocities(current_context, current_v)
+        Returns
+        -------
+        u_opt : (n_u,) torque command for this timestep
+        """
+        # 1. Sample torque perturbations around nominal plan
+        eps = np.random.normal(
+            0.0, self.noise_std,
+            (self.num_samples, self.horizon, self.n_u)
+        )
+        U_samples = np.clip(
+            self.U_nominal + eps, -self.torque_limit, self.torque_limit
+        )
 
-        # 3. Information Theoretic Weighting
-        temperature = 1.0
-        beta = np.min(sample_costs)
-        
-        # Prevent division by zero
-        if np.all(sample_costs == beta):
+        # 2. Roll out each sample (uses private rollout context — real context untouched)
+        costs = np.array([
+            self.rollout_trajectory(current_q, current_v, U_samples[k], target_xy)
+            for k in range(self.num_samples)
+        ])
+
+        # 3. MPPI information-theoretic weighting
+        beta       = costs.min()
+        raw_w      = np.exp(-(costs - beta) / self.temperature)
+        weight_sum = raw_w.sum()
+
+        if weight_sum < 1e-12:
             weights = np.ones(self.num_samples) / self.num_samples
         else:
-            weights = np.exp(-1.0 / temperature * (sample_costs - beta))
-            weights = weights / np.sum(weights)
+            weights = raw_w / weight_sum
 
-        # 4. Update nominal trajectory using weighted sum of successful noise
-        weighted_noise = np.sum(weights[:, np.newaxis, np.newaxis] * noise, axis=0)
-        self.U_nominal = self.U_nominal + weighted_noise
-        
-        # Clip nominal trajectory to keep the baseline safe
-        self.U_nominal = np.clip(self.U_nominal, -self.torque_limit, self.torque_limit)
-        
-        # 5. Shift plan forward
-        optimal_u_now = np.copy(self.U_nominal[0])
+        # 4. Update nominal plan: U_nominal += weighted average of noise
+        weighted_noise = np.einsum("k,kth->th", weights, eps)
+        self.U_nominal = np.clip(
+            self.U_nominal + weighted_noise,
+            -self.torque_limit, self.torque_limit
+        )
+
+        # 5. Extract first action and shift plan forward (receding horizon)
+        u_opt = self.U_nominal[0].copy()
         self.U_nominal[:-1] = self.U_nominal[1:]
-        self.U_nominal[-1] = np.zeros(self.n_u)
+        self.U_nominal[-1]  = np.zeros(self.n_u)
 
-        return optimal_u_now
+        return u_opt

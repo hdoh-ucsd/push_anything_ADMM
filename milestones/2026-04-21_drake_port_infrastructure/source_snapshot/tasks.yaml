@@ -1,0 +1,69 @@
+tasks:
+  # -----------------------------------------------------------------------
+  # Task 1: Standard Pushing
+  # -----------------------------------------------------------------------
+  pushing:
+    object_type: box
+    link_name: box_link
+    mass: 0.2
+    friction: 0.4
+    size: [0.1, 0.1, 0.1]
+    init_xyz: [0.0, 0.0, 0.05]
+    goal_xy:  [0.3, 0.0]
+    color_rgba: [0.8, 0.2, 0.2, 1.0]
+    cost:
+      w_obj_xy:    100000.0
+      w_obj_z:         10.0
+      w_box_z:        100.0
+      w_box_rp:        50.0
+      w_terminal:       5.0
+      z_ee_target:      0.05
+      d_push:           0.05
+      w_ee_approach: 8000.0
+      w_torque:         0.01
+
+  # -----------------------------------------------------------------------
+  # Task 2: Hard Physics Pushing
+  # -----------------------------------------------------------------------
+  hard_pushing:
+    object_type: box
+    link_name: box_link
+    mass: 1.5
+    friction: 0.8
+    size: [0.1, 0.1, 0.1]
+    init_xyz: [0.0, 0.0, 0.05]
+    goal_xy:  [0.3, 0.0]
+    color_rgba: [0.2, 0.2, 0.8, 1.0]
+    cost:
+      w_obj_xy:    150000.0
+      w_obj_z:         10.0
+      w_box_z:        100.0
+      w_box_rp:        50.0
+      w_terminal:       8.0
+      z_ee_target:      0.05
+      d_push:           0.05
+      w_ee_approach: 10000.0
+      w_torque:         0.005
+
+  # -----------------------------------------------------------------------
+  # Task 3: Shepherding
+  # -----------------------------------------------------------------------
+  shepherding:
+    object_type: sphere
+    link_name: ball_link
+    mass: 0.15
+    friction: 0.2
+    radius: 0.06
+    init_xyz: [0.0, 0.0, 0.06]
+    goal_xy:  [0.3, 0.0]
+    color_rgba: [0.2, 0.8, 0.2, 1.0]
+    cost:
+      w_obj_xy:    120000.0
+      w_obj_z:         15.0
+      w_box_z:         80.0
+      w_box_rp:        40.0
+      w_terminal:       5.0
+      z_ee_target:      0.06
+      d_push:           0.06
+      w_ee_approach: 8000.0
+      w_torque:         0.01

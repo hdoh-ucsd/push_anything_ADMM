@@ -1,0 +1,470 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+[C3] Log: results/pushing_20260428_004753.txt
+[C3] Task: pushing
+[C3] Video output: results/pushing_20260428_004753.mp4
+[C3] HTML replay output: results/pushing_20260428_004753.html
+[ENV]  Directional task: id=2 name=east
+[ENV]  Goal coords: [0.3, 0.0]
+[ENV]  Description: Push box 30cm east. Arm prepositioned on west face: contact normal aligned with goal direction. Baseline case.
+[ENV]  Mass: 0.2 kg   Friction mu: 0.4
+[MPC]  Horizon: 20   dt: 0.05 s
+[MPC]  ADMM max iters: 3   rho_init: 100.0
+[MPC]  Force limit: 30.0 Nm
+[COST] w_obj_xy:      100000.0
+[COST] w_obj_z:       10.0
+[COST] w_box_z:       100.0
+[COST] w_box_rp:      50.0
+[COST] w_terminal:    5.0  (QN = w_terminal * Q)
+[COST] w_ee_approach: 8000.0
+[COST] w_torque:      0.01
+[ENV]  INITIAL_ARM_Q: DEFAULT
+[C3] Building Drake environment ...
+[C3] DOFs: n_q=14, n_v=13, n_u=7, n_x=27
+[C3] 'box_link': q[11]=x, q[12]=y
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[GS] start_mode=free (--prepositioned=False)
+[GS] SamplingC3MPC enabled (config: config/sampling_c3_params.yaml)
+[GS]   strategy=kRandomOnCircle num_add_c3=3 num_add_repos=1
+[GS]   w_align=30000.0  w_travel=200.0
+[GS]   reposition: traj_type=kPiecewiseLinear z_safe=0.2m speed=0.2m/s
+[C3] Goal: [0.3 0. ]  |  Meshcat: http://localhost:7000
+[C3] Running simulation ...
+[ENV]  Sim duration overridden: max_time=1.0s
+[EErel] along_push=+0.347m (neg=correct)  perp=0.600m  ee_to_box=0.693m  stage=1  obj=[0. 0.]  g_hat=[1. 0.]
+[proxy] err=0.799m  effective=[-0.18  0.    0.05]
+[DEBUG] n_contacts=0, n_c=0, TOT=34, total_dim=707
+[DEBUG] per-step λ_n slice: [27:27]  λ_t slice: [27:27]
+[DEBUG] J_n shape: (0, 13), J_t shape: (0, 13)
+[DEBUG] λ_t per contact: 4 components each → contact i at [27+4i:27+4(i+1)]
+[C3] step=1 n_c=0  |u[0]|=35.443 Nm
+[GS] step=1 mode=free switch=kStayInRepos best_k=1 best_src=strat_0 curr_cost=315505.12 repos_cost=298570.82 best_other=298570.82 met_progress=Y steps_since_improve=0 switches=0
+  t=0.00s | ee=(0.347, -0.600, 0.047) | obj=(0.000, 0.000, 0.050) | |u|=23.83 Nm | goal_dist=0.300 m
+[EErel] along_push=+0.346m (neg=correct)  perp=0.600m  ee_to_box=0.693m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.798m  effective=[-0.18 -0.    0.05]
+[C3] step=3 n_c=0  |u[0]|=36.126 Nm
+[GS] step=2 mode=free switch=kStayInRepos best_k=2 best_src=strat_0 curr_cost=316840.74 repos_cost=301825.71 best_other=301825.71 met_progress=Y steps_since_improve=1 switches=0
+[EErel] along_push=+0.345m (neg=correct)  perp=0.600m  ee_to_box=0.692m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.797m  effective=[-0.18 -0.    0.05]
+[C3] step=6 n_c=0  |u[0]|=36.021 Nm
+[GS] step=3 mode=free switch=kStayInRepos best_k=1 best_src=prev_repos curr_cost=317623.70 repos_cost=304887.93 best_other=304887.93 met_progress=Y steps_since_improve=2 switches=0
+[EErel] along_push=+0.343m (neg=correct)  perp=0.600m  ee_to_box=0.691m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.796m  effective=[-0.18 -0.    0.05]
+[C3] step=9 n_c=0  |u[0]|=35.970 Nm
+[GS] step=4 mode=free switch=kStayInRepos best_k=1 best_src=prev_repos curr_cost=317657.05 repos_cost=307644.19 best_other=307644.19 met_progress=Y steps_since_improve=3 switches=0
+[EErel] along_push=+0.339m (neg=correct)  perp=0.600m  ee_to_box=0.690m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.794m  effective=[-0.18 -0.    0.05]
+[C3] step=12 n_c=0  |u[0]|=35.969 Nm
+[GS] step=5 mode=free switch=kStayInRepos best_k=1 best_src=prev_repos curr_cost=317939.83 repos_cost=311264.79 best_other=311264.79 met_progress=Y steps_since_improve=4 switches=0
+[EErel] along_push=+0.335m (neg=correct)  perp=0.601m  ee_to_box=0.688m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.792m  effective=[-0.18 -0.    0.05]
+[C3] step=15 n_c=0  |u[0]|=36.016 Nm
+[GS] step=6 mode=free switch=kStayInRepos best_k=1 best_src=prev_repos curr_cost=318453.23 repos_cost=315947.82 best_other=315947.82 met_progress=Y steps_since_improve=5 switches=0
+[EErel] along_push=+0.330m (neg=correct)  perp=0.601m  ee_to_box=0.686m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.788m  effective=[-0.18  0.    0.05]
+[C3] step=18 n_c=0  |u[0]|=36.119 Nm
+[GS] step=7 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314246.94 repos_cost=317472.35 best_other=317472.35 met_progress=Y steps_since_improve=0 switches=0
+[EErel] along_push=+0.326m (neg=correct)  perp=0.601m  ee_to_box=0.684m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.786m  effective=[-0.18 -0.    0.05]
+[C3] step=20 n_c=0  |u[0]|=36.749 Nm
+[GS] step=8 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=318488.87 repos_cost=320289.46 best_other=320289.46 met_progress=Y steps_since_improve=1 switches=0
+[EErel] along_push=+0.325m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.786m  effective=[-0.18 -0.    0.05]
+[C3] step=23 n_c=0  |u[0]|=36.315 Nm
+[GS] step=9 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=315352.04 repos_cost=316428.67 best_other=316428.67 met_progress=Y steps_since_improve=2 switches=0
+[EErel] along_push=+0.325m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.786m  effective=[-0.18 -0.    0.05]
+[C3] step=26 n_c=0  |u[0]|=36.155 Nm
+[GS] step=10 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=315183.43 repos_cost=318677.67 best_other=318677.67 met_progress=Y steps_since_improve=3 switches=0
+[EErel] along_push=+0.325m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=29 n_c=0  |u[0]|=36.018 Nm
+[GS] step=11 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=315020.45 repos_cost=320446.63 best_other=320446.63 met_progress=Y steps_since_improve=4 switches=0
+[EErel] along_push=+0.325m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=32 n_c=0  |u[0]|=35.913 Nm
+[GS] step=12 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314866.93 repos_cost=322068.88 best_other=322068.88 met_progress=Y steps_since_improve=5 switches=0
+[EErel] along_push=+0.325m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=35 n_c=0  |u[0]|=35.829 Nm
+[GS] step=13 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314718.32 repos_cost=323288.57 best_other=323288.57 met_progress=Y steps_since_improve=6 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=38 n_c=0  |u[0]|=35.753 Nm
+[GS] step=14 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314570.56 repos_cost=324311.34 best_other=324311.34 met_progress=Y steps_since_improve=7 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=41 n_c=0  |u[0]|=35.680 Nm
+[GS] step=15 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314420.94 repos_cost=325167.07 best_other=325167.07 met_progress=Y steps_since_improve=8 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=44 n_c=0  |u[0]|=35.605 Nm
+[GS] step=16 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314268.62 repos_cost=325880.40 best_other=325880.40 met_progress=Y steps_since_improve=9 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=47 n_c=0  |u[0]|=35.531 Nm
+[GS] step=17 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=314113.94 repos_cost=326472.14 best_other=326472.14 met_progress=Y steps_since_improve=10 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=50 n_c=0  |u[0]|=35.457 Nm
+[GS] step=18 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=313957.44 repos_cost=326958.03 best_other=326958.03 met_progress=Y steps_since_improve=11 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.785m  effective=[-0.18  0.    0.05]
+[C3] step=53 n_c=0  |u[0]|=35.377 Nm
+[GS] step=19 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=308685.14 repos_cost=322285.58 best_other=322285.58 met_progress=Y steps_since_improve=12 switches=0
+[EErel] along_push=+0.324m (neg=correct)  perp=0.601m  ee_to_box=0.683m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=55 n_c=0  |u[0]|=35.304 Nm
+[GS] step=20 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=308525.48 repos_cost=322582.03 best_other=322582.03 met_progress=Y steps_since_improve=13 switches=0
+[GS-table] step=20
+  k=0 (current   ) pos=(+0.324,-0.601,+0.025) c_C3= 308525.48 align=0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 308525.48 feas=Y ik_err=0.0000m  ← WIN
+  k=1 (prev_repos) pos=(-0.180,-0.000,+0.050) c_C3= 322425.14 align=0.0000(bonus=    0.00) travel=0.784m(pen=156.89) c_sample= 322582.03 feas=Y ik_err=0.0001m
+[EErel] along_push=+0.323m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=57 n_c=0  |u[0]|=35.233 Nm
+[GS] step=21 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=308364.36 repos_cost=322800.04 best_other=322800.04 met_progress=Y steps_since_improve=14 switches=0
+[EErel] along_push=+0.323m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=59 n_c=0  |u[0]|=35.162 Nm
+[GS] step=22 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=308201.87 repos_cost=322829.70 best_other=322829.70 met_progress=Y steps_since_improve=15 switches=0
+[EErel] along_push=+0.323m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=61 n_c=0  |u[0]|=35.091 Nm
+[GS] step=23 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=308038.02 repos_cost=322925.28 best_other=322925.28 met_progress=Y steps_since_improve=16 switches=0
+[EErel] along_push=+0.323m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=63 n_c=0  |u[0]|=35.020 Nm
+[GS] step=24 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=307872.85 repos_cost=322962.30 best_other=322962.30 met_progress=Y steps_since_improve=17 switches=0
+[EErel] along_push=+0.323m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=65 n_c=0  |u[0]|=34.950 Nm
+[GS] step=25 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=307706.43 repos_cost=322946.01 best_other=322946.01 met_progress=Y steps_since_improve=18 switches=0
+[EErel] along_push=+0.323m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=67 n_c=0  |u[0]|=34.880 Nm
+[GS] step=26 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=307538.87 repos_cost=322880.51 best_other=322880.51 met_progress=Y steps_since_improve=19 switches=0
+[EErel] along_push=+0.322m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=69 n_c=0  |u[0]|=34.810 Nm
+[GS] step=27 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=307370.29 repos_cost=322768.02 best_other=322768.02 met_progress=Y steps_since_improve=20 switches=0
+[EErel] along_push=+0.322m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.784m  effective=[-0.18  0.    0.05]
+[C3] step=71 n_c=0  |u[0]|=34.740 Nm
+[GS] step=28 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=307200.80 repos_cost=322608.07 best_other=322608.07 met_progress=Y steps_since_improve=21 switches=0
+[EErel] along_push=+0.322m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=73 n_c=0  |u[0]|=34.670 Nm
+[GS] step=29 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=307030.56 repos_cost=322397.03 best_other=322397.03 met_progress=Y steps_since_improve=22 switches=0
+[EErel] along_push=+0.322m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=75 n_c=0  |u[0]|=34.600 Nm
+[GS] step=30 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=306859.70 repos_cost=322128.15 best_other=322128.15 met_progress=Y steps_since_improve=23 switches=0
+[EErel] along_push=+0.322m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=77 n_c=0  |u[0]|=34.531 Nm
+[GS] step=31 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=306688.38 repos_cost=321792.22 best_other=321792.22 met_progress=Y steps_since_improve=24 switches=0
+[EErel] along_push=+0.322m (neg=correct)  perp=0.601m  ee_to_box=0.682m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=79 n_c=0  |u[0]|=34.462 Nm
+[GS] step=32 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=306516.78 repos_cost=321602.78 best_other=321602.78 met_progress=Y steps_since_improve=25 switches=0
+[EErel] along_push=+0.321m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=81 n_c=0  |u[0]|=34.393 Nm
+[GS] step=33 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=306345.06 repos_cost=321208.81 best_other=321208.81 met_progress=Y steps_since_improve=26 switches=0
+[EErel] along_push=+0.321m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=83 n_c=0  |u[0]|=34.324 Nm
+[GS] step=34 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=306173.38 repos_cost=320762.67 best_other=320762.67 met_progress=Y steps_since_improve=27 switches=0
+[EErel] along_push=+0.321m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=85 n_c=0  |u[0]|=34.256 Nm
+[GS] step=35 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=306001.93 repos_cost=320268.93 best_other=320268.93 met_progress=Y steps_since_improve=28 switches=0
+[EErel] along_push=+0.321m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=87 n_c=0  |u[0]|=34.189 Nm
+[GS] step=36 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=305830.88 repos_cost=319735.50 best_other=319735.50 met_progress=Y steps_since_improve=29 switches=0
+[EErel] along_push=+0.321m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.783m  effective=[-0.18  0.    0.05]
+[C3] step=89 n_c=0  |u[0]|=34.121 Nm
+[GS] step=37 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=305660.43 repos_cost=319172.55 best_other=319172.55 met_progress=Y steps_since_improve=30 switches=0
+[EErel] along_push=+0.321m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=91 n_c=0  |u[0]|=34.055 Nm
+[GS] step=38 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=305490.75 repos_cost=318591.20 best_other=318591.20 met_progress=Y steps_since_improve=31 switches=0
+[EErel] along_push=+0.320m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=93 n_c=0  |u[0]|=33.989 Nm
+[GS] step=39 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=305322.04 repos_cost=318002.11 best_other=318002.11 met_progress=Y steps_since_improve=32 switches=0
+[EErel] along_push=+0.320m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=95 n_c=0  |u[0]|=33.924 Nm
+[GS] step=40 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=305154.52 repos_cost=317414.52 best_other=317414.52 met_progress=Y steps_since_improve=33 switches=0
+[GS-table] step=40
+  k=0 (current   ) pos=(+0.320,-0.601,+0.025) c_C3= 305154.52 align=0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 305154.52 feas=Y ik_err=0.0000m  ← WIN
+  k=1 (prev_repos) pos=(-0.180,-0.000,+0.050) c_C3= 317258.10 align=0.0000(bonus=    0.00) travel=0.782m(pen=156.42) c_sample= 317414.52 feas=Y ik_err=0.0009m
+[EErel] along_push=+0.320m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=97 n_c=0  |u[0]|=33.859 Nm
+[GS] step=41 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304988.34 repos_cost=317028.34 best_other=317028.34 met_progress=Y steps_since_improve=34 switches=0
+[EErel] along_push=+0.320m (neg=correct)  perp=0.601m  ee_to_box=0.681m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=99 n_c=0  |u[0]|=33.795 Nm
+[GS] step=42 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304823.70 repos_cost=316512.93 best_other=316512.93 met_progress=Y steps_since_improve=35 switches=0
+[EErel] along_push=+0.320m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=101 n_c=0  |u[0]|=33.733 Nm
+[GS] step=43 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304660.81 repos_cost=316024.91 best_other=316024.91 met_progress=Y steps_since_improve=36 switches=0
+[EErel] along_push=+0.319m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.782m  effective=[-0.18  0.    0.05]
+[C3] step=103 n_c=0  |u[0]|=33.671 Nm
+[GS] step=44 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304499.86 repos_cost=315568.05 best_other=315568.05 met_progress=Y steps_since_improve=37 switches=0
+[EErel] along_push=+0.319m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=105 n_c=0  |u[0]|=33.610 Nm
+[GS] step=45 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304341.04 repos_cost=315145.41 best_other=315145.41 met_progress=Y steps_since_improve=38 switches=0
+[EErel] along_push=+0.319m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=107 n_c=0  |u[0]|=33.549 Nm
+[GS] step=46 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304184.54 repos_cost=314759.68 best_other=314759.68 met_progress=Y steps_since_improve=39 switches=0
+[EErel] along_push=+0.319m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=109 n_c=0  |u[0]|=33.490 Nm
+[GS] step=47 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=304030.55 repos_cost=314413.40 best_other=314413.40 met_progress=Y steps_since_improve=40 switches=0
+[EErel] along_push=+0.319m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=111 n_c=0  |u[0]|=33.432 Nm
+[GS] step=48 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303879.27 repos_cost=314109.08 best_other=314109.08 met_progress=Y steps_since_improve=41 switches=0
+[EErel] along_push=+0.318m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=113 n_c=0  |u[0]|=33.375 Nm
+[GS] step=49 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303730.88 repos_cost=313849.20 best_other=313849.20 met_progress=Y steps_since_improve=42 switches=0
+[EErel] along_push=+0.318m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=115 n_c=0  |u[0]|=33.320 Nm
+[GS] step=50 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303585.57 repos_cost=313636.15 best_other=313636.15 met_progress=Y steps_since_improve=43 switches=0
+[EErel] along_push=+0.318m (neg=correct)  perp=0.601m  ee_to_box=0.680m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.781m  effective=[-0.18  0.    0.05]
+[C3] step=117 n_c=0  |u[0]|=33.265 Nm
+[GS] step=51 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303443.52 repos_cost=313472.11 best_other=313472.11 met_progress=Y steps_since_improve=44 switches=0
+  t=0.50s | ee=(0.318, -0.601, 0.025) | obj=(0.000, 0.000, 0.050) | |u|=11.61 Nm | goal_dist=0.300 m
+[EErel] along_push=+0.318m (neg=correct)  perp=0.601m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=119 n_c=0  |u[0]|=33.212 Nm
+[GS] step=52 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303304.91 repos_cost=313358.93 best_other=313358.93 met_progress=Y steps_since_improve=45 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.601m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=121 n_c=0  |u[0]|=33.159 Nm
+[GS] step=53 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303169.90 repos_cost=313544.58 best_other=313544.58 met_progress=Y steps_since_improve=46 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.601m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=123 n_c=0  |u[0]|=32.176 Nm
+[GS] step=54 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303469.30 repos_cost=308575.06 best_other=308575.06 met_progress=Y steps_since_improve=47 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.601m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=125 n_c=0  |u[0]|=32.077 Nm
+[GS] step=55 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303437.14 repos_cost=308498.17 best_other=308498.17 met_progress=Y steps_since_improve=48 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=127 n_c=0  |u[0]|=32.119 Nm
+[GS] step=56 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303457.63 repos_cost=308638.91 best_other=308638.91 met_progress=Y steps_since_improve=49 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=129 n_c=0  |u[0]|=32.181 Nm
+[GS] step=57 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303484.81 repos_cost=308802.17 best_other=308802.17 met_progress=Y steps_since_improve=50 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=131 n_c=0  |u[0]|=32.227 Nm
+[GS] step=58 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303506.18 repos_cost=308937.48 best_other=308937.48 met_progress=Y steps_since_improve=51 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=133 n_c=0  |u[0]|=32.237 Nm
+[GS] step=59 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303513.90 repos_cost=309019.63 best_other=309019.63 met_progress=Y steps_since_improve=52 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=135 n_c=0  |u[0]|=32.237 Nm
+[GS] step=60 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303517.88 repos_cost=308876.66 best_other=308876.66 met_progress=Y steps_since_improve=53 switches=0
+[GS-table] step=60
+  k=0 (current   ) pos=(+0.317,-0.600,+0.025) c_C3= 303517.88 align=0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 303517.88 feas=Y ik_err=0.0000m  ← WIN
+  k=1 (prev_repos) pos=(-0.180,-0.000,+0.050) c_C3= 308720.66 align=0.0000(bonus=    0.00) travel=0.780m(pen=156.00) c_sample= 308876.66 feas=Y ik_err=0.0010m
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=137 n_c=0  |u[0]|=32.239 Nm
+[GS] step=61 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303522.66 repos_cost=308955.67 best_other=308955.67 met_progress=Y steps_since_improve=54 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=139 n_c=0  |u[0]|=32.246 Nm
+[GS] step=62 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303529.26 repos_cost=309043.01 best_other=309043.01 met_progress=Y steps_since_improve=55 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=141 n_c=0  |u[0]|=32.253 Nm
+[GS] step=63 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303536.22 repos_cost=309132.59 best_other=309132.59 met_progress=Y steps_since_improve=56 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=143 n_c=0  |u[0]|=32.260 Nm
+[GS] step=64 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303542.82 repos_cost=309221.93 best_other=309221.93 met_progress=Y steps_since_improve=57 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=145 n_c=0  |u[0]|=32.266 Nm
+[GS] step=65 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303549.09 repos_cost=309311.82 best_other=309311.82 met_progress=Y steps_since_improve=58 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=147 n_c=0  |u[0]|=32.272 Nm
+[GS] step=66 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303554.29 repos_cost=309403.45 best_other=309403.45 met_progress=Y steps_since_improve=59 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=149 n_c=0  |u[0]|=32.274 Nm
+[GS] step=67 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303550.73 repos_cost=309500.26 best_other=309500.26 met_progress=N steps_since_improve=60 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=151 n_c=0  |u[0]|=32.267 Nm
+[GS] step=68 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303530.73 repos_cost=309602.79 best_other=309602.79 met_progress=N steps_since_improve=61 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=153 n_c=0  |u[0]|=32.252 Nm
+[GS] step=69 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303494.07 repos_cost=309711.95 best_other=309711.95 met_progress=N steps_since_improve=62 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=155 n_c=0  |u[0]|=32.227 Nm
+[GS] step=70 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303439.27 repos_cost=309832.40 best_other=309832.40 met_progress=N steps_since_improve=63 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.780m  effective=[-0.18  0.    0.05]
+[C3] step=157 n_c=0  |u[0]|=32.195 Nm
+[GS] step=71 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303366.49 repos_cost=309966.39 best_other=309966.39 met_progress=N steps_since_improve=64 switches=0
+[EErel] along_push=+0.317m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.779m  effective=[-0.18  0.    0.05]
+[C3] step=159 n_c=0  |u[0]|=32.156 Nm
+[GS] step=72 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303276.27 repos_cost=310115.63 best_other=310115.63 met_progress=N steps_since_improve=65 switches=0
+[EErel] along_push=+0.316m (neg=correct)  perp=0.600m  ee_to_box=0.679m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.779m  effective=[-0.18  0.    0.05]
+[C3] step=161 n_c=0  |u[0]|=32.110 Nm
+[GS] step=73 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303169.04 repos_cost=310282.06 best_other=310282.06 met_progress=N steps_since_improve=66 switches=0
+[EErel] along_push=+0.316m (neg=correct)  perp=0.600m  ee_to_box=0.678m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.779m  effective=[-0.18  0.    0.05]
+[C3] step=163 n_c=0  |u[0]|=32.058 Nm
+[GS] step=74 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=303045.33 repos_cost=310467.57 best_other=310467.57 met_progress=N steps_since_improve=67 switches=0
+[EErel] along_push=+0.315m (neg=correct)  perp=0.601m  ee_to_box=0.678m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.779m  effective=[-0.18  0.    0.05]
+[C3] step=165 n_c=0  |u[0]|=32.000 Nm
+[GS] step=75 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=302905.78 repos_cost=310674.06 best_other=310674.06 met_progress=N steps_since_improve=68 switches=0
+[EErel] along_push=+0.315m (neg=correct)  perp=0.601m  ee_to_box=0.678m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.779m  effective=[-0.18  0.    0.05]
+[C3] step=167 n_c=0  |u[0]|=31.938 Nm
+[GS] step=76 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=302751.07 repos_cost=310903.57 best_other=310903.57 met_progress=N steps_since_improve=69 switches=0
+[EErel] along_push=+0.314m (neg=correct)  perp=0.601m  ee_to_box=0.678m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.778m  effective=[-0.18  0.    0.05]
+[C3] step=169 n_c=0  |u[0]|=31.872 Nm
+[GS] step=77 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=302581.93 repos_cost=311158.30 best_other=311158.30 met_progress=N steps_since_improve=70 switches=0
+[EErel] along_push=+0.313m (neg=correct)  perp=0.601m  ee_to_box=0.678m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.778m  effective=[-0.18  0.    0.05]
+[C3] step=171 n_c=0  |u[0]|=31.805 Nm
+[GS] step=78 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=302403.76 repos_cost=311440.30 best_other=311440.30 met_progress=N steps_since_improve=71 switches=0
+[EErel] along_push=+0.312m (neg=correct)  perp=0.601m  ee_to_box=0.677m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.777m  effective=[-0.18  0.    0.05]
+[C3] step=173 n_c=0  |u[0]|=31.730 Nm
+[GS] step=79 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=302206.06 repos_cost=311741.60 best_other=311741.60 met_progress=N steps_since_improve=72 switches=0
+[EErel] along_push=+0.311m (neg=correct)  perp=0.601m  ee_to_box=0.677m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.777m  effective=[-0.18  0.    0.05]
+[C3] step=175 n_c=0  |u[0]|=31.651 Nm
+[GS] step=80 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=301992.53 repos_cost=312061.40 best_other=312061.40 met_progress=N steps_since_improve=73 switches=0
+[GS-table] step=80
+  k=0 (current   ) pos=(+0.311,-0.601,+0.025) c_C3= 301992.53 align=0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 301992.53 feas=Y ik_err=0.0000m  ← WIN
+  k=1 (prev_repos) pos=(-0.180,-0.000,+0.050) c_C3= 311906.06 align=0.0000(bonus=    0.00) travel=0.777m(pen=155.34) c_sample= 312061.40 feas=Y ik_err=0.0007m
+[EErel] along_push=+0.310m (neg=correct)  perp=0.602m  ee_to_box=0.677m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.776m  effective=[-0.18  0.    0.05]
+[C3] step=177 n_c=0  |u[0]|=31.567 Nm
+[GS] step=81 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=301763.74 repos_cost=312402.11 best_other=312402.11 met_progress=N steps_since_improve=74 switches=0
+[EErel] along_push=+0.308m (neg=correct)  perp=0.602m  ee_to_box=0.676m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.775m  effective=[-0.18  0.    0.05]
+[C3] step=179 n_c=0  |u[0]|=31.479 Nm
+[GS] step=82 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=301520.91 repos_cost=312763.98 best_other=312763.98 met_progress=N steps_since_improve=75 switches=0
+[EErel] along_push=+0.307m (neg=correct)  perp=0.602m  ee_to_box=0.676m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.775m  effective=[-0.18  0.    0.05]
+[C3] step=181 n_c=0  |u[0]|=31.388 Nm
+[GS] step=83 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=301264.89 repos_cost=313147.91 best_other=313147.91 met_progress=N steps_since_improve=76 switches=0
+[EErel] along_push=+0.305m (neg=correct)  perp=0.602m  ee_to_box=0.675m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.774m  effective=[-0.18  0.    0.05]
+[C3] step=183 n_c=0  |u[0]|=31.293 Nm
+[GS] step=84 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=300996.27 repos_cost=313555.61 best_other=313555.61 met_progress=N steps_since_improve=77 switches=0
+[EErel] along_push=+0.304m (neg=correct)  perp=0.602m  ee_to_box=0.675m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.773m  effective=[-0.18  0.    0.05]
+[C3] step=185 n_c=0  |u[0]|=31.196 Nm
+[GS] step=85 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=300715.66 repos_cost=313989.25 best_other=313989.25 met_progress=N steps_since_improve=78 switches=0
+[EErel] along_push=+0.302m (neg=correct)  perp=0.603m  ee_to_box=0.674m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.772m  effective=[-0.18  0.    0.05]
+[C3] step=187 n_c=0  |u[0]|=31.096 Nm
+[GS] step=86 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=300423.67 repos_cost=314452.06 best_other=314452.06 met_progress=N steps_since_improve=79 switches=0
+[EErel] along_push=+0.300m (neg=correct)  perp=0.603m  ee_to_box=0.673m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.771m  effective=[-0.18  0.    0.05]
+[C3] step=189 n_c=0  |u[0]|=30.994 Nm
+[GS] step=87 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=300120.89 repos_cost=314948.97 best_other=314948.97 met_progress=N steps_since_improve=80 switches=0
+[EErel] along_push=+0.298m (neg=correct)  perp=0.603m  ee_to_box=0.673m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.770m  effective=[-0.18  0.    0.05]
+[C3] step=191 n_c=0  |u[0]|=30.890 Nm
+[GS] step=88 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=299807.91 repos_cost=315487.60 best_other=315487.60 met_progress=N steps_since_improve=81 switches=0
+[EErel] along_push=+0.296m (neg=correct)  perp=0.603m  ee_to_box=0.672m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.769m  effective=[-0.18  0.    0.05]
+[C3] step=193 n_c=0  |u[0]|=30.784 Nm
+[GS] step=89 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=299485.31 repos_cost=316255.32 best_other=316255.32 met_progress=N steps_since_improve=82 switches=0
+[EErel] along_push=+0.294m (neg=correct)  perp=0.603m  ee_to_box=0.671m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.768m  effective=[-0.18  0.    0.05]
+[C3] step=195 n_c=0  |u[0]|=30.676 Nm
+[GS] step=90 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=299153.67 repos_cost=316950.96 best_other=316950.96 met_progress=N steps_since_improve=83 switches=0
+[EErel] along_push=+0.292m (neg=correct)  perp=0.604m  ee_to_box=0.670m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.766m  effective=[-0.18  0.    0.05]
+[C3] step=197 n_c=0  |u[0]|=30.567 Nm
+[GS] step=91 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=298813.57 repos_cost=317768.05 best_other=317768.05 met_progress=N steps_since_improve=84 switches=0
+[EErel] along_push=+0.289m (neg=correct)  perp=0.604m  ee_to_box=0.669m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.765m  effective=[-0.18  0.    0.05]
+[C3] step=199 n_c=0  |u[0]|=30.456 Nm
+[GS] step=92 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=298465.59 repos_cost=318770.29 best_other=318770.29 met_progress=N steps_since_improve=85 switches=0
+[EErel] along_push=+0.287m (neg=correct)  perp=0.604m  ee_to_box=0.668m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.764m  effective=[-0.18  0.    0.05]
+[C3] step=201 n_c=0  |u[0]|=30.344 Nm
+[GS] step=93 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=298110.30 repos_cost=320071.15 best_other=320071.15 met_progress=N steps_since_improve=86 switches=0
+[EErel] along_push=+0.284m (neg=correct)  perp=0.604m  ee_to_box=0.667m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.762m  effective=[-0.18  0.    0.05]
+[C3] step=203 n_c=0  |u[0]|=30.231 Nm
+[GS] step=94 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=297748.26 repos_cost=321895.77 best_other=321895.77 met_progress=N steps_since_improve=87 switches=0
+[EErel] along_push=+0.282m (neg=correct)  perp=0.604m  ee_to_box=0.666m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.761m  effective=[-0.18  0.    0.05]
+[C3] step=205 n_c=0  |u[0]|=30.118 Nm
+[GS] step=95 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=297380.03 repos_cost=324945.88 best_other=324945.88 met_progress=N steps_since_improve=88 switches=0
+[EErel] along_push=+0.279m (neg=correct)  perp=0.604m  ee_to_box=0.665m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.759m  effective=[-0.18  0.    0.05]
+[C3] step=207 n_c=0  |u[0]|=30.004 Nm
+[GS] step=96 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=297006.15 repos_cost=330658.01 best_other=330658.01 met_progress=N steps_since_improve=89 switches=0
+[EErel] along_push=+0.277m (neg=correct)  perp=0.604m  ee_to_box=0.664m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.757m  effective=[-0.18  0.    0.05]
+[C3] step=209 n_c=0  |u[0]|=29.890 Nm
+[GS] step=97 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=296627.18 repos_cost=351382.58 best_other=351382.58 met_progress=N steps_since_improve=90 switches=0
+[EErel] along_push=+0.274m (neg=correct)  perp=0.604m  ee_to_box=0.663m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.756m  effective=[-0.18  0.    0.05]
+[C3] step=211 n_c=0  |u[0]|=29.776 Nm
+[EErel] along_push=+0.274m (neg=correct)  perp=0.604m  ee_to_box=0.663m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.756m  effective=[-0.18  0.    0.05]
+[C3] step=213 n_c=0  |u[0]|=29.776 Nm
+[GS] step=98 mode=c3 switch=kToC3Cost best_k=0 best_src=current curr_cost=296243.64 repos_cost=- best_other=397289.60 met_progress=N steps_since_improve=0 switches=1
+[EErel] along_push=+0.271m (neg=correct)  perp=0.603m  ee_to_box=0.661m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.754m  effective=[-0.18  0.    0.05]
+[C3] step=214 n_c=0  |u[0]|=29.284 Nm
+[EErel] along_push=+0.271m (neg=correct)  perp=0.603m  ee_to_box=0.661m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.754m  effective=[-0.18  0.    0.05]
+[C3] step=216 n_c=0  |u[0]|=29.284 Nm
+[GS] step=99 mode=c3 switch=kStayInC3 best_k=0 best_src=current curr_cost=295121.14 repos_cost=- best_other=331388.10 met_progress=Y steps_since_improve=0 switches=1
+[EErel] along_push=+0.269m (neg=correct)  perp=0.602m  ee_to_box=0.659m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.751m  effective=[-0.18  0.    0.05]
+[C3] step=217 n_c=0  |u[0]|=28.986 Nm
+[GS] step=100 mode=free switch=kToReposCost best_k=1 best_src=strat_0 curr_cost=294548.88 repos_cost=134930.47 best_other=134930.47 met_progress=Y steps_since_improve=1 switches=2
+[GS-table] step=100
+  k=0 (current   ) pos=(+0.269,-0.602,+0.025) c_C3= 294548.88 align=0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 294548.88 feas=Y ik_err=0.0000m
+  k=1 (strat_0   ) pos=(-0.139,-0.114,+0.050) c_C3= 159086.62 align=0.8094(bonus=24283.36) travel=0.636m(pen=127.21) c_sample= 134930.47 feas=Y ik_err=0.0002m  ← WIN
+  k=2 (strat_1   ) pos=(-0.162,-0.078,+0.050) c_C3= 167055.64 align=0.9700(bonus=29101.04) travel=0.679m(pen=135.76) c_sample= 138090.37 feas=Y ik_err=0.0001m
+  k=3 (buffer    ) pos=(-0.180,-0.000,+0.050) c_C3= 485033.90 align=0.0000(bonus=    0.00) travel=0.751m(pen=150.23) c_sample= 485184.13 feas=Y ik_err=0.0005m
+[C3] Simulation complete.
+[GS-perf] avg_per_step_ms=136.0  full_solves=100  cheap_solves=118  switches=2
+[RESULT] method=sampling-c3  final_obj_xy=(0.0000, 0.0000)  goal_dist=0.3000m  success=NO
+[VIDEO] Saved replay to results/pushing_20260428_004753.html
+[VideoRecorder] Rendering 20 frames → results/pushing_20260428_004753.mp4 ...
+[VideoRecorder] Done → results/pushing_20260428_004753.mp4  (20 frames, 30 fps)

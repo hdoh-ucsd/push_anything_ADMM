@@ -1,0 +1,162 @@
+# Configuration for sampling-C3 outer controller (Venkatesh et al. RA-L 2025).
+#
+# Field names mirror dairlib upstream
+# (examples/sampling_c3/parameter_headers/{progress,sampling,reposition}_params.h
+#  on branch hien/push_anything_with_nextgen_c3) verbatim.
+#
+# Default values are tuned for the push_anything_ADMM Python wrapper
+# (Franka pushing a 0.2 kg box, dt_ctrl=0.01s, K=4 samples). Where they
+# differ from upstream jacktoy defaults, the divergence is intentional
+# and is noted inline.
+#
+# Pass to main.py as:  python main.py pushing --sampling-c3
+# Or override path:    python main.py pushing --sampling-c3 path/to/file.yaml
+
+# ----------------------------------------------------------------------------
+# Project-specific weights (no upstream equivalent)
+# ----------------------------------------------------------------------------
+
+# Sample-cost alignment bonus: c_sample[i] -= w_align * max(0, n_hat_i · g_hat).
+# Counters the friction-cone discretization bias that otherwise picks
+# perpendicular contacts on directional pushes. Validated empirically;
+# see CLAUDE.md "Polyhedral Friction-Cone Bias" note.
+w_align:  30000.0
+
+# Cartesian travel penalty per metre on sample selection.
+# 50 cm reposition costs +100 cost units, comparable to a few percent
+# of typical c_C3 ~ 60000.
+w_travel: 200.0
+
+# Cheap-solve ADMM iters for the K-1 hypothetical evaluations.
+# k=0 (current) always uses base_mpc.admm_iter (3 in production).
+surrogate_admm_iters: 1
+
+
+# ----------------------------------------------------------------------------
+# Progress + mode-switch hysteresis
+# ----------------------------------------------------------------------------
+
+progress_params:
+  # Which progress metric drives the timeout decision.
+  # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kConfigCostDrop
+  track_c3_progress_via: kPosOrRotCost
+
+  # Number of control loops to wait before declaring "no progress" timeout.
+  num_control_loops_to_wait:           60
+  num_control_loops_to_wait_position:  30
+
+  # kConfigCostDrop variant: required object-config cost drop over N loops.
+  progress_enforced_cost_drop:    0.0
+  progress_enforced_over_n_loops: 30
+
+  # When the box-to-goal distance falls below this, switch to the
+  # _position hysteresis variants (typically tighter, since fine
+  # placement is more sensitive than gross translation).
+  cost_switching_threshold_distance: 0.05    # m
+
+  # If repositioning total cost falls below this, declare reposition done
+  # and force a re-evaluation in the next control loop.
+  # Bumped from the original seed (5000) to 200000 — empirical c_sample for
+  # well-aligned repos targets in this task is ~165k-200k, so the original
+  # 5000 was unreachable and kToC3ReachedReposTarget never fired.
+  finished_reposition_cost: 200000.0
+
+  # Absolute hysteresis values (used when use_relative_hysteresis is False).
+  # Required cost gap (J_other - J_current) before a switch fires.
+  hyst_c3_to_repos:              1000.0
+  hyst_c3_to_repos_position:     5000.0
+  hyst_repos_to_c3:              1000.0
+  hyst_repos_to_c3_position:     5000.0
+  hyst_repos_to_repos:            500.0
+  hyst_repos_to_repos_position:  2500.0
+
+  # Relative-hysteresis mode: gap is a fraction of the current cost.
+  # Switched ON (was: false) because the original absolute hyst values
+  # above (1000-5000) are ~150x smaller than typical c_sample magnitudes
+  # in this task (~165k-200k), causing mode chatter every 1-2 loops.
+  use_relative_hysteresis:                true
+  # Bumped from the original seed (0.05/0.10) to upstream-jacktoy-like
+  # magnitudes (0.30/0.50) after WEST v9 showed: descent needs ≥50 free-mode
+  # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
+  # ~30 steps, fragmenting free mode into incomplete descents. The new
+  # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
+  hyst_c3_to_repos_frac:                  0.30
+  hyst_c3_to_repos_frac_position:         0.50
+  hyst_repos_to_c3_frac:                  0.30
+  hyst_repos_to_c3_frac_position:         0.50
+  hyst_repos_to_repos_frac:               0.10
+  hyst_repos_to_repos_frac_position:      0.10
+
+
+# ----------------------------------------------------------------------------
+# Sample generation
+# ----------------------------------------------------------------------------
+
+sampling_params:
+  # Valid: kRadiallySymmetric | kRandomOnCircle | kRandomOnSphere | kFixed
+  #        | kRandomOnPerimeter | kRandomOnShell | kMeshNormal
+  # Only kRandomOnCircle is implemented in the first cut.
+  sampling_strategy: kRandomOnCircle
+
+  # Number of additional samples beyond (current + previous-repos-target).
+  num_additional_samples_c3:    3
+  num_additional_samples_repos: 1
+
+  # Sample buffer (replay-best-on-c3-exit hysteresis).
+  consider_best_buffer_sample_when_leaving_c3: true
+  N_sample_buffer:             5
+  pos_error_sample_retention:  0.05    # m
+  ang_error_sample_retention:  0.30    # rad
+
+  # Geometric parameters (interpretation depends on sampling_strategy).
+  sampling_radius: 0.18    # m, circle radius around object xy
+  sampling_height: 0.05    # m, EE z when on contact plane
+
+  # Robot workspace bounds; samples failing this are pruned.
+  # (xy_min/xy_max define a planar rectangle, z_min/max define the z slab.)
+  workspace_xy_min: [-0.5, -0.7]
+  workspace_xy_max: [ 0.5,  0.0]
+  workspace_z_min:  0.02
+  workspace_z_max:  0.30
+
+  filter_samples_for_safety: true
+
+
+# ----------------------------------------------------------------------------
+# Reposition trajectory + tracking-PD law
+# ----------------------------------------------------------------------------
+
+reposition_params:
+  # Valid: kSpline | kSpherical | kCircular | kPiecewiseLinear
+  # We default to kPiecewiseLinear (lift to safe height, traverse, descend);
+  # this is the only trajectory type implemented in the first cut.
+  traj_type: kPiecewiseLinear
+
+  # Cartesian speed during reposition (translation rate of the EE).
+  speed: 0.20    # m/s
+
+  # Below this end-to-end Cartesian distance, skip the lift+traverse+descend
+  # and run a direct straight-line in joint space. Avoids over-shoot for tiny
+  # corrections.
+  use_straight_line_traj_under_piecewise_linear: 0.008
+
+  # Safe-height for the kPiecewiseLinear lift phase (well above the 0.10 m
+  # box top + 0.10 m contact-detection threshold).
+  pwl_waypoint_height: 0.20    # m
+
+  # (other traj-type knobs left at defaults; ignored when traj_type=kPiecewiseLinear)
+  use_straight_line_traj_under_spline: 0.12
+  use_straight_line_traj_within_angle: 0.30
+  spline_width:    0.17
+  sphere_radius:   0.12
+  circle_radius:   0.20
+  circle_height:   0.00
+
+  # Joint-space PD-with-grav-comp gains for tracking the per-step waypoint.
+  # These come from the legacy free-mode controller; do NOT change without
+  # re-validating EAST.
+  Kp_q:          60.0
+  Kd_q:          8.0
+  Ki_q:          8.0
+  I_max:         0.5
+  torque_limit:  30.0

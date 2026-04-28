@@ -1,0 +1,96 @@
+# Drake C3 Port Smoke Test — Summary
+# Generated: 2026-04-20
+
+## CLASSIFICATION: Branch B (broken)
+Arm froze at perp=0.078m south of the push axis and never made contact in 20s;
+box did not move (0% progress), core ADMM untested because n_c=0 throughout.
+
+## Config (from log header)
+[ENV]   Mass: 0.2 kg   Friction mu: 0.4
+[MPC]   Horizon: 20   dt: 0.05 s
+[MPC]   ADMM max iters: 80   rho_init: 100.0
+[MPC]   Force limit: 30.0 Nm
+[COST]  w_obj_xy:      100000.0
+[COST]  w_obj_z:       10.0
+[COST]  w_box_z:       100.0
+[COST]  w_box_rp:      50.0
+[COST]  w_terminal:    5.0  (QN = w_terminal * Q)
+[COST]  w_ee_approach: 8000.0
+[COST]  w_torque:      0.01
+
+## ADMM Convergence (across whole run)
+Total ADMM solves        : 0  (n_c=0 for all 2000 steps — no contacts)
+Median iters             : N/A
+Mean iters               : N/A
+Fraction monotone        : N/A
+rho trajectory           : N/A (ADMM never ran)
+Fraction hit iter cap    : N/A
+
+## Control Effort
+Max |u[0]|               : 72.07 Nm  (step 1, approach from start)
+Mean |u[0]|              : 24.45 Nm
+Fraction saturating >25  : 2.5%  (51/2000 steps, mostly early approach)
+
+## Trajectory
+Initial goal_dist        : 0.300 m  (t=0.00s)
+Final goal_dist          : 0.300 m  (t=19.50s)
+Progress                 : 0.0%
+Box motion               : 0.000 m  (box at (0,0,0.05) start and end)
+
+## Contact
+First contact time       : NEVER  (n_c=0 for all 2000 steps)
+Contact steps            : 0
+Total contact duration   : 0.00 s
+
+## Cone Violations
+Total violations         : 0  (no contacts → no cone to violate)
+
+## Arm freeze diagnosis
+EE at t=1.50s: along=-0.187m, perp=0.078m, ee_to_box=0.210m  (still moving)
+EE at t=2.00s: along=-0.190m, perp=0.078m, ee_to_box=0.212m  (frozen)
+EE at t=19.5s: along=-0.194m, perp=0.078m, ee_to_box=0.209m  (still frozen)
+Effective proxy stuck at (-0.273, 0, 0.05); EE stuck at (-0.194, -0.078, 0.059).
+perp=0.078m > BOX_HALF=0.05m → pusher is south of the box's south face.
+Arm hit a joint-limit equilibrium: can approach along-axis but cannot reduce
+perpendicular offset below 0.078m, so it never intercepts the box face.
+
+## Comparison against targets
+Metric                         | Target | Actual      | PASS/FAIL
+-------------------------------|--------|-------------|----------
+ADMM median iters              | < 20   | N/A (no nc) | FAIL*
+Fraction monotone              | > 50%  | N/A (no nc) | FAIL*
+Fraction hit iter cap          | < 20%  | N/A (no nc) | FAIL*
+Max |u[0]|                     | < 25Nm | 72.07 Nm    | FAIL
+Progress toward goal           | > 30%  | 0.0%        | FAIL
+Cone violations                | 0      | 0           | PASS
+(*FAIL because root cause = arm never made contact, not an ADMM issue)
+
+5/6 targets fail. Branch B.
+
+## Branch B Diagnostic Variants
+
+### Variant 1 — w_obj_xy = 20000 (×20 of original)
+File: variant_w20k.txt
+perp=0.078m (SAME freeze point), n_c=0, 0% progress, Max|u|=72.07Nm.
+Finding: backing off w_obj_xy 5× has zero effect on the freeze. Cost is not
+the root cause.
+
+### Variant 2 — w_ee_approach = 80000 (×10), w_obj_xy = 100000
+File: variant_proxy10x.txt
+perp=0.022m (improved from 0.078m!), n_c=0, 0% progress, Max|u|=73.72Nm.
+Arm froze at ee_to_box=0.258m, stuck at stage-1/2 boundary (threshold=0.25m).
+The 10× proxy cost successfully aligned the arm laterally (perp improved
+72%), but the 30cm pre-approach target is at the edge of the arm's workspace —
+it can't close the final 42mm in x.
+Finding: the problem is workspace geometry, not cost magnitude.
+
+### Variant 3 — Projection diff
+File: projection_diff.md
+Verdict: IDENTICAL. Drake and sandbox formulas match in all 3 cases with
+same tolerances. Not the root cause.
+
+## Root Cause
+Stage-1 pre-approach target (0.30m behind box) is outside the arm's
+reachable workspace at the correct height from the default joint configuration.
+Fix: reduce pre-approach distance from 0.30m to ~0.18m in task_costs.py.
+See next_steps.md for full diagnosis and recommendation.

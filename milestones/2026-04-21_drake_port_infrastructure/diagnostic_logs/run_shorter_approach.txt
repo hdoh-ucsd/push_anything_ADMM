@@ -1,0 +1,1464 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+[C3] Log: results/pushing_20260421_002334.txt
+[C3] Task: pushing
+[ENV]  Mass: 0.2 kg   Friction mu: 0.4
+[MPC]  Horizon: 20   dt: 0.05 s
+[MPC]  ADMM max iters: 80   rho_init: 100.0
+[MPC]  Force limit: 30.0 Nm
+[COST] w_obj_xy:      100000.0
+[COST] w_obj_z:       10.0
+[COST] w_box_z:       100.0
+[COST] w_box_rp:      50.0
+[COST] w_terminal:    5.0  (QN = w_terminal * Q)
+[COST] w_ee_approach: 8000.0
+[COST] w_torque:      0.01
+[ENV]  INITIAL_ARM_Q: DEFAULT
+[C3] Building Drake environment ...
+[C3] DOFs: n_q=14, n_v=13, n_u=7, n_x=27
+[C3] 'box_link': q[11]=x, q[12]=y
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[C3] Goal: [0.3 0. ]  |  Meshcat: http://localhost:7000
+[C3] Running simulation ...
+[EErel] along_push=+0.347m (neg=correct)  perp=0.600m  ee_to_box=0.693m  stage=1  obj=[0. 0.]  g_hat=[1. 0.]
+[proxy] err=0.799m  effective=[-0.18  0.    0.05]
+[DEBUG] n_contacts=0, n_c=0, TOT=34, total_dim=707
+[DEBUG] per-step λ_n slice: [27:27]  λ_t slice: [27:27]
+[DEBUG] J_n shape: (0, 13), J_t shape: (0, 13)
+[DEBUG] λ_t per contact: 4 components each → contact i at [27+4i:27+4(i+1)]
+[C3] step=1 n_c=0  |u[0]|=72.050 Nm
+  t=0.00s | ee=(0.347, -0.600, 0.047) | obj=(0.000, 0.000, 0.050) | |u|=72.05 Nm | goal_dist=0.300 m
+[EErel] along_push=+0.346m (neg=correct)  perp=0.599m  ee_to_box=0.692m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.797m  effective=[-0.18 -0.    0.05]
+[C3] step=2 n_c=0  |u[0]|=71.195 Nm
+[EErel] along_push=+0.342m (neg=correct)  perp=0.597m  ee_to_box=0.688m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.793m  effective=[-0.18 -0.    0.05]
+[C3] step=3 n_c=0  |u[0]|=70.382 Nm
+[EErel] along_push=+0.335m (neg=correct)  perp=0.593m  ee_to_box=0.681m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.785m  effective=[-0.18 -0.    0.05]
+[C3] step=4 n_c=0  |u[0]|=67.325 Nm
+[EErel] along_push=+0.325m (neg=correct)  perp=0.588m  ee_to_box=0.672m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.775m  effective=[-0.18 -0.    0.05]
+[C3] step=5 n_c=0  |u[0]|=64.005 Nm
+[EErel] along_push=+0.313m (neg=correct)  perp=0.582m  ee_to_box=0.661m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.763m  effective=[-0.18 -0.    0.05]
+[C3] step=6 n_c=0  |u[0]|=59.851 Nm
+[EErel] along_push=+0.297m (neg=correct)  perp=0.574m  ee_to_box=0.646m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.747m  effective=[-0.18  0.    0.05]
+[C3] step=7 n_c=0  |u[0]|=54.658 Nm
+[EErel] along_push=+0.282m (neg=correct)  perp=0.567m  ee_to_box=0.633m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.731m  effective=[-0.18 -0.    0.05]
+[C3] step=8 n_c=0  |u[0]|=51.368 Nm
+[EErel] along_push=+0.266m (neg=correct)  perp=0.559m  ee_to_box=0.619m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.716m  effective=[-0.18 -0.    0.05]
+[C3] step=9 n_c=0  |u[0]|=50.466 Nm
+[EErel] along_push=+0.256m (neg=correct)  perp=0.552m  ee_to_box=0.608m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.704m  effective=[-0.18 -0.    0.05]
+[C3] step=10 n_c=0  |u[0]|=46.392 Nm
+[EErel] along_push=+0.246m (neg=correct)  perp=0.544m  ee_to_box=0.596m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.691m  effective=[-0.18 -0.    0.05]
+[C3] step=11 n_c=0  |u[0]|=42.298 Nm
+[EErel] along_push=+0.233m (neg=correct)  perp=0.535m  ee_to_box=0.584m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.677m  effective=[-0.18 -0.    0.05]
+[C3] step=12 n_c=0  |u[0]|=39.075 Nm
+[EErel] along_push=+0.220m (neg=correct)  perp=0.527m  ee_to_box=0.571m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.662m  effective=[-0.18 -0.    0.05]
+[C3] step=13 n_c=0  |u[0]|=37.201 Nm
+[EErel] along_push=+0.205m (neg=correct)  perp=0.519m  ee_to_box=0.558m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.646m  effective=[-0.18 -0.    0.05]
+[C3] step=14 n_c=0  |u[0]|=36.729 Nm
+[EErel] along_push=+0.190m (neg=correct)  perp=0.510m  ee_to_box=0.544m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.630m  effective=[-0.18 -0.    0.05]
+[C3] step=15 n_c=0  |u[0]|=36.102 Nm
+[EErel] along_push=+0.174m (neg=correct)  perp=0.501m  ee_to_box=0.531m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.614m  effective=[-0.18 -0.    0.05]
+[C3] step=16 n_c=0  |u[0]|=33.542 Nm
+[EErel] along_push=+0.158m (neg=correct)  perp=0.492m  ee_to_box=0.517m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.597m  effective=[-0.18 -0.    0.05]
+[C3] step=17 n_c=0  |u[0]|=32.300 Nm
+[EErel] along_push=+0.141m (neg=correct)  perp=0.483m  ee_to_box=0.503m  stage=1  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.580m  effective=[-0.18 -0.    0.05]
+[C3] step=18 n_c=0  |u[0]|=31.846 Nm
+[EErel] along_push=+0.123m (neg=correct)  perp=0.472m  ee_to_box=0.488m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.562m  effective=[-0.18  0.    0.05]
+[C3] step=19 n_c=0  |u[0]|=31.712 Nm
+[EErel] along_push=+0.107m (neg=correct)  perp=0.462m  ee_to_box=0.475m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.544m  effective=[-0.18  0.    0.05]
+[C3] step=20 n_c=0  |u[0]|=31.672 Nm
+[EErel] along_push=+0.090m (neg=correct)  perp=0.452m  ee_to_box=0.461m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.527m  effective=[-0.18  0.    0.05]
+[C3] step=21 n_c=0  |u[0]|=31.589 Nm
+[EErel] along_push=+0.073m (neg=correct)  perp=0.441m  ee_to_box=0.447m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.509m  effective=[-0.18  0.    0.05]
+[C3] step=22 n_c=0  |u[0]|=31.743 Nm
+[EErel] along_push=+0.061m (neg=correct)  perp=0.428m  ee_to_box=0.433m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.492m  effective=[-0.18  0.    0.05]
+[C3] step=23 n_c=0  |u[0]|=24.741 Nm
+[EErel] along_push=+0.054m (neg=correct)  perp=0.412m  ee_to_box=0.415m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.474m  effective=[-0.18  0.    0.05]
+[C3] step=24 n_c=0  |u[0]|=18.976 Nm
+[EErel] along_push=+0.045m (neg=correct)  perp=0.394m  ee_to_box=0.397m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.454m  effective=[-0.18  0.    0.05]
+[C3] step=25 n_c=0  |u[0]|=14.580 Nm
+[EErel] along_push=+0.036m (neg=correct)  perp=0.377m  ee_to_box=0.378m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.434m  effective=[-0.18  0.    0.05]
+[C3] step=26 n_c=0  |u[0]|=12.611 Nm
+[EErel] along_push=+0.025m (neg=correct)  perp=0.359m  ee_to_box=0.360m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.414m  effective=[-0.18  0.    0.05]
+[C3] step=27 n_c=0  |u[0]|=13.136 Nm
+[EErel] along_push=+0.014m (neg=correct)  perp=0.342m  ee_to_box=0.342m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.393m  effective=[-0.18  0.    0.05]
+[C3] step=28 n_c=0  |u[0]|=14.974 Nm
+[EErel] along_push=+0.003m (neg=correct)  perp=0.325m  ee_to_box=0.325m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.374m  effective=[-0.18  0.    0.05]
+[C3] step=29 n_c=0  |u[0]|=16.970 Nm
+[EErel] along_push=-0.008m (neg=correct)  perp=0.309m  ee_to_box=0.309m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.355m  effective=[-0.18  0.    0.05]
+[C3] step=30 n_c=0  |u[0]|=18.550 Nm
+[EErel] along_push=-0.019m (neg=correct)  perp=0.294m  ee_to_box=0.295m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.338m  effective=[-0.18  0.    0.05]
+[C3] step=31 n_c=0  |u[0]|=19.514 Nm
+[EErel] along_push=-0.029m (neg=correct)  perp=0.280m  ee_to_box=0.281m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.322m  effective=[-0.18  0.    0.05]
+[C3] step=32 n_c=0  |u[0]|=19.839 Nm
+[EErel] along_push=-0.038m (neg=correct)  perp=0.267m  ee_to_box=0.269m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.308m  effective=[-0.18  0.    0.05]
+[C3] step=33 n_c=0  |u[0]|=19.592 Nm
+[EErel] along_push=-0.047m (neg=correct)  perp=0.254m  ee_to_box=0.258m  stage=1  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.295m  effective=[-0.18  0.    0.05]
+[C3] step=34 n_c=0  |u[0]|=18.881 Nm
+[EErel] along_push=-0.054m (neg=correct)  perp=0.242m  ee_to_box=0.248m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.284m  effective=[-0.18  0.    0.05]
+[C3] step=35 n_c=0  |u[0]|=17.817 Nm
+[EErel] along_push=-0.061m (neg=correct)  perp=0.231m  ee_to_box=0.239m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.274m  effective=[-0.181  0.     0.05 ]
+[C3] step=36 n_c=0  |u[0]|=16.494 Nm
+[EErel] along_push=-0.067m (neg=correct)  perp=0.221m  ee_to_box=0.231m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.264m  effective=[-0.183  0.     0.05 ]
+[C3] step=37 n_c=0  |u[0]|=15.180 Nm
+[EErel] along_push=-0.073m (neg=correct)  perp=0.211m  ee_to_box=0.223m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.256m  effective=[-0.184  0.     0.05 ]
+[C3] step=38 n_c=0  |u[0]|=14.072 Nm
+[EErel] along_push=-0.077m (neg=correct)  perp=0.202m  ee_to_box=0.216m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.247m  effective=[-0.185  0.     0.05 ]
+[C3] step=39 n_c=0  |u[0]|=13.395 Nm
+[EErel] along_push=-0.082m (neg=correct)  perp=0.193m  ee_to_box=0.209m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.239m  effective=[-0.185  0.     0.05 ]
+[C3] step=40 n_c=0  |u[0]|=13.364 Nm
+[EErel] along_push=-0.086m (neg=correct)  perp=0.184m  ee_to_box=0.204m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.230m  effective=[-0.186  0.     0.05 ]
+[C3] step=41 n_c=0  |u[0]|=14.100 Nm
+[EErel] along_push=-0.091m (neg=correct)  perp=0.177m  ee_to_box=0.199m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.222m  effective=[-0.187  0.     0.05 ]
+[C3] step=42 n_c=0  |u[0]|=15.582 Nm
+[EErel] along_push=-0.095m (neg=correct)  perp=0.169m  ee_to_box=0.194m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.213m  effective=[-0.187  0.     0.05 ]
+[C3] step=43 n_c=0  |u[0]|=17.688 Nm
+[EErel] along_push=-0.099m (neg=correct)  perp=0.163m  ee_to_box=0.191m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.205m  effective=[-0.188  0.     0.05 ]
+[C3] step=44 n_c=0  |u[0]|=20.273 Nm
+[SANITY] nc=1  n_tangent_per_contact=4  J_n=(1, 13)  J_t=(4, 13)
+[SANITY] Tangent interpretation: 4 → polyhedral pyramid
+[CONTACT 0]
+  body_A=pusher  body_B=box_link  a_is_box=False
+  nhat_BA_W (B→A): [-0.4378 -0.8613  0.2579]
+  nhat_onto_box  : [ 0.4378  0.8613 -0.2579]
+  p_ACa (on A)   : [ 0.0236  0.0083 -0.001 ]
+  p_BCb (on B)   : [-0.05 -0.05  0.05]
+  distance       : 0.09860 m
+[SIGN] J_n[0] (first contact normal row):
+       [ 0.28385  0.11949 -0.02863 -0.54195 -0.03149 -0.08274  0.      -0.03017
+  0.00899 -0.02117  0.43779  0.86128 -0.25794]
+  nhat_onto_box = [ 0.4378  0.8613 -0.2579]
+  → if nhat_onto_box·[1,0,0] > 0, box should accelerate eastward from λ_n
+[EErel] along_push=-0.104m (neg=correct)  perp=0.156m  ee_to_box=0.188m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.196m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.4272->1.3669  dual: 62.3767->1.3101  mono=False  iters=80/80  rho=100.0
+[C3] step=45 |u[0]|=23.03Nm λ_n_max=0.844 |δ_t|_max=0.503 primal=1.367 iters=80/80
+[FORCE] First nonzero contact at step 0:
+  contact 0: λ_n=0.8438  nhat_onto_box=[ 0.438  0.861 -0.258]  F_world=[ 0.369  0.727 -0.218]  F·g_hat=0.3694 (→goal ✓)
+  g_hat (goal direction)=[ 1. -0.]
+  lam_t[0]=[ 0.1012 -0.1012  0.7773 -0.7773]
+[EErel] along_push=-0.109m (neg=correct)  perp=0.151m  ee_to_box=0.186m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.187m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3956->1.2103  dual: 63.2631->1.0877  mono=False  iters=80/80  rho=100.0
+[C3] step=46 |u[0]|=26.29Nm λ_n_max=0.902 |δ_t|_max=0.515 primal=1.210 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.145m  ee_to_box=0.185m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.177m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3672->1.0128  dual: 64.1296->1.0456  mono=False  iters=80/80  rho=100.0
+[C3] step=47 |u[0]|=29.07Nm λ_n_max=0.956 |δ_t|_max=0.521 primal=1.013 iters=80/80
+[EErel] along_push=-0.121m (neg=correct)  perp=0.140m  ee_to_box=0.185m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.168m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3453->0.7870  dual: 65.1037->0.5066  mono=False  iters=80/80  rho=100.0
+[C3] step=48 |u[0]|=32.31Nm λ_n_max=1.006 |δ_t|_max=0.524 primal=0.787 iters=80/80
+[EErel] along_push=-0.126m (neg=correct)  perp=0.136m  ee_to_box=0.186m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.160m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3427->0.5824  dual: 64.8805->0.3736  mono=False  iters=80/80  rho=100.0
+[C3] step=49 |u[0]|=44.72Nm λ_n_max=1.017 |δ_t|_max=0.507 primal=0.582 iters=80/80
+[EErel] along_push=-0.125m (neg=correct)  perp=0.138m  ee_to_box=0.187m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3676->0.5861  dual: 68.8973->0.3353  mono=False  iters=80/80  rho=100.0
+[C3] step=50 |u[0]|=48.12Nm λ_n_max=1.003 |δ_t|_max=0.505 primal=0.586 iters=80/80
+[EErel] along_push=-0.125m (neg=correct)  perp=0.141m  ee_to_box=0.188m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3819->0.5958  dual: 73.0386->0.1743  mono=False  iters=80/80  rho=100.0
+[C3] step=51 |u[0]|=49.74Nm λ_n_max=1.002 |δ_t|_max=0.515 primal=0.596 iters=80/80
+  t=0.50s | ee=(-0.125, -0.141, 0.068) | obj=(0.000, 0.000, 0.050) | |u|=49.74 Nm | goal_dist=0.300 m
+[EErel] along_push=-0.124m (neg=correct)  perp=0.144m  ee_to_box=0.190m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.158m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3943->0.5875  dual: 74.2630->0.1554  mono=False  iters=80/80  rho=200.0
+[C3] step=52 |u[0]|=28.35Nm λ_n_max=0.984 |δ_t|_max=0.508 primal=0.588 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.144m  ee_to_box=0.190m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3936->0.5864  dual: 74.3230->0.1553  mono=False  iters=80/80  rho=200.0
+[C3] step=53 |u[0]|=21.67Nm λ_n_max=0.985 |δ_t|_max=0.509 primal=0.586 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.143m  ee_to_box=0.190m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3928->0.5850  dual: 74.3709->0.1543  mono=False  iters=80/80  rho=200.0
+[C3] step=54 |u[0]|=22.07Nm λ_n_max=0.987 |δ_t|_max=0.509 primal=0.585 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.143m  ee_to_box=0.189m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3920->0.5836  dual: 74.4172->0.1531  mono=False  iters=80/80  rho=200.0
+[C3] step=55 |u[0]|=22.25Nm λ_n_max=0.989 |δ_t|_max=0.510 primal=0.584 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.143m  ee_to_box=0.189m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3912->0.5823  dual: 74.4566->0.1518  mono=False  iters=80/80  rho=200.0
+[C3] step=56 |u[0]|=22.46Nm λ_n_max=0.991 |δ_t|_max=0.510 primal=0.582 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.143m  ee_to_box=0.189m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3905->0.5811  dual: 74.4902->0.1507  mono=False  iters=80/80  rho=200.0
+[C3] step=57 |u[0]|=22.74Nm λ_n_max=0.993 |δ_t|_max=0.511 primal=0.581 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.142m  ee_to_box=0.188m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3899->0.5801  dual: 74.5149->0.1497  mono=False  iters=80/80  rho=200.0
+[C3] step=58 |u[0]|=23.00Nm λ_n_max=0.994 |δ_t|_max=0.511 primal=0.580 iters=80/80
+[EErel] along_push=-0.124m (neg=correct)  perp=0.142m  ee_to_box=0.188m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3895->0.5793  dual: 74.5252->0.1489  mono=False  iters=80/80  rho=200.0
+[C3] step=59 |u[0]|=23.27Nm λ_n_max=0.995 |δ_t|_max=0.511 primal=0.579 iters=80/80
+[EErel] along_push=-0.123m (neg=correct)  perp=0.141m  ee_to_box=0.188m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.188  0.     0.05 ]
+[ADMM] primal: 0.3890->0.5785  dual: 74.5208->0.1480  mono=False  iters=80/80  rho=200.0
+[C3diag] step=60 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      0.9957      1.2788      0.5115  OK        0.9351  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0290      0.0116  OK        0.0600  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0016      0.0006  OK        0.0034  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0032      0.0013  OK        0.0067  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0030      0.0012  OK        0.0062  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0028      0.0011  OK        0.0059  (z violates, δ OK — ADMM converging)
+  [06]     -0.0000      0.0029      0.0011  OK        0.0059  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0028      0.0011  OK        0.0058  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0026      0.0010  OK        0.0054  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0023      0.0009  OK        0.0048  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0019      0.0008  OK        0.0040  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0014      0.0006  OK        0.0031  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0009      0.0004  OK        0.0020  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0005      0.0002  OK        0.0011  (z violates, δ OK — ADMM converging)
+  [14]     -0.0000      0.0013      0.0005  OK        0.0026  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0025      0.0010  OK        0.0052  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0018      0.0007  OK        0.0038  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0036  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0042  ← both zero
+  [19]     -0.0000      0.0049      0.0020  OK        0.0104  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=21.106 Nm
+[EErel] along_push=-0.122m (neg=correct)  perp=0.141m  ee_to_box=0.186m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3913->0.5870  dual: 74.1292->0.1594  mono=False  iters=80/80  rho=200.0
+[C3] step=61 |u[0]|=23.18Nm λ_n_max=0.988 |δ_t|_max=0.510 primal=0.587 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.140m  ee_to_box=0.184m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3938->0.6156  dual: 73.5842->0.0796  mono=False  iters=80/80  rho=100.0
+[C3] step=62 |u[0]|=25.81Nm λ_n_max=0.981 |δ_t|_max=0.513 primal=0.616 iters=80/80
+[EErel] along_push=-0.119m (neg=correct)  perp=0.139m  ee_to_box=0.183m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3955->0.6201  dual: 73.0286->0.1075  mono=False  iters=80/80  rho=100.0
+[C3] step=63 |u[0]|=25.13Nm λ_n_max=0.973 |δ_t|_max=0.510 primal=0.620 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.138m  ee_to_box=0.181m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.3979->0.6258  dual: 72.4829->0.1324  mono=False  iters=80/80  rho=100.0
+[C3] step=64 |u[0]|=26.70Nm λ_n_max=0.964 |δ_t|_max=0.507 primal=0.626 iters=80/80
+[EErel] along_push=-0.116m (neg=correct)  perp=0.137m  ee_to_box=0.180m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.4007->0.6320  dual: 71.9971->0.1508  mono=False  iters=80/80  rho=100.0
+[C3] step=65 |u[0]|=26.40Nm λ_n_max=0.955 |δ_t|_max=0.504 primal=0.632 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.137m  ee_to_box=0.179m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.189  0.     0.05 ]
+[ADMM] primal: 0.4029->0.6368  dual: 71.6314->0.1644  mono=False  iters=80/80  rho=100.0
+[C3] step=66 |u[0]|=26.11Nm λ_n_max=0.948 |δ_t|_max=0.502 primal=0.637 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.136m  ee_to_box=0.178m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4045->0.6402  dual: 71.3900->0.1729  mono=False  iters=80/80  rho=100.0
+[C3] step=67 |u[0]|=25.83Nm λ_n_max=0.943 |δ_t|_max=0.501 primal=0.640 iters=80/80
+[EErel] along_push=-0.114m (neg=correct)  perp=0.136m  ee_to_box=0.177m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4055->0.6421  dual: 71.2682->0.1768  mono=False  iters=80/80  rho=100.0
+[C3] step=68 |u[0]|=25.59Nm λ_n_max=0.940 |δ_t|_max=0.500 primal=0.642 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.136m  ee_to_box=0.177m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.157m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4059->0.6428  dual: 71.2575->0.1763  mono=False  iters=80/80  rho=100.0
+[C3] step=69 |u[0]|=25.38Nm λ_n_max=0.939 |δ_t|_max=0.500 primal=0.643 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.135m  ee_to_box=0.176m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4058->0.6423  dual: 71.3458->0.1721  mono=False  iters=80/80  rho=100.0
+[C3] step=70 |u[0]|=25.21Nm λ_n_max=0.940 |δ_t|_max=0.500 primal=0.642 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.134m  ee_to_box=0.176m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4052->0.6408  dual: 71.5186->0.1646  mono=False  iters=80/80  rho=100.0
+[C3] step=71 |u[0]|=25.09Nm λ_n_max=0.943 |δ_t|_max=0.501 primal=0.641 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.134m  ee_to_box=0.175m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.156m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4043->0.6384  dual: 71.7598->0.1545  mono=False  iters=80/80  rho=100.0
+[C3] step=72 |u[0]|=25.00Nm λ_n_max=0.946 |δ_t|_max=0.502 primal=0.638 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.133m  ee_to_box=0.175m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.155m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4030->0.6353  dual: 72.0529->0.1424  mono=False  iters=80/80  rho=100.0
+[C3] step=73 |u[0]|=24.95Nm λ_n_max=0.951 |δ_t|_max=0.504 primal=0.635 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.133m  ee_to_box=0.174m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.154m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.4014->0.6317  dual: 72.3820->0.1289  mono=False  iters=80/80  rho=100.0
+[C3] step=74 |u[0]|=24.93Nm λ_n_max=0.957 |δ_t|_max=0.506 primal=0.632 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.132m  ee_to_box=0.174m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.154m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.3996->0.6276  dual: 72.7322->0.1147  mono=False  iters=80/80  rho=100.0
+[C3] step=75 |u[0]|=24.94Nm λ_n_max=0.963 |δ_t|_max=0.507 primal=0.628 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.132m  ee_to_box=0.174m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.153m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.3977->0.6233  dual: 73.0901->0.1002  mono=False  iters=80/80  rho=100.0
+[C3] step=76 |u[0]|=24.96Nm λ_n_max=0.970 |δ_t|_max=0.510 primal=0.623 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.131m  ee_to_box=0.173m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.152m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.3956->0.6188  dual: 73.4439->0.0857  mono=False  iters=80/80  rho=100.0
+[C3] step=77 |u[0]|=25.00Nm λ_n_max=0.976 |δ_t|_max=0.512 primal=0.619 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.131m  ee_to_box=0.173m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.152m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.3934->0.6143  dual: 73.7841->0.0721  mono=False  iters=80/80  rho=100.0
+[C3] step=78 |u[0]|=25.05Nm λ_n_max=0.983 |δ_t|_max=0.514 primal=0.614 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.130m  ee_to_box=0.173m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.151m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.3911->0.5958  dual: 74.0760->0.1656  mono=False  iters=80/80  rho=200.0
+[C3] step=79 |u[0]|=22.19Nm λ_n_max=0.989 |δ_t|_max=0.512 primal=0.596 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.129m  ee_to_box=0.172m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.151m  effective=[-0.19  0.    0.05]
+[ADMM] primal: 0.3889->0.5919  dual: 74.1634->0.1651  mono=False  iters=80/80  rho=200.0
+[C3diag] step=80 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      0.9940      1.2842      0.5137  OK        0.9485  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0234      0.0093  OK        0.0496  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0032      0.0013  OK        0.0068  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0053      0.0021  OK        0.0111  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0041      0.0016  OK        0.0109  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0020      0.0008  OK        0.0063  (z violates, δ OK — ADMM converging)
+  [06]     -0.0000      0.0028      0.0011  OK        0.0059  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0035      0.0014  OK        0.0072  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0034      0.0014  OK        0.0072  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0031      0.0013  OK        0.0066  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0027      0.0011  OK        0.0057  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0022      0.0009  OK        0.0046  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0015      0.0006  OK        0.0032  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0006      0.0002  OK        0.0014  (z violates, δ OK — ADMM converging)
+  [14]     -0.0000      0.0007      0.0003  OK        0.0016  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0015      0.0006  OK        0.0031  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [18]     -0.0000      0.0009      0.0004  OK        0.0027  (z violates, δ OK — ADMM converging)
+  [19]     -0.0000      0.0054      0.0022  OK        0.0112  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=21.767 Nm
+[EErel] along_push=-0.113m (neg=correct)  perp=0.128m  ee_to_box=0.171m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.150m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3867->0.6017  dual: 74.2471->0.0653  mono=False  iters=80/80  rho=100.0
+[C3] step=81 |u[0]|=23.03Nm λ_n_max=1.000 |δ_t|_max=0.518 primal=0.602 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.128m  ee_to_box=0.170m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.149m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3843->0.5974  dual: 74.3450->0.0674  mono=False  iters=80/80  rho=100.0
+[C3] step=82 |u[0]|=22.93Nm λ_n_max=1.005 |δ_t|_max=0.519 primal=0.597 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.127m  ee_to_box=0.170m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.149m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3818->0.5927  dual: 74.4581->0.0693  mono=False  iters=80/80  rho=100.0
+[C3] step=83 |u[0]|=22.83Nm λ_n_max=1.011 |δ_t|_max=0.520 primal=0.593 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.126m  ee_to_box=0.169m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.148m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3790->0.5875  dual: 74.5843->0.0710  mono=False  iters=80/80  rho=100.0
+[C3] step=84 |u[0]|=22.73Nm λ_n_max=1.017 |δ_t|_max=0.522 primal=0.587 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.125m  ee_to_box=0.168m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.148m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3761->0.5819  dual: 74.7223->0.0727  mono=False  iters=80/80  rho=100.0
+[C3] step=85 |u[0]|=22.64Nm λ_n_max=1.024 |δ_t|_max=0.523 primal=0.582 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.124m  ee_to_box=0.168m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.147m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3730->0.5759  dual: 74.8711->0.0742  mono=False  iters=80/80  rho=100.0
+[C3] step=86 |u[0]|=22.57Nm λ_n_max=1.031 |δ_t|_max=0.525 primal=0.576 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.123m  ee_to_box=0.167m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.146m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3698->0.5695  dual: 75.0297->0.0756  mono=False  iters=80/80  rho=100.0
+[C3] step=87 |u[0]|=22.50Nm λ_n_max=1.039 |δ_t|_max=0.527 primal=0.570 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.122m  ee_to_box=0.166m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.145m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3664->0.5628  dual: 75.1968->0.0769  mono=False  iters=80/80  rho=100.0
+[C3] step=88 |u[0]|=22.45Nm λ_n_max=1.047 |δ_t|_max=0.529 primal=0.563 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.121m  ee_to_box=0.165m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.145m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3629->0.5558  dual: 75.3714->0.0780  mono=False  iters=80/80  rho=100.0
+[C3] step=89 |u[0]|=22.42Nm λ_n_max=1.055 |δ_t|_max=0.531 primal=0.556 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.120m  ee_to_box=0.165m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.144m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3592->0.5484  dual: 75.5525->0.0790  mono=False  iters=80/80  rho=100.0
+[C3] step=90 |u[0]|=22.39Nm λ_n_max=1.064 |δ_t|_max=0.533 primal=0.548 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.119m  ee_to_box=0.164m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.143m  effective=[-0.191  0.     0.05 ]
+[ADMM] primal: 0.3555->0.5408  dual: 75.7388->0.0798  mono=False  iters=80/80  rho=100.0
+[C3] step=91 |u[0]|=22.37Nm λ_n_max=1.073 |δ_t|_max=0.535 primal=0.541 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.118m  ee_to_box=0.163m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.142m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3518->0.5329  dual: 75.9295->0.0806  mono=False  iters=80/80  rho=100.0
+[C3] step=92 |u[0]|=22.36Nm λ_n_max=1.082 |δ_t|_max=0.537 primal=0.533 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.117m  ee_to_box=0.163m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.142m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3480->0.5248  dual: 76.1234->0.0812  mono=False  iters=80/80  rho=100.0
+[C3] step=93 |u[0]|=22.36Nm λ_n_max=1.091 |δ_t|_max=0.539 primal=0.525 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.116m  ee_to_box=0.162m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.141m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3441->0.5165  dual: 76.3196->0.0816  mono=False  iters=80/80  rho=100.0
+[C3] step=94 |u[0]|=22.37Nm λ_n_max=1.100 |δ_t|_max=0.541 primal=0.517 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.115m  ee_to_box=0.161m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.140m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3402->0.5080  dual: 76.5171->0.0819  mono=False  iters=80/80  rho=100.0
+[C3] step=95 |u[0]|=22.39Nm λ_n_max=1.110 |δ_t|_max=0.543 primal=0.508 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.114m  ee_to_box=0.161m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.139m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3363->0.4994  dual: 76.7152->0.0822  mono=False  iters=80/80  rho=100.0
+[C3] step=96 |u[0]|=22.42Nm λ_n_max=1.119 |δ_t|_max=0.545 primal=0.499 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.113m  ee_to_box=0.160m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.138m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3324->0.4906  dual: 76.9129->0.0823  mono=False  iters=80/80  rho=100.0
+[C3] step=97 |u[0]|=22.45Nm λ_n_max=1.129 |δ_t|_max=0.547 primal=0.491 iters=80/80
+[EErel] along_push=-0.113m (neg=correct)  perp=0.112m  ee_to_box=0.160m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.138m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3285->0.4818  dual: 77.1095->0.0822  mono=False  iters=80/80  rho=100.0
+[C3] step=98 |u[0]|=22.48Nm λ_n_max=1.138 |δ_t|_max=0.549 primal=0.482 iters=80/80
+[EErel] along_push=-0.114m (neg=correct)  perp=0.111m  ee_to_box=0.159m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.137m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3247->0.4728  dual: 77.3044->0.0821  mono=False  iters=80/80  rho=100.0
+[C3] step=99 |u[0]|=22.52Nm λ_n_max=1.148 |δ_t|_max=0.551 primal=0.473 iters=80/80
+[EErel] along_push=-0.114m (neg=correct)  perp=0.110m  ee_to_box=0.158m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.136m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3209->0.4638  dual: 77.4970->0.0819  mono=False  iters=80/80  rho=100.0
+[C3diag] step=100 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.1572      1.3842      0.5537  OK        0.8843  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0114      0.0046  OK        0.0261  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0050      0.0020  OK        0.0106  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0120      0.0048  OK        0.0251  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0090      0.0036  OK        0.0227  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0098  ← both zero
+  [06]     -0.0000      0.0020      0.0008  OK        0.0042  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0038      0.0015  OK        0.0080  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0041      0.0016  OK        0.0087  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0038      0.0015  OK        0.0081  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0034      0.0014  OK        0.0072  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0028      0.0011  OK        0.0060  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0021      0.0008  OK        0.0045  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0008      0.0003  OK        0.0023  (z violates, δ OK — ADMM converging)
+  [14]     -0.0000      0.0003      0.0001  OK        0.0006  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0020      0.0008  OK        0.0041  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0011      0.0004  OK        0.0022  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0062  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0036      0.0014  OK        0.0076  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=22.571 Nm
+[EErel] along_push=-0.114m (neg=correct)  perp=0.110m  ee_to_box=0.158m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.135m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3171->0.4548  dual: 77.6866->0.0816  mono=False  iters=80/80  rho=100.0
+[C3] step=101 |u[0]|=22.62Nm λ_n_max=1.166 |δ_t|_max=0.555 primal=0.455 iters=80/80
+  t=1.00s | ee=(-0.114, -0.110, 0.063) | obj=(0.000, 0.000, 0.050) | |u|=22.62 Nm | goal_dist=0.300 m
+[EErel] along_push=-0.114m (neg=correct)  perp=0.109m  ee_to_box=0.157m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.135m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3134->0.4458  dual: 77.8729->0.0812  mono=False  iters=80/80  rho=100.0
+[C3] step=102 |u[0]|=22.68Nm λ_n_max=1.176 |δ_t|_max=0.557 primal=0.446 iters=80/80
+[EErel] along_push=-0.114m (neg=correct)  perp=0.108m  ee_to_box=0.157m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.134m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3098->0.4369  dual: 78.0554->0.0807  mono=False  iters=80/80  rho=100.0
+[C3] step=103 |u[0]|=22.73Nm λ_n_max=1.185 |δ_t|_max=0.558 primal=0.437 iters=80/80
+[EErel] along_push=-0.114m (neg=correct)  perp=0.107m  ee_to_box=0.157m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.133m  effective=[-0.192  0.     0.05 ]
+[ADMM] primal: 0.3063->0.4280  dual: 78.2337->0.0801  mono=False  iters=80/80  rho=100.0
+[C3] step=104 |u[0]|=22.79Nm λ_n_max=1.194 |δ_t|_max=0.560 primal=0.428 iters=80/80
+[EErel] along_push=-0.114m (neg=correct)  perp=0.106m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.133m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.3028->0.4191  dual: 78.4077->0.0794  mono=False  iters=80/80  rho=100.0
+[C3] step=105 |u[0]|=22.86Nm λ_n_max=1.202 |δ_t|_max=0.562 primal=0.419 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.106m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.132m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2994->0.4103  dual: 78.5771->0.0787  mono=False  iters=80/80  rho=100.0
+[C3] step=106 |u[0]|=22.92Nm λ_n_max=1.211 |δ_t|_max=0.563 primal=0.410 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.105m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.131m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2962->0.4017  dual: 78.7416->0.0779  mono=False  iters=80/80  rho=100.0
+[C3] step=107 |u[0]|=22.99Nm λ_n_max=1.219 |δ_t|_max=0.565 primal=0.402 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.104m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.131m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2930->0.3932  dual: 78.9012->0.0770  mono=False  iters=80/80  rho=100.0
+[C3] step=108 |u[0]|=23.06Nm λ_n_max=1.227 |δ_t|_max=0.567 primal=0.393 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.104m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.130m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2899->0.3848  dual: 79.0558->0.0762  mono=False  iters=80/80  rho=100.0
+[C3] step=109 |u[0]|=23.13Nm λ_n_max=1.235 |δ_t|_max=0.568 primal=0.385 iters=80/80
+[EErel] along_push=-0.115m (neg=correct)  perp=0.103m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.129m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2870->0.3766  dual: 79.2054->0.0752  mono=False  iters=80/80  rho=100.0
+[C3] step=110 |u[0]|=23.20Nm λ_n_max=1.243 |δ_t|_max=0.569 primal=0.377 iters=80/80
+[EErel] along_push=-0.116m (neg=correct)  perp=0.102m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.129m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2841->0.3685  dual: 79.3499->0.0742  mono=False  iters=80/80  rho=100.0
+[C3] step=111 |u[0]|=23.27Nm λ_n_max=1.250 |δ_t|_max=0.571 primal=0.369 iters=80/80
+[EErel] along_push=-0.116m (neg=correct)  perp=0.102m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.128m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2814->0.3606  dual: 79.4718->0.0730  mono=False  iters=80/80  rho=100.0
+[C3] step=112 |u[0]|=22.84Nm λ_n_max=1.257 |δ_t|_max=0.572 primal=0.361 iters=80/80
+[EErel] along_push=-0.116m (neg=correct)  perp=0.102m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.128m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2793->0.3549  dual: 79.5049->0.0749  mono=False  iters=80/80  rho=100.0
+[C3] step=113 |u[0]|=23.07Nm λ_n_max=1.262 |δ_t|_max=0.573 primal=0.355 iters=80/80
+[EErel] along_push=-0.117m (neg=correct)  perp=0.102m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.128m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2781->0.3512  dual: 79.5497->0.0759  mono=False  iters=80/80  rho=100.0
+[C3] step=114 |u[0]|=23.57Nm λ_n_max=1.265 |δ_t|_max=0.573 primal=0.351 iters=80/80
+[EErel] along_push=-0.117m (neg=correct)  perp=0.102m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.127m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2775->0.3491  dual: 79.6225->0.0749  mono=False  iters=80/80  rho=100.0
+[C3] step=115 |u[0]|=24.04Nm λ_n_max=1.267 |δ_t|_max=0.574 primal=0.349 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.102m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.127m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2768->0.3471  dual: 79.7059->0.0724  mono=False  iters=80/80  rho=100.0
+[C3] step=116 |u[0]|=23.53Nm λ_n_max=1.269 |δ_t|_max=0.574 primal=0.347 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.102m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.127m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2758->0.3441  dual: 79.7641->0.0717  mono=False  iters=80/80  rho=100.0
+[C3] step=117 |u[0]|=23.51Nm λ_n_max=1.272 |δ_t|_max=0.575 primal=0.344 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.102m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.127m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2748->0.3409  dual: 79.8223->0.0710  mono=False  iters=80/80  rho=100.0
+[C3] step=118 |u[0]|=23.49Nm λ_n_max=1.275 |δ_t|_max=0.575 primal=0.341 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.101m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.126m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2737->0.3377  dual: 79.8833->0.0702  mono=False  iters=80/80  rho=100.0
+[C3] step=119 |u[0]|=23.48Nm λ_n_max=1.278 |δ_t|_max=0.576 primal=0.338 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.101m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.126m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2726->0.3343  dual: 79.9468->0.0724  mono=False  iters=80/80  rho=100.0
+[C3diag] step=120 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.2806      1.4439      0.5776  OK        0.8079  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0088      0.0035  OK        0.0193  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0054      0.0022  OK        0.0113  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0106      0.0042  OK        0.0221  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0069      0.0027  OK        0.0181  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0071  ← both zero
+  [06]     -0.0000      0.0020      0.0008  OK        0.0041  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0036      0.0014  OK        0.0076  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0038      0.0015  OK        0.0081  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0036      0.0014  OK        0.0076  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0032      0.0013  OK        0.0067  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0027      0.0011  OK        0.0056  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0020      0.0008  OK        0.0042  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0007      0.0003  OK        0.0020  (z violates, δ OK — ADMM converging)
+  [14]     -0.0000      0.0003      0.0001  OK        0.0007  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0021      0.0008  OK        0.0043  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0012      0.0005  OK        0.0026  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0060  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0026      0.0010  OK        0.0056  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.466 Nm
+[EErel] along_push=-0.118m (neg=correct)  perp=0.101m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.126m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2715->0.3308  dual: 80.0123->0.0840  mono=False  iters=80/80  rho=100.0
+[C3] step=121 |u[0]|=23.46Nm λ_n_max=1.284 |δ_t|_max=0.577 primal=0.331 iters=80/80
+[EErel] along_push=-0.118m (neg=correct)  perp=0.101m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.126m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2703->0.3272  dual: 80.0792->0.0934  mono=False  iters=80/80  rho=100.0
+[C3] step=122 |u[0]|=23.46Nm λ_n_max=1.287 |δ_t|_max=0.577 primal=0.327 iters=80/80
+[EErel] along_push=-0.119m (neg=correct)  perp=0.101m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.125m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2692->0.3235  dual: 80.1471->0.0762  mono=False  iters=80/80  rho=100.0
+[C3] step=123 |u[0]|=23.46Nm λ_n_max=1.290 |δ_t|_max=0.578 primal=0.324 iters=80/80
+[EErel] along_push=-0.119m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.125m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2680->0.3198  dual: 80.2093->0.0685  mono=False  iters=80/80  rho=100.0
+[C3] step=124 |u[0]|=23.34Nm λ_n_max=1.293 |δ_t|_max=0.578 primal=0.320 iters=80/80
+[EErel] along_push=-0.119m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.125m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2669->0.3163  dual: 80.2578->0.0655  mono=False  iters=80/80  rho=100.0
+[C3] step=125 |u[0]|=23.30Nm λ_n_max=1.296 |δ_t|_max=0.579 primal=0.316 iters=80/80
+[EErel] along_push=-0.119m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.125m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2659->0.3132  dual: 80.3113->0.0648  mono=False  iters=80/80  rho=100.0
+[C3] step=126 |u[0]|=23.31Nm λ_n_max=1.299 |δ_t|_max=0.579 primal=0.313 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.124m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2650->0.3101  dual: 80.3653->0.0642  mono=False  iters=80/80  rho=100.0
+[C3] step=127 |u[0]|=23.32Nm λ_n_max=1.301 |δ_t|_max=0.580 primal=0.310 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.124m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2641->0.3071  dual: 80.4149->0.0637  mono=False  iters=80/80  rho=100.0
+[C3] step=128 |u[0]|=23.34Nm λ_n_max=1.304 |δ_t|_max=0.580 primal=0.307 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.124m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2632->0.3041  dual: 80.4602->0.0632  mono=False  iters=80/80  rho=100.0
+[C3] step=129 |u[0]|=23.35Nm λ_n_max=1.306 |δ_t|_max=0.581 primal=0.304 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.100m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.124m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2623->0.3013  dual: 80.5020->0.0628  mono=False  iters=80/80  rho=100.0
+[C3] step=130 |u[0]|=23.35Nm λ_n_max=1.309 |δ_t|_max=0.581 primal=0.301 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.099m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.124m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2615->0.2985  dual: 80.5401->0.0625  mono=False  iters=80/80  rho=100.0
+[C3] step=131 |u[0]|=23.35Nm λ_n_max=1.311 |δ_t|_max=0.581 primal=0.298 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.099m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2608->0.2959  dual: 80.5744->0.0623  mono=False  iters=80/80  rho=100.0
+[C3] step=132 |u[0]|=23.37Nm λ_n_max=1.313 |δ_t|_max=0.582 primal=0.296 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.099m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2601->0.2935  dual: 80.6049->0.0621  mono=False  iters=80/80  rho=100.0
+[C3] step=133 |u[0]|=23.40Nm λ_n_max=1.315 |δ_t|_max=0.582 primal=0.294 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.099m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2594->0.2914  dual: 80.6317->0.0620  mono=False  iters=80/80  rho=100.0
+[C3] step=134 |u[0]|=23.43Nm λ_n_max=1.317 |δ_t|_max=0.582 primal=0.291 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.099m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2589->0.2895  dual: 80.6551->0.0619  mono=False  iters=80/80  rho=100.0
+[C3] step=135 |u[0]|=23.46Nm λ_n_max=1.318 |δ_t|_max=0.582 primal=0.289 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.099m  ee_to_box=0.156m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2584->0.2878  dual: 80.6754->0.0618  mono=False  iters=80/80  rho=100.0
+[C3] step=136 |u[0]|=23.48Nm λ_n_max=1.320 |δ_t|_max=0.583 primal=0.288 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2579->0.2862  dual: 80.6929->0.0618  mono=False  iters=80/80  rho=100.0
+[C3] step=137 |u[0]|=23.50Nm λ_n_max=1.321 |δ_t|_max=0.583 primal=0.286 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.123m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2575->0.2847  dual: 80.7079->0.0618  mono=False  iters=80/80  rho=100.0
+[C3] step=138 |u[0]|=23.52Nm λ_n_max=1.322 |δ_t|_max=0.583 primal=0.285 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2571->0.2834  dual: 80.7205->0.0618  mono=False  iters=80/80  rho=100.0
+[C3] step=139 |u[0]|=23.55Nm λ_n_max=1.323 |δ_t|_max=0.583 primal=0.283 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2568->0.2822  dual: 80.7310->0.0619  mono=False  iters=80/80  rho=100.0
+[C3diag] step=140 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3242      1.4620      0.5848  OK        0.7764  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0076      0.0030  OK        0.0166  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0052      0.0021  OK        0.0109  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0090      0.0036  OK        0.0189  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0050      0.0020  OK        0.0148  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0054  ← both zero
+  [06]     -0.0000      0.0021      0.0008  OK        0.0043  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0037      0.0015  OK        0.0077  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0034      0.0014  OK        0.0072  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0031      0.0012  OK        0.0064  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0026      0.0010  OK        0.0054  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0019      0.0007  OK        0.0040  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0000      0.0000  OK        0.0018  ← both zero
+  [14]     -0.0000      0.0004      0.0002  OK        0.0008  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0021      0.0009  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0013      0.0005  OK        0.0027  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0023      0.0009  OK        0.0049  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.571 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2565->0.2812  dual: 80.7393->0.0620  mono=False  iters=80/80  rho=100.0
+[C3] step=141 |u[0]|=23.59Nm λ_n_max=1.325 |δ_t|_max=0.583 primal=0.281 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2563->0.2803  dual: 80.7460->0.0621  mono=False  iters=80/80  rho=100.0
+[C3] step=142 |u[0]|=23.61Nm λ_n_max=1.326 |δ_t|_max=0.583 primal=0.280 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2560->0.2795  dual: 80.7513->0.0622  mono=False  iters=80/80  rho=100.0
+[C3] step=143 |u[0]|=23.62Nm λ_n_max=1.326 |δ_t|_max=0.583 primal=0.279 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2558->0.2787  dual: 80.7561->0.0624  mono=False  iters=80/80  rho=100.0
+[C3] step=144 |u[0]|=23.62Nm λ_n_max=1.327 |δ_t|_max=0.584 primal=0.279 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2556->0.2781  dual: 80.7607->0.1028  mono=False  iters=80/80  rho=100.0
+[C3] step=145 |u[0]|=23.63Nm λ_n_max=1.328 |δ_t|_max=0.584 primal=0.278 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.098m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2554->0.2773  dual: 80.7650->0.1104  mono=False  iters=80/80  rho=100.0
+[C3] step=146 |u[0]|=23.63Nm λ_n_max=1.328 |δ_t|_max=0.584 primal=0.277 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2552->0.2766  dual: 80.7692->0.1104  mono=False  iters=80/80  rho=100.0
+[C3] step=147 |u[0]|=23.64Nm λ_n_max=1.329 |δ_t|_max=0.584 primal=0.277 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2550->0.2759  dual: 80.7732->0.1104  mono=False  iters=80/80  rho=100.0
+[C3] step=148 |u[0]|=23.64Nm λ_n_max=1.329 |δ_t|_max=0.584 primal=0.276 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2548->0.2753  dual: 80.7772->0.1105  mono=False  iters=80/80  rho=100.0
+[C3] step=149 |u[0]|=23.64Nm λ_n_max=1.330 |δ_t|_max=0.584 primal=0.275 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2547->0.2746  dual: 80.7810->0.1105  mono=False  iters=80/80  rho=100.0
+[C3] step=150 |u[0]|=23.65Nm λ_n_max=1.330 |δ_t|_max=0.584 primal=0.275 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.155m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2545->0.2742  dual: 80.7847->0.1032  mono=False  iters=80/80  rho=100.0
+[C3] step=151 |u[0]|=23.65Nm λ_n_max=1.332 |δ_t|_max=0.584 primal=0.274 iters=80/80
+  t=1.50s | ee=(-0.120, -0.097, 0.062) | obj=(0.000, 0.000, 0.050) | |u|=23.65 Nm | goal_dist=0.300 m
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2543->0.2736  dual: 80.7882->0.1032  mono=False  iters=80/80  rho=100.0
+[C3] step=152 |u[0]|=23.65Nm λ_n_max=1.332 |δ_t|_max=0.584 primal=0.274 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2542->0.2730  dual: 80.7917->0.1033  mono=False  iters=80/80  rho=100.0
+[C3] step=153 |u[0]|=23.65Nm λ_n_max=1.332 |δ_t|_max=0.584 primal=0.273 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2540->0.2725  dual: 80.7950->0.1033  mono=False  iters=80/80  rho=100.0
+[C3] step=154 |u[0]|=23.66Nm λ_n_max=1.333 |δ_t|_max=0.584 primal=0.272 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2539->0.2720  dual: 80.7982->0.1033  mono=False  iters=80/80  rho=100.0
+[C3] step=155 |u[0]|=23.66Nm λ_n_max=1.333 |δ_t|_max=0.585 primal=0.272 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2537->0.2715  dual: 80.8014->0.1034  mono=False  iters=80/80  rho=100.0
+[C3] step=156 |u[0]|=23.66Nm λ_n_max=1.334 |δ_t|_max=0.585 primal=0.271 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2536->0.2710  dual: 80.8045->0.1034  mono=False  iters=80/80  rho=100.0
+[C3] step=157 |u[0]|=23.66Nm λ_n_max=1.334 |δ_t|_max=0.585 primal=0.271 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2535->0.2705  dual: 80.8075->0.1035  mono=False  iters=80/80  rho=100.0
+[C3] step=158 |u[0]|=23.67Nm λ_n_max=1.334 |δ_t|_max=0.585 primal=0.271 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2534->0.2700  dual: 80.8104->0.1107  mono=False  iters=80/80  rho=100.0
+[C3] step=159 |u[0]|=23.67Nm λ_n_max=1.334 |δ_t|_max=0.584 primal=0.270 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2532->0.2695  dual: 80.8133->0.1108  mono=False  iters=80/80  rho=100.0
+[C3diag] step=160 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3343      1.4657      0.5863  OK        0.7686  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0077      0.0031  OK        0.0167  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0055      0.0022  OK        0.0114  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0094      0.0038  OK        0.0197  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0053      0.0021  OK        0.0153  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0055  ← both zero
+  [06]     -0.0000      0.0021      0.0008  OK        0.0043  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0037      0.0015  OK        0.0077  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0031      0.0012  OK        0.0065  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0026      0.0010  OK        0.0054  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0019      0.0008  OK        0.0040  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0000      0.0000  OK        0.0018  ← both zero
+  [14]     -0.0000      0.0004      0.0001  OK        0.0008  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0013      0.0005  OK        0.0027  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0022      0.0009  OK        0.0048  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.669 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2531->0.2691  dual: 80.8160->0.1108  mono=False  iters=80/80  rho=100.0
+[C3] step=161 |u[0]|=23.67Nm λ_n_max=1.335 |δ_t|_max=0.584 primal=0.269 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2530->0.2687  dual: 80.8187->0.1108  mono=False  iters=80/80  rho=100.0
+[C3] step=162 |u[0]|=23.67Nm λ_n_max=1.335 |δ_t|_max=0.584 primal=0.269 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2529->0.2684  dual: 80.8214->0.1036  mono=False  iters=80/80  rho=100.0
+[C3] step=163 |u[0]|=23.67Nm λ_n_max=1.336 |δ_t|_max=0.585 primal=0.268 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2528->0.2681  dual: 80.8240->0.1036  mono=False  iters=80/80  rho=100.0
+[C3] step=164 |u[0]|=23.67Nm λ_n_max=1.336 |δ_t|_max=0.585 primal=0.268 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.097m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.122m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2527->0.2677  dual: 80.8265->0.1036  mono=False  iters=80/80  rho=100.0
+[C3] step=165 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.268 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2526->0.2673  dual: 80.8290->0.1037  mono=False  iters=80/80  rho=100.0
+[C3] step=166 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.267 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2525->0.2670  dual: 80.8314->0.1037  mono=False  iters=80/80  rho=100.0
+[C3] step=167 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.267 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2524->0.2665  dual: 80.8338->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=168 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.267 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2523->0.2662  dual: 80.8361->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=169 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.266 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2523->0.2659  dual: 80.8384->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=170 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.266 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2522->0.2656  dual: 80.8406->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=171 |u[0]|=23.68Nm λ_n_max=1.337 |δ_t|_max=0.585 primal=0.266 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2521->0.2653  dual: 80.8428->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=172 |u[0]|=23.68Nm λ_n_max=1.338 |δ_t|_max=0.585 primal=0.265 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2520->0.2651  dual: 80.8450->0.1038  mono=False  iters=80/80  rho=100.0
+[C3] step=173 |u[0]|=23.68Nm λ_n_max=1.339 |δ_t|_max=0.585 primal=0.265 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2519->0.2647  dual: 80.8471->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=174 |u[0]|=23.68Nm λ_n_max=1.338 |δ_t|_max=0.585 primal=0.265 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2519->0.2644  dual: 80.8492->0.1109  mono=False  iters=80/80  rho=100.0
+[C3] step=175 |u[0]|=23.68Nm λ_n_max=1.338 |δ_t|_max=0.585 primal=0.264 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2518->0.2641  dual: 80.8512->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=176 |u[0]|=23.68Nm λ_n_max=1.338 |δ_t|_max=0.585 primal=0.264 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2517->0.2639  dual: 80.8533->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=177 |u[0]|=23.68Nm λ_n_max=1.339 |δ_t|_max=0.585 primal=0.264 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2516->0.2636  dual: 80.8552->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=178 |u[0]|=23.69Nm λ_n_max=1.339 |δ_t|_max=0.585 primal=0.264 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2516->0.2634  dual: 80.8572->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=179 |u[0]|=23.69Nm λ_n_max=1.339 |δ_t|_max=0.585 primal=0.263 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2515->0.2631  dual: 80.8591->0.1110  mono=False  iters=80/80  rho=100.0
+[C3diag] step=180 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3392      1.4674      0.5870  OK        0.7645  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0078      0.0031  OK        0.0167  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0056      0.0022  OK        0.0115  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0095      0.0038  OK        0.0200  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0054      0.0022  OK        0.0154  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0055  ← both zero
+  [06]     -0.0000      0.0021      0.0008  OK        0.0043  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0037      0.0015  OK        0.0077  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0031      0.0012  OK        0.0065  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0026      0.0010  OK        0.0054  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0019      0.0008  OK        0.0041  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0000      0.0000  OK        0.0018  ← both zero
+  [14]     -0.0000      0.0004      0.0001  OK        0.0007  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0013      0.0005  OK        0.0027  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0022      0.0009  OK        0.0047  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.686 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2514->0.2629  dual: 80.8610->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=181 |u[0]|=23.69Nm λ_n_max=1.339 |δ_t|_max=0.585 primal=0.263 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2514->0.2626  dual: 80.8629->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=182 |u[0]|=23.69Nm λ_n_max=1.340 |δ_t|_max=0.585 primal=0.263 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2513->0.2624  dual: 80.8647->0.1110  mono=False  iters=80/80  rho=100.0
+[C3] step=183 |u[0]|=23.69Nm λ_n_max=1.340 |δ_t|_max=0.585 primal=0.262 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2513->0.2623  dual: 80.8666->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=184 |u[0]|=23.69Nm λ_n_max=1.341 |δ_t|_max=0.585 primal=0.262 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2512->0.2621  dual: 80.8684->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=185 |u[0]|=23.69Nm λ_n_max=1.341 |δ_t|_max=0.585 primal=0.262 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2511->0.2619  dual: 80.8701->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=186 |u[0]|=23.69Nm λ_n_max=1.341 |δ_t|_max=0.585 primal=0.262 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2511->0.2617  dual: 80.8719->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=187 |u[0]|=23.69Nm λ_n_max=1.341 |δ_t|_max=0.585 primal=0.262 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2510->0.2614  dual: 80.8736->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=188 |u[0]|=23.69Nm λ_n_max=1.341 |δ_t|_max=0.585 primal=0.261 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2510->0.2612  dual: 80.8753->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=189 |u[0]|=23.69Nm λ_n_max=1.341 |δ_t|_max=0.585 primal=0.261 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2509->0.2610  dual: 80.8770->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=190 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.261 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.154m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2509->0.2609  dual: 80.8787->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=191 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.261 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2508->0.2607  dual: 80.8803->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=192 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.586 primal=0.261 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2508->0.2605  dual: 80.8819->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=193 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.586 primal=0.260 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2507->0.2603  dual: 80.8836->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=194 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.586 primal=0.260 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2507->0.2601  dual: 80.8852->0.1040  mono=False  iters=80/80  rho=100.0
+[C3] step=195 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.586 primal=0.260 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2506->0.2598  dual: 80.8867->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=196 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.260 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2506->0.2597  dual: 80.8883->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=197 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.260 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2505->0.2595  dual: 80.8898->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=198 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.259 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2505->0.2593  dual: 80.8914->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=199 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.259 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2505->0.2591  dual: 80.8929->0.1111  mono=False  iters=80/80  rho=100.0
+[C3diag] step=200 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3423      1.4685      0.5874  OK        0.7620  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0077      0.0031  OK        0.0167  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0056      0.0022  OK        0.0116  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0095      0.0038  OK        0.0200  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0054      0.0022  OK        0.0153  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0055  ← both zero
+  [06]     -0.0000      0.0021      0.0008  OK        0.0043  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0037      0.0015  OK        0.0077  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0035      0.0014  OK        0.0073  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0031      0.0012  OK        0.0065  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0026      0.0010  OK        0.0054  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0019      0.0008  OK        0.0041  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0000      0.0000  OK        0.0018  ← both zero
+  [14]     -0.0000      0.0004      0.0001  OK        0.0007  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0013      0.0005  OK        0.0027  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0021      0.0009  OK        0.0047  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.687 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2504->0.2590  dual: 80.8944->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=201 |u[0]|=23.69Nm λ_n_max=1.342 |δ_t|_max=0.585 primal=0.259 iters=80/80
+  t=2.00s | ee=(-0.120, -0.096, 0.062) | obj=(0.000, 0.000, 0.050) | |u|=23.69 Nm | goal_dist=0.300 m
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2504->0.2588  dual: 80.8958->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=202 |u[0]|=23.69Nm λ_n_max=1.343 |δ_t|_max=0.585 primal=0.259 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2503->0.2587  dual: 80.8973->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=203 |u[0]|=23.69Nm λ_n_max=1.343 |δ_t|_max=0.585 primal=0.259 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2503->0.2585  dual: 80.8988->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=204 |u[0]|=23.69Nm λ_n_max=1.343 |δ_t|_max=0.585 primal=0.259 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2503->0.2584  dual: 80.9002->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=205 |u[0]|=23.69Nm λ_n_max=1.343 |δ_t|_max=0.585 primal=0.258 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.121m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2502->0.2582  dual: 80.9016->0.1111  mono=False  iters=80/80  rho=100.0
+[C3] step=206 |u[0]|=23.69Nm λ_n_max=1.343 |δ_t|_max=0.585 primal=0.258 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2491->0.2444  dual: 83.6673->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=207 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.596 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2491->0.2443  dual: 83.6685->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=208 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.596 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2491->0.2441  dual: 83.6696->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=209 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.596 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2490->0.2440  dual: 83.6707->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=210 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.596 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2490->0.2439  dual: 83.6718->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=211 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.597 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2490->0.2437  dual: 83.6729->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=212 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.597 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2489->0.2436  dual: 83.6740->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=213 |u[0]|=23.69Nm λ_n_max=1.377 |δ_t|_max=0.597 primal=0.244 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2489->0.2434  dual: 83.6751->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=214 |u[0]|=23.69Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2489->0.2433  dual: 83.6762->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=215 |u[0]|=23.69Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2488->0.2432  dual: 83.6772->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=216 |u[0]|=23.69Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2488->0.2431  dual: 83.6783->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=217 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2488->0.2429  dual: 83.6793->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=218 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2488->0.2428  dual: 83.6804->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=219 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.096m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2487->0.2427  dual: 83.6814->0.1083  mono=False  iters=80/80  rho=100.0
+[C3diag] step=220 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3781      1.4964      0.5986  OK        0.7612  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0071      0.0028  OK        0.0152  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0053      0.0021  OK        0.0110  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0083      0.0033  OK        0.0176  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0041      0.0016  OK        0.0132  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0045  ← both zero
+  [06]     -0.0000      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0034      0.0014  OK        0.0071  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0036      0.0014  OK        0.0075  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0033      0.0013  OK        0.0070  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0030      0.0012  OK        0.0062  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0025      0.0010  OK        0.0052  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0018      0.0007  OK        0.0039  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0000      0.0000  OK        0.0017  ← both zero
+  [14]     -0.0000      0.0004      0.0002  OK        0.0009  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0022      0.0009  OK        0.0046  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0014      0.0006  OK        0.0029  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0021      0.0009  OK        0.0047  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.684 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2487->0.2426  dual: 83.6825->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=221 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2487->0.2424  dual: 83.6835->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=222 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2486->0.2423  dual: 83.6845->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=223 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2486->0.2422  dual: 83.6855->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=224 |u[0]|=23.68Nm λ_n_max=1.378 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2486->0.2421  dual: 83.6865->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=225 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2486->0.2420  dual: 83.6875->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=226 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2485->0.2419  dual: 83.6885->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=227 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2485->0.2417  dual: 83.6895->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=228 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2485->0.2416  dual: 83.6905->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=229 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2485->0.2415  dual: 83.6915->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=230 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2484->0.2414  dual: 83.6924->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=231 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2484->0.2413  dual: 83.6934->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=232 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2484->0.2412  dual: 83.6943->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=233 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2484->0.2411  dual: 83.6953->0.1083  mono=False  iters=80/80  rho=100.0
+[C3] step=234 |u[0]|=23.68Nm λ_n_max=1.379 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2483->0.2411  dual: 83.6962->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=235 |u[0]|=23.68Nm λ_n_max=1.380 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2483->0.2410  dual: 83.6972->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=236 |u[0]|=23.68Nm λ_n_max=1.380 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2483->0.2409  dual: 83.6981->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=237 |u[0]|=23.68Nm λ_n_max=1.380 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2483->0.2408  dual: 83.6990->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=238 |u[0]|=23.68Nm λ_n_max=1.380 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2482->0.2407  dual: 83.7000->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=239 |u[0]|=23.68Nm λ_n_max=1.380 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2482->0.2406  dual: 83.7009->0.1012  mono=False  iters=80/80  rho=100.0
+[C3diag] step=240 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3805      1.4977      0.5991  OK        0.7597  (z violates, δ OK — ADMM converging)
+  [01]     -0.0001      0.0070      0.0028  OK        0.0151  (z violates, δ OK — ADMM converging)
+  [02]     -0.0001      0.0052      0.0021  OK        0.0110  (z violates, δ OK — ADMM converging)
+  [03]     -0.0001      0.0082      0.0033  OK        0.0175  (z violates, δ OK — ADMM converging)
+  [04]     -0.0001      0.0040      0.0016  OK        0.0131  (z violates, δ OK — ADMM converging)
+  [05]     -0.0001      0.0000      0.0000  OK        0.0045  ← both zero
+  [06]     -0.0001      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [07]     -0.0001      0.0034      0.0013  OK        0.0071  (z violates, δ OK — ADMM converging)
+  [08]     -0.0001      0.0035      0.0014  OK        0.0075  (z violates, δ OK — ADMM converging)
+  [09]     -0.0001      0.0033      0.0013  OK        0.0070  (z violates, δ OK — ADMM converging)
+  [10]     -0.0001      0.0029      0.0012  OK        0.0062  (z violates, δ OK — ADMM converging)
+  [11]     -0.0001      0.0024      0.0010  OK        0.0052  (z violates, δ OK — ADMM converging)
+  [12]     -0.0001      0.0017      0.0007  OK        0.0039  (z violates, δ OK — ADMM converging)
+  [13]     -0.0001      0.0000      0.0000  OK        0.0017  ← both zero
+  [14]     -0.0001      0.0004      0.0002  OK        0.0009  (z violates, δ OK — ADMM converging)
+  [15]     -0.0001      0.0022      0.0009  OK        0.0046  (z violates, δ OK — ADMM converging)
+  [16]     -0.0001      0.0013      0.0005  OK        0.0029  (z violates, δ OK — ADMM converging)
+  [17]     -0.0001      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]      0.0002      0.0023      0.0009  OK        0.0047  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.679 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2482->0.2405  dual: 83.7018->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=241 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2482->0.2404  dual: 83.7027->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=242 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2482->0.2403  dual: 83.7036->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=243 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2481->0.2402  dual: 83.7045->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=244 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2481->0.2402  dual: 83.7054->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=245 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2481->0.2401  dual: 83.7063->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=246 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2481->0.2400  dual: 83.7071->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=247 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2481->0.2399  dual: 83.7080->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=248 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2480->0.2398  dual: 83.7089->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=249 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2480->0.2397  dual: 83.7097->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=250 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2480->0.2396  dual: 83.7106->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=251 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+  t=2.50s | ee=(-0.120, -0.095, 0.062) | obj=(-0.000, -0.000, 0.050) | |u|=23.68 Nm | goal_dist=0.300 m
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2480->0.2396  dual: 83.7115->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=252 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2480->0.2395  dual: 83.7123->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=253 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2479->0.2394  dual: 83.7132->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=254 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2479->0.2393  dual: 83.7140->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=255 |u[0]|=23.68Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2479->0.2392  dual: 83.7148->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=256 |u[0]|=23.68Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2479->0.2392  dual: 83.7157->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=257 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2479->0.2391  dual: 83.7165->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=258 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2478->0.2390  dual: 83.7173->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=259 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2478->0.2389  dual: 83.7181->0.1012  mono=False  iters=80/80  rho=100.0
+[C3diag] step=260 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3818      1.4982      0.5993  OK        0.7587  (z violates, δ OK — ADMM converging)
+  [01]     -0.0001      0.0069      0.0028  OK        0.0150  (z violates, δ OK — ADMM converging)
+  [02]     -0.0001      0.0052      0.0021  OK        0.0109  (z violates, δ OK — ADMM converging)
+  [03]     -0.0001      0.0081      0.0033  OK        0.0173  (z violates, δ OK — ADMM converging)
+  [04]     -0.0001      0.0039      0.0016  OK        0.0130  (z violates, δ OK — ADMM converging)
+  [05]     -0.0001      0.0000      0.0000  OK        0.0044  ← both zero
+  [06]     -0.0001      0.0021      0.0008  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [07]     -0.0001      0.0033      0.0013  OK        0.0071  (z violates, δ OK — ADMM converging)
+  [08]     -0.0001      0.0035      0.0014  OK        0.0074  (z violates, δ OK — ADMM converging)
+  [09]     -0.0001      0.0033      0.0013  OK        0.0070  (z violates, δ OK — ADMM converging)
+  [10]     -0.0001      0.0029      0.0012  OK        0.0062  (z violates, δ OK — ADMM converging)
+  [11]     -0.0001      0.0024      0.0010  OK        0.0052  (z violates, δ OK — ADMM converging)
+  [12]     -0.0001      0.0017      0.0007  OK        0.0039  (z violates, δ OK — ADMM converging)
+  [13]     -0.0001      0.0000      0.0000  OK        0.0017  ← both zero
+  [14]     -0.0001      0.0004      0.0002  OK        0.0009  (z violates, δ OK — ADMM converging)
+  [15]     -0.0001      0.0022      0.0009  OK        0.0046  (z violates, δ OK — ADMM converging)
+  [16]     -0.0001      0.0013      0.0005  OK        0.0029  (z violates, δ OK — ADMM converging)
+  [17]     -0.0001      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]      0.0002      0.0023      0.0009  OK        0.0047  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.674 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2478->0.2389  dual: 83.7189->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=261 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2478->0.2388  dual: 83.7198->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=262 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2478->0.2387  dual: 83.7206->0.1012  mono=False  iters=80/80  rho=100.0
+[C3] step=263 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2478->0.2385  dual: 83.7214->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=264 |u[0]|=23.67Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.239 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2385  dual: 83.7222->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=265 |u[0]|=23.67Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2384  dual: 83.7230->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=266 |u[0]|=23.67Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2383  dual: 83.7237->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=267 |u[0]|=23.67Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2382  dual: 83.7245->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=268 |u[0]|=23.67Nm λ_n_max=1.381 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.121m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2382  dual: 83.7253->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=269 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2381  dual: 83.7261->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=270 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2477->0.2380  dual: 83.7269->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=271 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2380  dual: 83.7276->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=272 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2379  dual: 83.7284->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=273 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2379  dual: 83.7291->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=274 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2378  dual: 83.7299->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=275 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2377  dual: 83.7306->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=276 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2377  dual: 83.7314->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=277 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2476->0.2376  dual: 83.7321->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=278 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2475->0.2376  dual: 83.7329->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=279 |u[0]|=23.67Nm λ_n_max=1.382 |δ_t|_max=0.597 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2475->0.2375  dual: 83.7336->0.1083  mono=False  iters=80/80  rho=100.0
+[C3diag] step=280 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3821      1.4978      0.5991  OK        0.7580  (z violates, δ OK — ADMM converging)
+  [01]     -0.0000      0.0070      0.0028  OK        0.0150  (z violates, δ OK — ADMM converging)
+  [02]     -0.0000      0.0053      0.0021  OK        0.0109  (z violates, δ OK — ADMM converging)
+  [03]     -0.0000      0.0082      0.0033  OK        0.0172  (z violates, δ OK — ADMM converging)
+  [04]     -0.0000      0.0039      0.0015  OK        0.0129  (z violates, δ OK — ADMM converging)
+  [05]     -0.0000      0.0000      0.0000  OK        0.0044  ← both zero
+  [06]     -0.0000      0.0021      0.0009  OK        0.0044  (z violates, δ OK — ADMM converging)
+  [07]     -0.0000      0.0034      0.0014  OK        0.0071  (z violates, δ OK — ADMM converging)
+  [08]     -0.0000      0.0036      0.0014  OK        0.0074  (z violates, δ OK — ADMM converging)
+  [09]     -0.0000      0.0033      0.0013  OK        0.0070  (z violates, δ OK — ADMM converging)
+  [10]     -0.0000      0.0030      0.0012  OK        0.0062  (z violates, δ OK — ADMM converging)
+  [11]     -0.0000      0.0025      0.0010  OK        0.0052  (z violates, δ OK — ADMM converging)
+  [12]     -0.0000      0.0018      0.0007  OK        0.0038  (z violates, δ OK — ADMM converging)
+  [13]     -0.0000      0.0000      0.0000  OK        0.0017  ← both zero
+  [14]     -0.0000      0.0004      0.0002  OK        0.0009  (z violates, δ OK — ADMM converging)
+  [15]     -0.0000      0.0022      0.0009  OK        0.0046  (z violates, δ OK — ADMM converging)
+  [16]     -0.0000      0.0014      0.0006  OK        0.0029  (z violates, δ OK — ADMM converging)
+  [17]     -0.0000      0.0000      0.0000  OK        0.0058  ← both zero
+  [18]     -0.0000      0.0000      0.0000  OK        0.0032  ← both zero
+  [19]     -0.0000      0.0021      0.0008  OK        0.0046  (z violates, δ OK — ADMM converging)
+  → δ contact: True  |u[0]|=23.668 Nm
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2519->0.2460  dual: 84.4286->0.1082  mono=False  iters=80/80  rho=100.0
+[C3] step=281 |u[0]|=23.66Nm λ_n_max=1.397 |δ_t|_max=0.605 primal=0.246 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2522->0.2588  dual: 81.4291->0.1114  mono=False  iters=80/80  rho=100.0
+[C3] step=282 |u[0]|=23.67Nm λ_n_max=1.359 |δ_t|_max=0.592 primal=0.259 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[ 0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2505->0.2432  dual: 84.2218->0.1078  mono=False  iters=80/80  rho=100.0
+[C3] step=283 |u[0]|=23.67Nm λ_n_max=1.393 |δ_t|_max=0.603 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2467->0.2474  dual: 80.8905->0.1039  mono=False  iters=80/80  rho=100.0
+[C3] step=284 |u[0]|=23.67Nm λ_n_max=1.346 |δ_t|_max=0.584 primal=0.247 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2442->0.2406  dual: 81.0018->0.1036  mono=False  iters=80/80  rho=100.0
+[C3] step=285 |u[0]|=23.67Nm λ_n_max=1.344 |δ_t|_max=0.582 primal=0.241 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2522->0.2509  dual: 83.4633->0.1095  mono=False  iters=80/80  rho=100.0
+[C3] step=286 |u[0]|=23.66Nm λ_n_max=1.386 |δ_t|_max=0.601 primal=0.251 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[ 0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2432->0.2185  dual: 84.8380->0.1061  mono=False  iters=80/80  rho=100.0
+[C3] step=287 |u[0]|=23.67Nm λ_n_max=1.389 |δ_t|_max=0.596 primal=0.219 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2427->0.2402  dual: 80.1134->0.1104  mono=False  iters=80/80  rho=100.0
+[C3] step=288 |u[0]|=23.67Nm λ_n_max=1.330 |δ_t|_max=0.576 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2559->0.2710  dual: 80.1986->0.1116  mono=False  iters=80/80  rho=100.0
+[C3] step=289 |u[0]|=23.66Nm λ_n_max=1.348 |δ_t|_max=0.590 primal=0.271 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0.  0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2528->0.2492  dual: 84.1875->0.1079  mono=False  iters=80/80  rho=100.0
+[C3] step=290 |u[0]|=23.66Nm λ_n_max=1.396 |δ_t|_max=0.605 primal=0.249 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0.  0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2507->0.2575  dual: 80.7313->0.1044  mono=False  iters=80/80  rho=100.0
+[C3] step=291 |u[0]|=23.66Nm λ_n_max=1.349 |δ_t|_max=0.588 primal=0.257 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2510->0.2572  dual: 80.9823->0.1042  mono=False  iters=80/80  rho=100.0
+[C3] step=292 |u[0]|=23.66Nm λ_n_max=1.353 |δ_t|_max=0.589 primal=0.257 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[0. 0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2547->0.2682  dual: 80.2270->0.1114  mono=False  iters=80/80  rho=100.0
+[C3] step=293 |u[0]|=23.66Nm λ_n_max=1.347 |δ_t|_max=0.589 primal=0.268 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[ 0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2433->0.2383  dual: 80.9383->0.1112  mono=False  iters=80/80  rho=100.0
+[C3] step=294 |u[0]|=23.67Nm λ_n_max=1.342 |δ_t|_max=0.581 primal=0.238 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2427->0.2179  dual: 84.6908->0.1072  mono=False  iters=80/80  rho=100.0
+[C3] step=295 |u[0]|=23.67Nm λ_n_max=1.387 |δ_t|_max=0.595 primal=0.218 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[ 0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2438->0.2425  dual: 80.1853->0.1045  mono=False  iters=80/80  rho=100.0
+[C3] step=296 |u[0]|=23.66Nm λ_n_max=1.334 |δ_t|_max=0.578 primal=0.243 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[ 0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2447->0.2424  dual: 80.8198->0.1039  mono=False  iters=80/80  rho=100.0
+[C3] step=297 |u[0]|=23.66Nm λ_n_max=1.343 |δ_t|_max=0.582 primal=0.242 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[ 0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2437->0.2405  dual: 80.6578->0.1039  mono=False  iters=80/80  rho=100.0
+[C3] step=298 |u[0]|=23.66Nm λ_n_max=1.340 |δ_t|_max=0.580 primal=0.240 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0. -0.]  g_hat=[1. 0.]
+[proxy] err=0.120m  effective=[-0.193 -0.     0.05 ]
+[ADMM] primal: 0.2431->0.2372  dual: 81.0514->0.1113  mono=False  iters=80/80  rho=100.0
+[C3] step=299 |u[0]|=23.66Nm λ_n_max=1.343 |δ_t|_max=0.581 primal=0.237 iters=80/80
+[EErel] along_push=-0.120m (neg=correct)  perp=0.095m  ee_to_box=0.153m  stage=2  obj=[-0.  0.]  g_hat=[ 1. -0.]
+[proxy] err=0.120m  effective=[-0.193  0.     0.05 ]
+[ADMM] primal: 0.2506->0.2422  dual: 84.4788->0.1007  mono=False  iters=80/80  rho=100.0
+[C3diag] step=300 nc=1  step | λ_n(z)     δ_n        |δ_t|      cone(δ)?  |λ_t|(z)
+  [00]      1.3978      1.5159      0.6064  OK        0.7681  (z violates, δ OK — ADMM converging)
+  [01]     -0.0001      0.0068      0.0027  OK        0.0148  (z violates, δ OK — ADMM converging)
+  [02]     -0.0001      0.0051      0.0020  OK        0.0107  (z violates, δ OK — ADMM converging)
+  [03]     -0.0001      0.0078      0.0031  OK        0.0167  (z violates, δ OK — ADMM converging)

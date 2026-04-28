@@ -1,0 +1,1019 @@
+[C3] Log: results/pushing_20260425_194415.txt
+[C3] Task: pushing
+[C3] Video output: results/pushing.mp4
+[ENV]  Directional task: id=4 name=west
+[ENV]  Goal coords: [-0.3, 0.0]
+[ENV]  Description: Push box 30cm west. Arm prepositioned on west face: contact normal anti-aligned with goal direction. Pusher would have to go through the box -- impossible without contact mode switch.
+[ENV]  Mass: 0.2 kg   Friction mu: 0.4
+[MPC]  Horizon: 20   dt: 0.05 s
+[MPC]  ADMM max iters: 3   rho_init: 100.0
+[MPC]  Force limit: 30.0 Nm
+[COST] w_obj_xy:      100000.0
+[COST] w_obj_z:       10.0
+[COST] w_box_z:       100.0
+[COST] w_box_rp:      50.0
+[COST] w_terminal:    5.0  (QN = w_terminal * Q)
+[COST] w_ee_approach: 8000.0
+[COST] w_torque:      0.01
+[ENV]  INITIAL_ARM_Q: DEFAULT
+[C3] Building Drake environment ...
+[C3] DOFs: n_q=14, n_v=13, n_u=7, n_x=27
+[C3] 'box_link': q[11]=x, q[12]=y
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[GS] GlobalSamplingC3MPC enabled: K=3 samples per step
+[C3] Goal: [-0.3  0. ]  |  Meshcat: http://localhost:7000
+[C3] Running simulation ...
+[GS] mode=free  k*=1/3  J_k*=275797.24  dEE=0.669m  switches=0
+  t=0.00s | ee=(0.347, -0.600, 0.047) | obj=(0.000, 0.000, 0.050) | |u|=18.67 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=274013.11  dEE=0.670m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273117.24  dEE=0.670m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273009.88  dEE=0.671m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272928.02  dEE=0.672m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272864.62  dEE=0.673m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277903.40  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272758.12  dEE=0.676m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272700.65  dEE=0.678m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272632.47  dEE=0.680m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274088.30  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273698.68  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273213.11  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272879.58  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272696.84  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272627.82  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272627.40  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272684.24  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278849.97  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278964.02  dEE=0.685m  switches=0
+[GS-table] step=20
+  k=0 (current           ) J=289324.80  q_seed_norm=4.792  feasible=Y
+  k=1 (proxy             ) J=278964.02  q_seed_norm=5.436  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=284275.93  q_seed_norm=5.538  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=278863.48  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278750.73  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278631.65  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278506.90  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278377.59  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278244.53  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=278107.74  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277966.57  dEE=0.685m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277820.26  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277668.20  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277510.05  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277345.66  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=277175.01  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=276998.20  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=276815.43  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=276627.02  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=276433.40  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=276235.15  dEE=0.684m  switches=0
+[GS] mode=free  k*=1/3  J_k*=276033.02  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=275827.94  dEE=0.683m  switches=0
+[GS-table] step=40
+  k=0 (current           ) J=290746.18  q_seed_norm=4.799  feasible=Y
+  k=1 (proxy             ) J=275827.94  q_seed_norm=5.462  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=279583.04  q_seed_norm=5.569  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=275621.10  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=275413.91  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=275208.12  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=275005.82  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274809.48  dEE=0.683m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274621.97  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274446.62  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274287.12  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274147.47  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274031.82  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273944.12  dEE=0.682m  switches=0
+  t=0.50s | ee=(0.349, -0.613, 0.025) | obj=(0.000, 0.000, 0.050) | |u|=16.57 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=273887.73  dEE=0.682m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273864.86  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273875.86  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273918.67  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273988.29  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274076.72  dEE=0.681m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274173.43  dEE=0.680m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274266.41  dEE=0.680m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274343.66  dEE=0.680m  switches=0
+[GS-table] step=60
+  k=0 (current           ) J=292761.40  q_seed_norm=4.832  feasible=Y
+  k=1 (proxy             ) J=274343.66  q_seed_norm=5.543  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=280219.22  q_seed_norm=5.659  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=274395.00  dEE=0.680m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274413.42  dEE=0.680m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274395.95  dEE=0.679m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274343.66  dEE=0.679m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274260.85  dEE=0.679m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274153.94  dEE=0.679m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274030.12  dEE=0.678m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273896.44  dEE=0.678m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273759.07  dEE=0.678m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273623.10  dEE=0.678m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273492.56  dEE=0.678m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273370.61  dEE=0.677m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273259.80  dEE=0.677m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273162.30  dEE=0.677m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273080.15  dEE=0.677m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273015.38  dEE=0.676m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272970.12  dEE=0.676m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272946.64  dEE=0.676m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272947.39  dEE=0.676m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272974.96  dEE=0.675m  switches=0
+[GS-table] step=80
+  k=0 (current           ) J=294214.82  q_seed_norm=4.889  feasible=Y
+  k=1 (proxy             ) J=272974.96  q_seed_norm=5.656  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=276382.34  q_seed_norm=5.780  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=273032.04  dEE=0.675m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273121.43  dEE=0.675m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273245.87  dEE=0.675m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273407.37  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273608.34  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273848.66  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274123.89  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=274429.77  dEE=0.673m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273541.35  dEE=0.673m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273251.61  dEE=0.673m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273133.81  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=273030.55  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272940.83  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272859.97  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272782.89  dEE=0.674m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272704.67  dEE=0.673m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272620.95  dEE=0.673m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272528.65  dEE=0.672m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272426.24  dEE=0.672m  switches=0
+[GS] mode=free  k*=1/3  J_k*=272313.73  dEE=0.671m  switches=0
+[GS-table] step=100
+  k=0 (current           ) J=291235.98  q_seed_norm=4.923  feasible=Y
+  k=1 (proxy             ) J=272313.73  q_seed_norm=5.807  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=277750.92  q_seed_norm=5.944  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=272192.14  dEE=0.669m  switches=0
+  t=1.00s | ee=(0.411, -0.564, 0.053) | obj=(0.000, 0.000, 0.050) | |u|=17.32 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=272062.87  dEE=0.668m  switches=0
+[GS] mode=free  k*=1/3  J_k*=271927.00  dEE=0.666m  switches=0
+[GS] mode=free  k*=1/3  J_k*=271784.94  dEE=0.664m  switches=0
+[GS] mode=free  k*=1/3  J_k*=271636.26  dEE=0.662m  switches=0
+[GS] mode=free  k*=1/3  J_k*=271479.81  dEE=0.660m  switches=0
+[GS] mode=free  k*=1/3  J_k*=271313.97  dEE=0.658m  switches=0
+[GS] mode=free  k*=1/3  J_k*=271136.92  dEE=0.655m  switches=0
+[GS] mode=free  k*=1/3  J_k*=270949.60  dEE=0.652m  switches=0
+[GS] mode=free  k*=1/3  J_k*=270583.66  dEE=0.649m  switches=0
+[GS] mode=free  k*=1/3  J_k*=270359.77  dEE=0.646m  switches=0
+[GS] mode=free  k*=1/3  J_k*=270131.45  dEE=0.643m  switches=0
+[GS] mode=free  k*=1/3  J_k*=269886.81  dEE=0.640m  switches=0
+[GS] mode=free  k*=1/3  J_k*=269624.96  dEE=0.636m  switches=0
+[GS] mode=free  k*=1/3  J_k*=269340.66  dEE=0.632m  switches=0
+[GS] mode=free  k*=1/3  J_k*=269035.31  dEE=0.628m  switches=0
+[GS] mode=free  k*=1/3  J_k*=268709.18  dEE=0.624m  switches=0
+[GS] mode=free  k*=1/3  J_k*=268362.19  dEE=0.620m  switches=0
+[GS] mode=free  k*=1/3  J_k*=267994.26  dEE=0.615m  switches=0
+[GS] mode=free  k*=1/3  J_k*=267605.46  dEE=0.610m  switches=0
+[GS-table] step=120
+  k=0 (current           ) J=277565.16  q_seed_norm=5.004  feasible=Y
+  k=1 (proxy             ) J=267605.46  q_seed_norm=5.896  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=271550.07  q_seed_norm=6.026  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=267196.13  dEE=0.605m  switches=0
+[GS] mode=free  k*=1/3  J_k*=266766.93  dEE=0.600m  switches=0
+[GS] mode=free  k*=1/3  J_k*=266318.92  dEE=0.595m  switches=0
+[GS] mode=free  k*=1/3  J_k*=265853.60  dEE=0.589m  switches=0
+[GS] mode=free  k*=1/3  J_k*=265372.58  dEE=0.583m  switches=0
+[GS] mode=free  k*=1/3  J_k*=264874.32  dEE=0.576m  switches=0
+[GS] mode=free  k*=1/3  J_k*=264362.29  dEE=0.569m  switches=0
+[GS] mode=free  k*=1/3  J_k*=263840.90  dEE=0.562m  switches=0
+[GS] mode=free  k*=1/3  J_k*=263315.32  dEE=0.555m  switches=0
+[GS] mode=free  k*=1/3  J_k*=262793.10  dEE=0.547m  switches=0
+[GS] mode=free  k*=1/3  J_k*=262281.27  dEE=0.539m  switches=0
+[GS] mode=free  k*=1/3  J_k*=261789.04  dEE=0.530m  switches=0
+[GS] mode=free  k*=1/3  J_k*=261316.52  dEE=0.521m  switches=0
+[GS] mode=free  k*=1/3  J_k*=260888.41  dEE=0.512m  switches=0
+[GS] mode=free  k*=1/3  J_k*=260501.90  dEE=0.503m  switches=0
+[GS] mode=free  k*=1/3  J_k*=260173.14  dEE=0.493m  switches=0
+[GS] mode=free  k*=1/3  J_k*=259927.37  dEE=0.483m  switches=0
+[GS] mode=free  k*=1/3  J_k*=259788.68  dEE=0.473m  switches=0
+[GS] mode=free  k*=1/3  J_k*=259780.04  dEE=0.463m  switches=0
+[EErel] along_push=-0.420m (neg=correct)  perp=0.261m  ee_to_box=0.494m  stage=1  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.367m  effective=[0.18 0.   0.05]
+[C3] step=421 n_c=0  |u[0]|=20.761 Nm
+[GS] mode=rich  k*=0/3  J_k*=258410.08  dEE=0.000m  switches=1
+[GS-table] step=140
+  k=0 (current           ) J=258410.08  q_seed_norm=5.356  feasible=Y  ← WIN
+  k=1 (proxy             ) J=262143.16  q_seed_norm=5.950  feasible=Y
+  k=2 (circle 90°        ) J=264929.53  q_seed_norm=6.039  feasible=Y
+[EErel] along_push=-0.412m (neg=correct)  perp=0.254m  ee_to_box=0.484m  stage=1  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.357m  effective=[0.18 0.   0.05]
+[C3] step=425 n_c=0  |u[0]|=20.568 Nm
+[GS] mode=rich  k*=0/3  J_k*=258145.07  dEE=0.000m  switches=1
+[EErel] along_push=-0.404m (neg=correct)  perp=0.248m  ee_to_box=0.475m  stage=1  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.347m  effective=[0.18 0.   0.05]
+[C3] step=429 n_c=0  |u[0]|=20.627 Nm
+[GS] mode=rich  k*=0/3  J_k*=257882.92  dEE=0.000m  switches=1
+[GS] mode=free  k*=1/3  J_k*=79522.63  dEE=0.423m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78774.37  dEE=0.415m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78273.98  dEE=0.407m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77864.65  dEE=0.401m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87525.49  dEE=0.395m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86759.59  dEE=0.390m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86280.04  dEE=0.386m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85947.95  dEE=0.383m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85666.91  dEE=0.380m  switches=2
+  t=1.50s | ee=(0.355, -0.228, 0.136) | obj=(0.000, 0.000, 0.050) | |u|=25.30 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=85562.02  dEE=0.378m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85518.26  dEE=0.376m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85581.10  dEE=0.375m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85613.29  dEE=0.374m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85787.54  dEE=0.374m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86007.48  dEE=0.374m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86263.85  dEE=0.374m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86525.30  dEE=0.375m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86825.72  dEE=0.376m  switches=2
+[GS-table] step=160
+  k=0 (current           ) J=260298.99  q_seed_norm=5.268  feasible=Y
+  k=1 (proxy             ) J=86825.72  q_seed_norm=5.520  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=243897.55  q_seed_norm=5.584  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=87098.39  dEE=0.376m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87413.56  dEE=0.378m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87680.19  dEE=0.379m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87986.44  dEE=0.380m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88283.79  dEE=0.382m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88566.84  dEE=0.383m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88834.95  dEE=0.385m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89085.58  dEE=0.386m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89316.48  dEE=0.388m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89525.94  dEE=0.390m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89712.63  dEE=0.391m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90034.26  dEE=0.393m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90168.18  dEE=0.394m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90277.69  dEE=0.395m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90362.85  dEE=0.397m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90424.13  dEE=0.398m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90462.13  dEE=0.399m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90477.72  dEE=0.400m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90609.34  dEE=0.401m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90774.10  dEE=0.402m  switches=2
+[GS-table] step=180
+  k=0 (current           ) J=262630.80  q_seed_norm=5.169  feasible=Y
+  k=1 (proxy             ) J=90774.10  q_seed_norm=5.401  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=250730.31  q_seed_norm=5.473  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=90901.41  dEE=0.403m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90996.87  dEE=0.403m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91181.68  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91345.66  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91215.85  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91202.04  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91299.12  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91128.64  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=91028.54  dEE=0.404m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90960.26  dEE=0.403m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90878.33  dEE=0.403m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90784.21  dEE=0.402m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90679.23  dEE=0.402m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90564.62  dEE=0.401m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90441.59  dEE=0.401m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90311.27  dEE=0.400m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90174.71  dEE=0.399m  switches=2
+[GS] mode=free  k*=1/3  J_k*=90032.91  dEE=0.398m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89886.82  dEE=0.398m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89737.28  dEE=0.397m  switches=2
+[GS-table] step=200
+  k=0 (current           ) J=261143.47  q_seed_norm=5.163  feasible=Y
+  k=1 (proxy             ) J=89737.28  q_seed_norm=5.390  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=251011.97  q_seed_norm=5.460  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=89585.12  dEE=0.396m  switches=2
+  t=2.00s | ee=(0.324, -0.286, 0.120) | obj=(0.000, 0.000, 0.050) | |u|=18.62 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=89431.07  dEE=0.395m  switches=2
+[GS] mode=free  k*=1/3  J_k*=89275.82  dEE=0.394m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88957.77  dEE=0.393m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88801.86  dEE=0.392m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88645.82  dEE=0.392m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88308.10  dEE=0.391m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88154.58  dEE=0.390m  switches=2
+[GS] mode=free  k*=1/3  J_k*=88003.08  dEE=0.389m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87853.50  dEE=0.388m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87706.15  dEE=0.387m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87561.44  dEE=0.386m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87444.41  dEE=0.386m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87305.54  dEE=0.385m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87169.17  dEE=0.384m  switches=2
+[GS] mode=free  k*=1/3  J_k*=87044.55  dEE=0.383m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86905.66  dEE=0.383m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86778.67  dEE=0.382m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86654.97  dEE=0.381m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86534.60  dEE=0.380m  switches=2
+[GS-table] step=220
+  k=0 (current           ) J=254729.62  q_seed_norm=5.162  feasible=Y
+  k=1 (proxy             ) J=86534.60  q_seed_norm=5.373  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=240938.08  q_seed_norm=5.437  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=86417.50  dEE=0.380m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86303.56  dEE=0.379m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86193.00  dEE=0.378m  switches=2
+[GS] mode=free  k*=1/3  J_k*=86085.81  dEE=0.378m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85971.10  dEE=0.377m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85881.03  dEE=0.377m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85783.46  dEE=0.376m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85688.84  dEE=0.375m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85611.27  dEE=0.375m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85508.25  dEE=0.374m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85422.09  dEE=0.374m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85405.43  dEE=0.373m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85322.18  dEE=0.373m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85240.61  dEE=0.372m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85099.80  dEE=0.372m  switches=2
+[GS] mode=free  k*=1/3  J_k*=85025.31  dEE=0.371m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84953.46  dEE=0.371m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84933.97  dEE=0.371m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84863.67  dEE=0.370m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84794.67  dEE=0.370m  switches=2
+[GS-table] step=240
+  k=0 (current           ) J=254009.37  q_seed_norm=5.139  feasible=Y
+  k=1 (proxy             ) J=84794.67  q_seed_norm=5.342  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=239934.98  q_seed_norm=5.401  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=84727.41  dEE=0.370m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84661.69  dEE=0.369m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84597.37  dEE=0.369m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84534.31  dEE=0.368m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84443.06  dEE=0.368m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84384.92  dEE=0.368m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84328.22  dEE=0.367m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84272.55  dEE=0.367m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84217.88  dEE=0.367m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84164.17  dEE=0.367m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84111.30  dEE=0.366m  switches=2
+  t=2.50s | ee=(0.321, -0.247, 0.112) | obj=(-0.000, -0.000, 0.050) | |u|=20.33 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=84071.57  dEE=0.366m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84019.00  dEE=0.366m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83995.80  dEE=0.365m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83935.39  dEE=0.365m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83884.69  dEE=0.365m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83834.39  dEE=0.365m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83784.27  dEE=0.364m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83734.29  dEE=0.364m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83684.44  dEE=0.364m  switches=2
+[GS-table] step=260
+  k=0 (current           ) J=253506.14  q_seed_norm=5.101  feasible=Y
+  k=1 (proxy             ) J=83684.44  q_seed_norm=5.301  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=244283.03  q_seed_norm=5.356  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=83634.65  dEE=0.364m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83584.90  dEE=0.363m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83534.79  dEE=0.363m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83485.33  dEE=0.363m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83435.39  dEE=0.363m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83385.34  dEE=0.362m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83335.13  dEE=0.362m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83306.61  dEE=0.362m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83255.99  dEE=0.361m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83183.00  dEE=0.361m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83131.76  dEE=0.361m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83080.20  dEE=0.361m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83028.30  dEE=0.360m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82976.05  dEE=0.360m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82923.40  dEE=0.360m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82870.29  dEE=0.360m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82816.79  dEE=0.359m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82815.59  dEE=0.359m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82707.65  dEE=0.359m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82739.24  dEE=0.359m  switches=2
+[GS-table] step=280
+  k=0 (current           ) J=249860.08  q_seed_norm=5.051  feasible=Y
+  k=1 (proxy             ) J=82739.24  q_seed_norm=5.248  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=242634.05  q_seed_norm=5.299  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=82883.49  dEE=0.358m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82586.02  dEE=0.358m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82491.42  dEE=0.358m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82511.78  dEE=0.357m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82436.10  dEE=0.357m  switches=2
+[GS] mode=free  k*=1/3  J_k*=84498.55  dEE=0.357m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82374.92  dEE=0.357m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82182.36  dEE=0.356m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82230.02  dEE=0.356m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82218.47  dEE=0.356m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83085.84  dEE=0.355m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82053.77  dEE=0.355m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81990.10  dEE=0.355m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83112.15  dEE=0.354m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81857.35  dEE=0.354m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81821.79  dEE=0.354m  switches=2
+[GS] mode=free  k*=1/3  J_k*=83230.89  dEE=0.353m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81648.07  dEE=0.353m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81659.26  dEE=0.353m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81458.04  dEE=0.352m  switches=2
+[GS-table] step=300
+  k=0 (current           ) J=250110.36  q_seed_norm=4.984  feasible=Y
+  k=1 (proxy             ) J=81458.04  q_seed_norm=5.176  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=237260.11  q_seed_norm=5.223  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=82484.66  dEE=0.352m  switches=2
+  t=3.00s | ee=(0.322, -0.223, 0.096) | obj=(-0.000, 0.000, 0.050) | |u|=21.68 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=82340.22  dEE=0.352m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81282.80  dEE=0.351m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81217.26  dEE=0.351m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81236.33  dEE=0.351m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82602.63  dEE=0.350m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81006.48  dEE=0.350m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80968.57  dEE=0.349m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80860.74  dEE=0.349m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80807.35  dEE=0.349m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80883.78  dEE=0.348m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82335.41  dEE=0.348m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81354.56  dEE=0.347m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80565.24  dEE=0.347m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80455.60  dEE=0.347m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80433.27  dEE=0.346m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80518.49  dEE=0.346m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80213.57  dEE=0.345m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80174.73  dEE=0.345m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80071.95  dEE=0.344m  switches=2
+[GS-table] step=320
+  k=0 (current           ) J=263138.54  q_seed_norm=4.882  feasible=Y
+  k=1 (proxy             ) J=80071.95  q_seed_norm=5.064  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=240159.73  q_seed_norm=5.105  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=79910.91  dEE=0.344m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80427.48  dEE=0.343m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79769.85  dEE=0.343m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79627.92  dEE=0.342m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80286.81  dEE=0.342m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79510.90  dEE=0.341m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79357.99  dEE=0.341m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80598.52  dEE=0.340m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79178.29  dEE=0.340m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79053.99  dEE=0.339m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78914.40  dEE=0.338m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78828.51  dEE=0.337m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78735.19  dEE=0.337m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80455.42  dEE=0.336m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79048.53  dEE=0.335m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79549.88  dEE=0.334m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78171.18  dEE=0.333m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78151.41  dEE=0.332m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78098.58  dEE=0.332m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77856.82  dEE=0.330m  switches=2
+[GS-table] step=340
+  k=0 (current           ) J=253468.29  q_seed_norm=4.715  feasible=Y
+  k=1 (proxy             ) J=77856.82  q_seed_norm=4.878  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=204016.72  q_seed_norm=4.911  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=77732.06  dEE=0.329m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77579.00  dEE=0.328m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78158.18  dEE=0.327m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78080.56  dEE=0.325m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77692.35  dEE=0.324m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79188.82  dEE=0.322m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79012.94  dEE=0.321m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78130.89  dEE=0.319m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77073.09  dEE=0.318m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78298.26  dEE=0.317m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77461.71  dEE=0.316m  switches=2
+  t=3.50s | ee=(0.315, -0.172, 0.099) | obj=(0.000, 0.000, 0.050) | |u|=18.92 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=78381.21  dEE=0.315m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77948.70  dEE=0.314m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76607.95  dEE=0.313m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76542.83  dEE=0.312m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76523.78  dEE=0.311m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77540.32  dEE=0.310m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77504.19  dEE=0.309m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76400.97  dEE=0.309m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76557.82  dEE=0.308m  switches=2
+[GS-table] step=360
+  k=0 (current           ) J=256910.06  q_seed_norm=4.653  feasible=Y
+  k=1 (proxy             ) J=76557.82  q_seed_norm=4.782  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=249051.68  q_seed_norm=4.811  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=76436.91  dEE=0.307m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76383.25  dEE=0.307m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76389.88  dEE=0.306m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76384.74  dEE=0.305m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77714.11  dEE=0.305m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77447.05  dEE=0.304m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76529.71  dEE=0.304m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76513.55  dEE=0.303m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76569.10  dEE=0.303m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76685.97  dEE=0.303m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76559.07  dEE=0.302m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76676.52  dEE=0.302m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76738.15  dEE=0.302m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76860.85  dEE=0.301m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76830.35  dEE=0.301m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76952.56  dEE=0.301m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77027.55  dEE=0.300m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77034.13  dEE=0.300m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77149.67  dEE=0.300m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77267.18  dEE=0.300m  switches=2
+[GS-table] step=380
+  k=0 (current           ) J=256150.17  q_seed_norm=4.605  feasible=Y
+  k=1 (proxy             ) J=77267.18  q_seed_norm=4.685  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=259275.18  q_seed_norm=4.714  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=77254.65  dEE=0.300m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77271.61  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77437.41  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77536.97  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77595.12  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77695.34  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77777.27  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77929.74  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78909.24  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77992.93  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77984.31  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78130.55  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78280.90  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78357.19  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78403.02  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79382.50  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78646.29  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78614.23  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79611.56  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78679.39  dEE=0.298m  switches=2
+[GS-table] step=400
+  k=0 (current           ) J=256429.70  q_seed_norm=4.556  feasible=Y
+  k=1 (proxy             ) J=78679.39  q_seed_norm=4.594  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=263851.61  q_seed_norm=4.624  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=78963.25  dEE=0.298m  switches=2
+  t=4.00s | ee=(0.267, -0.204, 0.150) | obj=(0.000, 0.000, 0.050) | |u|=19.25 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=79838.67  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78946.72  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79094.61  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79069.83  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79093.44  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79239.09  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79305.02  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79292.25  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79310.46  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79391.27  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79443.46  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79529.36  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79605.82  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79599.93  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79722.65  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81266.78  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79663.21  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79732.54  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79863.13  dEE=0.299m  switches=2
+[GS-table] step=420
+  k=0 (current           ) J=259216.98  q_seed_norm=4.514  feasible=Y
+  k=1 (proxy             ) J=79863.13  q_seed_norm=4.521  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=268923.16  q_seed_norm=4.552  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=79964.14  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79930.73  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81909.05  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79967.37  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79950.11  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80092.23  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80804.32  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=82538.60  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80026.28  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79888.53  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79881.68  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79812.21  dEE=0.299m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79765.55  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79679.25  dEE=0.298m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79550.40  dEE=0.297m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79464.96  dEE=0.297m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79423.96  dEE=0.297m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79295.76  dEE=0.296m  switches=2
+[GS] mode=free  k*=1/3  J_k*=81440.30  dEE=0.296m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79420.15  dEE=0.296m  switches=2
+[GS-table] step=440
+  k=0 (current           ) J=261093.69  q_seed_norm=4.488  feasible=Y
+  k=1 (proxy             ) J=79420.15  q_seed_norm=4.477  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=270673.05  q_seed_norm=4.507  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=79398.22  dEE=0.296m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79185.25  dEE=0.295m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79240.81  dEE=0.295m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79283.01  dEE=0.295m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79992.47  dEE=0.295m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79167.36  dEE=0.295m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79839.47  dEE=0.295m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79007.16  dEE=0.294m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78881.87  dEE=0.294m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78856.27  dEE=0.294m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78745.38  dEE=0.293m  switches=2
+  t=4.50s | ee=(0.233, -0.229, 0.168) | obj=(-0.000, -0.000, 0.050) | |u|=18.59 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=78858.95  dEE=0.293m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78677.09  dEE=0.293m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78820.20  dEE=0.293m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78742.00  dEE=0.293m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80482.44  dEE=0.292m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78634.89  dEE=0.292m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80592.84  dEE=0.292m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79311.78  dEE=0.292m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78444.31  dEE=0.291m  switches=2
+[GS-table] step=460
+  k=0 (current           ) J=259428.11  q_seed_norm=4.471  feasible=Y
+  k=1 (proxy             ) J=78444.31  q_seed_norm=4.448  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=268455.89  q_seed_norm=4.478  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=78532.39  dEE=0.291m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79688.66  dEE=0.291m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78243.43  dEE=0.291m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78282.78  dEE=0.291m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78206.63  dEE=0.290m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78341.47  dEE=0.290m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78244.51  dEE=0.290m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78070.99  dEE=0.290m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78217.33  dEE=0.289m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78216.27  dEE=0.289m  switches=2
+[GS] mode=free  k*=1/3  J_k*=80314.59  dEE=0.289m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77974.36  dEE=0.289m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77942.71  dEE=0.289m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77918.89  dEE=0.288m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77946.05  dEE=0.288m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77973.65  dEE=0.288m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77916.96  dEE=0.288m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77727.57  dEE=0.288m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79518.11  dEE=0.287m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77594.55  dEE=0.287m  switches=2
+[GS-table] step=480
+  k=0 (current           ) J=250077.08  q_seed_norm=4.459  feasible=Y
+  k=1 (proxy             ) J=77594.55  q_seed_norm=4.427  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=258922.69  q_seed_norm=4.457  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=77678.78  dEE=0.287m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77692.25  dEE=0.287m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79980.82  dEE=0.287m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78296.03  dEE=0.286m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77627.36  dEE=0.286m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77570.73  dEE=0.286m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77458.80  dEE=0.286m  switches=2
+[GS] mode=free  k*=1/3  J_k*=79016.83  dEE=0.286m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77463.47  dEE=0.286m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77487.99  dEE=0.285m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78715.10  dEE=0.285m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78615.22  dEE=0.285m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77273.82  dEE=0.285m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77348.26  dEE=0.285m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78200.93  dEE=0.284m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77310.50  dEE=0.284m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78390.56  dEE=0.284m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77073.24  dEE=0.284m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77220.29  dEE=0.284m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77827.32  dEE=0.284m  switches=2
+[GS-table] step=500
+  k=0 (current           ) J=256238.75  q_seed_norm=4.449  feasible=Y
+  k=1 (proxy             ) J=77827.32  q_seed_norm=4.409  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=264497.33  q_seed_norm=4.439  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=76976.92  dEE=0.283m  switches=2
+  t=5.00s | ee=(0.218, -0.229, 0.179) | obj=(-0.000, -0.000, 0.050) | |u|=18.96 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=77144.67  dEE=0.283m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77246.96  dEE=0.283m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78152.13  dEE=0.283m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76857.90  dEE=0.283m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76960.93  dEE=0.283m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76974.38  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76952.59  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78785.70  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76714.05  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76874.27  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77352.15  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76793.04  dEE=0.282m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76776.24  dEE=0.281m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76748.54  dEE=0.281m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76691.70  dEE=0.281m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77388.77  dEE=0.281m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78561.20  dEE=0.281m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76466.56  dEE=0.281m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76618.00  dEE=0.280m  switches=2
+[GS-table] step=520
+  k=0 (current           ) J=258207.65  q_seed_norm=4.441  feasible=Y
+  k=1 (proxy             ) J=76618.00  q_seed_norm=4.394  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=264549.92  q_seed_norm=4.423  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=76624.87  dEE=0.280m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76617.55  dEE=0.280m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77722.51  dEE=0.280m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76538.17  dEE=0.280m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78626.66  dEE=0.280m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77793.04  dEE=0.280m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76425.87  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76442.11  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76183.65  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77922.49  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76331.52  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76296.57  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77805.12  dEE=0.279m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76310.14  dEE=0.278m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77282.85  dEE=0.278m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77620.90  dEE=0.278m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77284.80  dEE=0.278m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75995.07  dEE=0.278m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77901.73  dEE=0.278m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78096.75  dEE=0.278m  switches=2
+[GS-table] step=540
+  k=0 (current           ) J=257044.67  q_seed_norm=4.433  feasible=Y
+  k=1 (proxy             ) J=78096.75  q_seed_norm=4.381  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=263366.80  q_seed_norm=4.410  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=77593.46  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75917.29  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75979.20  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78128.21  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=78568.60  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76706.51  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75762.59  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75805.99  dEE=0.277m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76657.48  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75917.63  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75960.00  dEE=0.276m  switches=2
+  t=5.50s | ee=(0.207, -0.227, 0.187) | obj=(0.000, 0.000, 0.050) | |u|=19.26 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=75860.25  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75794.24  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76675.81  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75704.34  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76621.66  dEE=0.276m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77503.67  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76566.02  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75681.97  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76704.20  dEE=0.275m  switches=2
+[GS-table] step=560
+  k=0 (current           ) J=256678.35  q_seed_norm=4.427  feasible=Y
+  k=1 (proxy             ) J=76704.20  q_seed_norm=4.369  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=263580.31  q_seed_norm=4.398  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=76837.69  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75564.94  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76987.79  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75622.68  dEE=0.275m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75646.07  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76095.82  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76237.43  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75381.55  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75490.71  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76435.97  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75547.40  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75490.23  dEE=0.274m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75399.73  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75436.37  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75381.32  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75459.12  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75426.44  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75418.53  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75360.74  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75386.32  dEE=0.273m  switches=2
+[GS-table] step=580
+  k=0 (current           ) J=262851.46  q_seed_norm=4.421  feasible=Y
+  k=1 (proxy             ) J=75386.32  q_seed_norm=4.359  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=270462.89  q_seed_norm=4.388  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=77138.69  dEE=0.273m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75331.15  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75291.22  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76494.62  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75250.44  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75194.99  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75282.04  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75173.74  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75106.72  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76233.06  dEE=0.272m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76261.52  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75993.02  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76583.30  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75090.23  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75096.13  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75108.39  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76019.46  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74958.78  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75092.56  dEE=0.271m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75113.95  dEE=0.271m  switches=2
+[GS-table] step=600
+  k=0 (current           ) J=259180.10  q_seed_norm=4.416  feasible=Y
+  k=1 (proxy             ) J=75113.95  q_seed_norm=4.350  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=264155.19  q_seed_norm=4.378  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=74931.57  dEE=0.270m  switches=2
+  t=6.00s | ee=(0.199, -0.226, 0.192) | obj=(-0.000, 0.000, 0.050) | |u|=19.61 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=74937.44  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76600.96  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74936.24  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74951.11  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74847.88  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74887.77  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74811.47  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75846.72  dEE=0.270m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74854.08  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74819.77  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74772.25  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74798.43  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76790.43  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75405.65  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74754.22  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74815.26  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74710.25  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=77051.93  dEE=0.269m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76214.83  dEE=0.269m  switches=2
+[GS-table] step=620
+  k=0 (current           ) J=257369.62  q_seed_norm=4.412  feasible=Y
+  k=1 (proxy             ) J=76214.83  q_seed_norm=4.342  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=263016.93  q_seed_norm=4.370  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=74694.57  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74613.36  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76878.98  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74665.69  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74645.86  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74531.34  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74620.19  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74584.85  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74468.13  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74576.97  dEE=0.268m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74546.62  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75192.19  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74463.52  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74550.44  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74418.99  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74503.30  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74529.38  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74515.33  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76160.59  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74352.12  dEE=0.267m  switches=2
+[GS-table] step=640
+  k=0 (current           ) J=248397.03  q_seed_norm=4.408  feasible=Y
+  k=1 (proxy             ) J=74352.12  q_seed_norm=4.334  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=255234.92  q_seed_norm=4.362  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=74447.35  dEE=0.267m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74335.68  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74469.63  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74294.81  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74243.36  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74343.66  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74356.67  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74340.57  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76194.64  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74175.36  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74357.94  dEE=0.266m  switches=2
+  t=6.50s | ee=(0.192, -0.224, 0.196) | obj=(0.000, -0.000, 0.050) | |u|=19.87 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=74140.99  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74212.92  dEE=0.266m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74222.00  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74344.06  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74306.46  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74065.97  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75939.01  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74119.43  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74120.78  dEE=0.265m  switches=2
+[GS-table] step=660
+  k=0 (current           ) J=249421.23  q_seed_norm=4.404  feasible=Y
+  k=1 (proxy             ) J=74120.78  q_seed_norm=4.327  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=256062.24  q_seed_norm=4.355  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=75203.82  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74191.47  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74186.36  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74144.67  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74142.63  dEE=0.265m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74063.53  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74158.01  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74045.86  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75896.41  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75580.66  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75724.98  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73979.84  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73939.96  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74784.23  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73985.42  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76035.87  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74463.56  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74024.14  dEE=0.264m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73937.62  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74006.93  dEE=0.263m  switches=2
+[GS-table] step=680
+  k=0 (current           ) J=257432.81  q_seed_norm=4.400  feasible=Y
+  k=1 (proxy             ) J=74006.93  q_seed_norm=4.321  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=262341.87  q_seed_norm=4.349  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=73854.86  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73856.70  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73979.46  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74047.19  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74002.05  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76278.86  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73911.39  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73930.07  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76275.06  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73975.21  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73891.77  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73951.47  dEE=0.263m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73928.21  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74716.38  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73672.99  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73756.13  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73820.84  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73733.82  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73799.12  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73738.84  dEE=0.262m  switches=2
+[GS-table] step=700
+  k=0 (current           ) J=258725.65  q_seed_norm=4.397  feasible=Y
+  k=1 (proxy             ) J=73738.84  q_seed_norm=4.315  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=265047.09  q_seed_norm=4.343  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=73709.07  dEE=0.262m  switches=2
+  t=7.00s | ee=(0.187, -0.223, 0.199) | obj=(0.000, -0.000, 0.050) | |u|=20.07 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=73631.59  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73619.31  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73727.13  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73746.88  dEE=0.262m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73690.98  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73556.66  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75053.61  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73710.22  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73693.12  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74831.40  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75771.19  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73696.73  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73620.55  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73740.93  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75742.09  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75543.06  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73613.53  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=76025.93  dEE=0.261m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73417.73  dEE=0.260m  switches=2
+[GS-table] step=720
+  k=0 (current           ) J=248024.66  q_seed_norm=4.394  feasible=Y
+  k=1 (proxy             ) J=73417.73  q_seed_norm=4.310  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=254119.65  q_seed_norm=4.337  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=73601.36  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73626.19  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73528.59  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73479.78  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73497.27  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74787.32  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73440.71  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75609.96  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74092.31  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73539.81  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73474.66  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75091.62  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73374.03  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73344.78  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73377.12  dEE=0.260m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73456.83  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73447.45  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73337.17  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74978.98  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75020.14  dEE=0.259m  switches=2
+[GS-table] step=740
+  k=0 (current           ) J=257956.89  q_seed_norm=4.392  feasible=Y
+  k=1 (proxy             ) J=75020.14  q_seed_norm=4.305  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=262381.99  q_seed_norm=4.332  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=73457.09  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73474.12  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73764.83  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73994.62  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73449.68  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74629.59  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73269.49  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73313.60  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73302.44  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73194.04  dEE=0.259m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75226.57  dEE=0.259m  switches=2
+  t=7.50s | ee=(0.183, -0.222, 0.201) | obj=(0.000, 0.000, 0.050) | |u|=20.31 Nm | goal_dist=0.300 m
+[GS] mode=free  k*=1/3  J_k*=73328.14  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73367.02  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73191.69  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73197.17  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73346.26  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73361.66  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73328.18  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74926.26  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74844.09  dEE=0.258m  switches=2
+[GS-table] step=760
+  k=0 (current           ) J=257890.15  q_seed_norm=4.389  feasible=Y
+  k=1 (proxy             ) J=74844.09  q_seed_norm=4.300  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=262187.70  q_seed_norm=4.327  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=74056.42  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73843.74  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73230.46  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73266.06  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73090.75  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73236.44  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73172.51  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75180.55  dEE=0.258m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73262.53  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=75326.25  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73068.31  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74483.56  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73116.13  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73140.71  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73197.11  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73878.09  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73106.30  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73146.46  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73128.38  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73163.89  dEE=0.257m  switches=2
+[GS-table] step=780
+  k=0 (current           ) J=263216.19  q_seed_norm=4.387  feasible=Y
+  k=1 (proxy             ) J=73163.89  q_seed_norm=4.296  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=268971.70  q_seed_norm=4.323  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=74074.56  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74579.27  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73679.00  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73063.48  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73339.32  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72936.25  dEE=0.257m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72993.29  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73097.18  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74186.30  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72998.17  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73015.13  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74650.57  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73887.78  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=73577.43  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74323.85  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72831.79  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72975.67  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=74807.86  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72954.13  dEE=0.256m  switches=2
+[GS] mode=free  k*=1/3  J_k*=72941.28  dEE=0.256m  switches=2
+[GS-table] step=800
+  k=0 (current           ) J=249621.81  q_seed_norm=4.385  feasible=Y
+  k=1 (proxy             ) J=72941.28  q_seed_norm=4.291  feasible=Y  ← WIN
+  k=2 (circle 90°        ) J=255174.31  q_seed_norm=4.319  feasible=Y
+[GS] mode=free  k*=1/3  J_k*=72908.21  dEE=0.256m  switches=2
+  t=8.00s | ee=(0.179, -0.221, 0.203) | obj=(0.000, -0.000, 0.050) | |u|=20.43 Nm | goal_dist=0.300 m
+[C3] Simulation complete.
+[RESULT] method=global-sampling  final_obj_xy=(0.0000, 0.0000)  goal_dist=0.3000m  success=NO
+[VideoRecorder] Rendering 161 frames → results/pushing.mp4 ...
+[VideoRecorder] Done → results/pushing.mp4  (161 frames, 30 fps)
