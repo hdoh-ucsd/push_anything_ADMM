@@ -91,8 +91,7 @@ push_anything_ADMM/
 │   ├── lcs_formulator.py         # Drake plant → A, B_ctrl, D, d, J_n, J_t, φ, μ
 │   ├── admm_solver.py            # C3 ADMM core (z/δ/ω updates, adaptive ρ, soft comp)
 │   ├── ci_mpc_c3.py              # Active inner controller (full-horizon C3)
-│   ├── ci_mpc_c3plus.py          # Alternative MPPI-style C3+ (research alt, not wired)
-│   ├── base_mpc.py               # Rollout engine for C3+ variants only
+│   ├── ci_mpc_c3plus.py          # EXPERIMENTAL — not wired, not runnable as-is
 │   ├── task_costs.py             # QuadraticManipulationCost (Q/R/QN, 3-stage waypoint)
 │   └── sampling_c3/              # Outer sampling-C3 wrapper (Venkatesh 2025)
 ├── tests/                        # pytest: projection + sampling-C3 sub-systems

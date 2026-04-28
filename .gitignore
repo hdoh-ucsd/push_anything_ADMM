@@ -7,6 +7,7 @@ CLAUDE.md
 # Editor configs
 .vscode/
 .idea/
+.claude/
 
 # Python build outputs
 *.egg-info/
@@ -25,7 +26,6 @@ dist/
 # Milestones
 milestones/
 
-# Add a newline between the two entries
-sed -i 's|profiling/results/\.claude/|profiling/results/\n.claude/|' .gitignore
-# Verify
-tail -5 .gitignore
+# Run outputs
+results/
+profiling/results/
