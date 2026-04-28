@@ -25,5 +25,7 @@ dist/
 # Milestones
 milestones/
 
-results/
-profiling/results/.claude/
+# Add a newline between the two entries
+sed -i 's|profiling/results/\.claude/|profiling/results/\n.claude/|' .gitignore
+# Verify
+tail -5 .gitignore
