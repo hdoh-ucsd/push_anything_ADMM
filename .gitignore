@@ -26,4 +26,4 @@ dist/
 milestones/
 
 results/
-profiling/results/
+profiling/results/.claude/
