@@ -3,3 +3,27 @@ __pycache__/
 venv/
 .env
 CLAUDE.md
+
+# Editor configs
+.vscode/
+.idea/
+
+# Python build outputs
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Media artifacts
+*.mp4
+*.html
+
+# Milestones
+milestones/
+
+results/
+profiling/results/
