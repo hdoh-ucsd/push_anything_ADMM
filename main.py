@@ -13,24 +13,26 @@ Task options
 
 Flags
 -----
-    --save-video            Auto-name MP4 as results/<task>_<timestamp>.mp4
+    --save-video            Auto-name MP4 as results/<stem>.mp4
     --save-video OUT.mp4    Save to a specific path
-    --video-path            Auto-name HTML as results/<task>_<timestamp>.html
+    --video-path            Auto-name HTML as results/<stem>.html
     --video-path PATH.html  Save Meshcat replay HTML to a specific path
     --no-record             Disable both MP4 and HTML recording
+    --name BASENAME         Shared <stem> for all outputs (txt + mp4 + html)
 
 Default behavior records both MP4 and Meshcat HTML, sharing the same
-timestamp stem as the _Tee log (results/<task>_<timestamp>.txt).
+stem as the _Tee log (results/<stem>.txt). The stem is BASENAME when
+--name is given, else <task>_<timestamp>.
 
 Visualisation: Meshcat at http://127.0.0.1:7000
 
-MPC parameters (hardcoded):
-    horizon    = 8     steps  (8 × 0.03 s = 0.24 s lookahead)
-    admm_iter  = 10    ADMM iterations per control step
-    dt         = 0.03  s  planning timestep
+MPC parameters:
+    horizon    = 20    steps  (20 × 0.05 s = 1.0 s lookahead)
+    admm_iter  = 3     ADMM iterations per control step (override with --admm-iter)
+    dt         = 0.05  s  planning timestep
     dt_ctrl    = 0.01  s  real sim control rate
     torque_lim = 30    Nm
-    rho        = 1.0   ADMM penalty
+    rho        = 100   ADMM penalty (initial; adaptive every 10 iters)
 """
 import argparse
 import sys
@@ -39,7 +41,12 @@ import yaml
 import numpy as np
 import pydrake.all as ad
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q, PREPOSITIONED_ARM_Q, EE_BODY_NAME
+from sim.env_builder import (
+    build_environment,
+    INITIAL_ARM_Q,
+    EE_BODY_NAME,
+    compute_prepositioned_arm_q,
+)
 from sim.video_recorder import ExperimentRecorder
 from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
@@ -200,9 +207,23 @@ def main():
     parser.add_argument("--math-diag", action="store_true",
                         help="Print math-level solver diagnostics ([MATH.*] tags). "
                              "Zero overhead when off.")
+    parser.add_argument("--admm-iter", type=int, default=3, metavar="N",
+                        help="ADMM iterations per control step (default 3). "
+                             "Higher values let the dual variable accumulate "
+                             "before the QP-vs-cone projection re-fixes-point, "
+                             "improving friction-cone feasibility. The README "
+                             "notes adaptive-ρ fires every 10 iters, so values "
+                             "≥ 10 also enable rho adaptation. Diagnostic use; "
+                             "increases per-step solve time roughly linearly.")
     parser.add_argument("--cost-bias", action="store_true",
                         help="Enable C3 face-transition cost bias (lift/approach/push "
                              "state machine for sequential contact on correct cube face).")
+    parser.add_argument("--name", type=str, default=None, metavar="BASENAME",
+                        help="Shared basename (no extension) for all run outputs in "
+                             "results/: <BASENAME>.txt, <BASENAME>.mp4, <BASENAME>.html. "
+                             "When omitted, falls back to <task>_<timestamp>. "
+                             "Explicit --save-video PATH / --video-path PATH still "
+                             "override their respective files.")
     parser.add_argument("--sampling-c3", type=str, nargs="?",
                         const="config/sampling_c3_params.yaml", default=None,
                         metavar="PATH.yaml",
@@ -218,11 +239,19 @@ def main():
 
     task_name   = args.task
     reset_every = args.reset_every
-    init_q = PREPOSITIONED_ARM_Q if args.prepositioned else INITIAL_ARM_Q
+    # init_q is computed below, after plant_ctx is staged with the object pose.
+    # When --prepositioned, it comes from a push-direction-aware IK cascade so
+    # the cost differential alone selects c3 mode at step 1.
 
     Path("results").mkdir(exist_ok=True)
     from datetime import datetime
     run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Shared basename: --name BASENAME wins; otherwise <task>_<timestamp>.
+    if args.name is not None:
+        stem = args.name
+    else:
+        stem = f"{task_name}_{run_stamp}"
 
     # Resolve recording paths.  --no-record wins; otherwise AUTO sentinels
     # produce shared-stem filenames, "" maps to legacy default-named files,
@@ -232,20 +261,20 @@ def main():
         html_path  = None
     else:
         if args.save_video == "AUTO":
-            video_path = f"results/{task_name}_{run_stamp}.mp4"
+            video_path = f"results/{stem}.mp4"
         elif args.save_video == "":
             video_path = f"results/{task_name}.mp4"
         else:
             video_path = args.save_video
 
         if args.video_path == "AUTO":
-            html_path = f"results/{task_name}_{run_stamp}.html"
+            html_path = f"results/{stem}.html"
         elif args.video_path == "":
             html_path = f"results/{task_name}.html"
         else:
             html_path = args.video_path
 
-    _log_path = f"results/{task_name}_{run_stamp}.txt"
+    _log_path = f"results/{stem}.txt"
     _log      = open(_log_path, "w", buffering=1)
     sys.stdout = _Tee(sys.__stdout__, _log)
     print(f"[C3] Log: {_log_path}")
@@ -311,12 +340,24 @@ def main():
 
     # ------------------------------------------------------------------
     # Set initial state
+    # Stage object pose first so the prepositioned IK can see the object,
+    # then resolve init_q (IK-derived if --prepositioned, default otherwise),
+    # then set arm positions.
     # ------------------------------------------------------------------
-    plant.SetPositions(plant_ctx, panda_model, init_q)
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
         ad.RigidTransform(ad.RotationMatrix(), task_cfg["init_xyz"])
     )
+    if args.prepositioned:
+        init_q = compute_prepositioned_arm_q(
+            plant, plant_ctx, panda_model,
+            ee_frame=plant.GetFrameByName(EE_BODY_NAME),
+            obj_body=obj_body,
+            task_cfg=task_cfg,
+        )
+    else:
+        init_q = INITIAL_ARM_Q
+    plant.SetPositions(plant_ctx, panda_model, init_q)
 
     # ------------------------------------------------------------------
     # System dimensions
@@ -346,7 +387,7 @@ def main():
         horizon=20,
         dt=0.05,
         torque_limit=30.0,
-        admm_iter=3,
+        admm_iter=args.admm_iter,
         math_diag=args.math_diag,
     )
 
@@ -360,6 +401,11 @@ def main():
     if args.sampling_c3 is not None:
         _yaml_path = args.sampling_c3
         sc3_params = SamplingC3Params.from_yaml(_yaml_path)
+        # With the new IK-based --prepositioned pose, k=0 captures the
+        # ~30k alignment bonus (vs zero contact for every k>=1 at sampling
+        # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
+        # under its own cost differential. Forcing the initial mode would
+        # mask whether the pose actually does what we want.
         mpc = SamplingC3MPC(
             base_mpc=mpc,
             plant=plant,
@@ -367,7 +413,7 @@ def main():
             obj_body=obj_body,
             params=sc3_params,
             log_diag=True,
-            start_in_c3_mode=args.prepositioned,
+            start_in_c3_mode=False,
         )
         print(f"[GS] SamplingC3MPC enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "

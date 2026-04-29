@@ -26,7 +26,10 @@ def solve_ik_to_ee_pos(plant,
                        n_arm_dofs:  int,
                        max_iter:    int   = 30,
                        tol:         float = 1e-3,
-                       damping:     float = 0.05) -> Tuple[np.ndarray, float, int]:
+                       damping:     float = 0.05,
+                       q_lo:        np.ndarray | None = None,
+                       q_hi:        np.ndarray | None = None,
+                       limit_margin: float = 0.005) -> Tuple[np.ndarray, float, int]:
     """Iterated DLS IK: find q s.t. FK_ee(q) ≈ p_target.
 
     Parameters
@@ -40,6 +43,17 @@ def solve_ik_to_ee_pos(plant,
     max_iter    : DLS iteration cap
     tol         : EE-position error norm at which to early-terminate (m)
     damping     : Levenberg-Marquardt damping parameter
+    q_lo, q_hi  : (>= n_arm_dofs,) optional lower/upper joint limits. When
+                  both are supplied the arm portion of `q` is clipped to
+                  `[q_lo + limit_margin, q_hi - limit_margin]` after the
+                  initial seed copy and after each DLS step. Pass `None`
+                  (the default) to disable clipping — legacy callers see
+                  identical behaviour.
+    limit_margin : safety pad pulled in from each joint limit (rad). The
+                  default of 5 mrad is small enough not to over-constrain
+                  reachability but large enough that a downstream joint-
+                  limit safety check at ±50 mrad does not flag a freshly
+                  converged pose.
 
     Returns
     -------
@@ -51,6 +65,12 @@ def solve_ik_to_ee_pos(plant,
     q        = q_init.copy()
     err_norm = float("inf")
     iters    = 0
+
+    use_limits = (q_lo is not None) and (q_hi is not None)
+    if use_limits:
+        q_lo_eff = q_lo[:n_arm_dofs] + limit_margin
+        q_hi_eff = q_hi[:n_arm_dofs] - limit_margin
+        np.clip(q[:n_arm_dofs], q_lo_eff, q_hi_eff, out=q[:n_arm_dofs])
 
     for i in range(max_iter):
         plant.SetPositions(plant_ctx, q)
@@ -72,6 +92,8 @@ def solve_ik_to_ee_pos(plant,
             J_arm @ J_arm.T + damping ** 2 * np.eye(3), err
         )
         q[:n_arm_dofs] += dq
+        if use_limits:
+            np.clip(q[:n_arm_dofs], q_lo_eff, q_hi_eff, out=q[:n_arm_dofs])
     return q, err_norm, iters
 
 
