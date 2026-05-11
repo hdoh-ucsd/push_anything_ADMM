@@ -113,6 +113,56 @@ Closest pass during c3-mode: t=13. EE = (-26, -70, 132). Closest point on box su
 
 free-mode side, from the 8.6.5 trace receipt: across 177 free-mode loops × 20 knots = 3540 knot evaluations, the minimum signed distance from any IK-trajectory knot to the box surface is **+102.2 mm** — over four pusher-radii of clearance. **0 of 177 free-mode IK trajectories have any knot within contact-distance of the box.** This is the same stable point viewed via the wrapper's sample geometry: `kRandomOnCircle` samples sit in Finding C's stages-1/2 band (109–130 mm in the 9.1 reframe), and the IK targets that geometry faithfully. The 225 mm-displacement reading from the original 8.6.5 framing was the basis of overturned mechanism β; that interpretation is removed. The +102 mm clearance finding stands as the free-mode-side evidence of the empty-LCS stable point.
 
+## 9.3 / 9.4 fix-design and isolation outcomes
+
+Step 9's three findings were validated as structural observations but were not the binding constraint for verdict-A. The binding constraint is the joint-PD-with-grav-comp executor; see `docs/paper_alignment_plan.md` item 2.1.
+
+### α fix (9.3.3) — PARTIALLY LOAD-BEARING
+
+Commit 3e58cc6 raised `surrogate_admm_iters` from 1 to 3 (audit item 3.3). Mechanism α was reframed in step 9 as "surrogate-C3 evaluation pessimism." The α fix experimentally confirmed this:
+
+- c_C3 cost gap (proxy − current) at step 800 inverted on both wrapper-based paths
+- Mode switches collapsed
+- Empty-LCS fraction collapsed
+- Object moved for the first time (33-47mm)
+
+However, motion was NW (away from goal). Mechanism α is confirmed mechanistically real but not behaviorally sufficient. The mechanism α reframing in this doc now resolves to: **CONFIRMED MECHANISM, NOT SUFFICIENT.**
+
+### C-fix (9.3.4) — NO-CHANGE
+
+Commit 8f0b738 changed `pre_approach_3d` coefficient from 0.18 to 0.16, moving stage-1 staging target from 5mm outside Drake's contact threshold to 15mm inside.
+
+- Change applied correctly (verified via `[proxy]` log at Path D step 800: effective shifted from `[-0.194, 0.07, 0.05]` to `[-0.171, 0.05, 0.05]`)
+- NO behavioral change on either path
+- Path A: EE never enters stage-1 regime (stuck upstream of C-fix's locus)
+- Path D: EE overshoots new staging target by ~10cm, invariant to coefficient
+
+Finding C as framed was either not load-bearing or its locus is downstream of the binding constraint. The Finding C reframing in this doc now resolves to: **STRUCTURAL OBSERVATION CORRECT, NOT LOAD-BEARING UNDER CURRENT CONFIGURATION.**
+
+### kIK standalone isolation (9.4) — Scenario B + addendum
+
+Commit 0b0ee69 ran `scripts/probe_9_4_kik_reachability.py` driving the standalone kIK toward verdict-A's exact failed targets with no wrapper, no C3, no box. Both targets converged to essentially the same EE position (~(-0.016, -0.084, 0.025)) regardless of where commanded. IK reports feasible.
+
+The verdict-A reachability stall is now localized to the joint-PD-with-grav-comp executor, downstream of IK (which solves cleanly) and outside the wrapper (which the probe excluded).
+
+Path D's "10cm overshoot west of staging target" reframes as: the EE reached its PD equilibrium first, then the wrapper began commanding different targets, and the integrator wound up further west across multiple targets. Not active overshoot; residual drift across changing commands.
+
+### Torque breakdown (9.4.1) — steady-state PD equilibrium, not saturation
+
+Commit 61f064c added per-joint, per-component torque instrumentation to the probe. The headline finding:
+
+- **Saturation is rare and transient.** Only 6 saturated joint-steps total out of 5,607 (joint 5: 5 transient steps; joint 2: 1 step). At steady state every joint is unsaturated; max steady-state demand is joint 1 at 27 Nm vs torque_limit=30 Nm.
+- **The dominant transient saturator is tau_P on joint 5** during the initial overshoot. `q_err = -0.86 rad × Kp=60` produces -51.7 Nm vs the 30 Nm clip. This is the initial-transient signature, identical on both targets.
+- **Integrator is not clamped.** Integral magnitudes 0.03–0.70 vs I_max=2.0 across all joints. Why the integrator doesn't wind further despite sustained q_err of 0.054 rad on joint 1 is the open question for 9.4.2.
+
+The persistent EE-to-target offset comes from a steady-state joint-error pattern (`q_err ≈ 0.01-0.05 rad` per joint) that accumulates through FK into 7-16 cm of EE miss. The mechanism is NOT torque saturation; raising torque_limit alone would not move the steady state.
+
+### Implications for step 9 framing
+
+Findings A, B, C remain structurally correct as characterizations of the C3 / LCS / staging-geometry problem. But under the current executor configuration, the executor's steady-state equilibrium binds before any of these findings becomes load-bearing. Step 9's "combined failure model" should be amended to note that the failure model assumed an executor capable of tracking the optimizer's solutions — an assumption now known to be invalid for the verdict-A scenario.
+
+Future work on Findings A, B, C remains paper-relevant but is gated behind the executor fix.
+
 ## Backlog
 
 ### C3Solver discards per-knot λ_k
