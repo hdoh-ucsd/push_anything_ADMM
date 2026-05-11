@@ -52,6 +52,7 @@ from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
 from control.task_costs import QuadraticManipulationCost
 from control.ci_mpc_c3 import C3MPC
+from control.ci_mpc_c3plus import C3PlusMPC
 from control.sampling_c3 import SamplingC3MPC, SamplingC3Params
 
 
@@ -231,6 +232,12 @@ def main():
                              "Optional PATH = YAML config "
                              "(default: config/sampling_c3_params.yaml).\n"
                              "Cannot be combined with --cost-bias.")
+    parser.add_argument("--solver", choices=["c3", "c3plus"], default="c3",
+                        help="Inner ADMM solver. c3=Aydinoglu 2024 (default), "
+                             "c3plus=Bui 2026 with slack variable η = E x + F λ "
+                             "+ H u + c (eq. 5c) and Bui eq (12) componentwise "
+                             "δ-projection. v1 implements normal-direction "
+                             "complementarity only — friction LCS is a TODO.")
     args = parser.parse_args()
 
     if args.sampling_c3 is not None and args.cost_bias:
@@ -321,7 +328,8 @@ def main():
     # Build Drake environment
     # ------------------------------------------------------------------
     print("[C3] Building Drake environment ...")
-    diagram, plant, panda_model, _, meshcat = build_environment(task_cfg)
+    diagram, plant, panda_model, _, meshcat, plant_ad, context_ad = \
+        build_environment(task_cfg)
 
     simulator = ad.Simulator(diagram)
     context   = simulator.get_mutable_context()
@@ -372,15 +380,19 @@ def main():
     # ------------------------------------------------------------------
     # Controller pipeline
     # ------------------------------------------------------------------
-    formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body)
+    formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body,
+                               plant_ad=plant_ad, context_ad=context_ad)
     solver     = C3Solver(n_x=n_x, n_u=n_u, rho=100.0,
-                          math_diag=args.math_diag)
+                          math_diag=args.math_diag,
+                          mode=args.solver)
+    print(f"[C3] Solver mode: {args.solver}")
     quad_cost  = QuadraticManipulationCost(
         plant, EE_BODY_NAME, obj_body, task_cfg["cost"], n_x, n_u,
         math_diag=args.math_diag,
         cost_bias=args.cost_bias,
     )
-    mpc = C3MPC(
+    _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
+    mpc = _MPCClass(
         formulator=formulator,
         solver=solver,
         quadratic_cost=quad_cost,
@@ -414,6 +426,7 @@ def main():
             params=sc3_params,
             log_diag=True,
             start_in_c3_mode=False,
+            diagram=diagram,   # required if reposition_params.traj_type==kIK
         )
         print(f"[GS] SamplingC3MPC enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
