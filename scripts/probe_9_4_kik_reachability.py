@@ -20,6 +20,7 @@ Usage:
 """
 from __future__ import annotations
 
+import csv
 import os
 import sys
 from pathlib import Path
@@ -73,8 +74,16 @@ def _set_state(plant, plant_ctx, obj_body, *, arm_q, obj_xyz):
 
 def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
                 world_frame, simulator, plant_ctx, obj_body, n_u: int,
+                breakdown_csv_path: Path,
                 dt_ctrl: float = 0.01, sim_seconds: float = 8.0) -> dict:
-    """Drive tracker toward p_target for sim_seconds, return summary dict."""
+    """Drive tracker toward p_target for sim_seconds, return summary dict.
+
+    Writes a per-(step, joint) CSV of torque components to ``breakdown_csv_path``.
+    Components (per joint) are recomputed in the probe from quantities the
+    tracker exposes (``last_q_knots[:, 0]``, ``_integral``, ``_plant_ctx_ik``,
+    ``repos_params``) — no controller code is modified. The reconstruction
+    is sanity-checked against the tracker's returned ``u`` each step.
+    """
     print()
     print(f"=== {label}  p_target = ({p_target[0]:+.3f}, "
           f"{p_target[1]:+.3f}, {p_target[2]:+.3f}) ===")
@@ -92,8 +101,12 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
     sim_ctx.SetTime(0.0)
     simulator.Initialize()
 
+    Kp = float(tracker.repos_params.Kp_q)
+    Kd = float(tracker.repos_params.Kd_q)
+    Ki = float(tracker.repos_params.Ki_q)
+    torque_limit = float(tracker.repos_params.torque_limit)
+
     # Trajectory log.
-    n_q = plant.num_positions()
     ee_log: list[np.ndarray]   = []
     t_log: list[float]         = []
     dist_log: list[float]      = []
@@ -103,14 +116,47 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
     finished_first_time: float = float("nan")
     snapshot_at: list[tuple]   = []  # (t, ee, dist, |u|) at t=0..8s
 
+    # Per-joint accumulators across the run.
+    n_j = n_u  # 7 Franka arm DoFs
+    sat_count       = np.zeros(n_j, dtype=int)
+    max_abs_demand  = np.zeros(n_j)
+    max_abs_demand_at_step = np.full(n_j, -1, dtype=int)
+    max_abs_demand_components = np.zeros((n_j, 4))  # P, I, D, grav at max-demand moment
+
+    max_abs_P    = np.zeros(n_j)
+    max_abs_I    = np.zeros(n_j)
+    max_abs_D    = np.zeros(n_j)
+    max_abs_grav = np.zeros(n_j)
+
+    # Of saturated steps (per joint), how many had each component as the
+    # dominant (largest |·|) contributor.
+    dom_P    = np.zeros(n_j, dtype=int)
+    dom_I    = np.zeros(n_j, dtype=int)
+    dom_D    = np.zeros(n_j, dtype=int)
+    dom_grav = np.zeros(n_j, dtype=int)
+
     n_steps = int(round(sim_seconds / dt_ctrl))
-    next_snap = 0  # next integer second to log
+    next_snap = 0
+
+    # CSV writer: one row per (step, joint).
+    csv_fh = open(breakdown_csv_path, "w", newline="")
+    csv_w  = csv.writer(csv_fh)
+    csv_w.writerow([
+        "step", "time", "joint",
+        "q_target", "q_now", "q_err",
+        "integral", "v_now",
+        "tau_P", "tau_I", "tau_D", "tau_grav",
+        "tau_demand_pre_clip", "tau_clipped", "saturated",
+    ])
 
     for step in range(n_steps + 1):
         sim_time = step * dt_ctrl
 
         current_q = plant.GetPositions(plant_ctx).copy()
         current_v = plant.GetVelocities(plant_ctx).copy()
+
+        q_arm_now_before = current_q[:n_j].copy()
+        v_arm_now_before = current_v[:n_j].copy()
 
         u, diag = tracker.compute_torque(
             current_q=current_q,
@@ -120,9 +166,70 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
             dt_ctrl=dt_ctrl,
         )
 
-        # kIK tracker already includes grav-comp in u (see main.py:520-524).
-        plant.get_actuation_input_port().FixValue(plant_ctx, u)
+        # --- Torque-component breakdown (Option B: recompute from tracker
+        #     read-only state) ---
+        # last_q_knots[:, 0] is the IK-solved q_arm for knot 0 (the q_target
+        # the PD law tracks). _integral is post-update, post-clip. The kIK's
+        # _plant_ctx_ik is left with positions = q_full_target at exit (see
+        # reposition_ik.py:1194), so CalcGravityGeneralizedForces on it
+        # returns the exact tau_g_arm the kIK used.
+        q_arm_target = tracker.last_q_knots[:, 0].copy()
+        integral_post = tracker._integral.copy()
+        tau_g_full = plant.CalcGravityGeneralizedForces(tracker._plant_ctx_ik)
+        tau_grav   = tau_g_full[:n_j].copy()
 
+        q_err     = q_arm_target - q_arm_now_before
+        tau_P     = Kp * q_err
+        tau_I     = Ki * integral_post
+        tau_D     = -Kd * v_arm_now_before
+        tau_demand = tau_P + tau_I + tau_D + tau_grav
+        tau_clipped = np.clip(tau_demand, -torque_limit, +torque_limit)
+
+        # Sanity: reconstruction must match the tracker's returned u.
+        assert np.allclose(tau_clipped, u, atol=1e-9), (
+            f"breakdown reconstruction mismatch at step {step}: "
+            f"max |delta| = {np.max(np.abs(tau_clipped - u)):.3e}"
+        )
+
+        saturated = np.abs(tau_demand) > torque_limit
+        sat_count += saturated.astype(int)
+
+        # Per-joint accumulators.
+        abs_demand = np.abs(tau_demand)
+        for j in range(n_j):
+            if abs_demand[j] > max_abs_demand[j]:
+                max_abs_demand[j] = abs_demand[j]
+                max_abs_demand_at_step[j] = step
+                max_abs_demand_components[j, 0] = tau_P[j]
+                max_abs_demand_components[j, 1] = tau_I[j]
+                max_abs_demand_components[j, 2] = tau_D[j]
+                max_abs_demand_components[j, 3] = tau_grav[j]
+
+            if abs(tau_P[j])    > max_abs_P[j]:    max_abs_P[j]    = abs(tau_P[j])
+            if abs(tau_I[j])    > max_abs_I[j]:    max_abs_I[j]    = abs(tau_I[j])
+            if abs(tau_D[j])    > max_abs_D[j]:    max_abs_D[j]    = abs(tau_D[j])
+            if abs(tau_grav[j]) > max_abs_grav[j]: max_abs_grav[j] = abs(tau_grav[j])
+
+            if saturated[j]:
+                comps = np.array([abs(tau_P[j]), abs(tau_I[j]),
+                                  abs(tau_D[j]), abs(tau_grav[j])])
+                k = int(np.argmax(comps))
+                if   k == 0: dom_P[j]    += 1
+                elif k == 1: dom_I[j]    += 1
+                elif k == 2: dom_D[j]    += 1
+                else:        dom_grav[j] += 1
+
+            csv_w.writerow([
+                step, f"{sim_time:.4f}", j,
+                f"{q_arm_target[j]:.6f}", f"{q_arm_now_before[j]:.6f}", f"{q_err[j]:.6f}",
+                f"{integral_post[j]:.6f}", f"{v_arm_now_before[j]:.6f}",
+                f"{tau_P[j]:.4f}", f"{tau_I[j]:.4f}", f"{tau_D[j]:.4f}", f"{tau_grav[j]:.4f}",
+                f"{tau_demand[j]:.4f}", f"{tau_clipped[j]:.4f}",
+                int(saturated[j]),
+            ])
+
+        # --- Apply torque, advance sim, log ---
+        plant.get_actuation_input_port().FixValue(plant_ctx, u)
         ee_pos = plant.CalcPointsPositions(
             plant_ctx, ee_frame, np.zeros(3), world_frame
         ).flatten()
@@ -147,14 +254,13 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
                   f"feas={diag.get('knot0_feasible')}  finished={diag.get('finished')}")
             next_snap += 1
 
-        # Advance the sim one control step.
         if step < n_steps:
             simulator.AdvanceTo(sim_time + dt_ctrl)
 
-    # Settling time: first sample t* such that for all t ≥ t* within
-    # [t*, t* + 0.1s] the EE moves < 1 mm between consecutive steps.
+    csv_fh.close()
+
     settling_time = float("nan")
-    window = max(1, int(round(0.10 / dt_ctrl)))  # 10 steps = 0.1 s
+    window = max(1, int(round(0.10 / dt_ctrl)))
     for i in range(len(ee_log) - window):
         moves = [float(np.linalg.norm(ee_log[j + 1] - ee_log[j]))
                  for j in range(i, i + window)]
@@ -174,8 +280,67 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
         max_u_norm            = max(u_norm_log),
         snapshot_at           = snapshot_at,
         n_steps               = n_steps + 1,
+        # Breakdown aggregates
+        sat_count             = sat_count,
+        max_abs_demand        = max_abs_demand,
+        max_abs_demand_at_step = max_abs_demand_at_step,
+        max_abs_demand_components = max_abs_demand_components,
+        max_abs_P             = max_abs_P,
+        max_abs_I             = max_abs_I,
+        max_abs_D             = max_abs_D,
+        max_abs_grav          = max_abs_grav,
+        dom_P                 = dom_P,
+        dom_I                 = dom_I,
+        dom_D                 = dom_D,
+        dom_grav              = dom_grav,
+        torque_limit          = torque_limit,
+        csv_path              = str(breakdown_csv_path),
     )
     return summary
+
+
+def _print_breakdown_summary(s: dict) -> None:
+    """Block 4 report — torque-breakdown tables and saturation pattern."""
+    print()
+    print("-" * 78)
+    print(f"BREAKDOWN: {s['label']}")
+    print(f"  csv: {s['csv_path']}")
+    print(f"  total steps: {s['n_steps']}   torque_limit: {s['torque_limit']:.1f} Nm")
+    print()
+
+    # Max-abs of each component, with WHICH joint and step.
+    def _argmax_joint(arr): return int(np.argmax(arr))
+    j_P    = _argmax_joint(s["max_abs_P"])
+    j_I    = _argmax_joint(s["max_abs_I"])
+    j_D    = _argmax_joint(s["max_abs_D"])
+    j_g    = _argmax_joint(s["max_abs_grav"])
+
+    print("Component maxima (across all steps & joints):")
+    print(f"  tau_P    max={s['max_abs_P'][j_P]:7.2f} Nm  at joint {j_P}")
+    print(f"  tau_I    max={s['max_abs_I'][j_I]:7.2f} Nm  at joint {j_I}")
+    print(f"  tau_D    max={s['max_abs_D'][j_D]:7.2f} Nm  at joint {j_D}")
+    print(f"  tau_grav max={s['max_abs_grav'][j_g]:7.2f} Nm  at joint {j_g}")
+    print()
+
+    print("Per-joint saturation pattern:")
+    print(f"  {'j':>2}  {'sat_steps':>9}  {'max|demand|':>11}  "
+          f"{'P':>7}  {'I':>7}  {'D':>7}  {'grav':>7}  {'dominant':>9}  "
+          f"{'(P/I/D/g sat-frac)':>22}")
+    for j in range(7):
+        total_sat = s["sat_count"][j]
+        comps = s["max_abs_demand_components"][j]
+        # Components at the max-demand moment.
+        c_P, c_I, c_D, c_g = comps
+        dom_names = ["P", "I", "D", "grav"]
+        dom_at_max = dom_names[int(np.argmax([abs(c_P), abs(c_I), abs(c_D), abs(c_g)]))]
+        # Saturated-fraction breakdown.
+        sums = total_sat if total_sat > 0 else 1
+        fP, fI, fD, fg = (s["dom_P"][j] / sums, s["dom_I"][j] / sums,
+                          s["dom_D"][j] / sums, s["dom_grav"][j] / sums)
+        print(f"  {j:>2}  {total_sat:>9d}  {s['max_abs_demand'][j]:>11.2f}  "
+              f"{c_P:>+7.2f}  {c_I:>+7.2f}  {c_D:>+7.2f}  {c_g:>+7.2f}  "
+              f"{dom_at_max:>9}  ({fP:.2f}/{fI:.2f}/{fD:.2f}/{fg:.2f})")
+    print()
 
 
 def main() -> int:
@@ -223,13 +388,18 @@ def main() -> int:
         ("W2_path_A_undershoot", np.array([-0.065, -0.135, 0.050])),
     ]
 
+    results_dir = PROJECT_ROOT / "results"
+    results_dir.mkdir(exist_ok=True)
+
     summaries = []
     for label, p_target in targets:
+        csv_path = results_dir / f"probe_9_4_1_torque_breakdown_{label}.csv"
         summaries.append(_run_target(
             label, p_target,
             tracker=tracker, plant=plant, ee_frame=ee_frame,
             world_frame=world_frame, simulator=simulator,
             plant_ctx=plant_ctx, obj_body=obj_body, n_u=n_u,
+            breakdown_csv_path=csv_path,
         ))
 
     # Final report.
@@ -254,6 +424,9 @@ def main() -> int:
         ee = s['ee_final']
         print(f"{'':>24}ee_final=({ee[0]:+.4f}, {ee[1]:+.4f}, {ee[2]:+.4f})  "
               f"target=({s['p_target'][0]:+.4f}, {s['p_target'][1]:+.4f}, {s['p_target'][2]:+.4f})")
+
+    for s in summaries:
+        _print_breakdown_summary(s)
 
     return 0
 
