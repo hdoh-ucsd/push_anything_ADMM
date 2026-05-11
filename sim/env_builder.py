@@ -124,6 +124,13 @@ def build_environment(task_cfg: dict, time_step: float = 0.001):
     panda_model  : ModelInstanceIndex for the arm
     object_model : ModelInstanceIndex for the manipulated object
     meshcat      : Meshcat instance (visualiser at http://127.0.0.1:7000)
+    plant_ad     : AutoDiffXd structural copy of `plant`. Used by
+                   LCSFormulator.extract_dynamics_with_jacobian to compute
+                   J_f = ∂f/∂(q,v,u) per Aydinoglu 2024 eq. (8). Built
+                   once at startup; one ToAutoDiffXd() call costs ~50ms,
+                   amortised over thousands of MPC steps.
+    context_ad   : default context for plant_ad. Reused across linearize
+                   calls (positions/velocities reset per call).
     """
     builder = ad.DiagramBuilder()
     plant, scene_graph = ad.AddMultibodyPlantSceneGraph(builder, time_step=time_step)
@@ -215,7 +222,17 @@ def build_environment(task_cfg: dict, time_step: float = 0.001):
     ad.MeshcatVisualizer.AddToBuilder(builder, scene_graph, meshcat)
 
     diagram = builder.Build()
-    return diagram, plant, panda_model, object_model, meshcat
+
+    # ------------------------------------------------------------------
+    # AutoDiffXd structural copy of the plant — Phase 1 (Aydinoglu eq. 8).
+    # Used by LCSFormulator to compute J_f = ∂f/∂(q,v,u) at each MPC step.
+    # ToAutoDiffXd preserves all geometry/contact registration; the
+    # context is reused across linearize calls.
+    # ------------------------------------------------------------------
+    plant_ad   = plant.ToAutoDiffXd()
+    context_ad = plant_ad.CreateDefaultContext()
+
+    return diagram, plant, panda_model, object_model, meshcat, plant_ad, context_ad
 
 
 # ---------------------------------------------------------------------------

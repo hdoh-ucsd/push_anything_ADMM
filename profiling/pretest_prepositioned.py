@@ -138,7 +138,8 @@ def build_for_pretest(task_cfg: dict, override_goal_xy: list[float] | None = Non
     if override_goal_xy is not None:
         task_cfg = {**task_cfg, "goal_xy": list(override_goal_xy)}
 
-    diagram, plant, panda_model, object_model, _meshcat = build_environment(task_cfg)
+    diagram, plant, panda_model, object_model, _meshcat, _plant_ad, _ctx_ad = \
+        build_environment(task_cfg)
 
     diagram_ctx = diagram.CreateDefaultContext()
     plant_ctx   = plant.GetMyMutableContextFromRoot(diagram_ctx)
@@ -496,7 +497,8 @@ def pretest_7(task_cfg: dict, target: list[float] | None = None,
     from control.sampling_c3.params import RepositionParams                # noqa: WPS433
 
     # --- Build env, including the simulator/diagram needed for AdvanceTo --
-    diagram, plant, panda_model, object_model, _meshcat = build_environment(task_cfg)
+    diagram, plant, panda_model, object_model, _meshcat, _plant_ad, _ctx_ad = \
+        build_environment(task_cfg)
     simulator = ad.Simulator(diagram)
     diagram_ctx = simulator.get_mutable_context()
     plant_ctx   = plant.GetMyMutableContextFromRoot(diagram_ctx)

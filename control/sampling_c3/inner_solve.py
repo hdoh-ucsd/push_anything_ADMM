@@ -259,7 +259,11 @@ class InnerSolver:
         ctx = redirect_stdout(_buf) if suppress_io else _NullContext()
         try:
             with ctx:
-                A, B, D, d, J_n, J_t, phi, mu = \
+                # Phase 2: linearize_discrete now returns 12 elements with
+                # the Stewart-Trinkle (E, F, H, c) slack expression.
+                (A, B, D, d,
+                 E_lcs, F_lcs, H_lcs, c_lcs,
+                 J_n, J_t, phi, mu) = \
                     self.formulator.linearize_discrete(plant_ctx, self.dt)
                 # Capture immediately — _last_nhats is overwritten on the
                 # next linearize_discrete call.
@@ -275,6 +279,7 @@ class InnerSolver:
                     admm_iter=admm_iter_k,
                     torque_limit=self.torque_limit,
                     phi=phi,
+                    E=E_lcs, F=F_lcs, H=H_lcs, c_lcs=c_lcs,
                 )
             c_C3_raw = traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
             feasible = True

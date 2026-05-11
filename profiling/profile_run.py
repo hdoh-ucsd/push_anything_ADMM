@@ -62,7 +62,8 @@ def _setup(task_name: str):
         cfg = yaml.safe_load(f)
     task_cfg = cfg["tasks"][task_name]
 
-    diagram, plant, panda_model, _, meshcat = build_environment(task_cfg)
+    diagram, plant, panda_model, _, meshcat, plant_ad, context_ad = \
+        build_environment(task_cfg)
 
     simulator = ad.Simulator(diagram)
     context   = simulator.get_mutable_context()
@@ -85,7 +86,8 @@ def _setup(task_name: str):
     n_u = plant.num_actuators()
     n_x = n_q + n_v
 
-    formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body)
+    formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body,
+                               plant_ad=plant_ad, context_ad=context_ad)
     solver     = C3Solver(n_x=n_x, n_u=n_u, rho=100.0)
     quad_cost  = QuadraticManipulationCost(
         plant, EE_BODY_NAME, obj_body, task_cfg["cost"], n_x, n_u
