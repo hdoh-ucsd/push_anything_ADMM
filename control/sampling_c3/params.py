@@ -62,11 +62,17 @@ class SamplingStrategy(IntEnum):
 
 
 class RepositioningTrajectoryType(IntEnum):
-    """Match enum RepositioningTrajectoryType in dairlib reposition_params.h."""
+    """Match enum RepositioningTrajectoryType in dairlib reposition_params.h.
+
+    kIK is a project-specific extension (no upstream equivalent) selecting
+    the constrained-pydrake-IK planner in control/sampling_c3/reposition_ik.py
+    instead of the per-step Cartesian PWL tracker.
+    """
     kSpline          = 0
     kSpherical       = 1
     kCircular        = 2
     kPiecewiseLinear = 3
+    kIK              = 4   # RepositionIKTracker — see reposition_ik.py
 
 
 # ---------------------------------------------------------------------------
@@ -220,11 +226,36 @@ class RepositionParams:
     # Piecewise-linear-specific (the only type we currently implement)
     pwl_waypoint_height:                           float = 0.20  # safe-height m
 
-    # Joint-PD control law for tracking the per-step waypoint
+    # Joint-PD control law for tracking the per-step waypoint.
+    # Defaults are calibrated to the operating regime measured in step 8;
+    # see docs/reposition_ik.md §Refactor-protection notes for the receipts.
+    # Kp_q = 60: at this gain ‖u‖_max ≈ √(5.14)·30 Nm — most joints already
+    #   in the saturation regime. Doubling to 120 produces ‖u‖_max =
+    #   √6·30 Nm exactly (6 of 7 joints clipping); proportional response is
+    #   capped by torque_limit, not gain. Tracking does not improve.
     Kp_q:                                          float = 60.0
+    # Kd_q = 8: damps absolute joint velocity. Note the D-term has no
+    #   v_target component (u_d = -Kd_q·v_arm_now), so it damps motion
+    #   toward the target as well as motion away from it. A future fix
+    #   surface would compute v_target from consecutive IK knots and use
+    #   u_d = -Kd_q·(v_arm_now - v_target); requires num_full_ik_knots ≥ 2.
     Kd_q:                                          float = 8.0
+    # Ki_q = 8: integral gain. Combined with I_max below, max integral
+    #   correction = Ki_q·I_max = 16 Nm, calibrated to the 5-10 Nm
+    #   gravity-load mismatch the joint-PD law cannot eliminate via Kp.
     Ki_q:                                          float = 8.0
-    I_max:                                         float = 0.5
+    # I_max = 2.0 (raised from 0.5 in step 8 Fix 6). The integral converges
+    #   to ~1.0 rad·s per joint at equilibrium under the pushing task,
+    #   matching the measured 7.39 Nm gravity-load shift on q[1] (shoulder)
+    #   between current_q and q_target to within 10%. With I_max = 0.5 the
+    #   integral was clamped at 50% of its natural equilibrium, capping
+    #   correction at 4 Nm — half of what the task requires.
+    I_max:                                         float = 2.0
+    # torque_limit = 30 Nm: per-joint clip applied at reposition_ik.py:1190
+    #   and reposition.py:230. The saturation signature ‖u‖_max ≈ √n·30 Nm
+    #   in measured 7-joint torque norms indicates n joints simultaneously
+    #   at this clip; raising Kp_q past the regime where this fires does
+    #   not increase actual commanded torque.
     torque_limit:                                  float = 30.0
 
     @classmethod
@@ -237,14 +268,133 @@ class RepositionParams:
 
 
 # ---------------------------------------------------------------------------
+# RepositionIKParams — project-specific (no upstream equivalent)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RepositionIKParams:
+    """Parameters for ``RepositionIKTracker`` (sibling planner — selected by
+    ``RepositionParams.traj_type == kIK``).
+
+    Orientation cone (orientation_cone_deg)
+    --------------------------------------
+    Defaults to 0.0 (disabled). With only the 3-DoF position constraint
+    active, IK has 7 DoFs to fit a 3D target — leaving 4 DoFs of redundancy
+    that the centering + smoothness costs use to keep warm-started solutions
+    on a single IK branch (no q-jumps between adjacent knots). Enabling the
+    cone consumes 1-2 redundant DoFs and increases solver-failure rate near
+    workspace edges. Don't enable unless the downstream task actually
+    requires a constrained EE orientation.
+
+    Min-distance bounds (ik_min_distance_lower_bound + fk_min_distance)
+    -------------------------------------------------------------------
+    Two distinct knobs, intentionally split (5f V-7, 2026-05-08):
+
+    * ``ik_min_distance_lower_bound`` (default 0.0): lower bound enforced
+      INSIDE the per-knot IK solve via Drake's
+      ``AddMinimumDistanceLowerBoundConstraint``. Default disables the
+      constraint entirely. For typical pushing/manipulation tasks where
+      the pusher must contact objects, keep this at 0.0 — every value
+      > 0.0 causes the IK to reject any warm-start whose pusher is
+      already at table contact, which is the common case at the start
+      of a free-mode entry. Set positive only if the task does NOT
+      require approach-to-contact.
+    * ``fk_min_distance`` (default 0.0): min-distance threshold for the
+      FK sweep on knots K..N-1. Default 0.0 disables FK-side clearance
+      enforcement entirely; this matches the dairlib upstream precedent
+      where reposition IK does not enforce per-knot collision avoidance
+      and instead relies on the trajectory's geometric design (lift-
+      traverse-descend with safe-height clearance) for safety. Set to a
+      positive value only if your trajectory shape genuinely needs
+      per-knot signed-distance verification — and budget for the ~19
+      ``ComputeSignedDistancePairwiseClosestPoints`` calls per free-mode
+      loop that the sweep performs (5f V-8 measurement: borderline
+      overshoots of the 8 ms IK cap on a non-trivial fraction of loops).
+
+    Old single ``min_distance_lower_bound`` field has been removed;
+    YAMLs containing it raise a clear migration error in ``from_dict``.
+
+    Knot horizon (num_full_ik_knots, "K")
+    -------------------------------------
+    K = 1 (default) means one full IK solve per control loop and N-1 knots
+    filled by joint-space hold + FK signed-distance check. Diagnostic
+    only — wrapper consumes only ``q_knots[:, 0]``. Raise K only after
+    timing benchmarks show the per-knot budget is met.
+    """
+    # Constraints
+    position_tolerance:                         float = 1e-3
+    orientation_cone_deg:                       float = 0.0
+    R_des_world_to_ee:                          list  = field(default_factory=list)  # 3x3 row-major; unused if cone == 0
+    # Min-distance: split between IK-side and FK-sweep-side, both
+    # default 0.0 (disabled) — matches dairlib upstream which relies
+    # on lift-traverse-descend trajectory shape for safety. See class
+    # docstring for why and when to opt in.
+    ik_min_distance_lower_bound:                float = 0.0
+    fk_min_distance:                            float = 0.0
+    influence_distance_offset:                  float = 0.01
+
+    # Costs
+    joint_centering_weight:                     float = 1e-2
+    joint_movement_weight:                      float = 1e-1
+    q_nominal:                                  list  = field(default_factory=lambda: [
+        0.0, -0.7853981633974483, 0.0, -2.356194490192345,
+        0.0,  1.5707963267948966, 0.7853981633974483,
+    ])  # Franka "ready" pose [0, -pi/4, 0, -3pi/4, 0, pi/2, pi/4]
+
+    # Solver / timing
+    per_knot_solve_timeout_s:                   float = 8e-3
+    max_ipopt_iter:                             int   = 30  # structural cap — IPOPT max_iter; complements the wall-clock cap
+    max_consecutive_failures_before_abort:      int   = 2   # only active when num_full_ik_knots >= 2
+    num_full_ik_knots:                          int   = 1
+
+    # IPOPT first-call cold-start can take ~15-25 ms (vs ~6 ms warm), so
+    # the very first compute_torque() at t=0 would otherwise overshoot
+    # the production wall-clock cap. RepositionIKTracker.__init__ runs a
+    # one-shot warm-up Solve() at the end of construction (with a
+    # trivially-feasible target = FK of the current arm pose) so the
+    # in-loop solves all hit the warm path. Disable for tight test loops
+    # where the cumulative warm-up cost across many tracker constructions
+    # adds up.
+    warm_up_on_construction:                    bool  = True
+
+    # Infeasibility-poison interface to wrapper.py
+    infeasibility_match_radius_m:               float = 0.01
+
+    # Frames (informational; tracker resolves via the obj_body / ee_frame
+    # objects passed at construction — these names are kept for parity with
+    # upstream YAMLs and for potential debugging output)
+    ee_frame_name:                              str = "pusher"
+    object_body_name:                           str = ""
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> "RepositionIKParams":
+        # 5f V-7 migration: the old single field is split into two with
+        # different defaults. Fail loudly so YAMLs that still set the
+        # old name don't silently get the new (much looser) IK default.
+        if "min_distance_lower_bound" in raw:
+            raise ValueError(
+                "RepositionIKParams.min_distance_lower_bound has been "
+                "split into ik_min_distance_lower_bound (default 0.0, "
+                "disables IK-side enforcement) and fk_min_distance "
+                "(default 0.0, disables FK-sweep enforcement — matches "
+                "dairlib upstream). Update your YAML to declare which "
+                "one(s) you want. See the class docstring for the "
+                "rationale."
+            )
+        kw = _filter_kwargs(cls, raw)
+        return cls(**kw)
+
+
+# ---------------------------------------------------------------------------
 # Top-level wrapper
 # ---------------------------------------------------------------------------
 
 @dataclass
 class SamplingC3Params:
-    progress_params:    ProgressParams    = field(default_factory=ProgressParams)
-    sampling_params:    SamplingParams    = field(default_factory=SamplingParams)
-    reposition_params:  RepositionParams  = field(default_factory=RepositionParams)
+    progress_params:    ProgressParams       = field(default_factory=ProgressParams)
+    sampling_params:    SamplingParams       = field(default_factory=SamplingParams)
+    reposition_params:  RepositionParams     = field(default_factory=RepositionParams)
+    repos_ik_params:    RepositionIKParams   = field(default_factory=RepositionIKParams)
 
     # Project-specific (no upstream equivalent)
     w_align:            float = 30_000.0
@@ -259,6 +409,7 @@ class SamplingC3Params:
             progress_params   = ProgressParams.from_dict(raw.get("progress_params", {}) or {}),
             sampling_params   = SamplingParams.from_dict(raw.get("sampling_params", {}) or {}),
             reposition_params = RepositionParams.from_dict(raw.get("reposition_params", {}) or {}),
+            repos_ik_params   = RepositionIKParams.from_dict(raw.get("repos_ik_params", {}) or {}),
             w_align              = float(raw.get("w_align", 30_000.0)),
             w_travel             = float(raw.get("w_travel", 200.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
