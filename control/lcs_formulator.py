@@ -7,6 +7,14 @@ needed by the ADMM solver from the Drake MultibodyPlant.
 Dynamics (continuous-time Newton-Euler):
     M(q) v_dot + C(q,v) v = tau_g(q) + B u + J_n^T lambda_n + J_t^T lambda_t
 
+Phase 1 — first-order linearization (Aydinoglu 2024 eq. 8):
+    f(q, v, u) = M(q)^-1 (B u - C(q,v) v + tau_g(q))
+    v_{k+1} = v_k + Δt · (J_f · [q;v;u] + d_v_offset + M^-1 J_c^T λ)
+    where J_f = ∂f/∂(q,v,u) is computed via Drake autodiff and
+          d_v_offset = f(q*,v*,u*) - J_f · [q*;v*;u*] is the constant
+                       offset that makes the linearization exact at
+                       the linearization point.
+
 Contact geometry:
     phi : (n_c,)       signed gap distances (negative = penetrating)
     J_n : (n_c, n_v)   normal contact Jacobians
@@ -15,6 +23,9 @@ Contact geometry:
 """
 import numpy as np
 import pydrake.all as ad
+from pydrake.autodiffutils import (
+    InitializeAutoDiff, ExtractValue, ExtractGradient,
+)
 
 try:
     from profiling.section_timer import timed
@@ -40,13 +51,26 @@ class LCSFormulator:
                Without filtering, nc=32-59 phantom pairs corrupt the QP.
     """
 
-    def __init__(self, plant, mu: float = 0.5, obj_body=None):
+    def __init__(self, plant, mu: float = 0.5, obj_body=None,
+                 plant_ad=None, context_ad=None):
         self.plant = plant
         self.mu    = float(mu)
 
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
         self.n_u = plant.num_actuators()
+
+        # Autodiff plant — required for Phase 1 first-order linearization
+        # (Aydinoglu eq. 8). build_environment() now returns these alongside
+        # the float plant; construct LCSFormulator with both.
+        assert plant_ad is not None and context_ad is not None, (
+            "LCSFormulator requires plant_ad and context_ad for Aydinoglu 2024 "
+            "eq. (8) first-order linearization. Update build_environment() "
+            "callers to receive (diagram, plant, panda_model, object_model, "
+            "meshcat, plant_ad, context_ad)."
+        )
+        self.plant_ad   = plant_ad
+        self.context_ad = context_ad
 
         # Geometry ID sets for contact-pair filtering.
         self._manipuland_geom_ids: set = set()
@@ -89,6 +113,68 @@ class LCSFormulator:
             tau_g = self.plant.CalcGravityGeneralizedForces(context)
             B     = self.plant.MakeActuationMatrix()
         return M, Cv, tau_g, B
+
+    # ------------------------------------------------------------------
+    def extract_dynamics_with_jacobian(self, context, u_lin):
+        """
+        Compute M, Cv, tau_g, B AND J_f = ∂f/∂(q,v,u) at (q*, v*, u*),
+        plus the value f_eval = f(q*, v*, u*), where
+            f(q, v, u) = M(q)^-1 (B u - C(q, v) v + tau_g(q)).
+
+        np.linalg.solve doesn't accept AutoDiffXd dtype-object arrays,
+        so we autodiff (M, Cv, tau_g) separately and apply the chain rule
+        for M^-1 by hand:
+            df/dx = M^-1 [drhs/dx - (dM/dx) f]
+
+        Parameters
+        ----------
+        context : Drake plant context (the float plant) at (q*, v*).
+        u_lin   : (n_u,) linearization input u*.
+
+        Returns
+        -------
+        M, Cv, tau_g, B   : same as extract_dynamics, evaluated at (q*, v*).
+        J_f               : (n_v, n_q + n_v + n_u) Jacobian.
+        f_eval            : (n_v,) value of f(q*, v*, u*).
+        """
+        n_q, n_v, n_u = self.n_q, self.n_v, self.n_u
+        n_dec = n_q + n_v + n_u
+
+        # 1. Float values at the linearization point
+        M, Cv, tau_g, B = self.extract_dynamics(context)
+        rhs_d = B @ u_lin - Cv + tau_g
+        M_inv = np.linalg.inv(M)
+        f_eval = M_inv @ rhs_d
+
+        # 2. Seed AD on (q, v, u_lin) and evaluate dynamics on the AD plant.
+        with timed("lcs.extract_dynamics"):
+            q_star = self.plant.GetPositions(context)
+            v_star = self.plant.GetVelocities(context)
+            decvar = np.concatenate([q_star, v_star, u_lin])
+            decvar_ad = InitializeAutoDiff(decvar)
+            decvar_ad = decvar_ad.flatten() if decvar_ad.ndim > 1 else decvar_ad
+            q_ad = decvar_ad[:n_q]
+            v_ad = decvar_ad[n_q : n_q + n_v]
+            u_ad = decvar_ad[n_q + n_v :]
+
+            self.plant_ad.SetPositions(self.context_ad, q_ad)
+            self.plant_ad.SetVelocities(self.context_ad, v_ad)
+
+            M_ad     = self.plant_ad.CalcMassMatrixViaInverseDynamics(self.context_ad)
+            Cv_ad    = self.plant_ad.CalcBiasTerm(self.context_ad)
+            tau_g_ad = self.plant_ad.CalcGravityGeneralizedForces(self.context_ad)
+            B_ad     = self.plant_ad.MakeActuationMatrix()
+            rhs_ad   = B_ad @ u_ad - Cv_ad + tau_g_ad
+
+        # 3. Chain rule for f = M^-1 rhs:
+        #    df/dx = M^-1 [drhs/dx - (dM/dx) f]
+        J_M   = ExtractGradient(M_ad).reshape(n_v, n_v, n_dec)
+        J_rhs = ExtractGradient(rhs_ad)                # (n_v, n_dec)
+        J_f   = np.empty((n_v, n_dec))
+        for k in range(n_dec):
+            J_f[:, k] = M_inv @ (J_rhs[:, k] - J_M[:, :, k] @ f_eval)
+
+        return M, Cv, tau_g, B, J_f, f_eval
 
     # ------------------------------------------------------------------
     def extract_lcs_contacts(self, context,
@@ -209,40 +295,71 @@ class LCSFormulator:
         )
 
     # ------------------------------------------------------------------
-    def linearize_discrete(self, context, dt: float):
+    def linearize_discrete(self, context, dt: float, u_lin=None):
         """
-        Linearize the Drake plant into a discrete-time LCS at the current state.
+        Linearize the Drake plant into a discrete-time LCS at (q*, v*, u*).
 
-        State x = [q; v], dimension n_x = n_q + n_v.
-        N(q), M(q), and Cv(q,v) are evaluated at the current (q, v) and held
-        constant over the horizon (first-order LCS approximation).
-        Coriolis bias is folded into the constant offset term d.
+        Phase 1 (Aydinoglu eq. 8) gives the first-order dynamics linearization
+        with autodiff Jacobian J_f.  Phase 2 (Aydinoglu eq. 9) extends the
+        return tuple with the Stewart-Trinkle complementarity slack expression
+            η = E·x + F·λ + H·u + c,        0 ≤ λ ⊥ η ≥ 0
+        with λ = [γ; λ_n; λ_t] of dimension 6·n_c (γ is the friction-cone
+        slack).  This shape is shared by both the C3 and C3+ paths from
+        Phase 2 onward; the prior `linearize_discrete_with_complementarity`
+        method is now a thin alias that returns the same tuple.
 
-        Discrete-time model:
+        Dynamics (state x = [q; v]):
             x[t+1] = A x[t] + B_ctrl u[t] + D λ[t] + d
-        where:
-            A      = [[I,     dt·N(q)],
-                      [0,     I      ]]
-            B_ctrl = [[0             ],
-                      [dt·M⁻¹·B     ]]
-            D      = [[0             ],
-                      [dt·M⁻¹·Jc^T  ]]
-            d      = [[0             ],
-                      [dt·M⁻¹·(τ_g − Cv)]]
+        where (with J_q, J_v, J_u = decompositions of J_f, and Δt = dt):
+            A[:n_q, :n_q] = I + dt² · N · J_q
+            A[:n_q, n_q:] = dt · N · (I + dt · J_v)
+            A[n_q:, :n_q] = dt · J_q
+            A[n_q:, n_q:] = I + dt · J_v
+            B_ctrl[:n_q]  = dt² · N · J_u
+            B_ctrl[n_q:]  = dt · J_u
+            D has zero columns in the γ slot (γ does not enter dynamics);
+              for λ_n / λ_t cols: D[:n_q]=dt²·N·M⁻¹·J_*^T, D[n_q:]=dt·M⁻¹·J_*^T
+            d[:n_q]       = dt² · N · d_v_offset
+            d[n_q:]       = dt · d_v_offset
+            d_v_offset    = f(q*, v*, u*) − J_f · [q*; v*; u*]
+
+        Stewart-Trinkle LCP rows (Aydinoglu eq. 9, with v_{k+1} substituted):
+            γ row    : 0 ≤ γ   ⊥  μ·λ_n − E_t·λ_t                  ≥ 0
+            λ_n row  : 0 ≤ λ_n ⊥  φ/dt + (1/dt)·J_n·(q−q*) + J_n·v_{k+1}  ≥ 0
+            λ_t row  : 0 ≤ λ_t ⊥  E_t^T·γ + J_t·v_{k+1}            ≥ 0
+        where E_t ∈ ℝ^{n_c×4n_c} has e=[1,1,1,1] on the 4 tangent slots of
+        each contact.  After substituting v_{k+1} = v + dt·v_dot_lin we get
+        E, F, H, c populated as documented in test_lcs_efhc.py.
+
+        Parameters
+        ----------
+        context : Drake plant context at (q*, v*).
+        dt      : planning timestep (s).
+        u_lin   : (n_u,) linearization input u*. None → zeros.
 
         Returns
         -------
         A      : (n_x, n_x)
         B_ctrl : (n_x, n_u)
-        D      : (n_x, n_c)   zeros matrix if no contacts
+        D      : (n_x, n_λ)   n_λ = 6·n_c; γ-cols are zero
         d      : (n_x,)
-        J_n    : (num_normals, n_v)
-        J_t    : (4*num_normals, n_v)
-        phi    : (num_normals,)
+        E      : (n_λ, n_x)
+        F      : (n_λ, n_λ)
+        H      : (n_λ, n_u)
+        c_vec  : (n_λ,)
+        J_n    : (n_c, n_v)
+        J_t    : (4·n_c, n_v)
+        phi    : (n_c,)
         mu     : float
         """
-        with timed("lcs.extract_dynamics"):
-            M, Cv, tau_g, B = self.extract_dynamics(context)
+        if u_lin is None:
+            u_lin = np.zeros(self.n_u)
+        else:
+            u_lin = np.asarray(u_lin, dtype=float).reshape(self.n_u)
+
+        # Phase 1 — autodiff Jacobian of f at (q*, v*, u_lin).
+        M, Cv, tau_g, B, J_f, f_eval = self.extract_dynamics_with_jacobian(
+            context, u_lin)
         phi, J_n, J_t, mu = self.extract_lcs_contacts(context)
 
         n_q, n_v, n_u = self.n_q, self.n_v, self.n_u
@@ -257,28 +374,94 @@ class LCSFormulator:
                 N_mat[:, i] = self.plant.MapVelocityToQDot(context, e)
 
         M_inv = np.linalg.inv(M)
-        num_normals = J_n.shape[0]
-        n_c = num_normals + J_t.shape[0]
-        J_c = np.vstack([J_n, J_t]) if num_normals > 0 else np.zeros((0, n_v))
+        n_c   = J_n.shape[0]               # number of contacts
+        n_t   = J_t.shape[0]               # 4·n_c (polyhedral pyramid)
+        n_lam = 2 * n_c + n_t              # 6·n_c — [γ; λ_n; λ_t]
+        # Slot offsets within the per-step λ block.
+        SG    = 0
+        SLN   = n_c
+        SLT   = 2 * n_c
 
-        # A = [[I_nq, dt*N]; [0, I_nv]]
+        # Decompose J_f into J_q, J_v, J_u blocks.
+        J_q = J_f[:, :n_q]                          # ∂f/∂q  (n_v, n_q)
+        J_v = J_f[:, n_q : n_q + n_v]               # ∂f/∂v  (n_v, n_v)
+        J_u = J_f[:, n_q + n_v :]                   # ∂f/∂u  (n_v, n_u)
+                                                    # (== M⁻¹·B at lin point)
+
+        # d_v_offset = f(q*, v*, u*) - J_f · [q*; v*; u*]  (Aydinoglu eq. 8)
+        q_star = self.plant.GetPositions(context)
+        v_star = self.plant.GetVelocities(context)
+        d_v_offset = f_eval - (J_q @ q_star + J_v @ v_star + J_u @ u_lin)
+
+        # A — substituting v_{k+1} into q_{k+1} = q + dt·N·v_{k+1}:
+        #   q_{k+1} = (I + dt²·N·J_q) q + dt·N·(I + dt·J_v) v + ...
+        #   v_{k+1} = dt·J_q q + (I + dt·J_v) v + ...
         A = np.zeros((n_x, n_x))
-        A[:n_q, :n_q] = np.eye(n_q)
-        A[:n_q, n_q:] = dt * N_mat
-        A[n_q:, n_q:] = np.eye(n_v)
+        A[:n_q, :n_q] = np.eye(n_q) + (dt * dt) * (N_mat @ J_q)
+        A[:n_q, n_q:] = dt * N_mat @ (np.eye(n_v) + dt * J_v)
+        A[n_q:, :n_q] = dt * J_q
+        A[n_q:, n_q:] = np.eye(n_v) + dt * J_v
 
-        # B_ctrl = [[0]; [dt * M_inv @ B]]
+        # B_ctrl picks up the same N·dt cross-term in the q-block.
         B_ctrl = np.zeros((n_x, n_u))
-        B_ctrl[n_q:] = dt * (M_inv @ B)
+        B_ctrl[:n_q] = (dt * dt) * (N_mat @ J_u)
+        B_ctrl[n_q:] = dt * J_u
 
-        # D = [[0]; [dt * M_inv @ J_c^T]]
-        D = np.zeros((n_x, n_c)) if n_c > 0 else np.zeros((n_x, 0))
+        # D — λ ordering is [γ; λ_n; λ_t]; γ-cols zero (no dynamics coupling).
+        D = np.zeros((n_x, n_lam))
         if n_c > 0:
-            D[n_q:] = dt * (M_inv @ J_c.T)
+            Minv_JnT = M_inv @ J_n.T               # (n_v, n_c)
+            Minv_JtT = M_inv @ J_t.T               # (n_v, 4·n_c)
+            D[:n_q,  SLN:SLN + n_c]      = (dt * dt) * (N_mat @ Minv_JnT)
+            D[n_q:,  SLN:SLN + n_c]      = dt * Minv_JnT
+            D[:n_q,  SLT:SLT + n_t]      = (dt * dt) * (N_mat @ Minv_JtT)
+            D[n_q:,  SLT:SLT + n_t]      = dt * Minv_JtT
 
-        # d = [0; dt * M_inv @ (tau_g - Cv)]
+        # d — uses d_v_offset; same q-block cross-term as A.
         d_vec = np.zeros(n_x)
-        d_vec[n_q:] = dt * (M_inv @ (tau_g - Cv))
+        d_vec[:n_q] = (dt * dt) * (N_mat @ d_v_offset)
+        d_vec[n_q:] = dt * d_v_offset
+
+        # ---- Stewart-Trinkle LCP slack expression (Aydinoglu eq. 9) -------
+        E_lcs = np.zeros((n_lam, n_x))
+        F_lcs = np.zeros((n_lam, n_lam))
+        H_lcs = np.zeros((n_lam, n_u))
+        c_lcs = np.zeros(n_lam)
+
+        if n_c > 0:
+            # E_t: n_c × 4n_c with e = [1,1,1,1] on the 4 tangent slots of
+            # each contact. The friction-cone slack row reads
+            #     μ·λ_n − E_t·λ_t = γ.
+            E_t = np.zeros((n_c, n_t))
+            for i in range(n_c):
+                E_t[i, 4 * i : 4 * (i + 1)] = 1.0
+
+            # γ rows (slot SG : SG+n_c) — no x, u, c dependence.
+            F_lcs[SG:SG + n_c,  SLN:SLN + n_c]  = mu * np.eye(n_c)
+            F_lcs[SG:SG + n_c,  SLT:SLT + n_t]  = -E_t
+
+            # λ_n rows (slot SLN : SLN+n_c).
+            # We use the simpler gap discretization (matches Bui v1 and
+            # avoids the floating-base n_q ≠ n_v mismatch from Aydinoglu's
+            # explicit (1/dt)·J_n·(q − q*) term):
+            #   η_n = phi(q*)/dt + J_n · v_{k+1}     (gap prediction)
+            # Substitute v_{k+1} = v + dt·(J_q q + J_v v + J_u u + d_v + Minv·J_c^T λ_phys):
+            E_lcs[SLN:SLN + n_c, :n_q]            = dt * (J_n @ J_q)
+            E_lcs[SLN:SLN + n_c, n_q:n_q + n_v]   = J_n + dt * (J_n @ J_v)
+            F_lcs[SLN:SLN + n_c, SLN:SLN + n_c]   = dt * (J_n @ Minv_JnT)
+            F_lcs[SLN:SLN + n_c, SLT:SLT + n_t]   = dt * (J_n @ Minv_JtT)
+            H_lcs[SLN:SLN + n_c, :]               = dt * (J_n @ J_u)
+            c_lcs[SLN:SLN + n_c]                  = phi / dt + dt * (J_n @ d_v_offset)
+
+            # λ_t rows (slot SLT : SLT+4n_c).
+            #   η_t = E_t^T·γ + J_t·v_{k+1}
+            E_lcs[SLT:SLT + n_t, :n_q]            = dt * (J_t @ J_q)
+            E_lcs[SLT:SLT + n_t, n_q:n_q + n_v]   = J_t + dt * (J_t @ J_v)
+            F_lcs[SLT:SLT + n_t, SG:SG + n_c]     = E_t.T
+            F_lcs[SLT:SLT + n_t, SLN:SLN + n_c]   = dt * (J_t @ Minv_JnT)
+            F_lcs[SLT:SLT + n_t, SLT:SLT + n_t]   = dt * (J_t @ Minv_JtT)
+            H_lcs[SLT:SLT + n_t, :]               = dt * (J_t @ J_u)
+            c_lcs[SLT:SLT + n_t]                  = dt * (J_t @ d_v_offset)
 
         if not getattr(self, '_printed_contact_frames', False) and J_n.shape[0] > 0:
             self._printed_contact_frames = True
@@ -308,4 +491,26 @@ class LCSFormulator:
             print(f"  → if nhat_onto_box·[1,0,0] > 0, box should accelerate eastward "
                   f"from λ_n")
 
-        return A, B_ctrl, D, d_vec, J_n, J_t, phi, mu
+        return (
+            A, B_ctrl, D, d_vec,
+            E_lcs, F_lcs, H_lcs, c_lcs,
+            J_n, J_t, phi, mu,
+        )
+
+    # ------------------------------------------------------------------
+    def linearize_discrete_with_complementarity(self, context, dt: float,
+                                                u_lin=None):
+        """
+        Phase 2 alias — `linearize_discrete` now returns the complementarity
+        slack expression (E, F, H, c) directly. This wrapper exists only for
+        backward compatibility with C3+ call sites and forwards verbatim.
+        Phase 3 will deprecate it in favour of `linearize_discrete_anitescu`
+        for the C3+ path.
+
+        Returns
+        -------
+        A, B_ctrl, D, d_vec, E, F, H, c_vec, J_n, J_t, phi, mu
+        """
+        return self.linearize_discrete(context, dt, u_lin=u_lin)
+
+

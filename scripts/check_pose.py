@@ -35,7 +35,7 @@ def load_task_cfg(task_name: str = "pushing") -> dict:
 
 def check_poses():
     task_cfg = load_task_cfg("pushing")
-    diagram, plant, _, _, _ = build_environment(task_cfg)
+    diagram, plant, _, _, _, _plant_ad, _ctx_ad = build_environment(task_cfg)
     ctx       = diagram.CreateDefaultContext()
     plant_ctx = plant.GetMyMutableContextFromRoot(ctx)
 
