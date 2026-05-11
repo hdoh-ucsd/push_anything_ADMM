@@ -28,9 +28,12 @@ from control.sampling_c3.inner_solve import (
     InnerSolver, SampleResult, traj_cost_breakdown,
 )
 from control.sampling_c3.mode_switch import SwitchReason, decide_mode
-from control.sampling_c3.params import SamplingC3Params, SamplingStrategy
+from control.sampling_c3.params import (
+    SamplingC3Params, SamplingStrategy, RepositioningTrajectoryType,
+)
 from control.sampling_c3.progress import ProgressTracker, StepMetrics
 from control.sampling_c3.reposition import PiecewiseLinearTracker
+from control.sampling_c3.reposition_ik import RepositionIKTracker
 from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
 from control.sampling_c3.sampling import generate_samples
 
@@ -48,7 +51,20 @@ class SamplingC3MPC:
                  log_diag:   bool = True,
                  rng:        Optional[np.random.Generator] = None,
                  dt_ctrl:    float = 0.01,
-                 start_in_c3_mode: bool = False):
+                 start_in_c3_mode: bool = False,
+                 *,
+                 diagram=None):
+        """Construct the outer sampling-C3 controller.
+
+        Parameters
+        ----------
+        diagram : optional. Required ONLY when
+            ``params.reposition_params.traj_type ==
+            RepositioningTrajectoryType.kIK``. The IK tracker walks
+            ``diagram.GetSystems()`` to find the SceneGraph for
+            context-local collision filtering. PiecewiseLinearTracker
+            does not use the diagram and ignores this kwarg.
+        """
         self.base_mpc    = base_mpc
         self.plant       = plant
         self.ee_frame    = ee_frame
@@ -104,11 +120,53 @@ class SamplingC3MPC:
             pos_threshold = params.sampling_params.pos_error_sample_retention,
             ang_threshold = params.sampling_params.ang_error_sample_retention,
         )
-        self.tracker  = PiecewiseLinearTracker(
-            plant=plant, ee_frame=ee_frame,
-            n_arm_dofs=self.n_u,
-            params=params.reposition_params,
-        )
+        # Reposition-tracker dispatch on traj_type. The kIK path needs the
+        # diagram so it can build its own private diag_ctx for IK and apply
+        # the context-local collision filter to that context's SceneGraph
+        # (see RepositionIKTracker.__init__). Other traj types use the PWL
+        # tracker, which has no SceneGraph dependency.
+        _traj_type = params.reposition_params.traj_type
+        if _traj_type == RepositioningTrajectoryType.kIK:
+            if diagram is None:
+                raise ValueError(
+                    "SamplingC3MPC: traj_type=kIK requires diagram=. Pass the "
+                    "diagram returned by build_environment() through to the "
+                    "wrapper. PiecewiseLinearTracker does not require this."
+                )
+            # Resolve scene_graph by walking the diagram's subsystems —
+            # build_environment() does not return it, but Drake exposes it
+            # as a child system of the diagram. Filter-and-assert-exactly-one
+            # so a future builder that adds a second SceneGraph (e.g. for a
+            # separate visualisation diagram) fails loudly instead of having
+            # us pick an arbitrary one. If you genuinely want to disambiguate,
+            # add a scene_graph= kwarg here and short-circuit this lookup.
+            import pydrake.all as ad
+            _sgs = [s for s in diagram.GetSystems() if isinstance(s, ad.SceneGraph)]
+            if len(_sgs) != 1:
+                raise ValueError(
+                    f"SamplingC3MPC: diagram contains {len(_sgs)} SceneGraphs, "
+                    f"expected exactly 1. Pass scene_graph= explicitly if you "
+                    f"have multiple."
+                )
+            scene_graph = _sgs[0]
+            self.tracker = RepositionIKTracker(
+                plant=plant, ee_frame=ee_frame, obj_body=obj_body,
+                n_arm_dofs=self.n_u,
+                horizon=self._horizon,
+                dt=self._dt,
+                repos_params=params.reposition_params,
+                ik_params=params.repos_ik_params,
+                diagram=diagram,
+                scene_graph=scene_graph,
+                # table_body=None — defaults to plant.world_body() (env_builder
+                # registers the table on the world body).
+            )
+        else:
+            self.tracker = PiecewiseLinearTracker(
+                plant=plant, ee_frame=ee_frame,
+                n_arm_dofs=self.n_u,
+                params=params.reposition_params,
+            )
 
         # Mode state
         self.is_doing_c3 = start_in_c3_mode
@@ -120,6 +178,25 @@ class SamplingC3MPC:
         # Repos-target memo (the sample we are currently navigating toward)
         self._current_repos_target:     Optional[np.ndarray] = None
         self._current_repos_cost:       Optional[float]      = None
+        self._prev_logged_repos_target: Optional[np.ndarray] = None
+
+        # _infeasible_repos_target — the most-recent infeasible repos
+        # target. Single-slot: successive failures overwrite. This is
+        # intentional — the cost-inflation in compute_control (~line 329)
+        # treats it as a single proximity bound, and the poison's only
+        # job is to bias the NEXT loop's argmin away from a known-bad
+        # point. Once the controller commits to a new target far enough
+        # from the cached one (Site D, _maybe_clear_infeasible_poison),
+        # or transitions back to C3 (Site B, unconditional clear in the
+        # `if mode == "c3":` branch), the cache is cleared. Site C (the
+        # no-candidate fallback at "target_idx is None") does NOT clear,
+        # even though it triggers a "no commit" — the poison's
+        # information is still useful against next loop's fresh samples.
+        # PWL path leaves this at None forever (its tracker has no
+        # last_knot0_feasible attr; getattr default True keeps the stash
+        # site in 5c a no-op).
+        self._infeasible_repos_target:  Optional[np.ndarray] = None
+        self._last_repos_feasible:      bool                 = True
         # Set True by the PWL tracker when the EE has reached the repos
         # target within tolerance. Used as the primary kToC3ReachedReposTarget
         # trigger; the cost-based finished_reposition_cost is a fallback.
@@ -212,6 +289,24 @@ class SamplingC3MPC:
             ))
 
     # ------------------------------------------------------------------
+    # Infeasibility-poison cache management
+    # ------------------------------------------------------------------
+
+    def _maybe_clear_infeasible_poison(self, p_new: np.ndarray) -> None:
+        """Clear the cached infeasible-repos-target IFF p_new differs
+        from it by more than infeasibility_match_radius_m. Called
+        whenever the controller assigns a new pursued repos target
+        (mode-switch or within-repos hysteresis swap). Idempotent:
+        no-op if no poison is cached.
+        """
+        if self._infeasible_repos_target is None:
+            return
+        r = self.params.repos_ik_params.infeasibility_match_radius_m
+        if float(np.linalg.norm(
+                p_new - self._infeasible_repos_target)) > r:
+            self._infeasible_repos_target = None
+
+    # ------------------------------------------------------------------
     # Main control entry
     # ------------------------------------------------------------------
 
@@ -257,6 +352,19 @@ class SamplingC3MPC:
         )
         c_samples = [r.c_sample for r in results]
 
+        # 3a. Infeasibility poison — inflate any sample within the match
+        #     radius of a previously-failed kIK reposition target. The
+        #     stash is set in step 8 after a non-feasible knot-0 IK and
+        #     held until the controller commits to a different repos
+        #     target (>= match radius away — see 5e). Fires only when the
+        #     IK tracker reported infeasibility; PWL leaves the stash at
+        #     None forever.
+        if self._infeasible_repos_target is not None:
+            _r = self.params.repos_ik_params.infeasibility_match_radius_m
+            for k, _p in enumerate(samples):
+                if float(np.linalg.norm(_p - self._infeasible_repos_target)) < _r:
+                    c_samples[k] = float("inf")
+
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
         c_curr   = c_samples[0]
@@ -281,17 +389,20 @@ class SamplingC3MPC:
 
         # 6. Mode-switch decision
         near_goal = goal_dist < self.params.progress_params.cost_switching_threshold_distance
-        # Reposition is "finished" if either:
-        #   (a) the PWL tracker reached the target within tolerance LAST step
-        #       (trajectory-based, primary signal — mirrors upstream's
-        #        finished_reposition_flag in reposition.h)
-        #   (b) the predicted cost falls below finished_reposition_cost
-        #       (cost-based, kept as a fallback for cases where trajectory
-        #        finish doesn't fire — e.g. retarget mid-path)
-        finished_repos = self._last_repos_finished or (
-            self._current_repos_cost is not None
-            and self._current_repos_cost < self.params.progress_params.finished_reposition_cost
-        )
+        # Reposition is "finished" iff the PWL tracker reports the EE within
+        # tolerance of the target on the previous control step. Trajectory-
+        # based signal from reposition.py:244 (is_at_target with 2 cm tol),
+        # mirroring upstream's finished_reposition_flag in reposition.h.
+        #
+        # The previous implementation also OR'd a cost-based fallback
+        # (_current_repos_cost < finished_reposition_cost). This was
+        # structurally broken: c_sample is dominated by box-xy goal tracking
+        # (~80-200k for the pushing task), so no setting of
+        # finished_reposition_cost cleanly distinguishes "EE reached the
+        # repos target" from "EE has not reached it but cost is bounded".
+        # F-cheap diagnostic with threshold=1.0 confirmed the chatter
+        # disappears when Path B is disabled.
+        finished_repos = self._last_repos_finished
         met = self.progress.met_progress(near_goal=near_goal)
         mode, reason = decide_mode(
             prev_mode          = self._prev_mode,
@@ -326,6 +437,12 @@ class SamplingC3MPC:
             self._current_repos_target  = None
             self._current_repos_cost    = None
             self._last_repos_finished   = False
+            self._prev_logged_repos_target = None
+            # Site B (5e): unconditional poison clear on repos→C3. Once
+            # back in C3, the prior repos target's feasibility is
+            # irrelevant; next free-mode entry re-evaluates from scratch.
+            # Idempotent — fires every C3 step, not just transitions.
+            self._infeasible_repos_target = None
             best_src = "current"
 
         else:
@@ -349,6 +466,10 @@ class SamplingC3MPC:
                 best_src = "current_fallback"
             else:
                 p_repos = results[target_idx].sample_pos
+                # Site D (5e): controller is committing to a new pursued
+                # target — clear stale poison if the new target is
+                # outside the match radius of the cached failed one.
+                self._maybe_clear_infeasible_poison(p_repos)
                 self._current_repos_target = p_repos.copy()
                 self._current_repos_cost   = c_samples[target_idx]
                 best_src = labels[target_idx]
@@ -361,6 +482,37 @@ class SamplingC3MPC:
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(free_diag.get("finished", False))
+
+                # Stash the failed target if the kIK tracker reported a
+                # non-feasible knot-0 IK. PiecewiseLinearTracker has no
+                # last_knot0_feasible attr — getattr defaults True, so this
+                # is a no-op for the PWL path. The cost-inflation block
+                # in compute_control reads _infeasible_repos_target; 5e
+                # clears it when the pursued target moves >= match radius.
+                self._last_repos_feasible = getattr(
+                    self.tracker, "last_knot0_feasible", True)
+                if not self._last_repos_feasible:
+                    self._infeasible_repos_target = p_repos.copy()
+
+                if self.log_diag:
+                    ee_now = free_diag.get("ee_now")
+                    if ee_now is not None:
+                        d = float(np.linalg.norm(ee_now - p_repos))
+                        if self._prev_logged_repos_target is None:
+                            tgt_changed = "Y"
+                            tgt_delta = float("nan")
+                        else:
+                            tgt_delta = float(np.linalg.norm(
+                                p_repos - self._prev_logged_repos_target))
+                            tgt_changed = "Y" if tgt_delta > 1e-3 else "N"
+                        print(f"[GS-tgt] step={self._step} "
+                              f"ee=({ee_now[0]:+.3f},{ee_now[1]:+.3f},{ee_now[2]:+.3f}) "
+                              f"p_repos=({p_repos[0]:+.3f},{p_repos[1]:+.3f},{p_repos[2]:+.3f}) "
+                              f"ee_to_target={d:.3f}m "
+                              f"target_label={best_src} "
+                              f"target_changed={tgt_changed} delta={tgt_delta:.3f}m")
+                        self._prev_logged_repos_target = p_repos.copy()
+
                 # Predicted trajectory for Meshcat visualisation: use the
                 # winning sample's plan if available
                 if results[k_star].x_seq is not None:
