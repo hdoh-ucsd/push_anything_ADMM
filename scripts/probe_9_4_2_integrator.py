@@ -29,6 +29,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import sys
@@ -74,6 +75,14 @@ def _set_state(plant, plant_ctx, obj_body, *, arm_q, obj_xyz):
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--sim-seconds", type=float, default=30.0,
+                    help="Simulated duration of the constant-target run. "
+                         "Default 30 (9.4.2 invocation). 9.4.3 uses 90 to "
+                         "observe post-clamp behavior on joint 1.")
+    args = ap.parse_args()
+    sim_seconds = float(args.sim_seconds)
+
     task_cfg = _load_task_cfg()
     diagram, plant, _panda, obj_model, _meshcat, _plant_ad, _ctx_ad = \
         build_environment(task_cfg)
@@ -116,14 +125,17 @@ def main() -> int:
     sim_ctx.SetTime(0.0)
     simulator.Initialize()
 
-    dt_ctrl     = 0.01
-    sim_seconds = 30.0
-    n_steps     = int(round(sim_seconds / dt_ctrl))
+    dt_ctrl = 0.01
+    n_steps = int(round(sim_seconds / dt_ctrl))
 
-    snapshot_times = [0, 1, 5, 10, 20, 30]
+    base_snaps = [0, 1, 5, 10, 20, 30]
+    extra_snaps = [45, 60, 75, 90]
+    snapshot_times = [t for t in base_snaps if t <= sim_seconds + 1e-9] + \
+                     [t for t in extra_snaps if t <= sim_seconds + 1e-9]
     next_snap_idx = 0
 
-    csv_path = PROJECT_ROOT / "results" / "probe_9_4_2_integrator_W1.csv"
+    csv_name = f"probe_9_4_2_integrator_W1_{int(round(sim_seconds))}s.csv"
+    csv_path = PROJECT_ROOT / "results" / csv_name
     csv_path.parent.mkdir(exist_ok=True)
     csv_fh = open(csv_path, "w", newline="")
     csv_w  = csv.writer(csv_fh)
@@ -189,9 +201,11 @@ def main() -> int:
 
         if (next_snap_idx < len(snapshot_times)
                 and sim_time + 1e-9 >= snapshot_times[next_snap_idx]):
+            ee_pos = plant.CalcPointsPositions(
+                plant_ctx, ee_frame, np.zeros(3), world_frame).flatten()
             snap_rows.append((sim_time, q_err.copy(), integral_post.copy(),
                               tau_I.copy(), tau_demand.copy(),
-                              saturated.copy()))
+                              saturated.copy(), ee_pos.copy()))
             next_snap_idx += 1
 
         if step < n_steps:
@@ -207,24 +221,33 @@ def main() -> int:
     print("=" * 78)
     print(f"  {'t (s)':>5}  {'q_err (rad)':>12}  {'integral':>10}  "
           f"{'tau_I (Nm)':>11}  {'tau_demand (Nm)':>15}  {'sat?':>4}")
-    for (t, qe, ig, ti, td, sat) in snap_rows:
+    for (t, qe, ig, ti, td, sat, ee) in snap_rows:
         print(f"  {t:>5.1f}  {qe[1]:>+12.5f}  {ig[1]:>+10.5f}  "
               f"{ti[1]:>+11.4f}  {td[1]:>+15.4f}  {int(sat[1]):>4d}")
 
     print()
+    print("EE position + EE-to-target distance:")
+    print(f"  {'t (s)':>5}  {'ee_x':>8}  {'ee_y':>8}  {'ee_z':>8}  "
+          f"{'dist_to_target (m)':>20}")
+    for (t, qe, ig, ti, td, sat, ee) in snap_rows:
+        d = float(np.linalg.norm(ee - p_target))
+        print(f"  {t:>5.1f}  {ee[0]:>+8.4f}  {ee[1]:>+8.4f}  {ee[2]:>+8.4f}  "
+              f"{d:>20.4f}")
+
+    print()
     print("All-joints integrator snapshot (signed):")
     print(f"  {'t (s)':>5}  " + "  ".join(f"j{j:1d}".rjust(8) for j in range(n_j)))
-    for (t, qe, ig, ti, td, sat) in snap_rows:
+    for (t, qe, ig, ti, td, sat, ee) in snap_rows:
         print(f"  {t:>5.1f}  " + "  ".join(f"{ig[j]:+8.4f}" for j in range(n_j)))
 
     print()
     print("All-joints q_err snapshot:")
     print(f"  {'t (s)':>5}  " + "  ".join(f"j{j:1d}".rjust(9) for j in range(n_j)))
-    for (t, qe, ig, ti, td, sat) in snap_rows:
+    for (t, qe, ig, ti, td, sat, ee) in snap_rows:
         print(f"  {t:>5.1f}  " + "  ".join(f"{qe[j]:+9.5f}" for j in range(n_j)))
 
     # Hypothesis classification helper.
-    j1_traj = [(t, ig[1]) for (t, qe, ig, ti, td, sat) in snap_rows]
+    j1_traj = [(t, ig[1]) for (t, qe, ig, ti, td, sat, ee) in snap_rows]
     final_abs_I = abs(j1_traj[-1][1])
     print()
     print(f"Joint-1 integrator at t=30s:  {j1_traj[-1][1]:+.5f}  "
