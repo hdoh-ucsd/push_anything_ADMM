@@ -29,7 +29,7 @@ w_travel: 200.0
 
 # Cheap-solve ADMM iters for the K-1 hypothetical evaluations.
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
-surrogate_admm_iters: 1
+surrogate_admm_iters: 3
 
 
 # ----------------------------------------------------------------------------
