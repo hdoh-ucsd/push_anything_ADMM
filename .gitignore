@@ -29,3 +29,10 @@ milestones/
 # Run outputs
 results/
 profiling/results/
+# Step 8/9 transient probe scripts (one-shot diagnostics; on-disk only)
+scripts/probe_9_1_2_deflection.py
+scripts/probe_autodiff.py
+scripts/probe_collision_filter_context.py
+scripts/probe_e_inspect.py
+scripts/probe_ik_lock.py
+scripts/verify_deck_numbers.py
