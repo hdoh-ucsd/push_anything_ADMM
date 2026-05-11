@@ -244,8 +244,8 @@ class QuadraticManipulationCost:
                 ee_to_box_dist = float(np.linalg.norm(ee_xy - obj_xy))
 
                 pre_approach_3d = np.array([
-                    obj_xy[0] - 0.18 * g_hat[0],
-                    obj_xy[1] - 0.18 * g_hat[1],
+                    obj_xy[0] - 0.16 * g_hat[0],
+                    obj_xy[1] - 0.16 * g_hat[1],
                     self.z_ref,
                 ])
                 approach_3d = np.array([
