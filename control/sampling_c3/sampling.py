@@ -159,14 +159,24 @@ def _fixed_samples(n_samples: int,
 # Workspace filter
 # ---------------------------------------------------------------------------
 
+# Tolerance protects against float-arithmetic ε on bound-equal samples.
+# Without this, samples within ε of an axis-aligned closed bound (e.g.,
+# workspace_xy_max[1] = 0.0) are systematically rejected — see step 8
+# receipts for the diag-kik 176/200-loop trace where every behind-box
+# proxy sample was rejected at proxy_y ≈ +2.4e-6 m.
+_WORKSPACE_BOUND_TOL: float = 1e-3  # 1 mm
+
+
 def is_in_workspace(p: np.ndarray, params: SamplingParams) -> bool:
-    """True iff sample p satisfies the workspace_xy / workspace_z bounds."""
+    """True iff sample p satisfies the workspace_xy / workspace_z bounds
+    (within _WORKSPACE_BOUND_TOL)."""
     if p.shape != (3,):
         raise ValueError(f"sample must be (3,), got {p.shape}")
-    if not (params.workspace_xy_min[0] <= p[0] <= params.workspace_xy_max[0]):
+    tol = _WORKSPACE_BOUND_TOL
+    if not (params.workspace_xy_min[0] - tol <= p[0] <= params.workspace_xy_max[0] + tol):
         return False
-    if not (params.workspace_xy_min[1] <= p[1] <= params.workspace_xy_max[1]):
+    if not (params.workspace_xy_min[1] - tol <= p[1] <= params.workspace_xy_max[1] + tol):
         return False
-    if not (params.workspace_z_min <= p[2] <= params.workspace_z_max):
+    if not (params.workspace_z_min   - tol <= p[2] <= params.workspace_z_max   + tol):
         return False
     return True
