@@ -34,26 +34,34 @@ Implication: Finding C as framed was either not load-bearing for verdict-A, or i
 
 ### Category 2 — Newly-surfaced binding constraint
 
-**Item 2.1 — Joint-PD-with-grav-comp steady-state equilibrium**
+**Item 2.1 — kIK guide-path self-cancelling target (step 8 Hypothesis F, promoted)**
 Status: DIAGNOSED, not yet addressed
-Source: 9.4 kIK isolation + 9.4.1 torque breakdown
-Paper reference: outside paper scope (paper uses an operational-space controller at 1 kHz; project uses joint-space PD with grav-comp)
-Location: `control/sampling_c3/reposition_ik.py` PD law (lines 1174-1202), config gains (Kp=60, Kd=8, Ki=8, I_max=2.0, torque_limit=30 Nm)
+Source: 9.4 kIK isolation → 9.4.1 torque breakdown → 9.4.2 integrator characterization → 9.4.3 clamped-integrator probe → 9.4.4 guide-path trace
+Paper reference: outside paper scope (kIK trajectory generator is a project extension; paper does not specify a per-step Cartesian guide policy)
+Location: `control/sampling_c3/reposition_ik.py` `_build_guide_path` (lines 873-906) + the per-loop reset on target change (lines 1092-1099) + the joint-PD-with-grav-comp law (lines 1173-1202)
 
-The standalone kIK probe (9.4) drove the tracker toward verdict-A's exact failed targets with no wrapper, no C3, and no box. Both targets converged to essentially the same EE position (~(-0.016, -0.084, 0.025)) regardless of where commanded. IK reports feasible at every step; the offset comes from the joint-PD-with-grav-comp executor.
+The mechanism is documented in `docs/reposition_ik.md:148-156` from step 8 work as **Hypothesis F: joint-PD failure to track the IK solution**, with measurement TS4↔TS3 = 11.1 mm = one full per-stride distance. Today's 9.4 → 9.4.3 chain re-derived the same mechanism in the standalone kIK probe and surfaced its promotion to binding constraint under post-α / post-C-fix configuration.
 
-9.4.1 torque breakdown (commit 61f064c) characterized the mechanism:
+Diagnostic chain that re-derived the mechanism:
 
-- **Saturation is NOT the binding constraint.** Only 6 saturated joint-steps total (joint 5: 5 steps in the transient at t<0.5s; joint 2: 1 step) out of 5,607 total joint-steps (= 801 steps × 7 joints).
-- **The dominant saturating component is tau_P on joint 5** during the initial transient: `q_err = -0.86 rad × Kp=60` produces -51.7 Nm vs the 30 Nm clip. Joint 5 saturation pattern is identical on W1 and W2 (different targets, same initial joint-5 error).
-- **Steady state is sub-clamp on every joint.** Max steady-state demand: joint 1 at 27.0 Nm, under the 30 Nm limit. `tau_grav = +35.8 Nm` partially cancelled by `tau_P = -3.3 Nm` and `tau_I = -5.6 Nm`.
-- **Integrator is NOT clamped.** Integral magnitudes range 0.03–0.70 vs I_max=2.0. No joint hits the integral clamp.
+- **9.4 (commit 0b0ee69)** — Standalone kIK probe drove the tracker toward verdict-A's W1 and W2 targets with no wrapper, no C3, no box. Both converged to essentially the same EE position (~(-0.016, -0.084, 0.025)) regardless of commanded target. IK reports feasible (knot-0 IK lands within √3·1mm of the guide knot per `docs/reposition_ik.md:150`).
+- **9.4.1 (commit 61f064c)** — Per-joint torque breakdown ruled OUT saturation as the cause: 6 saturated joint-steps out of 5,607 (joint 5 transient only). Steady-state demand sub-clamp on every joint. Reframed as PD steady-state equilibrium issue.
+- **9.4.2 (commit dd49e59)** — 30s integrator probe ruled OUT anti-windup, leak, reset-events, and different-error hypotheses (H1/H3/H4/H5). Confirmed H2 (slow update) — integrator winds linearly toward clamp.
+- **9.4.3 (commit d87f386)** — 90s clamped-integrator probe + analytical Path B sanity check. Joint 1 clamps at t≈60s with residual q_err -0.033 rad. **EE-to-target distance is invariant from t=1s through t=90s at 0.159m**, indistinguishable from verdict-A's 16cm miss. Ki sufficiency and gravity-model error both ruled out (Path A and Path B agree on closed-loop force balance to within rounding). The closed-loop fixed point IS the binding constraint.
+- **9.4.4** — `_build_guide_path` trace surfaced the structural cause: the IK targets `p_guide[:, 0] = next_waypoint(ee_now, p_target, z_safe=0.20, ds=0.01m)`, recomputed from current `ee_now` each control step. With `num_full_ik_knots=1` (default), only knot 0 is sent to IK. The PD reaches the per-loop "1 cm ahead of where I am" target; the guide rebuilds with new `ee_now` ≈ old `ee_now`; the cycle is stable at a fixed point.
 
-The persistent EE offset comes from a steady-state joint error pattern (`q_err ≈ 0.01-0.05 rad` per joint) that accumulates through forward kinematics into 7-16 cm of EE miss. Raising torque_limit alone would speed up the initial transient but would not move the steady-state q_err — that requires either higher Kp (to shrink the q_err that balances the residual), higher Ki (to let the integrator absorb more), or a grav-comp model correction.
+**This was step 8 Hypothesis F**, documented at `docs/reposition_ik.md:148-156` with the same `TS4 - TS3 = 11.1 mm` empirical signature. Step 8 correctly identified Hypothesis F and correctly deferred it: the deferral rationale (§Step 8 closure at `docs/reposition_ik.md:182-186`) was that the wrapper at that time wasn't commanding contact-seeking targets — surrogate-C3 evaluation (mechanism α) was pessimistic about the contact-seeking proxy, so even a perfect Hypothesis F fix wouldn't have moved the box. With α (3e58cc6) and C-fix (8f0b738) shipped, that rationale no longer holds. Hypothesis F is **promoted from second-order to binding constraint** as a consequence of the upstream configuration change, not as a step 8 oversight.
 
-Open question (next investigation): the integrator at step 700 sits at 0.66-0.70 (35% of I_max=2.0) despite a sustained q_err of -0.054 rad on joint 1. A standard PI with no anti-windup, fed sustained error, would accumulate to clamp. Something prevents further accumulation — possibly an anti-windup mechanism, possibly a per-step rate-limit, possibly a leak term. Characterizing this is the 9.4.2 follow-up (constant-error probe).
+Implication for paper alignment: this is **kIK-internal**, not a low-level controller issue and not a paper-deviation in the audit sense. The kIK is structurally working as designed — the design assumes a moving target with cumulative integration, but the verdict-A scenario produces a stationary fixed point because per-loop guide rebuild uses `ee_now` as anchor. Tuning Kp / Ki / I_max / torque_limit / grav-comp model cannot break this fixed point; the structural change must touch how `p_guide[:, 0]` is built relative to the IK target.
 
-Implication for paper alignment: this is outside the Venkatesh paper's scope. The paper specifies an operational-space controller (OSC) tracking task-space commands at 1 kHz. Project uses joint-space PD with grav-comp. If verdict-A is unblocked by tuning the executor's parameters, no paper-alignment work is added by this category. If verdict-A requires an OSC replacement, that becomes a major architectural item.
+Open question (next investigation, 9.4.5 fix attempt): which G-fix preserves the design properties while breaking the fixed point. Fix surfaces, with design-constraint trade-offs:
+
+- **G1 (direct target — IK targets `p_target` instead of `p_guide[:, 0]`)** — Removes the lift-traverse-descend collision avoidance the guide enforces. The `tests/test_reposition.py:test_full_path_clears_box_bounding_box` invariant ("the EE must never enter the box's xy footprint at z below box top — the key safety property the PWL design buys") protects this; G1 breaks it unless `fk_min_distance > 0` is opted into. The opt-in path has its own documented cost: ~19 extra `ComputeSignedDistancePairwiseClosestPoints` calls per loop (`docs/reposition_ik.md:49-58`), which on V-8 measurement borderline overshoots the 8 ms IK budget. So G1 is "small diff" only nominally — in practice it's small plus a known-expensive collision-checking budget.
+- **G2 (horizon-aware static guide — build once on target change, consume next knot per step)** — Preserves the box-clearance safety property because the PWL shape is intact, just constructed once from initial `ee_now` to `p_target`. **But introduces planner-executor asynchrony**: the guide advances on a planning clock, the arm advances on dynamics, and they need to stay in sync. If the arm falls behind (disturbance, transient, integrator-still-winding), the guide is ahead of where the arm actually is and the PD may not catch up. Mitigation patterns to revisit at fix-design time: re-anchor if `ee_now` drifts more than X from expected position; slow anchor advance when `q_err` is large; hybrid (persistent anchor for direction, `ee_now` for progress check). These are design considerations within G2, not separate G-fixes.
+- **G3 (adaptive ds — larger stride when far from `p_target`)** — Larger `ds` doesn't just affect PD trackability; it also affects box-clearance because the lift-traverse-descend discretization assumes per-step `ds`. Doubling `ds` during far-from-target phases means the lift phase might overshoot z_safe in a single step. The `test_full_path_clears_box_bounding_box` regression would need to verify clearance still holds with variable `ds`.
+- **G4 (decoupled recomputation policy — rebuild from a persistent anchor, not from `ee_now`)** — Same trade-off as G2: preserves PWL shape but introduces planner-executor asynchrony. Requires anchor-advance discipline (when does anchor advance? per planning step? per achieved-knot?). Mitigation patterns same as G2.
+
+The current design's **self-consistency property** — the guide is always valid for where the arm actually is, no matter what just happened — is what we want to preserve when breaking the fixed point. G1 and G3 sacrifice the box-clearance safety property; G2 and G4 sacrifice the self-consistency property in exchange for forward progress, with mitigation patterns to revisit.
 
 ### Category 3 — Polish items (paper deviations, not yet load-bearing)
 
@@ -113,7 +121,7 @@ Performance-only, not correctness.
 |---|---|---|
 | 1.1 Mechanism α | SHIPPED | Paper-alignment shipped |
 | 1.2 Finding C | SHIPPED | Paper-alignment shipped |
-| 2.1 PD steady-state equilibrium | DIAGNOSED, not addressed | Binding constraint (new) |
+| 2.1 kIK guide-path self-cancelling target (step 8 Hypothesis F, promoted) | DIAGNOSED, not addressed | Binding constraint (promoted from step 8) |
 | 3.1 Asymmetric hysteresis | NOT STARTED | Polish |
 | 3.2 Empty-LCS handling | NOT STARTED | Polish |
 | 3.3 Wrapper rename | NOT STARTED | Polish |
@@ -125,10 +133,8 @@ Count: 2 shipped, 1 diagnosed (binding constraint), 4 polish, 1 demoted, 1 defer
 
 ## Critical takeaway from today's investigation
 
-Step 9's Findings A, B, C were correct as structural observations but were not the binding constraint for verdict-A. The binding constraint is the joint-PD-with-grav-comp executor settling at a steady-state equilibrium that doesn't reach commanded EE targets.
+Step 9's Findings A, B, C were correct as structural observations but were not the binding constraint for verdict-A. The binding constraint is the kIK guide-path's self-cancelling target — **the same Hypothesis F that step 8 documented at `docs/reposition_ik.md:148-156` and correctly deferred** because, at that time, the wrapper wasn't commanding contact-seeking targets (mechanism α was suppressing them). With α (3e58cc6) and C-fix (8f0b738) shipped, the wrapper now commands contact-seeking targets and Hypothesis F is the binding constraint.
 
-This was discovered by isolating the kIK from the wrapper and the C3 solver (9.4), showing that even with no target-switching, no contact dynamics, and no box, the EE cannot reach verdict-A's failed targets. The 9.4.1 breakdown then showed the mechanism is NOT torque saturation (which is rare and transient) but a sub-clamp steady-state where the integrator at ~0.7 vs I_max=2.0 plus Kp times small joint errors balances gravity at the wrong q.
+The day's load-bearing methodological lesson is **prior-art rediscovery, not novel diagnosis**. The 9.4 → 9.4.3 chain re-derived a mechanism the project had already characterized empirically (TS4↔TS3 = 11.1 mm = one full per-stride distance). The chain was rigorous but inefficient — searching `docs/reposition_ik.md` for "guide" or "stride" or "Hypothesis F" earlier in the chain would have surfaced the prior characterization. The institutional discipline note added to step 9's backlog: when investigating a mechanism, search project docs early for prior-art entries, especially docs that catalog hypotheses or defects (e.g., `docs/reposition_ik.md` Bug catalog, Operational notes, Step 8 closure sections).
 
-Both α and C-fix produced their intended mechanistic effects upstream of the executor but couldn't help because the executor was the bottleneck.
-
-Future paper-alignment work should be informed by 9.4.2 (integrator characterization). The right fix for the steady-state equilibrium depends on whether the integrator can wind further than 0.7 if given more time or a different gain — and that determines whether more paper-alignment work (Items 3.1 through 3.4) becomes meaningful or remains blocked behind the executor.
+What is genuinely new is the **promotion**: prior to α + C-fix shipping, Hypothesis F was second-order behind "wrapper picks wrong targets." After α + C-fix, the wrapper picks contact-seeking targets and Hypothesis F becomes binding. Future paper-alignment work on Items 3.1-3.4 (polish) should remain gated behind the Hypothesis F fix — the same gating step 8 identified, now with a promoted urgency.
