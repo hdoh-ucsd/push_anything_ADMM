@@ -1,19 +1,36 @@
-"""kIK standalone reachability probe (9.4).
+"""kIK standalone reachability probe (9.4 / 9.4.5-A).
 
-Drives ``RepositionIKTracker`` in free mode toward the verbatim targets
-that the wrapper commanded during 9.3.4 verdict-A runs but the EE did
-not reach. Isolates the kIK layer from the sampling-C3 wrapper, the
-inner C3/C3+ solver, and the contact dynamics — the box is parked far
-from the arm so manipuland coupling does not contribute.
+Drives ``RepositionIKTracker`` in free mode toward a list of test
+targets. Isolates the kIK layer from the sampling-C3 wrapper, the
+inner C3/C3+ solver, and the contact dynamics — the box is parked
+far from the arm so manipuland coupling does not contribute.
 
-Test targets (verbatim from 9.3.4 GS-tgt logs at step=800):
-    W1: (-0.169, -0.043, 0.050)  — Path D α+C-fix overshoot case
-    W2: (-0.065, -0.135, 0.050)  — Path A α+C-fix undershoot case
+Two scopes of tests are run in one pass:
 
-Per target: reset arm to INITIAL_ARM_Q, reset integrator, simulate 8 s
-of control at dt_ctrl=0.01 s, log per-step diagnostics, report the
-final EE position, settling time, ik failures, knot0-overshoot count
-(IPOPT slow-solve proxy), and max torque.
+  Tier 1 (horizontal only, varying distance — exposes Phase 2
+  fixed-point as a function of distance):
+    T1.1: home → ( +0.010, −0.001, 0.200)   1 cm,  direct-line
+    T1.2: home → ( +0.050, −0.001, 0.200)   5 cm,  Phase 2 only
+    T1.3: home → ( +0.100, −0.001, 0.200)  10 cm,  Phase 2 only
+
+  Tier 2 (z-axis motion — phase isolation):
+    T2.1: home → ( +0.000, −0.001, 0.050)   pure descent  (Phase 3)
+    T2.2: home → ( +0.100, −0.001, 0.050)   traverse + descend
+    T2.3: SKIPPED (lift + traverse) — needs a starting arm_q whose
+          FK lands EE at z=0.05; no such pose is checked into the
+          repo and adding one is out of scope for this read-only
+          probe (per spec, Phase 1 coverage matters less because
+          lift always runs first in any complex motion anyway).
+
+  Tier 3 (verdict-A failing targets — sanity check 9.4 reproduces):
+    T3.1: W2  ( −0.065, −0.135, 0.050)   Path A α+C-fix undershoot
+    T3.2: W1  ( −0.169, −0.043, 0.050)   Path D α+C-fix overshoot
+
+Per target: reset arm to its starting q, reset integrator, simulate
+8 s of control at dt_ctrl=0.01 s, log per-step diagnostics, write a
+trajectory CSV (results/probe_9_4_5_A_<label>.csv) and a torque-
+breakdown CSV (results/probe_9_4_5_A_torque_<label>.csv). At the end,
+print a summary table covering every target.
 
 Usage:
     python scripts/probe_9_4_kik_reachability.py
@@ -35,12 +52,40 @@ import pydrake.all as ad
 import yaml
 
 from control.sampling_c3.params import SamplingC3Params, RepositioningTrajectoryType
+from control.sampling_c3.reposition import next_waypoint
 from control.sampling_c3.reposition_ik import RepositionIKTracker
 from sim.env_builder import (
     EE_BODY_NAME,
     INITIAL_ARM_Q,
     build_environment,
 )
+
+
+def _classify_phase(p_now:    np.ndarray,
+                    p_target: np.ndarray,
+                    *,
+                    z_safe:   float,
+                    straight_line_thresh: float,
+                    finished_tol: float = 0.02,
+                    z_eps:        float = 1e-4) -> str:
+    """Mirror the rule-set used inside ``next_waypoint`` (single source of
+    truth: ``control/sampling_c3/reposition.py: next_waypoint``). Returns
+    one of {completed, direct-line, phase1-lift, phase2-traverse,
+    phase3-descend}. ``completed`` overlays the next_waypoint phases when
+    the EE is within the tracker's ``finished`` threshold (mirrors the
+    2 cm ball-of-acceptance asserted at reposition_ik.py:1205).
+    """
+    direct = float(np.linalg.norm(p_target - p_now))
+    if direct <= finished_tol:
+        return "completed"
+    if direct < straight_line_thresh:
+        return "direct-line"
+    xy_dist = float(np.linalg.norm(p_target[:2] - p_now[:2]))
+    if xy_dist <= z_eps:
+        return "phase3-descend"
+    if p_now[2] < z_safe - z_eps:
+        return "phase1-lift"
+    return "phase2-traverse"
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -74,27 +119,41 @@ def _set_state(plant, plant_ctx, obj_body, *, arm_q, obj_xyz):
 
 def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
                 world_frame, simulator, plant_ctx, obj_body, n_u: int,
-                breakdown_csv_path: Path,
+                breakdown_csv_path: Path, trajectory_csv_path: Path,
+                start_arm_q: np.ndarray = INITIAL_ARM_Q,
                 dt_ctrl: float = 0.01, sim_seconds: float = 8.0) -> dict:
     """Drive tracker toward p_target for sim_seconds, return summary dict.
 
-    Writes a per-(step, joint) CSV of torque components to ``breakdown_csv_path``.
-    Components (per joint) are recomputed in the probe from quantities the
-    tracker exposes (``last_q_knots[:, 0]``, ``_integral``, ``_plant_ctx_ik``,
-    ``repos_params``) — no controller code is modified. The reconstruction
-    is sanity-checked against the tracker's returned ``u`` each step.
+    Writes two per-target CSVs:
+      - ``trajectory_csv_path`` (one row per control step): time, EE
+        position, EE-to-target distance, |u|, classified guide-path
+        phase, and ``knot0 - ee_now`` offset (recomputed from the same
+        ``next_waypoint`` rule the kIK uses for its warm-start build).
+      - ``breakdown_csv_path`` (one row per (step, joint)): torque
+        components recomputed from tracker read-only state — see the
+        original 9.4.1 probe header for the reconstruction rationale.
+    The reconstruction is sanity-checked against the tracker's returned
+    ``u`` each step. No controller code is modified.
     """
     print()
     print(f"=== {label}  p_target = ({p_target[0]:+.3f}, "
           f"{p_target[1]:+.3f}, {p_target[2]:+.3f}) ===")
 
-    # Reset state: arm at INITIAL_ARM_Q, box parked far away.
+    # Reset state: arm at start_arm_q, box parked far away.
     _set_state(plant, plant_ctx, obj_body,
-               arm_q=INITIAL_ARM_Q, obj_xyz=(10.0, 10.0, 0.05))
+               arm_q=start_arm_q, obj_xyz=(10.0, 10.0, 0.05))
 
     # Reset tracker integrator (sticky across runs in the wrapper; for a
     # clean per-target probe we explicitly zero it).
     tracker._integral = np.zeros_like(tracker._integral)
+    # Reset the tracker's "previous target" memo so the integrator-reset
+    # branch inside compute_torque (reposition_ik.py:1093-1099) always
+    # fires on the first step of every new target — otherwise the second
+    # target onward inherits the prior target's memo and skips its own
+    # reset, defeating the explicit zero above. Read-only field; setting
+    # it to None does not change the controller's behaviour, only resets
+    # the probe-side initial condition.
+    tracker._prev_target_pos = None
 
     # Reset simulator clock to t=0.
     sim_ctx = simulator.get_mutable_context()
@@ -106,15 +165,27 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
     Ki = float(tracker.repos_params.Ki_q)
     torque_limit = float(tracker.repos_params.torque_limit)
 
+    # Guide-path constants — same values that ``_build_guide_path`` reads
+    # at every call (reposition_ik.py:889-892). Recomputing knot0 here
+    # gives us the literal p_guide[:, 0] without changing controller code.
+    z_safe = float(tracker.repos_params.pwl_waypoint_height)
+    line_thresh = float(
+        tracker.repos_params.use_straight_line_traj_under_piecewise_linear
+    )
+    ds = float(tracker.repos_params.speed) * float(tracker.dt)
+
     # Trajectory log.
-    ee_log: list[np.ndarray]   = []
-    t_log: list[float]         = []
-    dist_log: list[float]      = []
-    u_norm_log: list[float]    = []
-    infeas_count               = 0
-    overshoot_count            = 0
-    finished_first_time: float = float("nan")
-    snapshot_at: list[tuple]   = []  # (t, ee, dist, |u|) at t=0..8s
+    ee_log: list[np.ndarray]    = []
+    t_log: list[float]          = []
+    dist_log: list[float]       = []
+    u_norm_log: list[float]     = []
+    phase_log: list[str]        = []
+    knot0_offset_log: list[np.ndarray] = []
+    infeas_count                = 0
+    overshoot_count             = 0
+    finished_first_time: float  = float("nan")
+    snapshot_at: list[tuple]    = []  # (t, ee, dist, |u|) at t=0..8s
+    initial_ee:  np.ndarray     = np.zeros(3)  # filled on step 0 below
 
     # Per-joint accumulators across the run.
     n_j = n_u  # 7 Franka arm DoFs
@@ -147,6 +218,17 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
         "integral", "v_now",
         "tau_P", "tau_I", "tau_D", "tau_grav",
         "tau_demand_pre_clip", "tau_clipped", "saturated",
+    ])
+
+    # Trajectory CSV — one row per control step.
+    traj_fh = open(trajectory_csv_path, "w", newline="")
+    traj_w  = csv.writer(traj_fh)
+    traj_w.writerow([
+        "step", "time",
+        "ee_x", "ee_y", "ee_z",
+        "dist_to_target", "u_norm",
+        "phase",
+        "knot0_dx", "knot0_dy", "knot0_dz", "knot0_norm",
     ])
 
     for step in range(n_steps + 1):
@@ -240,6 +322,37 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
         dist_log.append(d)
         u_norm_log.append(float(np.linalg.norm(u)))
 
+        if step == 0:
+            initial_ee = ee_pos.copy()
+
+        # Reproduce the kIK's first guide-knot here (read-only). Same call
+        # the tracker makes inside _build_guide_path with p_curr=ee_now;
+        # equivalent to ``p_guide[:, 0]`` at this step.
+        knot0 = next_waypoint(
+            p_now=ee_pos,
+            p_target=p_target,
+            z_safe=z_safe,
+            ds=ds,
+            straight_line_thresh=line_thresh,
+        )
+        knot0_off = knot0 - ee_pos
+        phase = _classify_phase(
+            ee_pos, p_target,
+            z_safe=z_safe,
+            straight_line_thresh=line_thresh,
+        )
+        phase_log.append(phase)
+        knot0_offset_log.append(knot0_off.copy())
+
+        traj_w.writerow([
+            step, f"{sim_time:.4f}",
+            f"{ee_pos[0]:+.6f}", f"{ee_pos[1]:+.6f}", f"{ee_pos[2]:+.6f}",
+            f"{d:.6f}", f"{np.linalg.norm(u):.4f}",
+            phase,
+            f"{knot0_off[0]:+.6f}", f"{knot0_off[1]:+.6f}", f"{knot0_off[2]:+.6f}",
+            f"{float(np.linalg.norm(knot0_off)):.6f}",
+        ])
+
         if not bool(diag.get("knot0_feasible", True)):
             infeas_count += 1
         if float(diag.get("knot0_overshoot_ms", 0.0)) > 0.0:
@@ -258,22 +371,41 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
             simulator.AdvanceTo(sim_time + dt_ctrl)
 
     csv_fh.close()
+    traj_fh.close()
 
+    # Settling = first step `i` such that for the next `window` steps the
+    # EE moved <1mm consecutively. Returns the time of step `i` itself
+    # (the first quiescent step), not the end of the window.
     settling_time = float("nan")
+    settling_idx  = -1
+    settling_ee:    np.ndarray | None = None
+    settling_phase: str          = ""
+    settling_knot0_offset:        np.ndarray | None = None
     window = max(1, int(round(0.10 / dt_ctrl)))
     for i in range(len(ee_log) - window):
         moves = [float(np.linalg.norm(ee_log[j + 1] - ee_log[j]))
                  for j in range(i, i + window)]
         if all(m < 1e-3 for m in moves):
-            settling_time = t_log[i]
+            settling_time         = t_log[i]
+            settling_idx          = i
+            settling_ee           = ee_log[i].copy()
+            settling_phase        = phase_log[i]
+            settling_knot0_offset = knot0_offset_log[i].copy()
             break
 
     summary = dict(
         label                 = label,
         p_target              = p_target,
+        initial_ee            = initial_ee,
         ee_final              = ee_log[-1],
         dist_final            = dist_log[-1],
         settling_time         = settling_time,
+        settling_idx          = settling_idx,
+        settling_ee           = settling_ee if settling_ee is not None else ee_log[-1],
+        settling_phase        = settling_phase if settling_idx >= 0 else phase_log[-1],
+        settling_knot0_offset = (settling_knot0_offset
+                                 if settling_knot0_offset is not None
+                                 else knot0_offset_log[-1]),
         infeas_count          = infeas_count,
         overshoot_count       = overshoot_count,
         finished_first_time   = finished_first_time,
@@ -295,6 +427,7 @@ def _run_target(label: str, p_target: np.ndarray, *, tracker, plant, ee_frame,
         dom_grav              = dom_grav,
         torque_limit          = torque_limit,
         csv_path              = str(breakdown_csv_path),
+        trajectory_csv_path   = str(trajectory_csv_path),
     )
     return summary
 
@@ -383,31 +516,52 @@ def main() -> int:
           f"I_max={params.reposition_params.I_max}  "
           f"torque_limit={params.reposition_params.torque_limit}")
 
+    # 9.4.5-A target tiers (read top-of-file docstring for tier rationale).
+    # Tuple: (label, p_target, start_arm_q). T2.3 deliberately skipped.
     targets = [
-        ("W1_path_D_overshoot",  np.array([-0.169, -0.043, 0.050])),
-        ("W2_path_A_undershoot", np.array([-0.065, -0.135, 0.050])),
+        # Tier 1 — horizontal only at z=0.20 (home pose plane)
+        ("T1_1_xplus_1cm",  np.array([+0.010, -0.001, 0.200]), INITIAL_ARM_Q),
+        ("T1_2_xplus_5cm",  np.array([+0.050, -0.001, 0.200]), INITIAL_ARM_Q),
+        ("T1_3_xplus_10cm", np.array([+0.100, -0.001, 0.200]), INITIAL_ARM_Q),
+        # Tier 2 — z-axis motion (T2.3 skipped: needs a sub-z_safe start
+        # arm_q that is not checked into the repo)
+        ("T2_1_descend",            np.array([+0.000, -0.001, 0.050]), INITIAL_ARM_Q),
+        ("T2_2_traverse_descend",   np.array([+0.100, -0.001, 0.050]), INITIAL_ARM_Q),
+        # Tier 3 — verdict-A failing targets, sanity-check 9.4 reproduces
+        ("T3_1_W2_path_A_undershoot", np.array([-0.065, -0.135, 0.050]), INITIAL_ARM_Q),
+        ("T3_2_W1_path_D_overshoot",  np.array([-0.169, -0.043, 0.050]), INITIAL_ARM_Q),
     ]
+    print()
+    print("[probe-9.4.5-A] T2.3 (lift-then-traverse) skipped — needs a "
+          "starting arm_q with EE at z=0.05; no such pose checked into the "
+          "repo. Per scope: Phase 1 coverage matters less because lift "
+          "always runs first in any complex motion anyway.")
 
     results_dir = PROJECT_ROOT / "results"
     results_dir.mkdir(exist_ok=True)
 
     summaries = []
-    for label, p_target in targets:
-        csv_path = results_dir / f"probe_9_4_1_torque_breakdown_{label}.csv"
+    for label, p_target, start_arm_q in targets:
+        breakdown_csv = results_dir / f"probe_9_4_5_A_torque_{label}.csv"
+        traj_csv      = results_dir / f"probe_9_4_5_A_{label}.csv"
         summaries.append(_run_target(
             label, p_target,
             tracker=tracker, plant=plant, ee_frame=ee_frame,
             world_frame=world_frame, simulator=simulator,
             plant_ctx=plant_ctx, obj_body=obj_body, n_u=n_u,
-            breakdown_csv_path=csv_path,
+            breakdown_csv_path=breakdown_csv,
+            trajectory_csv_path=traj_csv,
+            start_arm_q=start_arm_q,
         ))
 
-    # Final report.
+    # ------------------------------------------------------------------
+    # Final report — original per-target detail block (kept for context).
+    # ------------------------------------------------------------------
     print()
     print("=" * 78)
-    print("BLOCK 4 REPORT")
+    print("BLOCK 4 REPORT — per-target detail")
     print("=" * 78)
-    fmt = ("{label:>22} | dist_final={d:7.4f}m | settling_time={st:6.3f}s | "
+    fmt = ("{label:>30} | dist_final={d:7.4f}m | settling_time={st:6.3f}s | "
            "infeas={inf:>4d} | knot0_overshoot={ov:>4d} | finished_at={ft} | "
            "max|u|={mu:.2f}Nm")
     for s in summaries:
@@ -421,9 +575,33 @@ def main() -> int:
             ft=ft,
             mu=s['max_u_norm'],
         ))
-        ee = s['ee_final']
-        print(f"{'':>24}ee_final=({ee[0]:+.4f}, {ee[1]:+.4f}, {ee[2]:+.4f})  "
+        ee0 = s['initial_ee']
+        ee  = s['ee_final']
+        print(f"{'':>32}ee_initial=({ee0[0]:+.4f}, {ee0[1]:+.4f}, {ee0[2]:+.4f})  "
+              f"ee_final=({ee[0]:+.4f}, {ee[1]:+.4f}, {ee[2]:+.4f})  "
               f"target=({s['p_target'][0]:+.4f}, {s['p_target'][1]:+.4f}, {s['p_target'][2]:+.4f})")
+
+    # ------------------------------------------------------------------
+    # 9.4.5-A summary table — one row per target, scope-spec format.
+    # ------------------------------------------------------------------
+    print()
+    print("=" * 78)
+    print("BLOCK 4 REPORT — 9.4.5-A summary table")
+    print("=" * 78)
+    print(f"{'Test':<32} {'Dist (m)':>10} {'Settled?':>9} {'EE→target (m)':>14} "
+          f"{'Phase@settle':>16} {'knot0 - ee_now (mm)':>26}")
+    print("-" * 110)
+    for s in summaries:
+        # Cartesian distance from this run's actual initial EE (not the
+        # scope's stated home approximation) to the target.
+        d_total = float(np.linalg.norm(s['p_target'] - s['initial_ee']))
+        settled = "YES" if not np.isnan(s['settling_time']) else "NO"
+        if not np.isnan(s['settling_time']):
+            settled = f"YES@{s['settling_time']:5.2f}s"
+        ko = s['settling_knot0_offset'] * 1e3  # mm
+        ko_str = f"({ko[0]:+6.2f},{ko[1]:+6.2f},{ko[2]:+6.2f})"
+        print(f"{s['label']:<32} {d_total:>10.4f} {settled:>9} "
+              f"{s['dist_final']:>14.4f} {s['settling_phase']:>16} {ko_str:>26}")
 
     for s in summaries:
         _print_breakdown_summary(s)
