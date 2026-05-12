@@ -163,6 +163,18 @@ Findings A, B, C remain structurally correct as characterizations of the C3 / LC
 
 Future work on Findings A, B, C remains paper-relevant but is gated behind the executor fix.
 
+### 9.4.3 / 9.4.4 — guide-path self-cancelling target (step 8 Hypothesis F, promoted)
+
+After the 9.4 / 9.4.1 / 9.4.2 chain (rolled up in the four subsections above) localized the verdict-A reachability stall to the kIK PD steady-state, two further diagnostics resolved the binding mechanism — and surfaced that it had been documented in step 8 already.
+
+**9.4.3 (commit d87f386)** extended the integrator probe to 90 simulated seconds and added analytical Path B sanity checking. Joint 1 reaches integrator clamp at t≈60s with residual q_err -0.033 rad. The closed-loop force balance equation `Kp·|q_err| + Ki·I_max = tau_g_drake(q_now) + tau_g_drake(q_target)` is satisfied to within rounding (Path A measured: 18.0 Nm; Path B predicted: 17.998 Nm). **Critically, the EE-to-target distance is invariant from t=1s through t=90s at 0.159m**, indistinguishable from verdict-A's W1 miss of 0.16m. Both Ki sufficiency and gravity-model error are ruled out: the EE doesn't reach target even at clamp, and the gravity model is internally consistent.
+
+**9.4.4 (read-only trace)** examined `_build_guide_path` at `control/sampling_c3/reposition_ik.py:873-906`. The IK targets `p_guide[:, 0] = next_waypoint(ee_now, p_target, z_safe=0.20, ds=0.01m)`, recomputed from current `ee_now` each control step. With `num_full_ik_knots=1` (the default), only knot 0 is sent to IK. The PD reaches the per-loop "1 cm ahead of where I am" target; `ee_now` advances marginally; the guide rebuilds with new ≈ old `ee_now`; the cycle is stable at a fixed point. The lift-traverse-descend PWL shape is the load-bearing safety property the design buys (per `tests/test_reposition.py:test_full_path_clears_box_bounding_box`: "the EE must never enter the box's xy footprint at z below box top — the key safety property the PWL design buys"); any G-fix that breaks this property must compensate via per-knot signed-distance constraints (currently disabled with `fk_min_distance=0` per V-9 revert at `docs/reposition_ik.md:49-58`).
+
+**Prior-art rediscovery — the day's load-bearing methodological lesson.** The mechanism the 9.4 → 9.4.3 chain re-derived is documented at `docs/reposition_ik.md:148-156` from step 8 work as **Hypothesis F: joint-PD failure to track the IK solution**, with the same `TS4↔TS3 = 11.1 mm = one full per-stride distance` empirical signature. Step 8 correctly identified Hypothesis F and correctly deferred it: the deferral rationale (`docs/reposition_ik.md:182-186`) was that the wrapper at that time wasn't commanding contact-seeking targets — surrogate-C3 evaluation (mechanism α) was pessimistic, so even a perfect Hypothesis F fix wouldn't have moved the box. Step 9's α (3e58cc6) and C-fix (8f0b738) commits removed that upstream confound; the wrapper now commands contact-seeking targets and Hypothesis F is the binding constraint. The mechanism is the same; the framing has been promoted from "second-order defect" to "binding constraint for verdict-A under post-α/C-fix configuration." This is a configuration-promotion story, not a step 8 oversight.
+
+**Reframing the 9.4 / 9.4.1 / 9.4.2 outcomes.** All three were correct as observations but each misidentified the binding constraint at its own level (IK reachability at 9.4; PD saturation at 9.4.1; integrator dynamics at 9.4.2). The 9.4.3 / 9.4.4 resolution shows the chain converged through three layers of symptoms before reaching the actual mechanism. The G1/G2/G3/G4 fix surfaces from 9.4.4 are queued for 9.4.5 with design-constraint trade-offs documented in `docs/paper_alignment_plan.md` Item 2.1.
+
 ## Backlog
 
 ### C3Solver discards per-knot λ_k
@@ -180,6 +192,18 @@ Architectural verification gap surfaced in 9.2.1. `control/admm_solver.py:501-50
 ### D matrix shape evolution (C3+ feature)
 
 Finding A's derivation cites D having shape (n_x, n_λ) with the structural property that D is empty when n_c=0. This claim is preserved across the C3+ feature commit, but the column composition changed: D previously had columns for (λ_n, λ_t) only (5·n_c columns when n_c>0); after the Phase 2 Stewart-Trinkle slack addition, D has columns for (γ, λ_n, λ_t) (6·n_c columns when n_c>0). The γ-columns are zero by construction (γ has no dynamics coupling), so the "only u→box path is D·λ when n_c>0" claim is preserved with γ-columns acting as structural zeros. Future Finding A re-derivations should note this shape detail.
+
+### Prior-art search discipline (additive to existing diagnostic discipline)
+
+The 9.4 → 9.4.3 chain re-derived a mechanism documented from step 8 at `docs/reposition_ik.md:148-156` (kIK and PWL trackers settle at different z equilibria) and `:152-156` (Joint-PD covers ~0% of per-stride distance per 10 ms control loop). Step 8 labeled this **Hypothesis F: joint-PD failure to track the IK solution** and correctly deferred it on the rationale documented at `docs/reposition_ik.md:182-186` — the wrapper at that time wasn't commanding contact-seeking targets (mechanism α was pessimistic). Step 9's α (3e58cc6) and C-fix (8f0b738) removed that upstream confound; Hypothesis F became the binding constraint as a consequence of the upstream change, not as a step 8 oversight.
+
+The discipline note, additive to the existing 9.1 / 9.2.x narrative:
+
+- **Search project docs early** when investigating a mechanism. The first stop should be docs that catalog hypotheses or defects (in this codebase: `docs/reposition_ik.md` Bug catalog, Operational notes, Refactor-protection notes; `docs/step8_sampling_c3_candidates.md` Candidate list; this file's Findings A/B/C and Backlog). A brief grep against the suspected mechanism's keywords ("guide," "stride," "Hypothesis F," "tracking failure," etc.) before the first probe would have surfaced the prior characterization.
+- **A prior diagnostic's deferral rationale is precious context.** When a hypothesis was named-but-deferred in earlier work, the deferral itself encodes a constraint judgment that should be preserved or explicitly re-evaluated. In this case, step 8's deferral of Hypothesis F was correct-at-that-time and the rationale ("wrapper not commanding contact-seeking targets") was the precise hook for re-evaluation.
+- **When configuration changes upstream, audit deferred mechanisms.** Each time a fix lands that touches the upstream conditions of an earlier deferral, walk through the deferred mechanisms and check whether the deferral's rationale still holds. This is a low-cost institutional practice that prevents downstream re-derivation chains.
+
+This is additive to (not a replacement for) the existing diagnostic discipline narrative below — the 9.1 ↔ overturned-mechanism-β reframing and the 9.2.x derivations remain the canonical story for the C3 / LCS / staging-geometry findings; the prior-art search note is for executor-side investigations where step 8 produced extensive empirical work that future investigations should consult first.
 
 ## Diagnostic discipline (parallel to V-1→V-9 and S8.0→S8.4)
 
