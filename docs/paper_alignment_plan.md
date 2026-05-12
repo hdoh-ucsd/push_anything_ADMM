@@ -34,13 +34,18 @@ Implication: Finding C as framed was either not load-bearing for verdict-A, or i
 
 ### Category 2 — Newly-surfaced binding constraint
 
-**Item 2.1 — kIK guide-path self-cancelling target (step 8 Hypothesis F, promoted)**
+**Item 2.1 — kIK guide-path self-cancelling target (Effect A) AND executor cannot hold home pose (Effect B)**
 Status: DIAGNOSED, not yet addressed
-Source: 9.4 kIK isolation → 9.4.1 torque breakdown → 9.4.2 integrator characterization → 9.4.3 clamped-integrator probe → 9.4.4 guide-path trace
-Paper reference: outside paper scope (kIK trajectory generator is a project extension; paper does not specify a per-step Cartesian guide policy)
-Location: `control/sampling_c3/reposition_ik.py` `_build_guide_path` (lines 873-906) + the per-loop reset on target change (lines 1092-1099) + the joint-PD-with-grav-comp law (lines 1173-1202)
+Source: 9.4 kIK isolation → 9.4.1 torque breakdown → 9.4.2 integrator characterization → 9.4.3 clamped-integrator probe → 9.4.4 guide-path trace → 9.4.5-A baseline → 9.4.5-A.1 hold-home-pose
+Paper reference: outside paper scope (kIK trajectory generator is a project extension; paper does not specify a per-step Cartesian guide policy or a joint-space PD executor)
+Location: **Effect A** at `control/sampling_c3/reposition_ik.py` `_build_guide_path` (lines 873-906) + per-loop reset (lines 1092-1099). **Effect B** at the joint-PD-with-grav-comp law (lines 1173-1202) + config gains (Kp_q=60, Ki_q=8, Kd_q=8, I_max=2.0, torque_limit=30 Nm in `config/sampling_c3_kik.yaml`)
 
-The mechanism is documented in `docs/reposition_ik.md:148-156` from step 8 work as **Hypothesis F: joint-PD failure to track the IK solution**, with measurement TS4↔TS3 = 11.1 mm = one full per-stride distance. Today's 9.4 → 9.4.3 chain re-derived the same mechanism in the standalone kIK probe and surfaced its promotion to binding constraint under post-α / post-C-fix configuration.
+The binding constraint factors into **two coupled effects**, both surfaced today:
+
+- **Effect A (Hypothesis F per-stride self-cancelling target)** — documented in `docs/reposition_ik.md:148-156` from step 8 work as Hypothesis F, with measurement TS4↔TS3 = 11.1 mm = one full per-stride distance. Re-derived 9.4 → 9.4.3 in the standalone kIK probe and promoted from second-order (deferred behind α-pessimism) to binding (under post-α / post-C-fix configuration). Planner-side mechanism.
+- **Effect B (executor cannot hold home pose)** — surfaced 9.4.5-A baseline (commit `8827917`): all 7 standalone tests at tier 1-3 settle at the same EE fixed point ~(-0.016, -0.084, +0.025) within 14 control steps, regardless of target. Confirmed independent of kIK at 9.4.5-A.1 (commit `1102939`): bypassing the kIK and driving PD directly with `q_target = q_home` for 30 simulated seconds produces 197 mm EE displacement, with 3 integrators clamped at I_max=2.0 (joint 1 q_err = -0.405 rad) and zero torque saturation. Executor-side mechanism. **Step 8 did not test hold-home-pose**, so this is a genuinely-new diagnostic finding (the executor-tuning catalog at `docs/reposition_ik.md` §"Step 8 executor-tuning catalog (synthesis)" makes the gap explicit).
+
+Both effects must be addressed for the contact-free stage to work. **Planner-only fixes (G2/G4) handle Effect A only.** A planner fix that produced a perfect `q_target = q_home` (or any other fixed-pose command) would still see the arm fall to the same (-0.016, -0.084, +0.025) fixed point under the production PD law. Step 8's executor-tuning catalog (linked above) is the essential context for the executor-side fix decision: it shows what was tried (Kp doubling ran into the √6·30 Nm saturation ceiling; I_max raise from 0.5 to 2.0 was the shipped fix; grav-comp at q_target was structurally chosen over q_now for tracking control), what was deferred (anti-windup, velocity-reference D-term, feedforward acceleration, OSC architecture), and what is genuinely new territory (hold-home-pose verification was not in step 8's scope).
 
 Diagnostic chain that re-derived the mechanism:
 
@@ -121,7 +126,7 @@ Performance-only, not correctness.
 |---|---|---|
 | 1.1 Mechanism α | SHIPPED | Paper-alignment shipped |
 | 1.2 Finding C | SHIPPED | Paper-alignment shipped |
-| 2.1 kIK guide-path self-cancelling target (step 8 Hypothesis F, promoted) | DIAGNOSED, not addressed | Binding constraint (promoted from step 8) |
+| 2.1 kIK guide-path (Effect A, step 8 Hypothesis F promoted) + executor cannot hold home pose (Effect B, new) | DIAGNOSED, not addressed | Binding constraint — two coupled effects |
 | 3.1 Asymmetric hysteresis | NOT STARTED | Polish |
 | 3.2 Empty-LCS handling | NOT STARTED | Polish |
 | 3.3 Wrapper rename | NOT STARTED | Polish |

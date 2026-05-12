@@ -253,6 +253,71 @@ This is wrong for the operating regime: the 8.1.3 measurement recorded the actua
 The tolerance is symmetric (applied to both min and max bounds on all six axis-pairs) because the closed-bound trap is direction-agnostic: any axis-aligned bound at exactly zero produces the same ε-rejection failure. The bug surfaced on `workspace_xy_max[1] = 0.0` for the pushing task; the tolerance prevents the same issue on any future scenario with axis-aligned zero bounds.
 
 
+## Step 8 executor-tuning catalog (synthesis)
+
+Tabular synthesis of the executor parameter choices investigated during step 8, indexed for fix-design lookup. Detail prose lives in §Refactor-protection notes (`I_max=2.0`, gravity comp at `q_target`, `Kp_q=60`), §Operational notes (Type-0 steady-state mechanism, torque-clip ceiling, kIK/PWL z-asymmetry), and §Diagnostic discipline (S8.0 → S8.4) §S8.4 (the gravity-comp / gain-tuning / integral-expansion arc). This catalog is an index, not a replacement for those sections.
+
+### What step 8 tried
+
+| Parameter / approach | Tried? | Result | Decision | Doc reference |
+|---|---|---|---|---|
+| `Kp_q` (60 → 120) | Yes — Fix 5 | `‖u‖_max = √6 · 30 Nm` exactly (6/7 joints simultaneously clipped); TS4↔TS3 went 11.17 → 11.61 mm (worse); mode-flips tripled (3→11); PWL EE-z regressed (83.6 → 106.9 mm) | Reverted | `docs/reposition_ik.md:158-160, 239-245, 364` |
+| `Ki_q` (8.0) | Not tuned in step 8 — default value inherited | n/a | Unchanged | absence in S8.4 narrative; default at `params.py` |
+| `Kd_q` (8.0) | Not tuned in step 8 — default value inherited. Flagged for future work: D-term has no `v_target` component (`u_d = -Kd_q · v_arm_now`), so it damps motion toward target as well as away. Velocity-reference D-term requires `num_full_ik_knots ≥ 2` | n/a | Unchanged; deferred fix surface | `params.py` Kd_q docstring (lines 240-245); `docs/reposition_ik.md:144-150` (Type-0 mechanism) |
+| `I_max` (0.5 → 2.0) | Yes — Fix 6 | Integral converges to ~1.0 rad·s/joint at equilibrium under pushing task; `Ki_q · 1.0 = 8 Nm` matches the 7.39 Nm gravity-load shift on q[1] (shoulder) between `current_q` and `q_target` to within 10%. Practical magnitude: EE z mean +0.77 mm; PWL byte-identical | Shipped (commit `9aa124b`) | `docs/reposition_ik.md:221-229, 366` |
+| `torque_limit` (30 Nm) | Not tuned in step 8 | n/a — saturation receipt `‖u‖_max = √n · 30 Nm` makes the per-joint clip visible at the aggregate; raising it would unmask whether higher `Kp_q` would help, but step 8 did not pursue (the receipt was used to RULE OUT the Kp doubling, not to motivate raising the clip) | Unchanged | `docs/reposition_ik.md:158-162` |
+| Gravity comp at `q_target` (vs `q_now`) | Yes — Fix 4 (structural change in kIK code) | 8.73 Nm shift in `tau_g` for the extreme test (current at z=200 mm vs target at z=50 mm); largest single-joint shift +7.39 Nm on q[1]. Structurally correct for tracking control (anticipate the load at the reference); standard convention (`q_now`) is for regulator control. Magnitude small at typical operating equilibria | Shipped (in kIK code at `reposition_ik.py:1189-1199`, bundled with kIK feature commit `769aa92`) | `docs/reposition_ik.md:231-237, 360` |
+| Gravity comp at `q_now` | Was the original convention before Fix 4 — caused steady-state z-tracking error (arm settled at z≈25 mm regardless of 50 mm reference) | Replaced by `q_target` convention | n/a — Fix 4 supersedes | `docs/reposition_ik.md:144-150, 235` |
+| Anti-windup back-calculation | Not investigated in step 8. Ruled out as currently-present in 9.4.2 (commit `dd49e59`) by code inspection — no back-calculation block in `compute_torque` | n/a | Not investigated — open surface | absence in S8 history; 9.4.2 H1 ruling |
+| Velocity-reference D-term (`-Kd · (v_now − v_target)`) | Not investigated. Flagged in `params.py` Kd_q docstring as a future fix surface; requires `num_full_ik_knots ≥ 2` to compute `v_target` from consecutive IK knots | n/a | Not investigated — open surface | `params.py` Kd_q docstring |
+| Feedforward acceleration term | Not investigated. Mentioned at `docs/reposition_ik.md:245` as a potential future fix surface alongside the D-term variant | n/a | Not investigated — open surface | `docs/reposition_ik.md:245` |
+| Operational-space controller (OSC) replacement | Not investigated in step 8. The architectural divergence from the Venkatesh paper's OSC was noted but step 8 was scoped to the existing joint-space PD | n/a | Not investigated — major architectural surface | absence in S8 history; `docs/paper_alignment_plan.md` Item 2.1 (paper reference notes the divergence) |
+| Hold-home-pose verification | **Not tested in step 8.** Step 8's TS4 work measured per-stride tracking error (TS4↔TS3 = 11.1 mm) and per-step IK feasibility (TS4↔TS2 = 1.7 mm), both relative to the kIK's moving guide knot. There is no step-8 measurement of "can the executor hold a fixed q_target?" — that question was first asked in 9.4.5-A.1 (commit `1102939`) and the answer was no | n/a | **Gap in step 8 coverage** — surfaced as Effect B in 9.4.5-A.1 | absence in S8 history |
+
+### What was shipped (step 8 closure state)
+
+Commit `9aa124b` (`fix(step 8): Fix 1 closed-bound + Fix 6 I_max + step8 docs`) shipped:
+- **Fix 1 (closed-bound)**: `_WORKSPACE_BOUND_TOL = 1e-3 m` symmetric tolerance in `is_in_workspace`, fixing the proxy-y rejection at `workspace_xy_max[1] = 0.0`.
+- **Fix 6 (I_max)**: `RepositionParams.I_max` default 0.5 → 2.0, with the refactor-protection rationale captured inline at `control/sampling_c3/params.py:230-260` (Kp_q, Kd_q, Ki_q, I_max, torque_limit) and as `config/sampling_c3_params.yaml` line 162.
+- **Step 8 docs**: `docs/step8_sampling_c3_candidates.md` candidate writeup.
+
+Commit `769aa92` (the kIK feature commit) included **Fix 4 (gravity comp at q_target)** as a structural element of the kIK tracker; not a separate "fix" commit because the kIK was the new tracker and its PD law was designed with this convention from the start. S8.4.2 verified Fix 4 with the 8.4.2.2 correctness check (8.73 Nm shift measurement); the receipt is in §Refactor-protection notes.
+
+The S8 closure narrative is at `docs/reposition_ik.md:370-374`: four shipped, one reverted (Fix 5 Kp doubling), box did not move, bottleneck declared upstream of the tracker (in the C3 ADMM solver per S8.4.6).
+
+### What was deferred and why
+
+| Approach | Deferral rationale | Rationale still holds today? |
+|---|---|---|
+| Raising `Kp_q` past 60 | Saturation receipt: doubling Kp produces √6·30 Nm signature (6/7 joints clipped); proportional response capped by torque_limit, not by gain. Tracking did not improve | YES — torque_limit unchanged, saturation regime unchanged. Raising Kp without first raising torque_limit would re-hit the same ceiling |
+| Reverting grav-comp from `q_target` to `q_now` | Causes steady-state z-tracking error (arm at z=25 mm under 50 mm reference) | YES — Type-0 mechanism unchanged; the 9.4.5-A.1 data shows the same z=25 mm equilibrium even with Fix 4 in place, so reverting Fix 4 would only worsen it |
+| Investigating C3 ADMM solver | Step 8 was scoped to controller-side. C3 / LCS investigation was deferred to step 9 per S8.4.6 verdict ("blocker is upstream of every controller-side mechanism investigated") | Resolved by α (3e58cc6) and C-fix (8f0b738) — wrapper now commands contact-seeking targets. Hypothesis F (per-9.4.4 docs) and Effect B (per 9.4.5-A.1) are now the binding constraints, both tracker-side |
+| Velocity-reference D-term | Requires `num_full_ik_knots ≥ 2` to compute `v_target` from consecutive knots; per-knot timing budget was tight even at K=1 | Open — same constraint applies. Could be revisited if a per-knot budget audit shows headroom, or if `v_target` could be computed from the planning-step lookahead some other way |
+| OSC replacement | Architectural change far outside step 8's scope | Open — flagged in `docs/paper_alignment_plan.md` Item 2.1 as a major architectural item if executor tuning cannot resolve verdict-A |
+
+### Tests protecting current executor configuration
+
+`tests/test_reposition_ik.py` exercises `compute_torque` end-to-end in 6 tests but does NOT specifically lock individual PD parameter values:
+
+| Test | What it asserts | Parameters held? |
+|---|---|---|
+| `test_reachable_target_no_obstacle` (line 224) | Single `compute_torque` call returns finite torque + `knot0_feasible=True` for an in-workspace target above the table | Indirect — would surface if compute_torque crashed under any gain change |
+| `test_obstacle_in_path_without_dmin` (line 319) | IK with `ik_min_distance_lower_bound = 0` succeeds in the pusher-touching-box warm-start | Indirect |
+| `test_obstacle_in_path_with_dmin` (line 342) | IK with `ik_min_distance_lower_bound > 0` fails (the d_min trap) | Indirect |
+| `test_joint_limit_continuity` (line 366) | Inter-knot joint deltas stay within `kJointDeltaThreshold = 0.026 rad` for in-workspace target | Indirect (asserts q-trajectory smoothness, not torque) |
+| `test_infeasibility_marks_target` (line 467) | `last_knot0_feasible = False` after IK failure | Indirect |
+| `test_timing_p99` (line 506) | p99 of per-knot solve time stays under cap | Indirect |
+
+There is no test that locks `Kp_q=60`, `Ki_q=8`, `Kd_q=8`, `I_max=2.0`, or `torque_limit=30 Nm` as values, and there is no test for "executor holds a fixed q_target under sustained gravity." A fix that changes any of these parameters needs custom verification (the 9.4.5-A.1 hold-home-pose probe at `scripts/probe_9_4_5_A1_hold_home_pose.py` is the natural starting point — fix landed if EE displacement at t=30s drops from the current 197 mm).
+
+### Gaps in step 8 coverage
+
+- **Hold-home-pose was never tested.** Step 8 focused on tracking error during repositioning. The 9.4.5-A.1 finding (Effect B: arm cannot hold home pose; 197 mm displacement at t=30s, 3 integrators clamped at I_max) is genuinely new diagnostic territory.
+- **Anti-windup, velocity-reference D-term, feedforward acceleration, and OSC** were not investigated. Each is an open fix surface for the executor without prior work to consult.
+- **`torque_limit` was not tuned.** The saturation receipt was used to reject `Kp_q = 120`, not to motivate raising the clip. Raising `torque_limit` is an open surface.
+- **`docs/step9_c3_admm_proposal.md` is referenced** at `docs/reposition_ik.md:168, 372` but does not exist in the repo. Step 9 work proceeded against the verdict-A scenario directly (with Findings A/B/C in `docs/step9_findings.md`) rather than against a separate proposal doc. Not a problem for this catalog — flagged for completeness.
+
+
 ## Test design patterns
 
 ### Two-branch tests must verify both outcomes
