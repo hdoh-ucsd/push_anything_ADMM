@@ -126,7 +126,11 @@ sampling_params:
   # Robot workspace bounds; samples failing this are pruned.
   # (xy_min/xy_max define a planar rectangle, z_min/max define the z slab.)
   workspace_xy_min: [-0.5, -0.7]
-  workspace_xy_max: [ 0.5,  0.0]
+  # F3: y_max raised from 0.0 to 0.13 to match sampling_radius.
+  # See journal 2026-05-13/14 and docs/_archive/paper_alignment_plan_2026-05-13.md.
+  # Phase 2 sweep showed M1 strat_0 generation: 17% → 100% with no
+  # downstream M3 regression; bit-identical on M3 across {0.10, 0.13, 0.15, 0.20}.
+  workspace_xy_max: [ 0.5,  0.13]
   workspace_z_min:  0.02
   workspace_z_max:  0.30
 

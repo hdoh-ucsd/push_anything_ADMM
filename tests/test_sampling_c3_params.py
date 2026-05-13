@@ -57,7 +57,7 @@ def test_defaults_match_seed_values():
     assert s.pos_error_sample_retention    == 0.05
     assert s.ang_error_sample_retention    == 0.30
     assert s.workspace_xy_min              == [-0.5, -0.7]
-    assert s.workspace_xy_max              == [ 0.5,  0.0]
+    assert s.workspace_xy_max              == [ 0.5,  0.13]
     assert s.workspace_z_min               == 0.02
     assert s.workspace_z_max               == 0.30
     assert s.filter_samples_for_safety     is True
@@ -147,7 +147,7 @@ def test_default_yaml_loads():
 
     assert p.sampling_params.sampling_strategy == SamplingStrategy.kRandomOnCircle
     assert p.sampling_params.sampling_radius == 0.13
-    assert p.sampling_params.workspace_xy_max == [0.5, 0.0]
+    assert p.sampling_params.workspace_xy_max == [0.5, 0.13]
 
     assert p.reposition_params.traj_type == RepositioningTrajectoryType.kPiecewiseLinear
     assert p.reposition_params.pwl_waypoint_height == 0.20

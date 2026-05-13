@@ -199,7 +199,9 @@ class SamplingParams:
 
     # Workspace bounds (kept here, not in a separate sampling_c3_options.yaml)
     workspace_xy_min:                    list  = field(default_factory=lambda: [-0.5, -0.7])
-    workspace_xy_max:                    list  = field(default_factory=lambda: [ 0.5,  0.0])
+    # F3 ship 2026-05-14: y_max raised from 0.0 to 0.13 to match sampling_radius.
+    # See journal 2026-05-14 and the F3 commit message for the Phase 2 sweep receipts.
+    workspace_xy_max:                    list  = field(default_factory=lambda: [ 0.5,  0.13])
     workspace_z_min:                     float = 0.02
     workspace_z_max:                     float = 0.30
 
