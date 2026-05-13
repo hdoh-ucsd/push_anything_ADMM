@@ -241,16 +241,34 @@ class RepositionParams:
     #   u_d = -Kd_q·(v_arm_now - v_target); requires num_full_ik_knots ≥ 2.
     Kd_q:                                          float = 8.0
     # Ki_q = 8: integral gain. Combined with I_max below, max integral
-    #   correction = Ki_q·I_max = 16 Nm, calibrated to the 5-10 Nm
-    #   gravity-load mismatch the joint-PD law cannot eliminate via Kp.
+    #   correction = Ki_q·I_max = 32 Nm (after 9.4.5-B Attempt 1; was
+    #   16 Nm under step 8 Fix 6's I_max=2.0). Sized to the heaviest
+    #   gravity-load mismatch the executor is asked to hold (home-pose
+    #   joint 1 deficit ~33.65 Nm), not just the pushing-task equilibrium.
     Ki_q:                                          float = 8.0
-    # I_max = 2.0 (raised from 0.5 in step 8 Fix 6). The integral converges
+    # I_max = 4.0 (raised from 2.0 in 9.4.5-B Attempt 1; previously raised
+    #   from 0.5 in step 8 Fix 6).
+    #
+    #   Step 8 rationale (Fix 6, I_max 0.5 → 2.0): the integral converges
     #   to ~1.0 rad·s per joint at equilibrium under the pushing task,
     #   matching the measured 7.39 Nm gravity-load shift on q[1] (shoulder)
     #   between current_q and q_target to within 10%. With I_max = 0.5 the
     #   integral was clamped at 50% of its natural equilibrium, capping
     #   correction at 4 Nm — half of what the task requires.
-    I_max:                                         float = 2.0
+    #
+    #   9.4.5-B Attempt 1 rationale (I_max 2.0 → 4.0): the step 8 budget
+    #   (Ki·I_max = 16 Nm) was sized to the pushing-task gravity load. The
+    #   9.4.5-A.1 hold-home-pose probe (commit 1102939) measured a heavier
+    #   home-hold load — 3 integrators clamped at I_max=2.0, joint 1
+    #   q_err=-0.405 rad, EE displacement 197mm at t=30s. The step 8
+    #   executor-tuning catalog (commit 22bfd4a) showed Ki·I_max needs to
+    #   be sized to the heaviest load the executor is asked to hold, not
+    #   the pushing-task equilibrium. Doubling I_max to 4.0 raises Ki·I_max
+    #   from 16 Nm to 32 Nm, close to (but slightly under) the ~33.65 Nm
+    #   deficit at joint 1's home-hold equilibrium. Validated against
+    #   the 9.4.5-A.1 probe and the verdict-A regression (probe_5f_smoke
+    #   paths A and D) — see commit message of this commit for results.
+    I_max:                                         float = 4.0
     # torque_limit = 30 Nm: per-joint clip applied at reposition_ik.py:1190
     #   and reposition.py:230. The saturation signature ‖u‖_max ≈ √n·30 Nm
     #   in measured 7-joint torque norms indicates n joints simultaneously

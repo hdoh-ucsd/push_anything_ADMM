@@ -158,5 +158,5 @@ reposition_params:
   Kp_q:          60.0
   Kd_q:          8.0
   Ki_q:          8.0
-  I_max:         2.0
+  I_max:         4.0
   torque_limit:  30.0
