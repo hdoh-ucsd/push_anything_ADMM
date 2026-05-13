@@ -136,6 +136,13 @@ class ProgressParams:
     hyst_repos_to_repos:                 float = 500.0
     hyst_repos_to_repos_position:        float = 2500.0
 
+    # Steps-since-improve watchdog (1d, 9.4.7 Option A re-test).
+    # When > 0, the wrapper overrides mode_switch and forces "c3" with
+    # SwitchReason.kForceC3Watchdog once steps_since_improve >= this
+    # threshold. 0 disables (default). Set to 100 in
+    # config/sampling_c3_{params,kik}.yaml for the F2-regime re-test.
+    watchdog_steps_since_improve_threshold: int = 0
+
     # Relative hysteresis (used when use_relative_hysteresis is True)
     use_relative_hysteresis:             bool  = False
     # Note: upstream field names use _frac_position, NOT _position_frac. Keep verbatim.

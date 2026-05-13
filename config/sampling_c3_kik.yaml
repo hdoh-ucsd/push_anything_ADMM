@@ -87,6 +87,17 @@ progress_params:
   hyst_repos_to_repos_frac:               0.10
   hyst_repos_to_repos_frac_position:      0.10
 
+  # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
+  # default; set to a positive integer to enable). When > 0, the wrapper
+  # forces "c3" mode once steps_since_improve ≥ this threshold, bypassing
+  # cost-comparison hysteresis. Yesterday's 9.4.5-F set this to 100 and
+  # was falsified because forced c3-mode received an empty LCS (Finding
+  # A). F2 closed Finding A; the Option A re-test (threshold=100) showed
+  # forced c3-mode now lands in non-empty LCS but the wrapper exits via
+  # kToReposCost within 1 step on Path D (4 c3 steps / 800), so 1d does
+  # not change verdict-A. See docs/step9_findings.md 9.4.7 Option A.
+  watchdog_steps_since_improve_threshold: 0
+
 
 # ----------------------------------------------------------------------------
 # Sample generation

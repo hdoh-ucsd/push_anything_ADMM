@@ -175,6 +175,14 @@ class SamplingC3MPC:
         self._n_switches:               int   = 0
         self._step_times_ms:            list  = []
 
+        # 9.4.7 Option A — 1d watchdog re-test under F2 regime.
+        # _n_watchdog_fires tracks how many times the steps_since_improve
+        # threshold forced a free→c3 transition. _mode_time_{c3,free}
+        # tally per-step mode residency for the end-of-run summary.
+        self._n_watchdog_fires:         int   = 0
+        self._mode_time_c3:             int   = 0
+        self._mode_time_free:           int   = 0
+
         # Repos-target memo (the sample we are currently navigating toward)
         self._current_repos_target:     Optional[np.ndarray] = None
         self._current_repos_cost:       Optional[float]      = None
@@ -415,8 +423,32 @@ class SamplingC3MPC:
             params             = self.params.progress_params,
         )
 
+        # 6a. 1d watchdog override (9.4.7 Option A re-test). When the
+        # configured threshold is > 0 and steps_since_improve has reached it
+        # while in free mode, force c3 regardless of cost arithmetic. The
+        # progress reset on the free→c3 transition (line ~430 below) zeroes
+        # steps_since_improve, so the next fire is at least `threshold`
+        # loops away. Disabled (default) when threshold = 0.
+        _wd_thresh = self.params.progress_params.watchdog_steps_since_improve_threshold
+        _wd_si     = self.progress.steps_since_improve()
+        if (_wd_thresh > 0 and self._prev_mode == "free"
+                and _wd_si >= _wd_thresh and mode != "c3"):
+            mode = "c3"
+            reason = SwitchReason.kForceC3Watchdog
+            self._n_watchdog_fires += 1
+            if self.log_diag:
+                print(f"[GS-watchdog] step={self._step} "
+                      f"steps_since_improve={_wd_si} threshold={_wd_thresh} "
+                      f"FORCE c3-mode  total_fires={self._n_watchdog_fires}")
+
         if mode != self._prev_mode:
             self._n_switches += 1
+
+        # Residency tally for the end-of-run summary
+        if mode == "c3":
+            self._mode_time_c3 += 1
+        else:
+            self._mode_time_free += 1
 
         # 7. Maintain sample buffer (independent of mode)
         self._update_buffer(results, obj_xy, obj_quat)
@@ -578,3 +610,13 @@ class SamplingC3MPC:
               f"full_solves={self.inner_solver.full_solves}  "
               f"cheap_solves={self.inner_solver.cheap_solves}  "
               f"switches={self._n_switches}")
+        # 9.4.7 Option A — watchdog summary. Only printed when the
+        # threshold is enabled in config (otherwise tally is 0 and the
+        # line is uninformative).
+        if self.params.progress_params.watchdog_steps_since_improve_threshold > 0:
+            total = self._mode_time_c3 + self._mode_time_free
+            frac = self._mode_time_c3 / total if total > 0 else 0.0
+            print(f"[GS-watchdog-summary] n_watchdog_events={self._n_watchdog_fires}  "
+                  f"mode_time_c3={self._mode_time_c3}  "
+                  f"mode_time_free={self._mode_time_free}  "
+                  f"c3_fraction={frac:.3f}")
