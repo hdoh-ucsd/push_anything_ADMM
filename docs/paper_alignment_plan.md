@@ -120,6 +120,21 @@ Per-attempt result, against the verdict-A Path D / Path A regression criteria:
 
 Direction is the user's call; no auto-proceed.
 
+**9.4.7 Option A / B / C results (executed):**
+
+- **Option A (re-test 1d watchdog under F2):** REFINED-FALSIFIED. `kForceC3Watchdog` added to `mode_switch.py`, `watchdog_steps_since_improve_threshold` field added to `params.py` (default 0, opt-in via yaml), wrapper override + summary line wired in. Path D (kIK, threshold=100): 4 fires, c3-time 4/802 = 0.5%, mean λ_n_max = 0.594 (99.4% non-zero — empty-LCS condition stays closed), obj_xy 15.7 mm SW vs F2 baseline 10.4 mm SW. Path A (PWL): 5 fires, c3-time 86/802 = 10.7%, obj_xy 97.7 mm West vs 106.5 mm West baseline. **Yesterday's falsification reason (`n_λ=0` in forced c3-mode) is invalidated by F2; today's failure mode is c3-mode non-persistence — wrapper exits via `kToReposCost` within 1–17 steps because non-current samples still have ~50% lower c_sample.** Watchdog code is retained (default off) for future re-test infrastructure.
+
+- **Option B / C (c_C3_raw landscape characterization):** RAN. `scripts/probe_9_4_7_B_c3_landscape.py` (per-sample CSV instrumentation, watchdog disabled) + `scripts/probe_9_4_7_C_gs_table_analysis.py` (read-only `[GS-table]` parser across F2 + Option A logs). **The 6× c_C3_raw gap reported in 9.4.5-D is GONE.** Combined post-F2 data: prev_repos vs strat_0 c_C3_raw median gap = 0.80, mean −7.58, range −85 to +23 cost units — statistically indistinguishable. `c_sample` is now dominated by `align_bonus` (~30k) and small `travel_penalty` (~25), not by a c_C3_raw differential. **strat_0 wins WHEN it is generated**: 5/40 sampled blocks for Path D F2, strat_0 won every time it appeared. The new binding observation is that **strat_0 is generated only 7/40 sampled blocks (17%)** because `SamplingParams.workspace_xy_max[1] = 0.0` rejects all y > 0 random samples on the 0.13 m circle around the box (which sits near `obj_y = 0`). Across 33/40 sampled blocks for Path D F2, `prev_repos` was the *only* non-current candidate.
+
+**Refined sub-option status (post-9.4.7 A/B/C):**
+
+- **1a (w_align decay)** — original c_C3_raw arithmetic rationale invalidated. Reducing alignment would now flip ranking but toward "current EE" (bonus 12k, ~ vs 30k on prev_repos/strat_*), entrenching c3-mode at current EE rather than pursuing fresh samples. Re-evaluation is open but requires redesign for the new landscape.
+- **1b (raise w_travel)** — same revised status; prev_repos and strat_0 have nearly equal travel under F2, so travel-tuning alone does not promote fresh strat_*.
+- **1c (K-loop lock-in)** — partially re-evaluable. Under F2, strat_0 wins WHEN generated. Pairing 1c with a workspace-filter relaxation could let fresh samples win the cleared slot. Run alone, 1c would still hit the "current/buffer wins instead" outcome from 9.4.5-E.
+- **1d (watchdog)** — re-tested, refined-falsified (above).
+
+**New fix surface surfaced — F3 (workspace y-bound relaxation).** `workspace_xy_max[1] = 0.0` is the binding constraint on which fresh strat_* samples reach the candidate list. With the box near `obj_y = 0`, ~50% of the sampling circle is rejected. Under F2 the wrapper CAN find correct-direction samples — they just rarely survive the workspace filter. F3 has not been characterized for safety (the y-bound presumably exists for a reason). Cross-link: `control/sampling_c3/sampling.py:170-180`.
+
 Diagnostic chain that re-derived the mechanism:
 
 - **9.4 (commit 0b0ee69)** — Standalone kIK probe drove the tracker toward verdict-A's W1 and W2 targets with no wrapper, no C3, no box. Both converged to essentially the same EE position (~(-0.016, -0.084, 0.025)) regardless of commanded target. IK reports feasible (knot-0 IK lands within √3·1mm of the guide knot per `docs/reposition_ik.md:150`).

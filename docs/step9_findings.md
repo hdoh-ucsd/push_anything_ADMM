@@ -273,6 +273,47 @@ Effect C (`prev_repos` cost-arithmetic lock-in) is now the **standalone binding 
 
 Each falsification was correct at the time given empty-LCS conditions. F2 changed the regime enough that the falsification chain needs re-running, not re-classifying. The cross-link to `docs/paper_alignment_plan.md` Item 2.1 (Status: REOPENED) carries the canonical statement of the post-F2 sub-option statuses.
 
+### 9.4.7 Option A — 1d watchdog re-tested under F2 regime (refined falsification)
+
+The 1d watchdog (`steps_since_improve > N → force c3-mode`) was re-implemented and re-run after F2 closed Finding A. Implementation: `SwitchReason.kForceC3Watchdog` added to `control/sampling_c3/mode_switch.py`; `ProgressParams.watchdog_steps_since_improve_threshold` field added to `control/sampling_c3/params.py` (default 0 = disabled, opt-in via yaml); override branch in `control/sampling_c3/wrapper.py` `compute_control` step 6a, plus per-mode residency tally and end-of-run `[GS-watchdog-summary]` line. Yamls set `watchdog_steps_since_improve_threshold: 100` for the re-test (then reverted to 0 default after the run).
+
+Path D (kIK, 800 steps, threshold=100): 4 watchdog fires; c3-mode time 4/802 = 0.5%; mean λ_n_max = 0.594 (99.4% non-zero — Finding A's empty-LCS condition stays closed under forced c3 mode); switches = 8; obj_xy 15.7 mm SW (vs F2 baseline 10.4 mm SW; 5 mm more motion, same direction).
+
+Path A (PWL, 800 steps, threshold=100): 5 watchdog fires; c3-mode time 86/802 = 10.7%; mean λ_n_max = 0.267 (99.8% non-zero); switches = 10; obj_xy 97.7 mm West (vs F2 baseline 106.5 mm West; ~9 mm less motion, same direction). c3-mode persists longer here because the PWL tracker leaves the EE in a configuration where c3's cost-comparison logic returns `kStayInC3` for ~17 steps after each fire before flipping back via `kToReposCost`.
+
+**1d's prior falsification reason ("forced c3-mode produces n_λ=0 in every dispatch") is INVALIDATED by F2.** Both runs show 99.4-99.8% non-zero λ_n_max during forced c3-mode — the LCS now has real contact pairs at the geometry the watchdog hands off. The c3-mode dispatches receive a coupling block that connects u to box state.
+
+**1d under F2 is REFINED-FALSIFIED.** It works mechanically (fires correctly, lands in non-empty LCS) but does not change the verdict-A outcome on either path:
+- Path D: c3-mode-persistence is the new limiting factor. Wrapper exits c3 immediately via `kToReposCost` because non-current samples still have ~50% lower `c_sample` (driven by 30k align-bonus on prev_repos / strat_*).
+- Path A: c3-mode persists longer (10.7% of steps) but box motion direction is unchanged (97.7 mm West, away from +x goal).
+
+Yesterday's falsification by empty-LCS is replaced by today's falsification by c3-mode-non-persistence — a different mechanism, same observable outcome. The watchdog code is left in (disabled by default in both yamls) as institutional infrastructure for future re-test attempts.
+
+### 9.4.7 Option B / C — c_C3_raw landscape characterization post-F2
+
+`scripts/probe_9_4_7_B_c3_landscape.py` runs a 200-step Path D landscape probe (watchdog disabled, monkey-patches `_print_table_diag` to record per-sample CSV). `scripts/probe_9_4_7_C_gs_table_analysis.py` parses `[GS-table]` blocks from any combination of run logs into per-label cost-component summaries. Output: `results/probe_9_4_7_C_gs_table_summary.txt`.
+
+**The 6× c_C3_raw gap reported in 9.4.5-D is GONE.** Combined data from the F2 Path D and Path A 800-step logs:
+
+| Label (Path D F2) | c_C3_raw median | align_bonus median | travel_pen median | c_sample median |
+|---|---|---|---|---|
+| current     | 136,401 |  11,893 |  0.00 | 125,470 |
+| prev_repos  | 100,750 |  29,889 | 23.31 |  71,036 |
+| strat_0     |  92,076 |  29,937 | 26.24 |  62,175 |
+
+**c_C3_raw gap (prev_repos − min(strat_*))** over 7 sampled blocks with both present: median 0.80, mean −7.58, range −85 to +23 (cost units). Under F2 regime fresh strategy samples and `prev_repos` have statistically indistinguishable raw cost-to-go. The c_sample arithmetic is dominated by `align_bonus` (~30k) and a much smaller `travel_penalty` (~25), not by a c_C3_raw gap.
+
+**Why prev_repos still wins despite this:** strat_0 wins WHEN it is generated (5/40 sampled blocks for Path D F2 — strat_0 won every time it appeared). But the workspace filter (`SamplingParams.workspace_xy_max[1] = 0.0`, see `control/sampling_c3/sampling.py:170-180`) rejects roughly half of random points on the 0.13 m sampling circle around the box (which sits near `obj_y ≈ 0`, so y > 0 samples are out of workspace). The wrapper's `_build_samples` calls `generate_samples` with the filter on; rejected samples never enter the candidate list. Across the 40 sampled blocks for Path D F2, prev_repos was the *only* non-current candidate in 33 of them.
+
+**Implications for the falsified sub-options (revised):**
+
+- **1a (`w_align` decay)** — falsification rationale ("c_C3_raw gap is 6× larger than alignment bonus, so reducing alignment can't flip the ranking") is no longer applicable. Under F2 the gap is ~0; alignment IS the dominant differentiator between samples (30k bonus on prev_repos / strat_*, vs ~12k on current). Reducing `w_align` would now likely flip the ranking — but the new question is *toward what*. Reducing alignment promotes "current EE" (whose bonus is ~12k); this would entrench the wrapper in c3-mode at the current EE rather than pursuing fresh samples. Re-evaluation is open but the design needs rethinking.
+- **1b (raise `w_travel`)** — same revised status. Raising travel penalty from ~25 to ~5000 could flip prev_repos vs current; but the deeper issue is that prev_repos and strat_0 have nearly equal travel (both ~25), so this would not promote fresh strat_* either.
+- **1c (K-loop lock-in)** — the wrapper-side observation in 9.4.5-E ("removing prev_repos doesn't let fresh samples win — current or buffer wins instead") was correct under empty-LCS. Under F2, when strat_* IS generated, it wins. The new failure mode is *strat_* not being generated* (workspace filter), not the cost arithmetic. 1c re-evaluation needs to be paired with a workspace-filter relaxation, not run alone.
+- **1d (watchdog)** — refined falsification covered above.
+
+**The new binding constraint is the workspace filter, not the cost arithmetic.** `workspace_xy_max[1] = 0.0` (set in `config/sampling_c3_*.yaml`) hard-blocks any y > 0 sample. With the box near `(0, 0)` and `sampling_radius = 0.13 m`, ~50% of the random circle is rejected. Under F2 the wrapper *can* find correct-direction samples — they just rarely make it past the filter. This is a new fix surface ("F3 — workspace y-bound relaxation") that has not been characterized for safety implications (workspace bounds presumably exist for a reason).
+
 ## Backlog
 
 ### C3Solver discards per-knot λ_k

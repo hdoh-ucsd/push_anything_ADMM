@@ -42,6 +42,10 @@ class SwitchReason(IntEnum):
     kToC3Cost                = 4   # free → c3, current C3 plan beat repos
     kToC3ReachedReposTarget  = 5   # free → c3, reposition target reached
     kToBetterRepos           = 6   # free → free, switch repos target
+    kForceC3Watchdog         = 7   # free → c3, steps_since_improve watchdog
+                                   # (re-test of 1d under F2 regime, 9.4.7
+                                   # Option A — see paper_alignment_plan
+                                   # Item 2.1 post-F2 reframe)
 
 
 # ---------------------------------------------------------------------------
