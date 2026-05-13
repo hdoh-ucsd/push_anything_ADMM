@@ -199,6 +199,34 @@ The two effects compound: Effect B drives the arm to a fixed point unrelated to 
 
 **Premise falsification.** 9.4.5-B was designed under the premise "fix executor home-hold → unblock verdict-A." The data falsifies this directly: fixing Effect B reveals Effect C as the next binding constraint, not verdict-A success. Step 8's executor-tuning work is institutionally correct and the home-hold gap it correctly identified can be closed; but closing it does not unblock verdict-A on Path D. **9.4.5-C is queued to characterize Effect C directly** — likely starting at the wrapper's `prev_repos` selection logic (`control/sampling_c3/wrapper.py`). Step 8's `docs/step8_sampling_c3_candidates.md` candidates 1/2/3 are the natural prior-art surface for that investigation (the same `prev_repos` mechanism, observed but not yet localized).
 
+### 9.4.5-C — Effect C mechanism confirmed via step 8 prior art
+
+**Read-only investigation** (no source / config / docs changes during the investigation pass; this docs entry is the institutional record produced after).
+
+**Inversion framing.** Step 8 S8.3.2 (`docs/reposition_ik.md:419-421`) framed the wrapper failure as "wrapper picks prev_repos but EE diverges from it" — direct measurement of 175/200 prev_repos-winning loops showed the EE-to-target gap *grew* monotonically from 75 mm to 216 mm at +0.86 mm/loop. The pivot from S8.3 (wrapper-side) to S8.4 (controller-side) followed from that observation: the wrapper's sample selection looked correct on cost; the executor wasn't tracking. 9.4.5-B sub-attempt 1.5 inverted this: with I_max=7.0 the executor *does* track precisely (joint 1 q_err -0.0151 rad, closed-form steady-state hold validated), and the EE *does* converge to prev_repos — but the target itself is contact-inactive, and the wrapper picks the same kind of target again next loop. **Same wrapper bug (prev_repos lock-in via cost calibration); inverted visible symptom (EE diverges → EE parks).**
+
+**Prior-art findings.** `docs/step8_sampling_c3_candidates.md` catalogues three candidate explanations for wrapper failure, surfaced during step 7 closure:
+
+- **Candidate 1** (`step8_sampling_c3_candidates.md:28-44`) — prev_repos travel-cost discount + surrogate-iters pessimism on fresh samples. **RESOLVED** by mechanism α (commit `3e58cc6`, `surrogate_admm_iters` 1→3).
+- **Candidate 2** (`step8_sampling_c3_candidates.md:46-52`) — `w_align` (30000) vs `w_travel` (200) calibration imbalance creating prev_repos lock-in. **OPEN** in step 8 docs; no commit addresses. Now confirmed binding by 9.4.5-C Path D data.
+- **Candidate 3** (`step8_sampling_c3_candidates.md:54-69`) — `kToReposCost` / `kToC3Cost` thresholds (`hyst_repos_to_c3_frac=0.30`, position=0.50) require c3-mode cost to undercut repos-mode by 30–50% before switch fires; unreachable from a stuck state. **OPEN** in step 8 docs; no commit addresses.
+
+**9.4.5-C Path D evidence (Candidate 2 binding).** The best_src histograms across the full 801-step runs:
+
+| Configuration | best_src=prev_repos | best_src=current | best_src=strat_* | best_src=buffer |
+|---|---|---|---|---|
+| I_max=4.0 (commit `161b7d9`) | **761 / 801 (95%)** | 36 | 0 | 4 |
+| I_max=7.0 (sub-attempt 1.5, reverted) | **626 / 801 (78%)** | 71 | 82 (strat_0/1/2) | 18 |
+
+At step 800-801 in both runs, `target_changed=N` (prev_repos slot is the same target as last loop); the wrapper is in a sustained selection loop where `prev_repos` wins via lower `c_C3` + alignment bonus while the single fresh `strat_0` (with `num_additional_samples_repos = 1`) has full travel-cost penalty. The mechanism is the positive feedback loop step 8 Candidate 2 hypothesized: as the executor drives EE toward prev_repos, `w_travel · ‖p_prev_repos − ee_now‖` drops monotonically; no selection mechanism penalizes "I picked this sample last loop and it hasn't produced contact."
+
+**Fix surface (rediscovery + promotion to binding).** The natural 9.4.5-D fix axes are step 8 OPEN items, not novel investigation surfaces:
+
+- Candidate 2 sub-options touch `c_sample` calibration in `control/sampling_c3/inner_solve.py` (the `align_bonus` / `travel_pen` weights and their combination with `c_C3_raw`). Sub-option (a) — decay `w_align` over `steps_since_improve` — is the lightest-weight first attempt.
+- Candidate 3 sub-option touches mode arbitration in `control/sampling_c3/wrapper.py` and/or `control/sampling_c3/mode_switch.py` — a `steps_since_improve > N → force c3-mode-with-no-prev_repos` watchdog.
+
+This is the third instance in 2026-05-11/12 of the prior-art rediscovery pattern: 9.4.4 found Hypothesis F was already documented in step 8; 9.4.5-A.2 found step 8's executor-tuning history was directly applicable to home-hold sizing; 9.4.5-C found step 8 Candidates 2/3 documented and OPEN. Each rediscovery shipped without first searching the existing diagnostic doc surface. See the "Wrapper-executor coupling pattern" backlog entry below for the institutional discipline note.
+
 ## Backlog
 
 ### C3Solver discards per-knot λ_k
@@ -236,6 +264,12 @@ Validated 9.4.5-B sub-attempt 1.5. At steady-state hold (q_err → 0, v → 0), 
 **Step 8's Fix 6 sized to 1×** (pushing-task load ~7.39 Nm → I_max=2.0), which was correct for the pushing task because the executor is not asked to reach a static fixed point — the integrator is winding in response to a moving target, and reaching 2× of the instantaneous tau_g is not required mid-trajectory. For *static* holds (verification probes, idle states, prepositioned starts), the 2× rule applies.
 
 **Prospective application.** When tuning Ki·I_max for any new task or verification probe, size Ki·I_max to **2 · max(tau_g(q_target)) across the loaded joints**, not 1×. The discipline note generalizes beyond the specific I_max value: the rule applies to any (Ki, I_max) pair as long as their product reaches the 2× threshold. This is additive institutional knowledge that survives any specific 9.4.5-B fix decision — the rule is correct regardless of whether the home-hold scenario itself is the right target for executor tuning (which 9.4.5-B sub-attempt 1.5 shows it is *not*, because of Effect C).
+
+### Wrapper-executor coupling pattern (institutional discipline)
+
+Wrapper-executor coupling pattern: improving the executor exposes wrapper defects that were previously masked. Step 8's S8.3 → S8.4 pivot from wrapper-side to executor-side was correct at the time (executor was the visible bottleneck), but it made the wrapper-side Candidates 2 and 3 invisible. Future investigations should re-evaluate documented OPEN items when fixes upstream of them land. The three-round prior-art rediscovery pattern of 2026-05-11/12 (Hypothesis F at 9.4.4, step 8 executor-tuning catalog at 9.4.5-A.2, Candidates 2/3 at 9.4.5-C) makes this pattern institutional: **check OPEN items in prior step docs before any new fix attempt.**
+
+The pattern is structurally distinct from the "search project docs early" discipline above (which is about avoiding re-derivation of mechanisms documented as findings or hypotheses): this pattern is about re-evaluating prior **deferral decisions** whose underlying constraints may have changed. A candidate deferred when the executor was the bottleneck may become binding once the executor is fixed; a candidate deferred behind α-pessimism may become binding once α ships. The discipline cost is low (one grep against the prior step's OPEN/deferred list, before designing a new fix); the failure mode it prevents is high (re-deriving a documented mechanism through an experimental chain).
 
 ## Diagnostic discipline (parallel to V-1→V-9 and S8.0→S8.4)
 
