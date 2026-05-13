@@ -51,7 +51,7 @@ def test_defaults_match_seed_values():
 
     s = SamplingParams()
     assert s.sampling_strategy             == SamplingStrategy.kRandomOnCircle
-    assert s.sampling_radius               == 0.18
+    assert s.sampling_radius               == 0.13
     assert s.sampling_height               == 0.05
     assert s.N_sample_buffer               == 5
     assert s.pos_error_sample_retention    == 0.05
@@ -69,7 +69,7 @@ def test_defaults_match_seed_values():
     assert r.Kp_q                 == 60.0
     assert r.Kd_q                 == 8.0
     assert r.Ki_q                 == 8.0
-    assert r.I_max                == 0.5
+    assert r.I_max                == 4.0
     assert r.torque_limit         == 30.0
 
 
@@ -146,7 +146,7 @@ def test_default_yaml_loads():
     assert p.progress_params.finished_reposition_cost == 200000.0
 
     assert p.sampling_params.sampling_strategy == SamplingStrategy.kRandomOnCircle
-    assert p.sampling_params.sampling_radius == 0.18
+    assert p.sampling_params.sampling_radius == 0.13
     assert p.sampling_params.workspace_xy_max == [0.5, 0.0]
 
     assert p.reposition_params.traj_type == RepositioningTrajectoryType.kPiecewiseLinear
