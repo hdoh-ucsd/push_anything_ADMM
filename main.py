@@ -238,7 +238,17 @@ def main():
                              "+ H u + c (eq. 5c) and Bui eq (12) componentwise "
                              "δ-projection. v1 implements normal-direction "
                              "complementarity only — friction LCS is a TODO.")
+    parser.add_argument("--workspace-y-max", type=float, default=None,
+                        metavar="YMAX",
+                        help="F3 sweep override: override sampling_params."
+                             "workspace_xy_max[1] in-memory after yaml load. "
+                             "Valid range [-1.0, +1.0]. Only takes effect with "
+                             "--sampling-c3.")
     args = parser.parse_args()
+
+    if args.workspace_y_max is not None and not (-1.0 <= args.workspace_y_max <= 1.0):
+        parser.error(f"--workspace-y-max {args.workspace_y_max} out of "
+                     f"sane band [-1.0, +1.0].")
 
     if args.sampling_c3 is not None and args.cost_bias:
         parser.error("--sampling-c3 and --cost-bias are mutually exclusive. "
@@ -413,6 +423,10 @@ def main():
     if args.sampling_c3 is not None:
         _yaml_path = args.sampling_c3
         sc3_params = SamplingC3Params.from_yaml(_yaml_path)
+        if args.workspace_y_max is not None:
+            _was = sc3_params.sampling_params.workspace_xy_max[1]
+            sc3_params.sampling_params.workspace_xy_max[1] = args.workspace_y_max
+            print(f"[OVERRIDE] workspace_xy_max[1]={args.workspace_y_max} (was {_was})")
         # With the new IK-based --prepositioned pose, k=0 captures the
         # ~30k alignment bonus (vs zero contact for every k>=1 at sampling
         # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
