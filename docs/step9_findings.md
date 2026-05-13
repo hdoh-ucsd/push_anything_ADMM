@@ -14,6 +14,8 @@ Compound failure: the EE parks at stage-2 geometry, contact is lost, the LCS goe
 
 ## Finding A: Empty-LCS gradient decoupling
 
+**Status (updated 9.4.7): RESOLVED by F2 (commit `761f9f8`, `sampling_radius` 0.18→0.13 m).** Across 1594 `[C3]` dispatches in the post-F2 Path D and Path A verdict-A runs, zero `n_λ=0` lines (vs ~100% empty at HEAD baseline). Pusher-to-box surface clearance at strategy samples shifted from 0.105 m (5 mm outside Drake's 0.10 m threshold) to 0.055 m (inside the threshold by 45 mm). The original Finding A characterization, derivation, and "promoted to binding constraint" subsection below are preserved as the institutional record of the structural observation, the 9.4.5-F empirical validation, and the architectural-pause framing that motivated the 9.4.6 probe and 9.4.7 F2 fix. See the "9.4.7 F2 outcome — Finding A resolved; Effect C reframed" subsection further down for the resolution data.
+
 ### Summary
 
 When n_c = 0, the contact-Jacobian column block D has shape (n_x, 0). The box subsystem is then completely decoupled from u in the linearized plant: ∂(box state in plan)/∂u = 0 over the entire horizon, every box-state cost term carries an identically-zero u-gradient, and the QP minimizes only the arm-side cost. The 776 stage-1 loops in the verdict-A run are mathematically equivalent to a 7-DOF arm-tracking problem with zero goal awareness.
@@ -245,6 +247,32 @@ The 9.4.5-F empty-LCS observation makes Finding A directly measurable as a bindi
 
 **Promotion.** Finding A is promoted from "structural observation about the empty-LCS regime in step 9 baseline data" to **"binding constraint for verdict-A under current configuration."** The promotion is symmetric to the Effects A and B promotions earlier in 9.4.5: each binding constraint was structurally observable from prior data but was masked by a more-visible upstream layer until the upstream layer was characterized or fixed. Finding A's promotion completes the chain — there is no further wrapper-side or executor-side layer to characterize before it becomes the operative binding constraint.
 
+### 9.4.7 F2 outcome — Finding A resolved; Effect C reframed
+
+**Resolution data.** 9.4.6 (probe `bd18003`) characterized the empty-LCS mechanism as a 5 mm geometric mismatch between the wrapper's `sampling_radius` (0.18 m) and Drake's contact-extraction threshold (0.10 m). With box half-extent 0.05 m and pusher radius 0.025 m, every strategy sample on the 0.18 m circle sat at pusher-to-box surface clearance of 0.105 m — just 5 mm outside Drake's threshold. The probe ran a 100-step WEST scenario and recorded 0/341 Class-A calls (Drake returns zero pairs) but 189/341 Class-B calls (Drake returns pairs, project filter excludes all because no ee-box pair is in range). The `sampling_radius=0.18` value had no documented rationale.
+
+9.4.7 F2 (commit `761f9f8`) reduces `sampling_radius` to 0.13 m. Target pusher-to-box surface clearance: 0.055 m (inside the 0.10 m threshold by 45 mm; above the 0.075 m hard-collision floor by 55 mm). Verified post-commit on the standard 800-step verdict-A scenarios:
+
+- **Path D (kIK)**: empty-LCS 80.9% → 0.0%; λ_n_max median 0 → 0.569 (99.4% non-zero across 796 dispatches); `best_src=strat_*` 0/801 → 128/801; obj_xy 48.7 mm NW → 10.4 mm SW; switches 8 → 0.
+- **Path A (PWL)**: empty-LCS high → 0.0%; λ_n_max median 0 → 0.101 (99.6% non-zero across 798 dispatches); obj_xy 10.8 mm S → 106.5 mm W; switches 2 → 0.
+
+Across 1594 `[C3]` dispatches between the two runs, **zero `n_λ=0` lines**. Finding A's empty-LCS gradient-decoupling condition is closed at the geometric mechanism.
+
+**Shape shift of the verdict-A failure mode.** The verdict-A failure has changed shape, not disappeared:
+
+- *Pre-F2 verdict-A* — wrapper picks bad samples → empty-LCS at sample positions → no contact pairs in the LCS → no box motion. Visible symptom: arm parks at sample target, box stays at origin.
+- *Post-F2 verdict-A* — wrapper picks the same off-axis samples (still `prev_repos`-dominant) → non-empty LCS at those positions → kIK/PWL tracker drives EE to `prev_repos` → box is bumped along the way. Visible symptom: box moves substantially (Path A 106.5 mm vs 10.8 mm baseline) but in the wrong direction (West, away from the +x goal); switches=0 on both paths because the wrapper never enters c3 mode.
+
+Effect C (`prev_repos` cost-arithmetic lock-in) is now the **standalone binding constraint** for verdict-A. Yesterday's framing had Effect C "downstream of Finding A" — geometry empty → no contact → arbitration cannot recover. F2 closes the geometry layer; Effect C persists on its own, with the same `prev_repos`-dominant best_src histogram (84-99.7% of loops) and the same switches=0 mode behavior, just now expressed through real Cartesian motion rather than the empty-LCS quiescence.
+
+**Implication for the 9.4.5 sub-option falsifications.** Yesterday's 1a / 1b / 1c / 1d sub-option falsifications all rested on Finding A being unresolved — every falsification reasoning chain ended at "the LCS at commanded positions is empty, so no arbitration choice can produce contact." With F2 closing Finding A, the four sub-options are **candidates for re-evaluation, not pre-judged outcomes**:
+
+- 1a (`w_align` decay) and 1b (raise `w_travel`) were falsified by the c_C3_raw gap (~185 k under empty-LCS conditions). The c_C3_raw landscape under non-empty LCS is uncharacterized; both are re-evaluable contingent on a c_C3_raw measurement.
+- 1c (K-loop lock-in) was falsified because fresh `strat_*` samples did not win after `prev_repos` exclusion. The cost-favors-current observation may or may not persist under non-empty LCS; re-evaluable.
+- 1d (`steps_since_improve` watchdog) was falsified because forced c3-mode produced `n_λ=0` in every dispatch. **This falsification reason is directly invalidated by F2** — post-F2, the LCS is non-empty in 99.4-99.6% of dispatches. 1d has the strongest a priori case for re-evaluation.
+
+Each falsification was correct at the time given empty-LCS conditions. F2 changed the regime enough that the falsification chain needs re-running, not re-classifying. The cross-link to `docs/paper_alignment_plan.md` Item 2.1 (Status: REOPENED) carries the canonical statement of the post-F2 sub-option statuses.
+
 ## Backlog
 
 ### C3Solver discards per-knot λ_k
@@ -302,6 +330,24 @@ The 2026-05-11/12 investigation cycle produced three rounds of prior-art redisco
 The institutional pattern is consistent: **each fix reveals an upstream layer, and the upstream layer was often documented in prior step docs but deferred for reasons that no longer hold under current configuration.** Hypothesis F was deferred in step 8 behind α-pessimism; α shipped and Hypothesis F became binding. Step 8's executor-tuning catalog deferred home-hold verification as out of scope; the catalog was directly applicable once 9.4.5-A surfaced home-hold as the symptom. Candidates 2 and 3 were deferred in step 8 behind executor bottlenecks; the executor improved and the candidates became binding (then falsified once attempted, surfacing Finding A as the next upstream layer).
 
 The discipline rule: **future investigators should search prior step docs early and treat "OPEN" or "deferred" items as candidates for re-evaluation under current configuration.** A single grep against the prior step's OPEN list (≤ 5 minutes of work) consistently prevents multi-hour rediscovery chains. The grep is additive to the "search project docs early" discipline above — that one is about avoiding re-derivation of documented mechanisms; this one is about re-evaluating prior deferral judgments whose constraints may have changed.
+
+### Falsification under shifting upstream conditions (institutional knowledge)
+
+When a fix at upstream layer N resolves a binding constraint, downstream layer N+1 sub-options that were falsified under the prior condition may need re-evaluation. Their falsification reasons may have been specific to the pre-fix regime, not invariant properties of the sub-options themselves.
+
+The 2026-05-11/12 wrapper-side sub-option sequence (1a / 1b / 1c / 1d, all falsified at 9.4.5-D / -E / -F) is the illustrative case. Each falsification was rigorously correct at the time: 1a/1b were defeated by the c_C3_raw gap (~185 k under empty-LCS conditions); 1c was defeated by fresh `strat_*` samples not winning after `prev_repos` exclusion; 1d was defeated by forced c3-mode producing `n_λ=0` in every dispatch. Today's 9.4.7 F2 fix changed the geometric regime sufficiently that 1d's premise no longer holds (post-F2 c3-mode finds non-empty LCS in 99.4-99.6% of dispatches), and 1a/1b/1c's c_C3_raw reasoning rested on a cost landscape measured under empty-LCS conditions that no longer applies.
+
+The discipline rule: **after a fix lands at layer N, walk through the most-recently-falsified sub-options at layer N+1 and check whether each falsification reasoning chain still terminates at a condition the new regime preserves.** If any reasoning chain terminates at the pre-fix condition, that sub-option moves from "falsified" to "candidate for re-evaluation." This is additive to the "wrapper-side fix exhaustion pattern" entry above — that one says "when the layer-N+1 sub-options falsify, escalate upstream"; this one says "after upstream is fixed, re-evaluate the layer-N+1 sub-options before progressing to entirely new fix surfaces." The two together describe the cycle: exhaust → escalate → fix → re-evaluate.
+
+### Architectural pause reversal (institutional knowledge)
+
+9.4.5-G (a2112d7) paused the project for an architectural decision after four wrapper-side sub-option falsifications. The pause framing was correct given the data at that time: every visible fix surface at the wrapper layer had been tested and falsified, and Finding A (empty-LCS) was the named binding constraint with four enumerated upstream options (U1 / U2 / U3 / G5) of varying scope.
+
+9.4.7 F2 (one parameter change, 5 mm correction) demonstrated that the architecture can produce motion (Path A 106.5 mm) when the geometry is correct. The empty-LCS condition was not an architectural property of the project — it was a 5 mm mismatch between two unrelated parameters (the wrapper's `sampling_radius` and the formulator's `distance_threshold`), where the wrapper-side value (0.18 m) had no documented rationale.
+
+The discipline rule: **architectural pivot proposals should require evidence that smaller-blast-radius fixes upstream of the visible-fix layer have been exhausted, not just that the visible-fix layer (wrapper arbitration) is exhausted.** When wrapper-side options exhaust, the natural next move is not "consider architectural pivot" but "characterize the failure surface at the layer that wrapper-side sub-options were trying to compensate for." The 9.4.6 probe (read-only, monkey-patched diagnostic, ~30 minutes of design + 10 minutes of run) was that characterization step; it identified a bounded parameter fix as the right next move. The architecture question remains valid as a backstop, but it is the *last* resort, not the next one when wrapper sub-options exhaust.
+
+Today's pattern, generalized: **pause for architecture → cheap upstream investigation → bounded parameter fix → reframe.** The cycle takes one investigator-day. Future investigations encountering a similar "wrapper-side path closed" framing should run the cheap upstream investigation step before committing to an architectural design proposal.
 
 ## Diagnostic discipline (parallel to V-1→V-9 and S8.0→S8.4)
 

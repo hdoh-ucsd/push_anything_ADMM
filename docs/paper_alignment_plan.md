@@ -35,8 +35,8 @@ Implication: Finding C as framed was either not load-bearing for verdict-A, or i
 ### Category 2 — Newly-surfaced binding constraint
 
 **Item 2.1 — Contact-free stage triad: kIK guide-path (Effect A), executor home-hold (Effect B), wrapper-executor coupling (Effect C)**
-Status: **PAUSED** — Effect B PARTIAL via commit `161b7d9`; Effect C CONFIRMED (9.4.5-C); wrapper-side sub-options 1a–1d FALSIFIED (9.4.5-D / -E / -F); Finding A (empty-LCS at commanded geometry) promoted to binding constraint. See "Wrapper-side fix sub-options falsified (9.4.5-D through 9.4.5-F)" subsection below for the falsification chain and the four upstream options (U1 / U2 / U3 / G5).
-Source: 9.4 kIK isolation → 9.4.1 torque breakdown → 9.4.2 integrator characterization → 9.4.3 clamped-integrator probe → 9.4.4 guide-path trace → 9.4.5-A baseline → 9.4.5-A.1 hold-home-pose → 9.4.5-B Attempt 1 (commit `161b7d9`) + sub-attempt 1.5 (reverted) → 9.4.5-C (read-only prior-art) → 9.4.5-D (1a falsified) → 9.4.5-E (1c falsified) → 9.4.5-F (1d falsified, reverted)
+Status: **REOPENED (wrapper-side, 9.4.7)**. Finding A RESOLVED by F2 (commit `761f9f8`, `sampling_radius` 0.18→0.13 m); Effect C now STANDALONE BINDING CONSTRAINT (persists under non-empty LCS regime); 1d's prior falsification reason directly invalidated by F2; 1a/1b/1c candidates for re-evaluation pending c_C3_raw landscape measurement; G5 (OSC architectural pivot) deferred pending sub-option re-evaluation. Yesterday's **PAUSED** language and the "Wrapper-side fix sub-options falsified (9.4.5-D through 9.4.5-F)" subsection below remain the institutional record of the pre-F2 (empty-LCS) regime — the four-falsification chain was correct under that regime; the F2 reframe is additive, not a retraction. See "9.4.7 F2 reframe (Finding A resolved; Effect C standalone)" subsection below.
+Source: 9.4 kIK isolation → 9.4.1 torque breakdown → 9.4.2 integrator characterization → 9.4.3 clamped-integrator probe → 9.4.4 guide-path trace → 9.4.5-A baseline → 9.4.5-A.1 hold-home-pose → 9.4.5-B Attempt 1 (commit `161b7d9`) + sub-attempt 1.5 (reverted) → 9.4.5-C (read-only prior-art) → 9.4.5-D (1a falsified) → 9.4.5-E (1c falsified) → 9.4.5-F (1d falsified, reverted) → 9.4.6 (LCS-contents probe, commit `bd18003`) → 9.4.7 F2 (commit `761f9f8`)
 Paper reference: outside paper scope (kIK trajectory generator is a project extension; paper does not specify a per-step Cartesian guide policy or a joint-space PD executor)
 Location: **Effect A** at `control/sampling_c3/reposition_ik.py` `_build_guide_path` (lines 873-906) + per-loop reset (lines 1092-1099). **Effect B** at the joint-PD-with-grav-comp law (lines 1173-1202) + config gains (Kp_q=60, Ki_q=8, Kd_q=8, I_max=4.0 after commit `161b7d9`, torque_limit=30 Nm in `config/sampling_c3_kik.yaml`). **Effect C** at the wrapper's `prev_repos` selection logic (likely `control/sampling_c3/wrapper.py`; specific lines TBD by 9.4.5-C investigation).
 
@@ -88,6 +88,37 @@ Per-attempt result, against the verdict-A Path D / Path A regression criteria:
 - **Option G5 — OSC architectural pivot:** replace the wrapper + kIK + joint-PD stack with a paper-faithful operational-space controller at 1 kHz. The deferred-architecture item in step 8's executor-tuning catalog.
 
 **Status: PAUSED for architectural decision (U1 / U2 / U3 / G5).** Direction is the user's call; this entry is the institutional record of the four-sub-option exhaustion.
+
+**9.4.7 F2 reframe (Finding A resolved; Effect C standalone binding constraint).**
+
+9.4.6 (probe `bd18003`) identified the empty-LCS mechanism as a 5 mm geometric mismatch: `sampling_radius` 0.18 m minus box half-extent 0.05 m minus pusher radius 0.025 m = 0.105 m pusher-to-box surface clearance at every strategy sample, just 5 mm outside Drake's 0.10 m extraction threshold (`control/lcs_formulator.py:181`). The probe ran a 100-step WEST scenario and recorded 0/341 Class-A calls (Drake returns 0 pairs) but 189/341 Class-B calls (Drake returns pairs, project filter excludes all because no ee-box pair is within threshold). The `sampling_radius=0.18` value had no documented rationale.
+
+9.4.7 F2 (commit `761f9f8`) reduces `sampling_radius` to 0.13 m. Target pusher-to-box surface clearance: 0.055 m (inside the 0.10 m threshold by 45 mm, above the 0.075 m hard-collision floor by 55 mm). Verified post-commit on the standard 800-step verdict-A scenarios:
+
+- **Path D (kIK config)** — empty-LCS 80.9% → 0.0%; λ_n_max median 0 → 0.569 (99.4% non-zero across 796 dispatches); `best_src=strat_*` 0/801 → 128/801; obj_xy 48.7 mm (NW) → 10.4 mm (SW); switches 8 → 0.
+- **Path A (PWL config)** — empty-LCS high → 0.0%; λ_n_max median 0 → 0.101 (99.6% non-zero across 798 dispatches); obj_xy 10.8 mm (S) → 106.5 mm (W); switches 2 → 0. Magnitude up ~10× vs HEAD baseline; direction still West (wrong sign for the +x goal) — not a regression per the 25 mm floor criterion, but the wrong-direction motion is the surface symptom of the residual Effect C.
+
+**Finding A is RESOLVED.** Across 1594 `[C3]` dispatches between the two runs, zero `n_λ=0` lines. The empty-LCS gradient-decoupling condition is closed at its geometric mechanism. The four upstream options enumerated in the PAUSED section above are reassessed:
+
+- **U1 (Finding A directly):** RESOLVED by F2. The 5 mm mismatch was the load-bearing mechanism.
+- **U2 (sampler bias):** OPEN, deprioritized. Sample geometry now consistently produces non-empty LCS; whether the wrapper still picks the same off-axis target is downstream of arbitration, not sampler bias.
+- **U3 (c_C3_raw mechanism):** OPEN. The 6× cost gap reported in 9.4.5-D was measured under empty-LCS conditions, where contact-active samples saw `n_λ=0` and thus had no contact-coupled cost-to-go. Whether the gap persists with non-empty LCS is an open question.
+- **G5 (OSC architectural pivot):** DEFERRED. The project's architecture demonstrably produces motion (Path A 106.5 mm) when geometry is correct — the problem is direction of motion, not capability. Architectural pivot becomes appropriate only if the sub-option re-evaluation chain below also exhausts.
+
+**Effect C reframe — now standalone binding constraint.** Yesterday's 9.4.5-D / -E / -F sub-option falsifications all rested on Finding A being unresolved (the wrapper's chosen targets sat at empty-LCS geometry, so no arbitration choice could produce contact). With F2 closing Finding A, the four sub-options are candidates for re-evaluation — they are not pre-judged as RESOLVED or REOPENED; each falsification was correct at the time given empty-LCS conditions, and re-testing under the post-F2 regime is the only way to know.
+
+- **1a (`w_align` decay)** — falsified by direct c_C3_raw gap arithmetic. That gap was measured under empty-LCS conditions; the post-F2 c_C3_raw landscape is uncharacterized. Re-evaluable contingent on a c_C3_raw landscape measurement.
+- **1b (raise `w_travel`)** — skipped on the same c_C3_raw reasoning. Same re-evaluation status as 1a.
+- **1c (K-loop lock-in)** — falsified because fresh `strat_*` samples did not win after `prev_repos` exclusion. Path A regressed. Whether the cost landscape under non-empty LCS would let fresh samples win is open; re-evaluable contingent on c_C3_raw landscape.
+- **1d (`steps_since_improve` watchdog)** — falsified because forced c3-mode produced `n_λ=0` in every dispatch. **This falsification reason is directly invalidated by F2** — post-F2, the LCS is non-empty in 99.4-99.6% of dispatches. 1d has the strongest a priori case for re-evaluation.
+
+**Fix-direction implications (post-F2).** Wrapper-side investigation is **REOPENED**. The architectural pivot (G5) is less urgent — one bounded parameter fix upstream of arbitration (F2 itself) closed one binding constraint without architectural change, and demonstrated that the project's stack can produce substantial Cartesian motion. The next investigation surfaces are wrapper-side, in three natural starting orders:
+
+- **Option A — Re-test 1d watchdog under F2 regime.** Lowest-effort, strongest a priori case; the prior falsification reason is directly invalidated. A successful re-run would also incidentally answer whether forced c3-mode now drives the box toward the goal under non-empty LCS.
+- **Option B — Characterize c_C3_raw landscape post-F2.** Highest information yield; would inform 1a/1b/1c re-evaluation simultaneously. A per-sample `c_C3_raw` and `align_bonus` log over a 200-step run is the natural instrumentation.
+- **Option C — Direct per-sample cost-breakdown analysis.** Cheapest insight into why `prev_repos` still wins (best_src=prev_repos 84-99.7% of loops post-F2). Read-only inspection of `[GS-table]` lines plus targeted instrumentation in `InnerSolver.evaluate_samples` if needed.
+
+Direction is the user's call; no auto-proceed.
 
 Diagnostic chain that re-derived the mechanism:
 
@@ -168,7 +199,7 @@ Performance-only, not correctness.
 |---|---|---|
 | 1.1 Mechanism α | SHIPPED | Paper-alignment shipped |
 | 1.2 Finding C | SHIPPED | Paper-alignment shipped |
-| 2.1 kIK guide-path (Effect A) + executor home-hold (Effect B) + wrapper-executor coupling (Effect C) | **PAUSED** — Effect B Attempt 1 PARTIAL (commit `161b7d9`); Effect C CONFIRMED (9.4.5-C); wrapper-side sub-options 1a–1d FALSIFIED (9.4.5-D / -E / -F); Finding A promoted to binding constraint; four upstream options enumerated (U1 / U2 / U3 / G5) | Binding constraint — wrapper-side path closed, awaiting architectural decision |
+| 2.1 kIK guide-path (Effect A) + executor home-hold (Effect B) + wrapper-executor coupling (Effect C) | **REOPENED (wrapper-side, 9.4.7)** — Finding A RESOLVED by F2 (commit `761f9f8`, `sampling_radius` 0.18→0.13 m); Effect C now STANDALONE binding constraint (persists under non-empty LCS regime); 1d's falsification reason directly invalidated, 1a/1b/1c candidates for re-evaluation; G5 deferred. Prior PAUSED state retained as institutional record. | Binding constraint — geometric mechanism closed; wrapper arbitration is now the binding surface |
 | 3.1 Asymmetric hysteresis | NOT STARTED | Polish |
 | 3.2 Empty-LCS handling | NOT STARTED | Polish |
 | 3.3 Wrapper rename | NOT STARTED | Polish |
