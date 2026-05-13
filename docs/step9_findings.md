@@ -187,6 +187,18 @@ This produced a new diagnostic question: is the inability-to-hold caused by the 
 
 The two effects compound: Effect B drives the arm to a fixed point unrelated to p_target; Effect A's per-stride guide rebuild then locks the arm there because every guide knot is "1 cm ahead of where I am" computed from the fixed-point ee_now. Verdict-A is the joint manifestation. The 9.4.5-B fix design must address both.
 
+### 9.4.5-B Attempt 1 + sub-attempt 1.5 — premise falsified; Effect C surfaced
+
+**Attempt 1 (commit `161b7d9`, I_max 2.0→4.0)** produced PARTIAL home-hold improvement: clamped integrators 3→1 (joints 2, 3 unclamped; joint 1 still clamped at I_max=4.0), EE displacement 197mm → 132mm at t=30s, joint 1 q_err -0.405 → -0.343 rad. Verdict-A regression check showed a Path D shift (empty-LCS 1.43% → 80.9%, obj motion 35.2mm → 48.7mm) but Path A clean; the Path D number was open as "possible regression vs measurement-convention artifact" because the cited 9.3.4 baseline numbers were not findable in repo state for direct verification.
+
+**Sub-attempt 1.5 (I_max 4.0→7.0, reverted; not committed)** confirmed the executor-side problem is solvable by integrator authority alone. The closed-form sizing analysis (see "Closed-form executor sizing rule" backlog entry below) predicted joint 1's integrator must wind to -6.23 rad·s to hold q_err=0; measured value was **-6.12 rad·s, within 2% of prediction**. EE displacement at t=30s: 25.25mm. Joint 1 q_err: -0.0151 rad. All 7 integrators unclamped, 0/7 torque-saturated. The trajectory shows clear asymptotic convergence (206mm at t=10s recovering to 25mm at t=30s) — the system is mid-recovery rather than stuck at a fixed point, with the residual q_err bounded by integrator wind-up time constant, not authority.
+
+**Verdict-A regression on Path D, however, was severe.** Box motion: 35.2mm (cited baseline) → 48.7mm (Attempt 1) → **0.0mm** (sub-attempt 1.5). Mode switches: 6 → 8 → **70** (wrapper thrashing). Empty-LCS fraction: 1.43% → 80.9% → **100%** (every C3+ inner solve sees no contact pairs within threshold). Path A remained clean across all three configurations. Per the regression discipline ("Any regression → revert and reassess"), sub-attempt 1.5 was reverted; the working tree returned to commit `161b7d9` state.
+
+**Three monotonic data points reveal a wrapper-executor coupling** that the two-effects framing did not anticipate. The hypothesis: more authoritative executor parks the EE more precisely at the wrapper's `prev_repos` target, which itself is contact-inactive in the verdict-A scenario; the C3+ inner solver then has no contact pairs to plan against, and the wrapper alternates mode searching for a way out. This is now labeled **Effect C** and reframed in `docs/paper_alignment_plan.md` Item 2.1 as a third compounding effect distinct from Effect A (planner-side) and Effect B (executor-side).
+
+**Premise falsification.** 9.4.5-B was designed under the premise "fix executor home-hold → unblock verdict-A." The data falsifies this directly: fixing Effect B reveals Effect C as the next binding constraint, not verdict-A success. Step 8's executor-tuning work is institutionally correct and the home-hold gap it correctly identified can be closed; but closing it does not unblock verdict-A on Path D. **9.4.5-C is queued to characterize Effect C directly** — likely starting at the wrapper's `prev_repos` selection logic (`control/sampling_c3/wrapper.py`). Step 8's `docs/step8_sampling_c3_candidates.md` candidates 1/2/3 are the natural prior-art surface for that investigation (the same `prev_repos` mechanism, observed but not yet localized).
+
 ## Backlog
 
 ### C3Solver discards per-knot λ_k
@@ -216,6 +228,14 @@ The discipline note, additive to the existing 9.1 / 9.2.x narrative:
 - **When configuration changes upstream, audit deferred mechanisms.** Each time a fix lands that touches the upstream conditions of an earlier deferral, walk through the deferred mechanisms and check whether the deferral's rationale still holds. This is a low-cost institutional practice that prevents downstream re-derivation chains.
 
 This is additive to (not a replacement for) the existing diagnostic discipline narrative below — the 9.1 ↔ overturned-mechanism-β reframing and the 9.2.x derivations remain the canonical story for the C3 / LCS / staging-geometry findings; the prior-art search note is for executor-side investigations where step 8 produced extensive empirical work that future investigations should consult first.
+
+### Closed-form executor sizing rule (institutional knowledge)
+
+Validated 9.4.5-B sub-attempt 1.5. At steady-state hold (q_err → 0, v → 0), joint j's integrator must wind to **2·tau_g(q_target_j) / Ki**, not 1·tau_g/Ki. The factor of 2 arises from the PD law structure (`reposition_ik.py:1173-1202`): the gravity feedforward at q_target is applied additively to the integrator's contribution, so the integrator must both *cancel* the feedforward and *provide* the negative actuation torque needed for force balance at q_now = q_target. For joint 1's home-hold case (tau_g(q_target) = 24.93 Nm, Ki = 8), required integrator magnitude = 6.23 rad·s; measured value at I_max=7.0 was -6.12 rad·s, within 2% of prediction.
+
+**Step 8's Fix 6 sized to 1×** (pushing-task load ~7.39 Nm → I_max=2.0), which was correct for the pushing task because the executor is not asked to reach a static fixed point — the integrator is winding in response to a moving target, and reaching 2× of the instantaneous tau_g is not required mid-trajectory. For *static* holds (verification probes, idle states, prepositioned starts), the 2× rule applies.
+
+**Prospective application.** When tuning Ki·I_max for any new task or verification probe, size Ki·I_max to **2 · max(tau_g(q_target)) across the loaded joints**, not 1×. The discipline note generalizes beyond the specific I_max value: the rule applies to any (Ki, I_max) pair as long as their product reaches the 2× threshold. This is additive institutional knowledge that survives any specific 9.4.5-B fix decision — the rule is correct regardless of whether the home-hold scenario itself is the right target for executor tuning (which 9.4.5-B sub-attempt 1.5 shows it is *not*, because of Effect C).
 
 ## Diagnostic discipline (parallel to V-1→V-9 and S8.0→S8.4)
 
