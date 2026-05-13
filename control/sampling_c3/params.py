@@ -178,7 +178,16 @@ class SamplingParams:
     ang_error_sample_retention:          float = 0.30   # rad
 
     # Geometry shared across multiple strategies
-    sampling_radius:                     float = 0.18   # m, around object xy
+    sampling_radius:                     float = 0.13   # m, around object xy
+    # 9.4.7 / F2: reduced from 0.18 (no documented rationale) to close
+    # the 5mm geometric mismatch with Drake's 0.10m contact-extraction
+    # threshold (lcs_formulator.py:181). Old value placed every strategy
+    # sample at pusher-to-box surface clearance 0.105m — 5mm above the
+    # threshold — so ee-box pairs never entered the project filter and
+    # the LCS was empty at all commanded geometry (9.4.6 probe). New
+    # value targets 0.055m clearance (inside the threshold) while
+    # keeping 0.055m margin above the 0.075m hard collision floor
+    # (box_half 0.05 + pusher_radius 0.025).
     sampling_height:                     float = 0.05   # m, contact-plane EE z
 
     # Workspace bounds (kept here, not in a separate sampling_c3_options.yaml)
