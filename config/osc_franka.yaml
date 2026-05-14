@@ -1,0 +1,26 @@
+# OSC gains for the Franka in the push_anything_ADMM project.
+# Design rationale: docs/osc_design.md (Phase 1 design doc).
+
+task_dim: 3                                  # 3D position-only tracking
+
+Kp_task: [100.0, 100.0, 100.0]               # 1 cm error → 1 N task force
+Kd_task: [ 20.0,  20.0,  20.0]               # critical damping for m_eff ≈ 0.4 kg
+
+# Posture gains scaled by per-joint actuator limits (joints 1-4 at 87 Nm,
+# joints 5-7 at 12 Nm), so wrist joints aren't dominated by posture pull.
+Kp_posture: [50, 50, 50, 50, 20, 20, 10]
+Kd_posture: [10, 10, 10, 10,  5,  5,  3]
+
+W_task:    10.0                              # soft-cost weight on task tracking
+W_posture:  1.0                              # soft-cost weight on null-space posture
+
+w_tau_reg: 1.0e-4                            # τ regularization (tie-break)
+
+# Per-joint Franka effort limits from URDF (87 for shoulders/upper-arm,
+# 12 for wrist). Used as hard QP constraints — OSC will never request
+# torque exceeding these.
+torque_limits: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
+
+# Posture target. "q_home" → use INITIAL_ARM_Q (loaded by the constructor).
+# Alternative "current_q" not implemented in Phase 2.
+posture_target: q_home
