@@ -1,0 +1,19 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+[smoke] build_environment(pushing) ...
+[smoke] plant: n_q=14 n_v=13 n_arm=7
+[smoke] ee_frame=pusher OK
+[smoke] gains_cfg loaded; q_home_arm shape=7
+[smoke] OperationalSpaceTracker instantiated OK
+[smoke] ee_now @ INITIAL_ARM_Q = (+0.000,-0.001,+0.200)
+[OSC-tick] step=0 |tau|=30.107 clamp_mask=[0, 0, 0, 0, 0, 0, 0] qp_feasible=1
+[OSC-target] step=0 p_target=(+0.000,-0.001,+0.200) x_now=(+0.000,-0.001,+0.200) err=0.0000m
+[OSC-cost] step=0 task_residual=0.0007 |xdd_cmd|=0.000
+[smoke] tau.shape=(7,)  |tau|=30.107
+[smoke] tau per-joint = [-1.20798681e-03 -2.49281288e+01  1.28112512e+01  1.09341804e+01
+  1.26775568e-01  1.14909473e+00 -3.33000974e-02]
+[smoke] diag = {'ee_now': array([ 1.29444712e-04, -5.10809945e-04,  2.00078832e-01]), 'finished': True}
+[smoke] |tau_g[arm]| = 30.111
+[smoke] tau_g[arm] = [ -0.          24.93204968 -12.81286693 -10.93458885  -0.12675675
+  -1.14902373   0.03330647]
+[smoke] tau shape OK=True  tau finite=True  finished=True
+[smoke] VERDICT: PASS

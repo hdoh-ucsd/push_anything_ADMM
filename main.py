@@ -244,6 +244,12 @@ def main():
                              "workspace_xy_max[1] in-memory after yaml load. "
                              "Valid range [-1.0, +1.0]. Only takes effect with "
                              "--sampling-c3.")
+    parser.add_argument("--tracker", choices=["joint_pd", "osc"], default=None,
+                        help="Free-mode tracker selector. Overrides the YAML "
+                             "config's tracker_mode field when present. "
+                             "joint_pd = legacy PiecewiseLinearTracker / "
+                             "RepositionIKTracker (per traj_type); "
+                             "osc = Khatib OSC + null-space posture (Phase 3 pivot).")
     args = parser.parse_args()
 
     if args.workspace_y_max is not None and not (-1.0 <= args.workspace_y_max <= 1.0):
@@ -427,6 +433,10 @@ def main():
             _was = sc3_params.sampling_params.workspace_xy_max[1]
             sc3_params.sampling_params.workspace_xy_max[1] = args.workspace_y_max
             print(f"[OVERRIDE] workspace_xy_max[1]={args.workspace_y_max} (was {_was})")
+        if args.tracker is not None:
+            _was = sc3_params.tracker_mode
+            sc3_params.tracker_mode = args.tracker
+            print(f"[OVERRIDE] tracker_mode={args.tracker} (was {_was})")
         # With the new IK-based --prepositioned pose, k=0 captures the
         # ~30k alignment bonus (vs zero contact for every k>=1 at sampling
         # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1

@@ -31,6 +31,12 @@ w_travel: 200.0
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
 
+# Free-mode tracker selector (Phase 3 OSC pivot).
+# "joint_pd" — legacy PD-tracker dispatch on reposition_params.traj_type.
+# "osc"      — Khatib OSC + null-space posture; gains from osc_gains_path.
+tracker_mode: joint_pd
+osc_gains_path: config/osc_franka.yaml
+
 
 # ----------------------------------------------------------------------------
 # Progress + mode-switch hysteresis

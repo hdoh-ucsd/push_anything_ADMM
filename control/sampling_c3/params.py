@@ -439,6 +439,14 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
+    # Free-mode tracker selector (Phase 3 OSC pivot).
+    # "joint_pd": legacy PiecewiseLinearTracker / RepositionIKTracker
+    #             (dispatch on reposition_params.traj_type).
+    # "osc":      OperationalSpaceTracker — Khatib OSC + null-space
+    #             posture, gains from osc_gains_path.
+    tracker_mode:       str   = "joint_pd"
+    osc_gains_path:     str   = "config/osc_franka.yaml"
+
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
         return cls(
@@ -449,6 +457,9 @@ class SamplingC3Params:
             w_align              = float(raw.get("w_align", 30_000.0)),
             w_travel             = float(raw.get("w_travel", 200.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
+            tracker_mode         = str(raw.get("tracker_mode", "joint_pd")),
+            osc_gains_path       = str(raw.get("osc_gains_path",
+                                               "config/osc_franka.yaml")),
         )
 
     @classmethod

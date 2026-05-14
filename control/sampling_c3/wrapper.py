@@ -120,13 +120,29 @@ class SamplingC3MPC:
             pos_threshold = params.sampling_params.pos_error_sample_retention,
             ang_threshold = params.sampling_params.ang_error_sample_retention,
         )
-        # Reposition-tracker dispatch on traj_type. The kIK path needs the
-        # diagram so it can build its own private diag_ctx for IK and apply
-        # the context-local collision filter to that context's SceneGraph
-        # (see RepositionIKTracker.__init__). Other traj types use the PWL
-        # tracker, which has no SceneGraph dependency.
-        _traj_type = params.reposition_params.traj_type
-        if _traj_type == RepositioningTrajectoryType.kIK:
+        # Reposition-tracker dispatch.
+        # 1. ``tracker_mode == "osc"`` short-circuits the joint-PD branch
+        #    entirely and instantiates the operational-space controller.
+        #    The OSC ignores ``traj_type`` — its setpoint is the planner's
+        #    3D p_target with zero velocity, no guide-path knots needed.
+        # 2. Otherwise dispatch on traj_type. The kIK path needs the
+        #    diagram so it can build its own private diag_ctx for IK and
+        #    apply the context-local collision filter to that context's
+        #    SceneGraph (see RepositionIKTracker.__init__). Other traj
+        #    types use the PWL tracker.
+        if params.tracker_mode == "osc":
+            import yaml as _yaml
+            from control.osc import OperationalSpaceTracker
+            from sim.env_builder import INITIAL_ARM_Q
+            with open(params.osc_gains_path) as _f:
+                _gains_cfg = _yaml.safe_load(_f)
+            _gains_cfg["q_home_arm"] = list(INITIAL_ARM_Q)
+            self.tracker = OperationalSpaceTracker(
+                plant=plant, ee_frame=ee_frame,
+                n_arm_dofs=self.n_u, gains_cfg=_gains_cfg,
+            )
+            print(f"[GS] tracker_mode=osc  gains={params.osc_gains_path}")
+        elif (_traj_type := params.reposition_params.traj_type) == RepositioningTrajectoryType.kIK:
             if diagram is None:
                 raise ValueError(
                     "SamplingC3MPC: traj_type=kIK requires diagram=. Pass the "
