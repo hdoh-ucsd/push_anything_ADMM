@@ -244,6 +244,15 @@ def main():
                              "workspace_xy_max[1] in-memory after yaml load. "
                              "Valid range [-1.0, +1.0]. Only takes effect with "
                              "--sampling-c3.")
+    parser.add_argument("--goal-xy", type=str, default=None, metavar="X,Y",
+                        help="Contact-free sweep override: override task_cfg "
+                             "['goal_xy'] in-memory after load_task(). Format "
+                             "'X,Y' in meters (comma-separated). Overrides any "
+                             "value from tasks.yaml or --task-id.")
+    parser.add_argument("--seed", type=int, default=None, metavar="INT",
+                        help="Contact-free sweep: seed the SamplingC3MPC rng "
+                             "for deterministic sampling-circle angle draws. "
+                             "Only takes effect with --sampling-c3.")
     args = parser.parse_args()
 
     if args.workspace_y_max is not None and not (-1.0 <= args.workspace_y_max <= 1.0):
@@ -317,6 +326,15 @@ def main():
         print(f"[ENV]  Description: {task_entry['description']}")
     else:
         print(f"[ENV]  Goal coords: {task_cfg.get('goal_xy', 'default')}")
+
+    if args.goal_xy is not None:
+        try:
+            _gx, _gy = [float(s) for s in args.goal_xy.split(",")]
+        except ValueError:
+            parser.error(f"--goal-xy {args.goal_xy!r} must be 'X,Y' in meters.")
+        _was_goal = task_cfg.get("goal_xy")
+        task_cfg["goal_xy"] = [_gx, _gy]
+        print(f"[OVERRIDE] goal_xy=[{_gx}, {_gy}] (was {_was_goal})")
 
     # ---- Structured log header -------------------------------------------
     _cost = task_cfg.get("cost", {})
@@ -432,6 +450,9 @@ def main():
         # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
         # under its own cost differential. Forcing the initial mode would
         # mask whether the pose actually does what we want.
+        _rng = np.random.default_rng(args.seed) if args.seed is not None else None
+        if args.seed is not None:
+            print(f"[OVERRIDE] seed={args.seed} (rng=np.random.default_rng)")
         mpc = SamplingC3MPC(
             base_mpc=mpc,
             plant=plant,
@@ -440,6 +461,7 @@ def main():
             params=sc3_params,
             log_diag=True,
             start_in_c3_mode=False,
+            rng=_rng,
             diagram=diagram,   # required if reposition_params.traj_type==kIK
         )
         print(f"[GS] SamplingC3MPC enabled (config: {_yaml_path})")
