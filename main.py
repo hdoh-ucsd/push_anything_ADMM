@@ -544,7 +544,9 @@ def main():
             print(f"[WARN] Joint limit violated at t={sim_time:.3f}s  "
                   f"joints={violating.tolist()}  q={arm_q.round(3)}")
 
-        tau_g = plant.CalcGravityGeneralizedForces(plant_ctx)
+        # Negated: Drake returns generalized gravity force (the force gravity
+        # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
+        tau_g = -plant.CalcGravityGeneralizedForces(plant_ctx)
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx, target_xy)
 
         # Update predicted-trajectory markers in Meshcat

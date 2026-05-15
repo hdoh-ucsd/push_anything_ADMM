@@ -230,7 +230,9 @@ class PiecewiseLinearTracker:
         u_d = -self.params.Kd_q * v_arm_now
         u_pd = u_p + u_i + u_d
 
-        tau_g_arm = self.plant.CalcGravityGeneralizedForces(plant_ctx)[: self.n_arm_dofs]
+        # Negated: Drake returns generalized gravity force (the force gravity
+        # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
+        tau_g_arm = -self.plant.CalcGravityGeneralizedForces(plant_ctx)[: self.n_arm_dofs]
         u = np.clip(tau_g_arm + u_pd,
                     -self.params.torque_limit, self.params.torque_limit)
 
