@@ -1253,7 +1253,9 @@ class RepositionIKTracker:
         q_full_target = current_q.copy()
         q_full_target[:n_arm] = q_arm_target
         self.plant.SetPositions(self._plant_ctx_ik, q_full_target)
-        tau_g_arm = self.plant.CalcGravityGeneralizedForces(self._plant_ctx_ik)[:n_arm]
+        # Negated: Drake returns generalized gravity force (the force gravity
+        # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
+        tau_g_arm = -self.plant.CalcGravityGeneralizedForces(self._plant_ctx_ik)[:n_arm]
         u = np.clip(tau_g_arm + u_pd,
                     -self.repos_params.torque_limit,
                     +self.repos_params.torque_limit)
