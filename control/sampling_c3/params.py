@@ -37,6 +37,8 @@ from typing import Any
 
 import yaml
 
+from sim.env_builder import INITIAL_ARM_Q
+
 
 # ---------------------------------------------------------------------------
 # Enums (numeric values match upstream c3_options.h ordering)
@@ -372,10 +374,13 @@ class RepositionIKParams:
     # Costs
     joint_centering_weight:                     float = 1e-2
     joint_movement_weight:                      float = 1e-1
-    q_nominal:                                  list  = field(default_factory=lambda: [
-        0.0, -0.7853981633974483, 0.0, -2.356194490192345,
-        0.0,  1.5707963267948966, 0.7853981633974483,
-    ])  # Franka "ready" pose [0, -pi/4, 0, -3pi/4, 0, pi/2, pi/4]
+    q_nominal:                                  list  = field(
+        default_factory=lambda: INITIAL_ARM_Q.tolist()
+    )  # Align IK posture target with the arm's starting pose. The
+       # earlier default (Franka "ready" pose) sat ~2.37 rad away from
+       # INITIAL_ARM_Q in joint space, so the joint_centering term in
+       # the IK pulled solutions toward postures the dynamic tracker
+       # couldn't reach within its 30 N·m torque budget.
 
     # Solver / timing
     per_knot_solve_timeout_s:                   float = 8e-3
