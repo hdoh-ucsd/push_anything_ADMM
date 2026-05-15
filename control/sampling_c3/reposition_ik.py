@@ -604,6 +604,13 @@ class RepositionIKTracker:
         # ---- Joint-PD state (mirrors PiecewiseLinearTracker) ----
         self._integral:        np.ndarray            = np.zeros(self.n_arm_dofs)
         self._prev_target_pos: Optional[np.ndarray]  = None
+        # Remembered setpoint position — see PiecewiseLinearTracker
+        # docstring at reposition.py:142-148. Anchoring the per-tick
+        # guide on live FK(q) instead of a remembered setpoint causes a
+        # closed-loop chase: a sagging arm drags the setpoint down with
+        # it. We seed from ee_now on first call / target change, then
+        # advance independently of arm state.
+        self._setpoint_pos:    Optional[np.ndarray]  = None
 
         # ---- Feasibility memo (read by wrapper.py) ----
         self._last_knot0_feasible: bool = True
@@ -706,6 +713,7 @@ class RepositionIKTracker:
         """Wipe joint-PD state and feasibility memos."""
         self._integral[:]          = 0.0
         self._prev_target_pos      = None
+        self._setpoint_pos         = None
         self._last_knot0_feasible  = True
         self.last_q_knots          = None
         self.last_ee_knots         = None
@@ -871,12 +879,19 @@ class RepositionIKTracker:
     # ------------------------------------------------------------------
 
     def _build_guide_path(self,
-                          ee_now:    np.ndarray,
+                          anchor:    np.ndarray,
                           p_target:  np.ndarray) -> np.ndarray:
         """Return a (3, N) Cartesian guide. Each knot advances
         ``repos_params.speed * self.dt`` metres along the lift-traverse-
         descend PWL path (z_safe = ``repos_params.pwl_waypoint_height``)
-        from ee_now toward p_target. Knots clamp at p_target once reached.
+        from ``anchor`` toward p_target. Knots clamp at p_target once
+        reached.
+
+        ``anchor`` MUST be a remembered setpoint owned by the caller, NOT
+        a live FK reading of the arm. Anchoring on FK(q) creates a
+        closed-loop chase where a sagging arm drags the setpoint down
+        with it — see ``PiecewiseLinearTracker._setpoint_pos`` and the
+        comment at reposition.py:142-148 for the original diagnosis.
 
         ``self.dt`` (planning timestep) — not ``dt_ctrl`` — is the right
         per-knot stride: the upstream design treats N-knots as the C3
@@ -892,7 +907,7 @@ class RepositionIKTracker:
         thresh = float(self.repos_params.use_straight_line_traj_under_piecewise_linear)
 
         p_guide = np.zeros((3, N))
-        p_curr  = ee_now.copy()
+        p_curr  = anchor.copy()
         for i in range(N):
             p_next = next_waypoint(
                 p_now=p_curr,
@@ -1098,8 +1113,50 @@ class RepositionIKTracker:
             self._integral[:]     = 0.0
             self._prev_target_pos = p_target.copy()
 
-        # 3. Cartesian guide (warm-start only).
-        p_guide = self._build_guide_path(ee_now, p_target)
+        # 3. Cartesian guide (warm-start only). Anchor is a remembered
+        #    setpoint that marches forward at CONTROL rate (matches the
+        #    PWL tracker pattern at reposition.py:198-205) — independent
+        #    of arm state.
+        #
+        #    Setpoint reset policy (v3): anchor is reset only at tracker
+        #    initialization (or after explicit reset()). Small target
+        #    shifts within repos mode no longer re-anchor on live FK —
+        #    next_waypoint naturally re-aims the path toward the new
+        #    target without losing accumulated lift progress. The
+        #    integrator reset on target_changed (above) is a separate
+        #    concern and stays in place.
+        #
+        #    Background: v2 of this fix re-anchored on every
+        #    target_changed event. Because C3's proxy shifts by ~1 mm
+        #    under contact transients, target_changed fires repeatedly
+        #    during early simulation, and each reset threw away
+        #    accumulated z-lift progress — the arm could never finish
+        #    the lift to z_safe, sagged into the box footprint at
+        #    box-top height, and raked the box off in the wrong
+        #    direction. See probe_rake.log for the diagnostic.
+        if self._setpoint_pos is None:
+            self._setpoint_pos = ee_now.copy()
+
+        # 3a. Advance the setpoint by one control-tick of motion. This
+        #     decouples the per-tick setpoint stride (control rate) from
+        #     the warm-start guide's per-knot stride (planner rate), which
+        #     was conflated by the prior implementation and caused the
+        #     setpoint to march 5× too fast (planner_dt / dt_ctrl = 5).
+        ds_ctrl = float(self.repos_params.speed) * float(dt_ctrl)
+        self._setpoint_pos = next_waypoint(
+            p_now=self._setpoint_pos,
+            p_target=p_target,
+            z_safe=float(self.repos_params.pwl_waypoint_height),
+            ds=ds_ctrl,
+            straight_line_thresh=float(
+                self.repos_params.use_straight_line_traj_under_piecewise_linear),
+        )
+
+        # 3b. Build the warm-start guide at PLANNER rate (knots span the
+        #     C3 horizon — knot i is i planning steps ahead of the
+        #     setpoint). Do NOT write p_guide[:, 0] back to _setpoint_pos;
+        #     the setpoint advance is already done above.
+        p_guide = self._build_guide_path(self._setpoint_pos, p_target)
 
         # 4. Full-IK chain on knots 0..K-1. Routed through the tracker's
         #    private _plant_ctx_ik so the context-local collision filter
