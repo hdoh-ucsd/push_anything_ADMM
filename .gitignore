@@ -36,3 +36,10 @@ scripts/probe_collision_filter_context.py
 scripts/probe_e_inspect.py
 scripts/probe_ik_lock.py
 scripts/verify_deck_numbers.py
+
+# docs/ are local working notes for the project author.
+# Not tracked because they are session-scratch (investigation receipts,
+# design drafts) that clutter diffs without serving collaborators.
+# The author keeps them locally and pastes relevant ones into Claude
+# conversations as needed.
+docs/
