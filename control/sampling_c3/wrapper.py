@@ -19,6 +19,7 @@ sim loop only needs the constructor swapped. Specifically:
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import List, Optional
 
@@ -32,6 +33,8 @@ from control.sampling_c3.params import (
     SamplingC3Params, SamplingStrategy, RepositioningTrajectoryType,
 )
 from control.sampling_c3.progress import ProgressTracker, StepMetrics
+from control.impedance_controller import ImpedanceController
+from control.osc import OperationalSpaceController
 from control.sampling_c3.reposition import PiecewiseLinearTracker
 from control.sampling_c3.reposition_ik import RepositionIKTracker
 from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
@@ -168,12 +171,78 @@ class SamplingC3MPC:
                 params=params.reposition_params,
             )
 
+        # ----- Executor: OSC (QP) or Aydinoglu impedance (closed-form) -----
+        # The wrapper picks one per `params.use_osc`. Either matches the
+        # impedance compute_torque signature so the dispatch code below
+        # is a single code path.
+        #
+        # q_nominal here matches the IK params' tuned posture
+        # (J2=0.325) — the existing "comfortable" arm pose that keeps
+        # gravity-comp under the 30 Nm budget.
+        _q_nominal = np.asarray(params.repos_ik_params.q_nominal,
+                                dtype=float)[:self.n_u]
+        if getattr(params, "use_osc", False):
+            self.executor = OperationalSpaceController(
+                plant        = plant,
+                ee_frame     = ee_frame,
+                n_arm_dofs   = self.n_u,
+                q_nominal    = _q_nominal,
+                gains_yaml   = params.osc_gains_yaml,
+                log_diag     = self.log_diag,
+            )
+            self._executor_kind = "osc"
+        else:
+            self.executor = ImpedanceController(
+                plant        = plant,
+                ee_frame     = ee_frame,
+                n_arm_dofs   = self.n_u,
+                Kp_cart      = np.array([400.0, 400.0, 400.0]),
+                Kd_cart      = np.array([ 40.0,  40.0,  40.0]),
+                Kp_null      = np.full(self.n_u, 10.0),
+                Kd_null      = np.full(self.n_u,  3.0),
+                q_nominal    = _q_nominal,
+                torque_limit = self._tlim,
+            )
+            self._executor_kind = "impedance"
+        # Backwards-compat alias — existing diagnostic code reads
+        # self.impedance. Both names point to the same object.
+        self.impedance = self.executor
+
         # Mode state
         self.is_doing_c3 = start_in_c3_mode
         self._prev_mode:                str   = "c3" if start_in_c3_mode else "free"
         self._step:                     int   = 0
+        self._did_lcs_dump:             bool  = False  # one-shot trigger for [MATH.LCS-DUMP]
+        self._did_cost_dump:            bool  = False  # one-shot trigger for [COST-DUMP]
+        self._did_counterfactual_dump:  bool  = False  # one-shot trigger for [COUNTERFACTUAL-DUMP]
+        self._did_planvsexec_dump:      bool  = False  # one-shot trigger for [PLAN-VS-EXEC]
+        self._pve_pending                       = None   # carries state from record-step → dump-step
         self._n_switches:               int   = 0
         self._step_times_ms:            list  = []
+        # Contact-loss disengagement gate (W13 fix). Counts consecutive
+        # rich-mode steps where no EE-BOX contact pair was admitted in
+        # the LCS. When the streak exceeds DISENGAGE_THRESHOLD, the
+        # mode decision is overridden from kStayInC3 to a forced exit.
+        self._no_ee_box_streak:         int   = 0
+
+        # λ_planned per-step trace — writes audit_output/lambda_trace.csv
+        # at the project root. Captures every rich-mode step (definitive)
+        # and a sample of free-mode steps (baseline for ee_box_dist).
+        _proj_root = os.path.abspath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+        )
+        self._lambda_log_path = os.path.join(
+            _proj_root, "audit_output", "lambda_trace.csv"
+        )
+        os.makedirs(os.path.dirname(self._lambda_log_path), exist_ok=True)
+        if (not os.path.exists(self._lambda_log_path)
+                or os.path.getsize(self._lambda_log_path) == 0):
+            with open(self._lambda_log_path, "w") as _f:
+                _f.write(
+                    "step,sim_t,mode,lambda_n_ee_box,lambda_n_idx0,"
+                    "ee_box_present,n_c,lambda_t_norm,c3_cost,"
+                    "ee_box_dist_mm\n"
+                )
 
         # 9.4.7 Option A — 1d watchdog re-test under F2 regime.
         # _n_watchdog_fires tracks how many times the steps_since_improve
@@ -188,27 +257,21 @@ class SamplingC3MPC:
         self._current_repos_cost:       Optional[float]      = None
         self._prev_logged_repos_target: Optional[np.ndarray] = None
 
-        # _infeasible_repos_target — the most-recent infeasible repos
-        # target. Single-slot: successive failures overwrite. This is
-        # intentional — the cost-inflation in compute_control (~line 329)
-        # treats it as a single proximity bound, and the poison's only
-        # job is to bias the NEXT loop's argmin away from a known-bad
-        # point. Once the controller commits to a new target far enough
-        # from the cached one (Site D, _maybe_clear_infeasible_poison),
-        # or transitions back to C3 (Site B, unconditional clear in the
-        # `if mode == "c3":` branch), the cache is cleared. Site C (the
-        # no-candidate fallback at "target_idx is None") does NOT clear,
-        # even though it triggers a "no commit" — the poison's
-        # information is still useful against next loop's fresh samples.
-        # PWL path leaves this at None forever (its tracker has no
-        # last_knot0_feasible attr; getattr default True keeps the stash
-        # site in 5c a no-op).
-        self._infeasible_repos_target:  Optional[np.ndarray] = None
         self._last_repos_feasible:      bool                 = True
         # Set True by the PWL tracker when the EE has reached the repos
         # target within tolerance. Used as the primary kToC3ReachedReposTarget
         # trigger; the cost-based finished_reposition_cost is a fallback.
         self._last_repos_finished:      bool                 = False
+
+        # ----- Sample buffer for random-ring persistence -----
+        # Caches the strategy_samples list (excludes current/prev_repos)
+        # across `sample_buffer_lifetime` control loops so the IK tracker
+        # has a stable target to converge to. See params.SamplingParams.
+        # Refresh triggers: (a) age >= lifetime, (b) finished_repos arrival,
+        # (c) n_strategy changes (e.g., mode transition c3↔free).
+        self._sample_buffer:            Optional[list]       = None
+        self._sample_buffer_age:        int                  = 0
+        self._sample_buffer_n_strategy: Optional[int]        = None
 
         # Public introspection (mirrors legacy attrs)
         self.last_x_seq:               Optional[np.ndarray] = None
@@ -222,11 +285,87 @@ class SamplingC3MPC:
     # Sample generation (current EE always at index 0)
     # ------------------------------------------------------------------
 
+    def _get_persistent_samples(self,
+                                *,
+                                obj_quat:   Optional[np.ndarray] = None,
+                                obj_xy:     np.ndarray,
+                                g_hat:      np.ndarray,
+                                n_strategy: int) -> list[np.ndarray]:
+        """Return strategy samples, caching across loops per
+        `sampling_params.sample_buffer_lifetime`.
+
+        Refresh triggers (any of):
+          * buffer empty (first call after init / arrival)
+          * buffer age >= lifetime
+          * cached n_strategy differs from the request (mode transition)
+
+        With `lifetime = 0` the buffer is bypassed (re-samples every loop,
+        the broken behavior we want to keep available for ablation).
+        """
+        sp = self.params.sampling_params
+        lifetime = int(getattr(sp, "sample_buffer_lifetime", 0))
+
+        # Ablation path: lifetime <= 0 → re-sample every loop.
+        if lifetime <= 0:
+            return generate_samples(
+                strategy  = sp.sampling_strategy,
+                n_samples = n_strategy,
+                obj_xy    = obj_xy,
+                params    = sp,
+                rng       = self._rng,
+                g_hat     = g_hat,
+                obj_quat  = obj_quat,
+            )
+
+        # Force refresh on mode-transition n_strategy change so the c3-mode
+        # (3 samples) and free-mode (1 sample) buffers don't get mixed.
+        need_refresh = (
+            self._sample_buffer is None
+            or self._sample_buffer_age >= lifetime
+            or self._sample_buffer_n_strategy != n_strategy
+        )
+        if need_refresh:
+            self._sample_buffer = generate_samples(
+                strategy  = sp.sampling_strategy,
+                n_samples = n_strategy,
+                obj_xy    = obj_xy,
+                params    = sp,
+                rng       = self._rng,
+                g_hat     = g_hat,
+                obj_quat  = obj_quat,
+            )
+            self._sample_buffer_n_strategy = n_strategy
+            self._sample_buffer_age = 0
+            if self.log_diag:
+                _ages = (self._step, n_strategy,
+                         [tuple(np.round(s, 4).tolist())
+                          for s in self._sample_buffer])
+                print(f"[PERSIST] step={_ages[0]} refresh "
+                      f"n_strategy={_ages[1]} samples={_ages[2]}")
+        self._sample_buffer_age += 1
+        return [s.copy() for s in self._sample_buffer]
+
+    def _refresh_buffer_on_arrival(self) -> None:
+        """Force buffer refresh next loop. Called when finished_repos
+        fires (EE reached the pursued repos target) so we don't keep
+        proposing the already-reached target as a strategy sample."""
+        sp = self.params.sampling_params
+        lifetime = int(getattr(sp, "sample_buffer_lifetime", 0))
+        if lifetime <= 0:
+            return
+        # Sentinel-trigger the refresh path: clearing the buffer is enough,
+        # but setting age past lifetime makes the [PERSIST] log line at
+        # the next call explicit.
+        self._sample_buffer = None
+        self._sample_buffer_age = lifetime + 1
+
     def _build_samples(self,
                        ee_pos_now:  np.ndarray,
                        obj_xy:      np.ndarray,
                        g_hat:       np.ndarray,
-                       prev_mode:   str) -> tuple[list[np.ndarray], list[str]]:
+                       prev_mode:   str,
+                       obj_quat:    Optional[np.ndarray] = None,
+                       ) -> tuple[list[np.ndarray], list[str]]:
         """Construct the per-loop sample list. Returns (positions, labels).
 
         Layout:
@@ -246,14 +385,9 @@ class SamplingC3MPC:
 
         n_strategy = (sp.num_additional_samples_c3 if prev_mode == "c3"
                       else sp.num_additional_samples_repos)
-        strategy_samples = generate_samples(
-            strategy  = sp.sampling_strategy,
-            n_samples = n_strategy,
-            obj_xy    = obj_xy,
-            params    = sp,
-            rng       = self._rng,
-            g_hat     = g_hat,
-        )
+        strategy_samples = self._get_persistent_samples(
+            obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
+            obj_quat=obj_quat)
         for i, p in enumerate(strategy_samples):
             positions.append(p)
             labels.append(f"strat_{i}")
@@ -297,24 +431,6 @@ class SamplingC3MPC:
             ))
 
     # ------------------------------------------------------------------
-    # Infeasibility-poison cache management
-    # ------------------------------------------------------------------
-
-    def _maybe_clear_infeasible_poison(self, p_new: np.ndarray) -> None:
-        """Clear the cached infeasible-repos-target IFF p_new differs
-        from it by more than infeasibility_match_radius_m. Called
-        whenever the controller assigns a new pursued repos target
-        (mode-switch or within-repos hysteresis swap). Idempotent:
-        no-op if no poison is cached.
-        """
-        if self._infeasible_repos_target is None:
-            return
-        r = self.params.repos_ik_params.infeasibility_match_radius_m
-        if float(np.linalg.norm(
-                p_new - self._infeasible_repos_target)) > r:
-            self._infeasible_repos_target = None
-
-    # ------------------------------------------------------------------
     # Main control entry
     # ------------------------------------------------------------------
 
@@ -330,6 +446,74 @@ class SamplingC3MPC:
         # left it elsewhere)
         self.plant.SetPositions(plant_ctx,  current_q)
         self.plant.SetVelocities(plant_ctx, current_v)
+
+        # --- Deferred [PLAN-VS-EXEC] dump --------------------------------
+        # If we recorded a planner prediction on the previous control step,
+        # the actual one-step outcome is now in (current_q, current_v).
+        # Print the comparison once, then clear the pending state.
+        if self._pve_pending is not None:
+            _p = self._pve_pending
+            _ox, _oy, _oz = _p["ox"], _p["oy"], _p["oz"]
+            _vy_row = _p["vy_row"]
+            _x_actual = np.concatenate([current_q, current_v])
+            _act_xyz  = np.array([current_q[_ox], current_q[_oy], current_q[_oz]])
+            _act_dxyz_dt = (_act_xyz - _p["x0_xyz"]) / _p["dt"]
+            _residual = _p["pred_xyz"] - _act_xyz
+            _res_xy_norm = float(np.linalg.norm(_residual[:2]))
+            # Inspect Drake's contact state at this step (post-integration result).
+            try:
+                _qo = self.plant.get_geometry_query_input_port().Eval(plant_ctx)
+                _sdp_now = _qo.ComputeSignedDistancePairwiseClosestPoints(0.20)
+                _ee_ids = self.base_mpc.formulator._ee_geom_ids
+                _bx_ids = self.base_mpc.formulator._manipuland_geom_ids
+                _pairs_box_ee = [s for s in _sdp_now
+                                 if (s.id_A in _bx_ids and s.id_B in _ee_ids)
+                                 or (s.id_B in _bx_ids and s.id_A in _ee_ids)]
+                _n_active = sum(1 for s in _pairs_box_ee if s.distance < 0.0)
+                _closest_d = (min(s.distance for s in _pairs_box_ee)
+                              if _pairs_box_ee else float('nan'))
+            except Exception as _eg:
+                _n_active = -1; _closest_d = float('nan')
+            # Apparent contact force on the box from actual Δv (Newton):
+            #   F_y = m_box · Δv_y / dt   (ignoring table friction over one Δt)
+            _m_box  = _p["m_box"]
+            _dv_box = current_v[_vy_row - self.base_mpc.formulator.n_q] - _p["v0_vy"]
+            _F_y_apparent = _m_box * _dv_box / _p["dt"]
+            # Planner λ_n (impulse over dt): planned force ≈ λ_n
+            _lam_n_planned = float(_p["lam_planned"][_p["col_ln"]])
+            _ratio = (_lam_n_planned / _F_y_apparent
+                      if abs(_F_y_apparent) > 1e-6 else float('nan'))
+            np.set_printoptions(linewidth=200, precision=5, suppress=True)
+            print(f"[PLAN-VS-EXEC] step={self._step}  (recorded at step={_p['rec_step']}, "
+                  f"dt={_p['dt']})")
+            print(f"  --- Planner side ---")
+            print(f"  x0[box_quat]    = {np.round(_p['x0_quat'], 5)}")
+            print(f"  x0[box_xyz]     = {np.round(_p['x0_xyz'],  5)}")
+            print(f"  x0[arm_q]       = {np.round(_p['x0_arm_q'], 5)}")
+            print(f"  x0[box_v_world] = {np.round(_p['x0_box_v'], 5)}  "
+                  f"(ωx,ωy,ωz,vx,vy,vz)")
+            print(f"  x0[arm_v]       = {np.round(_p['x0_arm_v'], 5)}")
+            print(f"  u_opt[0]        = {np.round(_p['u_opt0'], 5)}")
+            print(f"  λ_planned[0]    = {np.round(_p['lam_planned'], 6)}  "
+                  f"(γ, λ_n, λ_t × 4)")
+            print(f"  φ_at_x0         = {_p['phi']:.6f} m")
+            print(f"  --- Predicted (LCS one step) ---")
+            print(f"  predicted x1[box_xyz]      = {np.round(_p['pred_xyz'], 6)}")
+            print(f"  predicted Δbox_xyz / dt    = {np.round(_p['pred_dxyz_dt'], 6)} m/s")
+            print(f"  --- Simulator side (actual @ next call) ---")
+            print(f"  actual x1[box_xyz]         = {np.round(_act_xyz, 6)}")
+            print(f"  actual Δbox_xyz / dt       = {np.round(_act_dxyz_dt, 6)} m/s")
+            print(f"  n_active_pairs (φ<0)       = {_n_active}")
+            print(f"  closest box↔EE distance    = {_closest_d:+.5f} m")
+            print(f"  apparent F_y_on_box (N)    = {_F_y_apparent:+.4f}   "
+                  f"[= m_box·Δv_box_y/dt, m_box={_m_box:.4f}]")
+            print(f"  --- Residual ---")
+            print(f"  Δ(planned, actual) box_xyz = {np.round(_residual, 6)}")
+            print(f"  ‖residual‖ box_xy          = {_res_xy_norm:.6f} m")
+            print(f"  λ_n_planned vs F_y_apparent= {_lam_n_planned:.4f} vs "
+                  f"{_F_y_apparent:.4f}   ratio={_ratio:.4f}")
+            self._pve_pending = None
+        # ---------- end deferred PLAN-VS-EXEC dump ----------------------
 
         # 1. Geometry: object xy, EE position, goal direction
         obj_xy = np.array([current_q[self._obj_x_idx],
@@ -349,7 +533,8 @@ class SamplingC3MPC:
 
         # 2. Build sample list (k=0 = current EE always first)
         samples, labels = self._build_samples(
-            ee_pos_now, obj_xy, g_hat, self._prev_mode)
+            ee_pos_now, obj_xy, g_hat, self._prev_mode,
+            obj_quat=obj_quat)
 
         # 3. Evaluate every sample (per-sample C3 + alignment + travel)
         results = self.inner_solver.evaluate_samples(
@@ -360,18 +545,19 @@ class SamplingC3MPC:
         )
         c_samples = [r.c_sample for r in results]
 
-        # 3a. Infeasibility poison — inflate any sample within the match
-        #     radius of a previously-failed kIK reposition target. The
-        #     stash is set in step 8 after a non-feasible knot-0 IK and
-        #     held until the controller commits to a different repos
-        #     target (>= match radius away — see 5e). Fires only when the
-        #     IK tracker reported infeasibility; PWL leaves the stash at
-        #     None forever.
-        if self._infeasible_repos_target is not None:
-            _r = self.params.repos_ik_params.infeasibility_match_radius_m
-            for k, _p in enumerate(samples):
-                if float(np.linalg.norm(_p - self._infeasible_repos_target)) < _r:
-                    c_samples[k] = float("inf")
+        # 3b. Finished-reposition cost penalty.  Mirrors the reference
+        #     (dairlib sampling_based_c3_controller.cc:604-608): when the
+        #     IK tracker reports the EE is within tolerance of the pursued
+        #     repos target, inflate that slot's c_sample by
+        #     finished_reposition_cost.  The inflation feeds into both
+        #     best_other_cost and the dispatcher's label discrimination
+        #     (mode_switch.decide_mode), so the mode-switch trigger remains
+        #     cost-based — geometry only contributes as a soft penalty.
+        if (self._last_repos_finished
+                and len(labels) > 1
+                and labels[1] == "prev_repos"):
+            c_samples[1] = (c_samples[1]
+                            + self.params.progress_params.finished_reposition_cost)
 
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
@@ -423,6 +609,31 @@ class SamplingC3MPC:
             params             = self.params.progress_params,
         )
 
+        # 6a-pre. Contact-loss disengagement (W13 fix). The kik config's
+        # hyst_c3_to_repos_frac=0.95 makes the cost gate fire only when
+        # best_other < 0.05·c3_cost — too sticky to react when the EE
+        # has separated from the box entirely. The streak counter is
+        # incremented in the [CONTACT-RUN] block below (where the data
+        # is authoritative — evaluate_samples above clobbers
+        # _last_contact_info with the K-1 sample's contacts). Here we
+        # only consume the value: if we're proposing to stay in c3 but
+        # the last DISENGAGE_THRESHOLD consecutive c3 steps had no
+        # EE-BOX pair, force exit to repos.
+        DISENGAGE_THRESHOLD = 5
+        if (self._prev_mode == "c3"
+                and mode == "c3"
+                and self._no_ee_box_streak >= DISENGAGE_THRESHOLD):
+            mode = "free"
+            reason = SwitchReason.kToReposUnproductive
+            if self.log_diag:
+                print(f"[CONTACT-LOSS-EXIT] step={self._step} "
+                      f"no EE-BOX for {self._no_ee_box_streak} "
+                      f"steps -> exit to repos", flush=True)
+            self._no_ee_box_streak = 0
+        if self._prev_mode == "free":
+            # Fresh start when re-entering c3 from free.
+            self._no_ee_box_streak = 0
+
         # 6a. 1d watchdog override (9.4.7 Option A re-test). When the
         # configured threshold is > 0 and steps_since_improve has reached it
         # while in free mode, force c3 regardless of cost arithmetic. The
@@ -454,7 +665,93 @@ class SamplingC3MPC:
         self._update_buffer(results, obj_xy, obj_quat)
 
         # 8. Execute
+        # Populated by the IK tracker in the free branch when target_idx is
+        # not None. Read by the impedance override below so free-mode tracks
+        # the lift→traverse→descend waypoint path instead of a straight line.
+        free_diag = None
         if mode == "c3":
+            # [IK-LANDING] dump: every rich entry via kToC3ReachedReposTarget
+            # captures p_repos vs actual EE landing vs the box face and Drake's φ.
+            if reason == SwitchReason.kToC3ReachedReposTarget:
+                # Signal the LCS formulator to dump its filter audit on the
+                # next extract_lcs_contacts call (which happens inside the
+                # base_mpc.compute_control(...) call below). The formulator
+                # one-shots its own dump via _diag_dumped, so setting this
+                # on every kToC3ReachedReposTarget is safe; only the first
+                # one actually fires the audit.
+                self._formulator._rich_mode_just_entered = True
+                _p_repos = self._current_repos_target
+                _ee_pos  = self.plant.CalcPointsPositions(
+                    plant_ctx, self.ee_frame, np.zeros(3), self.world_frame
+                ).flatten()
+                _p_box   = np.array([current_q[self._obj_x_idx],
+                                     current_q[self._obj_y_idx],
+                                     current_q[self._obj_z_idx]])
+                _g3      = np.array([g_hat[0], g_hat[1], 0.0])
+                # Box half-extent along g_hat (box is axis-aligned 0.1×0.1×0.1)
+                _face_pt = _p_box - 0.05 * _g3
+                # Drake's signed distance (filtered to box↔EE pairs only)
+                try:
+                    _qo = self.plant.get_geometry_query_input_port().Eval(plant_ctx)
+                    _pairs = _qo.ComputeSignedDistancePairwiseClosestPoints(0.50)
+                    _ee_ids = self.base_mpc.formulator._ee_geom_ids
+                    _bx_ids = self.base_mpc.formulator._manipuland_geom_ids
+                    _pairs = [s for s in _pairs
+                              if (s.id_A in _bx_ids and s.id_B in _ee_ids)
+                              or (s.id_B in _bx_ids and s.id_A in _ee_ids)]
+                    _phi = min((s.distance for s in _pairs), default=float('nan'))
+                except Exception:
+                    _phi = float('nan')
+                _ik_err = (float(np.linalg.norm(_ee_pos - _p_repos))
+                           if _p_repos is not None else float('nan'))
+                _reach  = float(np.linalg.norm(_ee_pos - _face_pt))
+                _admits = "Y" if (_phi == _phi and _phi < 0.020) else "N"
+                print(f"[IK-LANDING] step={self._step}")
+                print(f"  --- Target ---")
+                if _p_repos is not None:
+                    print(f"  p_repos                        = "
+                          f"[{_p_repos[0]:+.4f}, {_p_repos[1]:+.4f}, {_p_repos[2]:+.4f}]")
+                else:
+                    print(f"  p_repos                        = None")
+                print(f"  p_box                          = "
+                      f"[{_p_box[0]:+.4f}, {_p_box[1]:+.4f}, {_p_box[2]:+.4f}]")
+                print(f"  g_hat                          = [{g_hat[0]:+.4f}, {g_hat[1]:+.4f}]")
+                print(f"  conceptual contact pt on box   = "
+                      f"[{_face_pt[0]:+.4f}, {_face_pt[1]:+.4f}, {_face_pt[2]:+.4f}]")
+                print(f"  --- Actual EE landing ---")
+                print(f"  p_ee_actual                    = "
+                      f"[{_ee_pos[0]:+.4f}, {_ee_pos[1]:+.4f}, {_ee_pos[2]:+.4f}]")
+                print(f"  --- Errors ---")
+                print(f"  ||p_ee_actual - p_repos||      = {1000*_ik_err:7.2f} mm  "
+                      f"← IK convergence error")
+                print(f"  ||p_ee_actual - face_contact|| = {1000*_reach:7.2f} mm  "
+                      f"← Total reach error to box face")
+                print(f"  φ (Drake signed distance)      = {1000*_phi:7.2f} mm")
+                print(f"  φ < 20 mm threshold?           = {_admits}")
+                # [IK-SOLVE] / [BODY-VS-CONTACT] — H1/H2/H3/H4 disambiguation.
+                _qk=getattr(self.tracker,"last_q_knots",None); _ek=getattr(self.tracker,"last_ee_knots",None)
+                _ft=getattr(self.tracker,"last_feasible",None); _pt=getattr(self.tracker,"_prev_target_pos",None)
+                if _qk is not None and _ek is not None and _pt is not None:
+                    _ee_q=_ek[:,0]; _qa=_qk[:,0]
+                    _stat="success" if (_ft and _ft[0]) else "failed"
+                    print(f"[IK-SOLVE] step={self._step}")
+                    print(f"  IK target body name:    {self.ee_frame.body().name()}")
+                    print(f"  IK target position:     [{_pt[0]:+.4f}, {_pt[1]:+.4f}, {_pt[2]:+.4f}]")
+                    print(f"  IK solver status:       {_stat}")
+                    print(f"  Solved q*:              {np.round(_qa,4).tolist()}")
+                    print(f"  Cartesian position of target body at q*: [{_ee_q[0]:+.4f}, {_ee_q[1]:+.4f}, {_ee_q[2]:+.4f}]")
+                    print(f"  ||target_body_position - p_target||: {1000*float(np.linalg.norm(_ee_q-_pt)):7.2f} mm")
+                _pairs_local = locals().get("_pairs", None)
+                if _pairs_local:
+                    _s=_pairs_local[0]; _ee_ids_l=self.base_mpc.formulator._ee_geom_ids
+                    _pl=_s.p_ACa if _s.id_A in _ee_ids_l else _s.p_BCb
+                    _ww=self.plant.CalcPointsPositions(plant_ctx, self.ee_frame, _pl, self.world_frame).flatten()
+                    _off=_ww-_ee_pos
+                    print(f"[BODY-VS-CONTACT] step={self._step}")
+                    print(f"  IK target body position (world):       [{_ee_pos[0]:+.4f}, {_ee_pos[1]:+.4f}, {_ee_pos[2]:+.4f}]")
+                    print(f"  Pusher contact point (witness, world): [{_ww[0]:+.4f}, {_ww[1]:+.4f}, {_ww[2]:+.4f}]")
+                    print(f"  Offset (contact - body) in world:      [{_off[0]:+.4f}, {_off[1]:+.4f}, {_off[2]:+.4f}]")
+                    print(f"  Offset projected onto g_hat:           {1000*float(_off[0]*g_hat[0]+_off[1]*g_hat[1]):7.2f} mm")
             # Rich mode: delegate to base_mpc (it will print its standard
             # [ADMM]/[C3]/[MATH.*] diagnostics). On entry from free we wipe
             # the PI integral and reset the progress tracker so the
@@ -465,16 +762,245 @@ class SamplingC3MPC:
             u_opt = self.base_mpc.compute_control(
                 current_q, current_v, plant_ctx, target_xy,
             )
+            # [CONTACT-RUN] per-step rich-mode contact diagnostic. Selects
+            # the EE-BOX contact pair (not index 0, which may be BOX-GND
+            # when ground friction is enabled). Mirrors the EE-BOX index
+            # lookup used by the λ-trace logger below. Additive logging
+            # only — no behavioral effect.
+            _ci = getattr(self.base_mpc.formulator, "_last_contact_info", None)
+            if _ci:
+                _ee_box_idx_log = next(
+                    (_i for _i, _info in enumerate(_ci)
+                     if isinstance(_info, dict)
+                     and _info.get("tag") == "EE-BOX"),
+                    None,
+                )
+                if _ee_box_idx_log is not None:
+                    _ci_sel = _ci[_ee_box_idx_log]
+                    _n = _ci_sel["nhat_BA_W"]
+                    _p = _ci_sel["p_BCb"]
+                    print(f"[CONTACT-RUN] step={self._step} "
+                          f"nhat_BA_W=[{_n[0]:+.3f},{_n[1]:+.3f},{_n[2]:+.3f}] "
+                          f"p_BCb=[{_p[0]:+.3f},{_p[1]:+.3f},{_p[2]:+.3f}] "
+                          f"distance={_ci_sel['distance']:+.5f} "
+                          f"contact_type=EE-BOX", flush=True)
+                    # Contact-loss disengagement (W13 fix): EE-BOX present
+                    # at current EE config — reset the streak. Updated here
+                    # (not at top-of-step) because base_mpc.compute_control
+                    # restores plant_ctx to the current EE state, so
+                    # _last_contact_info here is authoritative; up at the
+                    # mode-decision gate it's stale from sample k=K-1.
+                    self._no_ee_box_streak = 0
+                else:
+                    # No EE-BOX pair admitted this step. Emit a tagged
+                    # line so the parser can distinguish "no EE-box
+                    # contact" from "EE-box contact present".
+                    print(f"[CONTACT-RUN] step={self._step} "
+                          f"nhat_BA_W=[+0.000,+0.000,+0.000] "
+                          f"p_BCb=[+0.000,+0.000,+0.000] "
+                          f"distance=+1.00000 "
+                          f"contact_type=NONE", flush=True)
+                    # Contact-loss disengagement (W13 fix): no EE-BOX at
+                    # current EE config — bump the streak. Next step's
+                    # mode gate will read this and force exit if ≥ 5.
+                    self._no_ee_box_streak += 1
+            # One-shot full LCS matrix dump at first rich-mode entry.
+            # Triggers exactly once (any step) for the LCS matrix audit.
+            if not self._did_lcs_dump:
+                self._did_lcs_dump = True
+                _f = self.base_mpc.formulator
+                _vs = self.obj_body.floating_velocities_start_in_v()
+                _row_by = _f.n_q + _vs + 4            # box y-velocity row in x=[q;v]
+                _col_ln = _f._last_n_c                # λ_n_first_contact col in λ
+                np.set_printoptions(linewidth=200, precision=5, suppress=True)
+                print(f"[MATH.LCS-DUMP] step={self._step} n_c={_f._last_n_c} "
+                      f"box_y_vel_row={_row_by} lambda_n_first_col={_col_ln}")
+                print(f"[MATH.LCS-DUMP] D shape={_f._last_D.shape}\n{_f._last_D}")
+                print(f"[MATH.LCS-DUMP] E shape={_f._last_E.shape}\n{_f._last_E}")
+                print(f"[MATH.LCS-DUMP] F shape={_f._last_F.shape}\n{_f._last_F}")
+                print(f"[MATH.LCS-DUMP] H shape={_f._last_H.shape}\n{_f._last_H}")
+                print(f"[MATH.LCS-DUMP] c shape={_f._last_c.shape}\n{_f._last_c}")
+            # One-shot cost-decomposition dump at first rich-mode entry with
+            # n_c ≥ 1 (admissible contact pairs exist; otherwise H is shape
+            # (0, n_u) and the λ_n indexing below would crash).
+            if not self._did_cost_dump and self.base_mpc.formulator._last_n_c > 0:
+                self._did_cost_dump = True
+                _f  = self.base_mpc.formulator
+                _qc = self.base_mpc.quad_cost
+                _A  = _f._last_A; _B = _f._last_B; _dvec = _f._last_d
+                _H  = _f._last_H
+                _Q  = self.base_mpc._last_Q
+                _R  = self.base_mpc._last_R
+                _xref = self.base_mpc._last_x_ref
+                _tgt  = self.base_mpc._last_target_xy
+                _n_q  = _qc.n_q; _n_u = _qc.n_u
+                _ox   = _qc._obj_x_idx; _oy = _qc._obj_y_idx; _oz = _qc._obj_z_idx
+                _ops  = _qc._obj_ps;    _vs2 = _qc._obj_vs
+                _ovx  = _n_q + _vs2 + 3; _ovy = _n_q + _vs2 + 4
+                _x0   = np.concatenate([current_q, current_v])
+                _x1   = _A @ _x0 + _B @ u_opt + _dvec      # one-step predicted state
+                _err  = _x1 - _xref
+                _col_ln_row = _f._last_n_c                  # λ_n row in η = E·x+F·λ+H·u+c
+                _Hrow = _H[_col_ln_row, :]
+                # Per-term cost contributions at (x_pred=x_1, u_opt)
+                _C_obj_xy = _qc.w_obj_xy * (_err[_ox]**2 + _err[_oy]**2)
+                _C_obj_z  = (_qc.w_obj_z + _qc.w_box_z) * _err[_oz]**2
+                _C_torque = float(u_opt @ _R @ u_opt)
+                _C_ee     = float(_err[:_n_u] @ _Q[:_n_u, :_n_u] @ _err[:_n_u])
+                _C_perp   = float(_err[[_ovx, _ovy]] @ _Q[np.ix_([_ovx,_ovy],[_ovx,_ovy])] @ _err[[_ovx, _ovy]])
+                # Gradients wrt u_opt via x_1 = A·x0 + B·u + d  (dx_1/du = B; ignores λ)
+                _g_obj_xy = 2*_qc.w_obj_xy*(_B[_ox,:]*_err[_ox] + _B[_oy,:]*_err[_oy])
+                _g_obj_z  = 2*(_qc.w_obj_z + _qc.w_box_z)*_B[_oz,:]*_err[_oz]
+                _g_torque = 2.0 * (_R @ u_opt)
+                _g_ee     = 2.0 * _B[:_n_u,:].T @ (_Q[:_n_u,:_n_u] @ _err[:_n_u])
+                _Qperp    = _Q[np.ix_([_ovx,_ovy],[_ovx,_ovy])]
+                _g_perp   = 2.0 * _B[[_ovx,_ovy],:].T @ (_Qperp @ _err[[_ovx,_ovy]])
+                np.set_printoptions(linewidth=200, precision=4, suppress=True)
+                print(f"[COST-DUMP] step={self._step}")
+                print(f"  x_des[box_xy] = [{_xref[_ox]:+.4f}, {_xref[_oy]:+.4f}]")
+                print(f"  x_cur[box_xy] = [{current_q[_ox]:+.4f}, {current_q[_oy]:+.4f}]")
+                print(f"  goal_xy       = [{_tgt[0]:+.4f}, {_tgt[1]:+.4f}]")
+                print(f"  u_opt         = {np.round(u_opt, 4)}")
+                print(f"  ||u_opt||     = {np.linalg.norm(u_opt):.4f}")
+                print(f"  Q diag (state-cost weights):")
+                print(f"    arm_q[0:{_n_u}]   = {np.round(np.diag(_Q)[:_n_u], 3)}")
+                print(f"    box_xy            = [{_Q[_ox,_ox]:.2f}, {_Q[_oy,_oy]:.2f}]")
+                print(f"    box_z             = {_Q[_oz,_oz]:.2f}")
+                print(f"    box_quat[qx,qy]   = [{_Q[_ops+1,_ops+1]:.2f}, {_Q[_ops+2,_ops+2]:.2f}]")
+                print(f"    box_vxy           = [{_Q[_ovx,_ovx]:.2f}, {_Q[_ovy,_ovy]:.2f}]  (perp-vel block)")
+                print(f"  R diag (input-cost): {np.round(np.diag(_R), 6)}")
+                print(f"  Per-term cost @ (x_pred, u_opt):")
+                print(f"    w_obj_xy      contrib={_C_obj_xy:+.4e}  ||grad_u||={np.linalg.norm(_g_obj_xy):.4e}")
+                print(f"    w_torque      contrib={_C_torque:+.4e}  ||grad_u||={np.linalg.norm(_g_torque):.4e}")
+                print(f"    w_ee_approach contrib={_C_ee:+.4e}  ||grad_u||={np.linalg.norm(_g_ee):.4e}")
+                print(f"    w_perp(box_v) contrib={_C_perp:+.4e}  ||grad_u||={np.linalg.norm(_g_perp):.4e}")
+                print(f"    w_obj_z       contrib={_C_obj_z:+.4e}  ||grad_u||={np.linalg.norm(_g_obj_z):.4e}")
+                print(f"  H[λ_n_first_contact={_col_ln_row}, :] = {np.round(_Hrow, 5)}")
+                print(f"  ||H[λ_n, :]||  = {np.linalg.norm(_Hrow):.5f}")
+                print(f"  max |H[λ_n,:]| = {np.max(np.abs(_Hrow)):.5f}")
+            # One-shot counterfactual dump: re-solve C3+ with w_ee_approach=0.
+            # Gated on n_c ≥ 1 so the comparison is meaningful (no contact ⇒
+            # nothing to counterfactual-test against).
+            if not self._did_counterfactual_dump and self.base_mpc.formulator._last_n_c > 0:
+                self._did_counterfactual_dump = True
+                try:
+                    from control.sampling_c3.inner_solve import traj_cost
+                    _f   = self.base_mpc.formulator
+                    _bmp = self.base_mpc
+                    _qc  = _bmp.quad_cost
+                    _A, _B, _Dm, _dvec = _f._last_A, _f._last_B, _f._last_D, _f._last_d
+                    _E, _F, _H, _c = _f._last_E, _f._last_F, _f._last_H, _f._last_c
+                    _Jn, _Jt, _mu, _phi = _f._last_J_n, _f._last_J_t, _f._last_mu, _f._last_phi
+                    _Qb   = _bmp._last_Q;  _Rb = _bmp._last_R;  _QNb = _bmp._last_QN
+                    _xrb  = _bmp._last_x_ref
+                    _tgt  = _bmp._last_target_xy
+                    _u_seq_b = _bmp._last_u_seq
+                    _x_seq_b = _bmp.last_x_seq
+                    _x0   = np.concatenate([current_q, current_v])
+                    _n_q  = _qc.n_q; _n_u = _qc.n_u
+                    _ox, _oy = _qc._obj_x_idx, _qc._obj_y_idx
+                    # Counterfactual: rebuild Q with w_ee_approach=0
+                    _Q_cf, _R_cf, _QN_cf, _xr_cf = _qc.build(
+                        _tgt, plant_ctx=_bmp._last_plant_ctx,
+                        current_q=_bmp._last_current_q, rich_mode=True)
+                    # Re-solve with identical LCS, modified cost only.
+                    _u_seq_cf, _x_seq_cf = _bmp.solver.solve(
+                        _x0, _A, _B, _Dm, _dvec, _Jn, _Jt, _mu,
+                        _Q_cf, _R_cf, _QN_cf, _xr_cf,
+                        N=_bmp.horizon, admm_iter=_bmp.admm_iter,
+                        torque_limit=_bmp.torque_limit, phi=_phi,
+                        E=_E, F=_F, H=_H, c_lcs=_c)
+                    # Costs at u_opt (full horizon) using the ACTUAL cost of each scenario.
+                    _cost_base = traj_cost(_x_seq_b, _u_seq_b, _Qb, _Rb, _QNb, _xrb)
+                    _cost_cf   = traj_cost(_x_seq_cf, _u_seq_cf, _Q_cf, _R_cf, _QN_cf, _xr_cf)
+                    # Cost at u=0: free-rollout (no contact) x_{t+1} = A x_t + d
+                    def _rollout_u0(N):
+                        xs = np.zeros((N+1, _x0.size)); xs[0] = _x0
+                        for t in range(N):
+                            xs[t+1] = _A @ xs[t] + _dvec
+                        return xs
+                    _xs_u0 = _rollout_u0(_bmp.horizon)
+                    _us_u0 = np.zeros_like(_u_seq_b)
+                    _cost_u0_base = traj_cost(_xs_u0, _us_u0, _Qb,   _Rb,   _QNb,  _xrb)
+                    _cost_u0_cf   = traj_cost(_xs_u0, _us_u0, _Q_cf, _R_cf, _QN_cf, _xr_cf)
+                    _dby_base = float(_x_seq_b[-1, _oy]  - _x0[_oy])
+                    _dby_cf   = float(_x_seq_cf[-1, _oy] - _x0[_oy])
+                    _u_b0  = _u_seq_b[0]; _u_cf0 = _u_seq_cf[0]
+                    np.set_printoptions(linewidth=200, precision=4, suppress=True)
+                    print(f"[COUNTERFACTUAL-DUMP] step={self._step}")
+                    print(f"  --- Baseline (as-shipped) ---")
+                    print(f"  u_opt_base    = {np.round(_u_b0, 4)}")
+                    print(f"  ||u_opt_base||= {np.linalg.norm(_u_b0):.4f}")
+                    print(f"  cost_at_base  = {_cost_base:.4e}")
+                    print(f"  cost_at_u0    = {_cost_u0_base:.4e}")
+                    print(f"  reduction_base= {(_cost_u0_base - _cost_base):.4e}")
+                    print(f"  predicted x_seq[box_xy, end] = [{_x_seq_b[-1,_ox]:+.5f}, {_x_seq_b[-1,_oy]:+.5f}]")
+                    print(f"  --- Counterfactual (w_ee_approach = 0) ---")
+                    print(f"  u_opt_cf      = {np.round(_u_cf0, 4)}")
+                    print(f"  ||u_opt_cf||  = {np.linalg.norm(_u_cf0):.4f}")
+                    print(f"  cost_at_cf    = {_cost_cf:.4e}")
+                    print(f"  cost_at_u0_cf = {_cost_u0_cf:.4e}")
+                    print(f"  reduction_cf  = {(_cost_u0_cf - _cost_cf):.4e}")
+                    print(f"  predicted x_seq[box_xy, end] = [{_x_seq_cf[-1,_ox]:+.5f}, {_x_seq_cf[-1,_oy]:+.5f}]")
+                    print(f"  --- Comparison ---")
+                    print(f"  ||u_opt_cf − u_opt_base|| = {np.linalg.norm(_u_cf0 - _u_b0):.4f}")
+                    print(f"  predicted Δbox_y baseline       = {_dby_base:+.5f} m")
+                    print(f"  predicted Δbox_y counterfactual = {_dby_cf:+.5f} m")
+                    print(f"  goal direction (g_hat): [0, +1]")
+                except Exception as _e:
+                    import traceback as _tb
+                    print(f"[COUNTERFACTUAL-DUMP] FAILED: {type(_e).__name__}: {_e}")
+                    print(_tb.format_exc())
+            # Record planner-side data for the [PLAN-VS-EXEC] dump fired on
+            # the next call. Compares LCS one-step prediction against the
+            # simulator's actual result by reading current_q on the next entry.
+            if not self._did_planvsexec_dump and self.base_mpc.formulator._last_n_c > 0:
+                self._did_planvsexec_dump = True
+                _f  = self.base_mpc.formulator
+                _qc = self.base_mpc.quad_cost
+                _A, _B, _Dm, _dvec = _f._last_A, _f._last_B, _f._last_D, _f._last_d
+                _x0  = np.concatenate([current_q, current_v])
+                # Back out λ_planned[0] from D·λ = x_seq[1] - A·x0 - B·u_opt - d
+                _xseq = self.base_mpc.last_x_seq
+                _u0   = self.base_mpc._last_u_seq[0]
+                _rhs  = _xseq[1] - _A @ _x0 - _B @ _u0 - _dvec
+                _lam_planned, *_ = np.linalg.lstsq(_Dm, _rhs, rcond=None)
+                _pred_x1 = _A @ _x0 + _B @ _u0 + _Dm @ _lam_planned + _dvec
+                _ox, _oy, _oz = _qc._obj_x_idx, _qc._obj_y_idx, _qc._obj_z_idx
+                _x0_xyz   = np.array([current_q[_ox], current_q[_oy], current_q[_oz]])
+                _pred_xyz = np.array([_pred_x1[_ox], _pred_x1[_oy], _pred_x1[_oz]])
+                _n_q  = _qc.n_q
+                _vs2  = _qc._obj_vs
+                _vy_row_in_x = _n_q + _vs2 + 4
+                # Box mass from Drake (sum of inertias on the manipuland body).
+                try:
+                    _m_box = float(self.obj_body.get_default_mass())
+                except Exception:
+                    _m_box = 0.2  # fall back to known box mass
+                self._pve_pending = dict(
+                    rec_step=self._step,
+                    dt=self.base_mpc.dt,
+                    ox=_ox, oy=_oy, oz=_oz,
+                    vy_row=_vy_row_in_x,
+                    col_ln=_f._last_n_c,           # λ_n_first_contact index in λ
+                    m_box=_m_box,
+                    x0_quat=current_q[_qc._obj_ps:_qc._obj_ps+4].copy(),
+                    x0_xyz=_x0_xyz.copy(),
+                    x0_arm_q=current_q[:_qc.n_u].copy(),
+                    x0_box_v=current_v[_vs2:_vs2+6].copy(),
+                    x0_arm_v=current_v[:_qc.n_u].copy(),
+                    v0_vy=float(current_v[_vs2 + 4]),
+                    u_opt0=_u0.copy(),
+                    lam_planned=_lam_planned.copy(),
+                    phi=float(_f._last_phi[0]) if len(_f._last_phi) > 0 else float('nan'),
+                    pred_xyz=_pred_xyz.copy(),
+                    pred_dxyz_dt=((_pred_xyz - _x0_xyz) / self.base_mpc.dt).copy(),
+                )
             self.last_x_seq             = self.base_mpc.last_x_seq
             self._current_repos_target  = None
             self._current_repos_cost    = None
             self._last_repos_finished   = False
             self._prev_logged_repos_target = None
-            # Site B (5e): unconditional poison clear on repos→C3. Once
-            # back in C3, the prior repos target's feasibility is
-            # irrelevant; next free-mode entry re-evaluates from scratch.
-            # Idempotent — fires every C3 step, not just transitions.
-            self._infeasible_repos_target = None
             best_src = "current"
 
         else:
@@ -498,14 +1024,11 @@ class SamplingC3MPC:
                 best_src = "current_fallback"
             else:
                 p_repos = results[target_idx].sample_pos
-                # Site D (5e): controller is committing to a new pursued
-                # target — clear stale poison if the new target is
-                # outside the match radius of the cached failed one.
-                self._maybe_clear_infeasible_poison(p_repos)
                 self._current_repos_target = p_repos.copy()
                 self._current_repos_cost   = c_samples[target_idx]
                 best_src = labels[target_idx]
 
+                self.tracker._diag_step = self._step  # [TRACKER-DIAG] plumb
                 u_opt, free_diag = self.tracker.compute_torque(
                     current_q=current_q, current_v=current_v,
                     plant_ctx=plant_ctx, p_target=p_repos,
@@ -513,18 +1036,14 @@ class SamplingC3MPC:
                 )
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
-                self._last_repos_finished = bool(free_diag.get("finished", False))
-
-                # Stash the failed target if the kIK tracker reported a
-                # non-feasible knot-0 IK. PiecewiseLinearTracker has no
-                # last_knot0_feasible attr — getattr defaults True, so this
-                # is a no-op for the PWL path. The cost-inflation block
-                # in compute_control reads _infeasible_repos_target; 5e
-                # clears it when the pursued target moves >= match radius.
-                self._last_repos_feasible = getattr(
-                    self.tracker, "last_knot0_feasible", True)
-                if not self._last_repos_feasible:
-                    self._infeasible_repos_target = p_repos.copy()
+                self._last_repos_finished = bool(
+                    free_diag.get("finished", False))
+                # On arrival, force the ring-sample buffer to refresh next
+                # loop. Otherwise the now-reached point persists as a
+                # strategy sample and the cost gate keeps re-firing
+                # kToC3ReachedReposTarget for it.
+                if self._last_repos_finished:
+                    self._refresh_buffer_on_arrival()
 
                 if self.log_diag:
                     ee_now = free_diag.get("ee_now")
@@ -550,6 +1069,155 @@ class SamplingC3MPC:
                 if results[k_star].x_seq is not None:
                     self.last_x_seq = results[k_star].x_seq
 
+        # --- Executor override (impedance or OSC) -------------------------
+        # The branch above produced `u_opt` via either base_mpc (joint-PD-
+        # like u_seq[0]) or the IK tracker (joint-PD-with-grav-comp).
+        # That `u_opt` is the OLD executor and is now informational only.
+        # Substitute the executor (impedance or OSC) output. We retain the
+        # planner outputs (last_x_seq, last_lambda_*, formulator J_n/J_t)
+        # which feed the Cartesian target and feedforward force term.
+        _u_planner = u_opt
+        # v_ee_desired feedforward intentionally disabled in v1: the IK
+        # knot spacing produces a much larger effective velocity than the
+        # task tracking can absorb without saturating every joint at
+        # URDF limits. Revisit once the OSC baseline (position-only
+        # tracking) is verified.
+        if mode == "c3":
+            # Cartesian target from C3+'s next-step state prediction.
+            _x_seq = self.base_mpc.last_x_seq
+            if _x_seq is not None and len(_x_seq) > 1:
+                _q_full_next = current_q.copy()
+                _q_full_next[:self.n_u] = _x_seq[1][:self.n_u]
+                self.plant.SetPositions(plant_ctx, _q_full_next)
+                _p_ee_des = self.plant.CalcPointsPositions(
+                    plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
+                ).flatten()
+                self.plant.SetPositions(plant_ctx, current_q)
+                self.plant.SetVelocities(plant_ctx, current_v)
+            else:
+                _p_ee_des = ee_pos_now
+            _lam_n = getattr(self.base_mpc, "last_lambda_n_first", None)
+            _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
+            _Jn    = self.base_mpc.formulator._last_J_n
+            _Jt    = self.base_mpc.formulator._last_J_t
+            u_imp, imp_diag = self.executor.compute_torque(
+                current_q, current_v, plant_ctx,
+                p_ee_desired = _p_ee_des,
+                v_ee_desired = None,
+                lambda_n     = _lam_n,
+                lambda_t     = _lam_t,
+                J_n          = _Jn,
+                J_t          = _Jt,
+            )
+        else:
+            # Free mode: follow the IK tracker's piecewise-linear waypoint
+            # path (lift → traverse → descend) instead of the straight line
+            # to the perpendicular-contact target. The straight line plows
+            # through the box in East/South. free_diag['p_des'] is the FK
+            # of IK knot 0 — the next waypoint the tracker is aiming for.
+            _p_des_wp = free_diag.get("p_des") if free_diag is not None else None
+            if _p_des_wp is not None:
+                _p_ee_des = _p_des_wp
+            elif self._current_repos_target is not None:
+                _p_ee_des = self._current_repos_target
+            else:
+                _p_ee_des = ee_pos_now
+            u_imp, imp_diag = self.executor.compute_torque(
+                current_q, current_v, plant_ctx,
+                p_ee_desired = _p_ee_des,
+                v_ee_desired = None,
+                lambda_n     = None,
+                lambda_t     = None,
+                J_n          = None,
+                J_t          = None,
+            )
+        u_opt = u_imp
+
+        # --- λ_planned per-step trace ---------------------------------
+        # Pure additive logging: writes to audit_output/lambda_trace.csv.
+        # Every rich-mode step is captured; free-mode is sampled every
+        # 50 steps for an ee_box_dist baseline. Failures are swallowed
+        # so logging cannot break a run.
+        try:
+            _box_xyz = np.array([
+                current_q[self._obj_x_idx],
+                current_q[self._obj_y_idx],
+                current_q[self._obj_z_idx],
+            ])
+            _ee_box_dist = float(np.linalg.norm(ee_pos_now - _box_xyz))
+            _sim_t = self._step * self._dt_ctrl
+            if mode == "c3":
+                _lam_n_first = getattr(
+                    self.base_mpc, "last_lambda_n_first", None)
+                _lam_t_first = getattr(
+                    self.base_mpc, "last_lambda_t_first", None)
+                _ci_log = getattr(
+                    self.base_mpc.formulator, "_last_contact_info", None)
+                _ee_box_idx = None
+                if _ci_log is not None:
+                    for _i, _info in enumerate(_ci_log):
+                        if isinstance(_info, dict) and \
+                                _info.get("tag") == "EE-BOX":
+                            _ee_box_idx = _i
+                            break
+                if (_lam_n_first is not None
+                        and hasattr(_lam_n_first, "__len__")
+                        and len(_lam_n_first) > 0):
+                    _lam_n_val_idx0 = float(_lam_n_first[0])
+                else:
+                    _lam_n_val_idx0 = float("nan")
+                if (_ee_box_idx is not None
+                        and _lam_n_first is not None
+                        and hasattr(_lam_n_first, "__len__")
+                        and len(_lam_n_first) > _ee_box_idx):
+                    _lam_n_val_ee_box = float(_lam_n_first[_ee_box_idx])
+                    _ee_box_present = 1
+                else:
+                    _lam_n_val_ee_box = 0.0
+                    _ee_box_present = 0
+                if (_lam_t_first is not None
+                        and hasattr(_lam_t_first, "__len__")
+                        and len(_lam_t_first) > 0):
+                    _lam_t_norm = float(np.linalg.norm(_lam_t_first))
+                else:
+                    _lam_t_norm = float("nan")
+                _n_c = getattr(
+                    self.base_mpc.formulator, "_last_n_c", -1)
+                with open(self._lambda_log_path, "a") as _f:
+                    _f.write(
+                        f"{self._step},{_sim_t:.3f},c3,"
+                        f"{_lam_n_val_ee_box:.6f},{_lam_n_val_idx0:.6f},"
+                        f"{_ee_box_present},{_n_c},{_lam_t_norm:.6f},"
+                        f"NaN,{_ee_box_dist*1000:.3f}\n"
+                    )
+            elif self._step % 50 == 0:
+                with open(self._lambda_log_path, "a") as _f:
+                    _f.write(
+                        f"{self._step},{_sim_t:.3f},free,"
+                        f"NaN,NaN,0,NaN,NaN,NaN,{_ee_box_dist*1000:.3f}\n"
+                    )
+        except Exception as _exc:
+            try:
+                with open(self._lambda_log_path, "a") as _f:
+                    _f.write(
+                        f"{getattr(self, '_step', -1)},NaN,"
+                        f"{mode}-ERROR,NaN,NaN,0,NaN,NaN,NaN,NaN\n"
+                    )
+            except Exception:
+                pass
+
+        if self.log_diag and (self._step % 10 == 0 or self._step <= 5):
+            _ln_max = (float(np.max(np.abs(imp_diag["tau_ff"])))
+                       if imp_diag["had_lambda_n"] or imp_diag["had_lambda_t"]
+                       else 0.0)
+            print(f"[IMP] step={self._step} mode={mode} "
+                  f"|x_err|={np.linalg.norm(imp_diag['x_err']):.4f}m "
+                  f"|tau_imp|={np.linalg.norm(imp_diag['tau_imp']):.2f}Nm "
+                  f"|tau_ff|={_ln_max:.2f}Nm "
+                  f"|tau_out|={np.linalg.norm(u_opt):.2f}Nm "
+                  f"sat={imp_diag['saturated']} "
+                  f"lam_n={imp_diag['had_lambda_n']} lam_t={imp_diag['had_lambda_t']}")
+
         # 9. Diagnostics
         if self.log_diag:
             self._print_step_diag(
@@ -560,10 +1228,57 @@ class SamplingC3MPC:
                 met_progress=met,
                 steps_since_improve=self.progress.steps_since_improve(),
             )
+            # [GATE-EVOLVE] — one line per loop: cost-ratio trajectory + EE
+            # geometric progress toward the perpendicular-contact optimal
+            # target. The cost gate fires when curr/best_other < hyst frac
+            # (default 0.9); ee_to_optimal tells us whether the EE is even
+            # near the productive-contact pose where that ratio could drop.
+            _r_proxy = float(self.params.sampling_params.repos_target_radius)
+            _optimal_xy = obj_xy - _r_proxy * g_hat
+            _ee_to_optimal = float(np.linalg.norm(
+                np.array([ee_pos_now[0] - _optimal_xy[0],
+                          ee_pos_now[1] - _optimal_xy[1]])))
+            try:
+                _qo_ge = self.plant.get_geometry_query_input_port().Eval(plant_ctx)
+                _pairs_ge = _qo_ge.ComputeSignedDistancePairwiseClosestPoints(0.50)
+                _ee_ids_ge = self.base_mpc.formulator._ee_geom_ids
+                _bx_ids_ge = self.base_mpc.formulator._manipuland_geom_ids
+                _pairs_ge = [s for s in _pairs_ge
+                             if (s.id_A in _bx_ids_ge and s.id_B in _ee_ids_ge)
+                             or (s.id_B in _bx_ids_ge and s.id_A in _ee_ids_ge)]
+                _phi_ge = min((s.distance for s in _pairs_ge), default=float('nan'))
+            except Exception:
+                _phi_ge = float('nan')
+            _curr_ge = c_samples[0]
+            _best_other_ge = best_other_cost
+            if _best_other_ge != float("inf") and _best_other_ge > 0:
+                _ratio_ge = _curr_ge / _best_other_ge
+            else:
+                _ratio_ge = float('nan')
+            print(f"[GATE-EVOLVE] step={self._step} "
+                  f"curr={_curr_ge:.2f} "
+                  f"best_other={_best_other_ge:.2f} "
+                  f"ratio={_ratio_ge:.4f} "
+                  f"ee_to_optimal={_ee_to_optimal:.4f}m "
+                  f"phi={_phi_ge:.4f}m")
             if self._step % 20 == 0:
                 self._print_table_diag(self._step, samples, labels, results, k_star)
 
         # 10. Bookkeeping
+        # Venkatesh 2025 §IV-D Step 4: on rich→free transition, refresh the
+        # sample buffer and clear the prev_repos slot so the next loop picks
+        # the lowest-cost sample from a freshly-evaluated set rather than
+        # re-selecting the stale prev_repos target.
+        if self._prev_mode == "c3" and mode == "free":
+            self._refresh_buffer_on_arrival()
+            self._current_repos_target     = None
+            self._current_repos_cost       = None
+            self._prev_logged_repos_target = None
+            self._last_repos_finished      = False
+            if self.log_diag:
+                print(f"[RICH-EXIT-REFRESH] step={self._step} "
+                      f"mode {self._prev_mode}->{mode} reason={reason.name} "
+                      f"forcing buffer refresh + clearing prev_repos")
         self._prev_mode              = mode
         self.last_mode               = mode
         self.last_winning_sample_idx = k_star
@@ -610,6 +1325,11 @@ class SamplingC3MPC:
               f"full_solves={self.inner_solver.full_solves}  "
               f"cheap_solves={self.inner_solver.cheap_solves}  "
               f"switches={self._n_switches}")
+        # OSC end-of-run summary (QP failure rate, saturation rate, avg
+        # solve time). Only meaningful for the OSC executor; the
+        # ImpedanceController doesn't carry these counters.
+        if hasattr(self.executor, "print_summary"):
+            self.executor.print_summary()
         # 9.4.7 Option A — watchdog summary. Only printed when the
         # threshold is enabled in config (otherwise tally is 0 and the
         # line is uninformative).
