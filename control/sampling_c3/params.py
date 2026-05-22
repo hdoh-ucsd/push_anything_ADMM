@@ -540,13 +540,17 @@ class SamplingC3Params:
     # admits no EE-BOX pair -> contact-loss exit after 5 steps. (12/13
     # canonical c3 sessions failed this way before the fix.)
     use_contact_entry_gate: bool = True
-    # Threshold on ‖ee_now − box_center‖ in meters. Default 0.080 m is
-    # the empirical productive/dead boundary from the diagnosis:
-    # w13_fix's productive entries landed at 78mm, canonical's dead
-    # entries at 85mm. Drake's LCS admit threshold (2mm) is at
-    # 50mm + 25mm + 2mm = 77mm; the 80mm default gives a 3mm buffer for
-    # "about to make contact — enter c3 to plan the touch".
-    contact_entry_threshold: float = 0.080
+    # Threshold on ‖ee_now − box_center‖ in meters. Default 0.090 m
+    # (loosened from 0.080 after the both_fixes_20260521_193033 run
+    # found that IK arrivals systematically land at 80-95 mm — a 0.080
+    # gate blocked all 10 arrivals and zero c3 sessions started). With
+    # force-tracking active the executor can bridge 5-10 mm of gap by
+    # commanding sustained push, so admitting entries up to 90 mm is
+    # safe and gives force-tracking a chance. The very-far entries
+    # (>90 mm; 3 of 10 in that run) remain blocked. Drake's LCS admit
+    # threshold sits at 50+25+2=77 mm — 90 mm leaves a 13 mm gap that
+    # force-tracking must close.
+    contact_entry_threshold: float = 0.090
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
