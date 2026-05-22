@@ -532,6 +532,22 @@ class SamplingC3Params:
     # threshold during marginal contact predictions.
     min_push_force: float = 2.0
 
+    # ------------ Contact-proximity entry-gate knobs ----------------------
+    # When True, the kToC3ReachedReposTarget trigger requires both
+    # IK-finished AND ee-to-box-center ≤ contact_entry_threshold. Without
+    # this gate, ReachedReposTarget fires at the IK's 20mm tolerance to the
+    # 30mm-setback target, leaving the EE ~35mm shy of contact -> LCS
+    # admits no EE-BOX pair -> contact-loss exit after 5 steps. (12/13
+    # canonical c3 sessions failed this way before the fix.)
+    use_contact_entry_gate: bool = True
+    # Threshold on ‖ee_now − box_center‖ in meters. Default 0.080 m is
+    # the empirical productive/dead boundary from the diagnosis:
+    # w13_fix's productive entries landed at 78mm, canonical's dead
+    # entries at 85mm. Drake's LCS admit threshold (2mm) is at
+    # 50mm + 25mm + 2mm = 77mm; the 80mm default gives a 3mm buffer for
+    # "about to make contact — enter c3 to plan the touch".
+    contact_entry_threshold: float = 0.080
+
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
         return cls(
@@ -548,6 +564,8 @@ class SamplingC3Params:
             W_force              = float(raw.get("W_force", 100.0)),
             nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
             min_push_force       = float(raw.get("min_push_force", 2.0)),
+            use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
+            contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.080)),
         )
 
     @classmethod
