@@ -569,7 +569,7 @@ class SamplingC3Params:
             nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
             min_push_force       = float(raw.get("min_push_force", 2.0)),
             use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
-            contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.080)),
+            contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
         )
 
     @classmethod
