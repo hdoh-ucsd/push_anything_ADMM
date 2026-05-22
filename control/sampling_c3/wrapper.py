@@ -642,6 +642,39 @@ class SamplingC3MPC:
         # F-cheap diagnostic with threshold=1.0 confirmed the chatter
         # disappears when Path B is disabled.
         finished_repos = self._last_repos_finished
+
+        # Contact-proximity entry gate: don't fire kToC3ReachedReposTarget
+        # just because the IK arrived at the setback target — require the
+        # EE to be within `contact_entry_threshold` of the box center so
+        # the LCS will actually admit an EE-BOX pair on the first c3 step.
+        #
+        # Diagnosis: the IK's "finished" threshold is 20mm to a 30mm-setback
+        # target (reposition_ik.py:1299), so without this gate the EE can
+        # be ~35mm shy of the box surface at c3 entry; Drake's 2mm signed-
+        # distance threshold (lcs_formulator.py:245) rejects the pair,
+        # λ_n=0, and the disengage gate fires after 5 steps. 12/13
+        # canonical c3 sessions died this way.
+        #
+        # Only the ReachedReposTarget path is affected (via finished_repos
+        # -> mode_switch.py:139-140). The kToC3Cost path uses cost-gap
+        # hysteresis, independent of finished_repos.
+        if (finished_repos
+                and getattr(self.params, "use_contact_entry_gate", True)):
+            _box_xyz = np.array([
+                current_q[self._obj_x_idx],
+                current_q[self._obj_y_idx],
+                current_q[self._obj_z_idx],
+            ])
+            _ee_to_box = float(np.linalg.norm(ee_pos_now - _box_xyz))
+            _thr = float(getattr(self.params, "contact_entry_threshold", 0.080))
+            if _ee_to_box >= _thr:
+                finished_repos = False
+                if self.log_diag:
+                    print(f"[ENTRY-GATE] step={self._step} "
+                          f"ee_to_box={_ee_to_box*1000:.1f}mm >= "
+                          f"thr={_thr*1000:.1f}mm — block "
+                          f"kToC3ReachedReposTarget", flush=True)
+
         met = self.progress.met_progress(near_goal=near_goal)
         mode, reason = decide_mode(
             prev_mode          = self._prev_mode,
