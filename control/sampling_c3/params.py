@@ -53,7 +53,13 @@ class ProgressMetric(IntEnum):
 
 
 class SamplingStrategy(IntEnum):
-    """Match enum SamplingStrategy in dairlib parameter_headers/sampling_params.h."""
+    """Match enum SamplingStrategy in dairlib parameter_headers/sampling_params.h.
+
+    kFaceNormal is the Push-Anything §IV-B1 paper-faithful sampler: sample a
+    point on a stored box face, project it outward along the face's outward
+    normal by `sampling_setback`, project to fixed world height. Specific to
+    this project — upstream dairlib does not define this enum value.
+    """
     kRadiallySymmetric = 0
     kRandomOnCircle    = 1
     kRandomOnSphere    = 2
@@ -61,6 +67,7 @@ class SamplingStrategy(IntEnum):
     kRandomOnPerimeter = 4
     kRandomOnShell     = 5
     kMeshNormal        = 6
+    kFaceNormal        = 7
 
 
 class RepositioningTrajectoryType(IntEnum):
@@ -98,13 +105,28 @@ def _coerce_enum(enum_cls, raw):
 
 
 def _filter_kwargs(cls, raw: dict) -> dict:
-    """Drop unknown YAML keys instead of crashing — print a warning per key."""
-    known = {f.name for f in fields(cls)}
-    unknown = set(raw) - known
+    """Drop unknown YAML keys instead of crashing — print a warning per key.
+
+    Also coerce values for fields annotated as ``float`` or ``int`` from
+    string form into the numeric type. PyYAML's safe_load parses YAML 1.1,
+    which requires an explicit ``+``/``-`` exponent sign for scientific
+    notation; ``1.0e9`` parses as the string ``"1.0e9"``, not a float.
+    The cast here makes the loader resilient to that.
+    """
+    known = {f.name: f for f in fields(cls)}
+    unknown = set(raw) - known.keys()
     if unknown:
         for k in sorted(unknown):
             print(f"[sampling_c3.params] warning: unknown {cls.__name__} field {k!r} ignored")
-    return {k: v for k, v in raw.items() if k in known}
+    out: dict = {}
+    for k, v in raw.items():
+        if k not in known:
+            continue
+        ann = known[k].type
+        if isinstance(v, str) and ann in ("float", "int"):
+            v = float(v) if ann == "float" else int(float(v))
+        out[k] = v
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +149,15 @@ class ProgressParams:
     # Distance below which we use the _position hysteresis variant
     cost_switching_threshold_distance:   float = 0.05
 
-    # Auto-end-reposition when total reposition cost falls below this
-    finished_reposition_cost:            float = 5000.0
+    # Reference-aligned arrival penalty (dairlib
+    # sampling_based_c3_controller.cc:604-608 and 769-776).  When the
+    # IK tracker reports that the EE is within tolerance of the pursued
+    # repos slot, this value is added to that slot's c_sample.  The
+    # inflation is large enough (≫ typical c_sample magnitudes) that
+    # `repos_target_cost > finished_reposition_cost` cleanly distinguishes
+    # arrival from a stable raw-cost regime, which is what
+    # decide_mode() uses to assign kToC3ReachedReposTarget vs kToC3Cost.
+    finished_reposition_cost:            float = 1.0e9
 
     # Absolute hysteresis (used when use_relative_hysteresis is False)
     hyst_c3_to_repos:                    float = 1000.0
@@ -150,8 +179,8 @@ class ProgressParams:
     # Note: upstream field names use _frac_position, NOT _position_frac. Keep verbatim.
     hyst_c3_to_repos_frac:               float = 0.05
     hyst_c3_to_repos_frac_position:      float = 0.10
-    hyst_repos_to_c3_frac:               float = 0.05
-    hyst_repos_to_c3_frac_position:      float = 0.10
+    hyst_repos_to_c3_frac:               float = 0.9
+    hyst_repos_to_c3_frac_position:      float = 0.9
     hyst_repos_to_repos_frac:            float = 0.02
     hyst_repos_to_repos_frac_position:   float = 0.05
 
@@ -187,7 +216,15 @@ class SamplingParams:
     ang_error_sample_retention:          float = 0.30   # rad
 
     # Geometry shared across multiple strategies
-    sampling_radius:                     float = 0.13   # m, around object xy
+    sampling_radius:                     float = 0.13   # m, candidate-ring radius for cost eval (samples 1..n-1)
+    repos_target_radius:                 float = 0.075  # m, IK proxy target — pusher just touching box
+    # repos_target_radius derivation:
+    #   box_half_extent (0.050) + pusher_radius (0.025) = 0.075 m
+    # Target gap = 0 mm (just touching). IK tolerance is ±0.020 m, so the
+    # actual EE landing falls in φ ∈ [-20, +20] mm. The formulator's
+    # distance_threshold = 0.002 m admits the negative-φ landings; positive-φ
+    # landings yield an empty LCS and the wrapper retries via
+    # kToReposUnproductive. Self-correcting by design.
     # 9.4.7 / F2: reduced from 0.18 (no documented rationale) to close
     # the 5mm geometric mismatch with Drake's 0.10m contact-extraction
     # threshold (lcs_formulator.py:181). Old value placed every strategy
@@ -199,6 +236,15 @@ class SamplingParams:
     # (box_half 0.05 + pusher_radius 0.025).
     sampling_height:                     float = 0.05   # m, contact-plane EE z
 
+    # Face-normal projection (kFaceNormal strategy — Push-Anything §IV-B1):
+    # samples are a point on a box face projected outward along the face's
+    # outward normal by sampling_setback. Rejection step drops samples whose
+    # post-projection xy is still within sample_reject_clearance of the box
+    # surface.
+    box_half_extent:                     float = 0.05   # m, half-extent of the cube
+    sampling_setback:                    float = 0.030  # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
+    sample_reject_clearance:             float = 0.005  # m, post-projection minimum gap to box surface
+
     # Workspace bounds (kept here, not in a separate sampling_c3_options.yaml)
     workspace_xy_min:                    list  = field(default_factory=lambda: [-0.5, -0.7])
     # F3 ship 2026-05-14: y_max raised from 0.0 to 0.13 to match sampling_radius.
@@ -209,6 +255,14 @@ class SamplingParams:
 
     # Safety filter — drop samples that fail workspace or surface-clearance check
     filter_samples_for_safety:           bool  = True
+
+    # Number of control loops a random ring sample buffer persists before
+    # re-randomization. 0 disables (re-samples every loop, the broken
+    # behavior). 30 ≈ 0.3 sec at dt_ctrl=0.01s, roughly the IK tracker's
+    # convergence time to a target on the sampling ring. Buffer also
+    # refreshes on arrival (finished_repos fires) and on mode transitions
+    # that change n_strategy.
+    sample_buffer_lifetime:              int   = 30
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingParams":
@@ -375,12 +429,15 @@ class RepositionIKParams:
     joint_centering_weight:                     float = 1e-2
     joint_movement_weight:                      float = 1e-1
     q_nominal:                                  list  = field(
-        default_factory=lambda: INITIAL_ARM_Q.tolist()
-    )  # Align IK posture target with the arm's starting pose. The
-       # earlier default (Franka "ready" pose) sat ~2.37 rad away from
-       # INITIAL_ARM_Q in joint space, so the joint_centering term in
-       # the IK pulled solutions toward postures the dynamic tracker
-       # couldn't reach within its 30 N·m torque budget.
+        default_factory=lambda: [+0.552150, +0.325037, +0.976275,
+                                  -2.246164, -0.188979, +3.044706, +0.785000]
+    )  # J2 reduced 0.35 rad from INITIAL_ARM_Q[1]=0.675 to 0.325 (≈19°).
+       # Lowers IK's nominal shoulder posture so gravity load on J2 at q*
+       # doesn't saturate the 30 N·m budget. Prior nominal (=INITIAL_ARM_Q)
+       # produced q*[1]≈0.90 rad, where the gravity-comp term consumed ~28
+       # of 30 N·m, leaving the PD only ~2 N·m of proportional headroom and
+       # ~2.3° of unresolvable residual on J2 — see
+       # results/tracker_bias_north.log. Other 6 joints unchanged.
 
     # Solver / timing
     per_knot_solve_timeout_s:                   float = 8e-3
@@ -444,6 +501,37 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
+    # ----- Executor selector -----
+    # When True, the wrapper instantiates `OperationalSpaceController`
+    # (a per-tick QP) instead of `ImpedanceController` (closed-form
+    # Aydinoglu eq. 36). Drop-in compatible: same signature, same
+    # Cartesian-target inputs from rich/free modes. OSC enforces
+    # per-joint URDF effort limits via box constraints rather than
+    # post-hoc np.clip, which preserves task tracking when one joint
+    # would otherwise saturate.
+    use_osc: bool = False
+    osc_gains_yaml: str = "config/osc_franka.yaml"
+
+    # ------------ Force-tracking executor knobs ---------------------------
+    # When True, OSC promotes the planner's contact force to a QP decision
+    # variable (λ_ext) softly tracked toward `lambda_des` instead of being
+    # added as a fixed RHS feedforward. Mirrors dairlib reference's
+    # ExternalForceTrackingData (franka_osc_controller.cc:168-188).
+    use_force_tracking: bool = True
+    # Soft cost weight on ‖λ_ext − λ_des‖². Reference's W_ee_lambda.
+    # Comparable to W_track (100.0) so neither dominates.
+    W_force: float = 100.0
+    # When the LCS has no admitted EE-BOX pair at knot 0, command this
+    # magnitude of recoil force in the -g_hat direction so the executor
+    # keeps pressing rather than letting the command collapse to zero.
+    # Tuned ≥ μ·m·g to overcome static friction; box ~ 200 g, μ ≈ 0.4 →
+    # 0.8 N threshold, so 5 N is ~6× headroom.
+    nominal_push_force: float = 5.0
+    # When λ_n is admitted but very small, floor the commanded magnitude
+    # at this value so the executor doesn't fall below the friction
+    # threshold during marginal contact predictions.
+    min_push_force: float = 2.0
+
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
         return cls(
@@ -454,6 +542,12 @@ class SamplingC3Params:
             w_align              = float(raw.get("w_align", 30_000.0)),
             w_travel             = float(raw.get("w_travel", 200.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
+            use_osc              = bool(raw.get("use_osc", False)),
+            osc_gains_yaml       = str(raw.get("osc_gains_yaml", "config/osc_franka.yaml")),
+            use_force_tracking   = bool(raw.get("use_force_tracking", True)),
+            W_force              = float(raw.get("W_force", 100.0)),
+            nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
+            min_push_force       = float(raw.get("min_push_force", 2.0)),
         )
 
     @classmethod
