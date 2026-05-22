@@ -189,6 +189,8 @@ class SamplingC3MPC:
                 q_nominal    = _q_nominal,
                 gains_yaml   = params.osc_gains_yaml,
                 log_diag     = self.log_diag,
+                use_force_tracking = bool(getattr(params, "use_force_tracking", True)),
+                W_force      = float(getattr(params, "W_force", 100.0)),
             )
             self._executor_kind = "osc"
         else:
@@ -358,6 +360,49 @@ class SamplingC3MPC:
         # the next call explicit.
         self._sample_buffer = None
         self._sample_buffer_age = lifetime + 1
+
+    # ----------------------------------------------------------------------
+    def _derive_force_command(self,
+                              lambda_n: Optional[np.ndarray],
+                              g_hat_3d: np.ndarray) -> np.ndarray:
+        """Derive a sustained Cartesian force command for OSC λ_ext tracking.
+
+        Mirrors the dairlib reference's `end_effector_force_target`
+        (sampling_based_c3_controller.cc:1508-1515): a force command the
+        executor commits to, persisting across momentary LCS contact loss.
+
+        Convention matches the existing F_ff path
+        (operational_space_controller.py:185-193 / qp_builder.py docstring):
+        λ_ext is the *external force on the EE in world frame* whose
+        +J_v^T·λ_ext acts on the arm — i.e., the box-reaction recoil
+        direction. To make the EE press the box toward the goal, the
+        recoil on the EE points in −g_hat (e.g., box goes west ⇒ EE on
+        east ⇒ recoil east = −g_hat for g_hat=[−1,0,0]).
+
+        Magnitude rule:
+          * if the LCS admitted an EE-BOX pair at knot 0, use the planner's
+            Σ|λ_n| as the intent magnitude (floored at ``min_push_force``).
+          * else use ``nominal_push_force`` so the command does NOT collapse
+            to zero on momentary contact loss.
+        """
+        recoil_dir = -np.asarray(g_hat_3d, dtype=float).reshape(3)
+        n = float(np.linalg.norm(recoil_dir))
+        if n < 1e-9:
+            return np.zeros(3)
+        recoil_dir = recoil_dir / n
+
+        nominal = float(getattr(self.params, "nominal_push_force", 5.0))
+        floor   = float(getattr(self.params, "min_push_force", 2.0))
+
+        has_lam_n = (lambda_n is not None
+                     and hasattr(lambda_n, "size")
+                     and lambda_n.size > 0)
+        if has_lam_n:
+            mag = float(np.sum(np.abs(lambda_n)))
+            mag = max(mag, floor)
+        else:
+            mag = nominal
+        return mag * recoil_dir
 
     def _build_samples(self,
                        ee_pos_now:  np.ndarray,
@@ -1100,6 +1145,7 @@ class SamplingC3MPC:
             _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
             _Jn    = self.base_mpc.formulator._last_J_n
             _Jt    = self.base_mpc.formulator._last_J_t
+            _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
@@ -1108,6 +1154,7 @@ class SamplingC3MPC:
                 lambda_t     = _lam_t,
                 J_n          = _Jn,
                 J_t          = _Jt,
+                lambda_des   = _lam_des,
             )
         else:
             # Free mode: follow the IK tracker's piecewise-linear waypoint
