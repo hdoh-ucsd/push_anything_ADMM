@@ -471,6 +471,38 @@ class QuadraticManipulationCost:
                 # Shift arm reference toward effective proxy
                 x_ref[: self.n_u] = current_q[: self.n_u] + dq
 
+            elif self.w_yaw > 0.0:
+                # --- Rotation-task EE-approach (Jin & Posa eq. 40 w1 analog) ---
+                # No translation goal exists (dist=0 → g_hat undefined). Pull
+                # the EE toward the box CoM at contact height so the arm can
+                # reach a torquing contact. Reuses the J_arm-pseudoinverse
+                # mechanism from the translation branch verbatim; only the
+                # proxy point differs (box CoM, no directional setback) and
+                # the perpendicular-velocity penalty is dropped (defined
+                # relative to the push axis g_hat, which has no meaning here).
+                proxy_3d = np.array([obj_xy[0], obj_xy[1], self.z_ref])
+
+                ee_pos = self.plant.CalcPointsPositions(
+                    plant_ctx, self.ee_frame, np.zeros(3), self.world_frame
+                ).flatten()
+
+                J_ee = self.plant.CalcJacobianTranslationalVelocity(
+                    plant_ctx, self._ad.JacobianWrtVariable.kV,
+                    self.ee_frame, np.zeros(3),
+                    self.world_frame, self.world_frame,
+                )
+                J_arm = J_ee[:, : self.n_u]
+
+                ee_err = proxy_3d - ee_pos
+                lam   = 0.001
+                JJT   = J_arm @ J_arm.T + lam * np.eye(3)
+                dq    = J_arm.T @ np.linalg.solve(JJT, ee_err)
+
+                w = self.w_ee_approach
+                Q[: self.n_u, : self.n_u] += 2.0 * w * (J_arm.T @ J_arm)
+
+                x_ref[: self.n_u] = current_q[: self.n_u] + dq
+
             # --- Perpendicular box velocity penalty ---
             # Penalise object velocity components orthogonal to the goal direction.
             # Drake floating-body vel layout: [ωx, ωy, ωz, vx, vy, vz]; vx at +3.
