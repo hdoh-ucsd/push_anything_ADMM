@@ -56,6 +56,59 @@ def _wrap_to_pi(a: float) -> float:
     return float(np.arctan2(np.sin(a), np.cos(a)))
 
 
+def _quat_to_rot(qw: float, qx: float, qy: float, qz: float) -> np.ndarray:
+    n = qw*qw + qx*qx + qy*qy + qz*qz
+    if n < 1e-12:
+        return np.eye(3)
+    s = 2.0 / n
+    return np.array([
+        [1.0 - s*(qy*qy + qz*qz), s*(qx*qy - qw*qz),       s*(qx*qz + qw*qy)      ],
+        [s*(qx*qy + qw*qz),       1.0 - s*(qx*qx + qz*qz), s*(qy*qz - qw*qx)      ],
+        [s*(qx*qz - qw*qy),       s*(qy*qz + qw*qx),       1.0 - s*(qx*qx + qy*qy)],
+    ])
+
+
+def _predicted_box_contact(sample_pos:    np.ndarray,
+                           p_box_w:       np.ndarray,
+                           box_quat_wxyz: np.ndarray,
+                           box_half:      float):
+    """Predict the (p_contact_w, nhat_onto_box_w) for a sample whose EE
+    would press against a cube of side 2*box_half centered at p_box_w
+    with orientation box_quat_wxyz=(w,x,y,z).
+
+    Geometry-only (no LCS admission needed). Sample → box body frame,
+    find dominant side face (±x_b or ±y_b), clamp to face surface in
+    body frame, transform back to world. Inward normal = -outward face
+    normal. Returns None if the sample is below the box (top/bottom face
+    dominant) — irrelevant for side-pushing.
+    """
+    R = _quat_to_rot(float(box_quat_wxyz[0]), float(box_quat_wxyz[1]),
+                     float(box_quat_wxyz[2]), float(box_quat_wxyz[3]))
+    p_rel_w = np.asarray(sample_pos, dtype=float) - np.asarray(p_box_w, dtype=float)
+    p_b     = R.T @ p_rel_w
+    # Only side faces (±x_b, ±y_b) matter for pushing; ignore top/bottom.
+    if abs(p_b[0]) < 1e-9 and abs(p_b[1]) < 1e-9:
+        return None
+    if abs(p_b[0]) >= abs(p_b[1]):
+        i = 0
+    else:
+        i = 1
+    sign = 1.0 if p_b[i] >= 0.0 else -1.0
+    # Body-frame contact: clamp dominant axis to ±h, tangential coord
+    # to [-h, h], z to [-h, h].
+    p_c_b = np.array([
+        max(-box_half, min(box_half, p_b[0])),
+        max(-box_half, min(box_half, p_b[1])),
+        max(-box_half, min(box_half, p_b[2])),
+    ])
+    p_c_b[i] = sign * box_half
+    n_outward_b = np.zeros(3)
+    n_outward_b[i] = sign
+    p_c_w = R @ p_c_b + np.asarray(p_box_w, dtype=float)
+    n_onto_box_w = -(R @ n_outward_b)
+    return p_c_w, n_onto_box_w
+
+
 # ---------------------------------------------------------------------------
 # Per-sample evaluation result
 # ---------------------------------------------------------------------------
@@ -81,9 +134,8 @@ class SampleResult:
     align_bonus:      float                   # w_align * align_score
     travel_dist:      float                   # ||sample_pos - ee_pos_now||
     travel_penalty:   float                   # w_travel * travel_dist
-    # Layer-2 rotation-aware bonus (analog of align_bonus). Rewards
-    # off-center contacts whose moment turns the box toward goal_yaw.
-    # Inert when w_rot=0 or task has w_yaw=0.
+    # Rotation-aware bonus (layer 2): rewards off-center contacts whose moment
+    # turns the box toward goal_yaw. Inert when w_rot=0 or task has w_yaw=0.
     rot_score:        float                   # max(0, max_i M_z_i * yaw_sign)
     rot_bonus:        float                   # w_rot * rot_score
     c_sample:         float                   # ranked cost (lower is better)
@@ -206,6 +258,7 @@ class InnerSolver:
         self.w_align          = float(params.w_align)
         self.w_travel         = float(params.w_travel)
         self.w_rot            = float(getattr(params, "w_rot", 0.0))
+        self._box_half_extent = float(params.sampling_params.box_half_extent)
 
         self.n_u = plant.num_actuators()
         self.n_q = plant.num_positions()
@@ -267,7 +320,7 @@ class InnerSolver:
 
         feasible = False
         nhats: list = []
-        ee_box_contacts: list = []   # (p_W, n_W) tuples for rotation bonus
+        ee_box_contacts: list = []   # (p_W, n_W) tuples, EE-BOX only
         c_C3_raw = float("inf")
         u_seq = x_seq = None
         A = B = D = d = J_n = J_t = phi = mu = None
@@ -322,16 +375,20 @@ class InnerSolver:
         travel_dist    = float(np.linalg.norm(sample_pos - ee_pos_now))
         travel_penalty = self.w_travel * travel_dist
 
-        # --- Layer 2: rotation-aware sample bonus ---
-        # Reward samples whose off-center EE-BOX contact produces a moment
-        # M_z = (r × n̂_onto_box)·ẑ that turns the box toward goal_yaw.
-        # n̂_onto_box is the inward push direction (force ON the box), so
-        # M_z is directly the moment of the push force about the box CoM.
+        # --- Layer 2.5: rotation-aware sample bonus (intent-based) ---
+        # Reward samples whose PREDICTED EE-BOX contact would produce a
+        # moment M_z = (r × n̂_onto_box)·ẑ that turns the box toward
+        # goal_yaw. Predicted contact comes from sample EE position +
+        # box pose (RECONSTRUCT case): project sample onto nearest face,
+        # take that face's inward normal. Decouples the bonus from LCS
+        # admission (which never fires for strategy samples sitting
+        # ~32mm out at sampling_setback). Moment-arm formula and sign
+        # convention are UNCHANGED from layer 2 (27e0727); only the
+        # source of (p_contact_w, nhat_onto_box) changed.
         # Gated on quad_cost.w_yaw > 0 so translation-only tasks see no effect.
         rot_score = 0.0
         rot_bonus = 0.0
-        if self.w_rot > 0.0 and getattr(self.quad_cost, "w_yaw", 0.0) > 0.0 \
-                and ee_box_contacts:
+        if self.w_rot > 0.0 and getattr(self.quad_cost, "w_yaw", 0.0) > 0.0:
             ps = self._obj_ps
             qw = float(current_q[ps + 0]); qx = float(current_q[ps + 1])
             qy = float(current_q[ps + 2]); qz = float(current_q[ps + 3])
@@ -341,15 +398,20 @@ class InnerSolver:
                 yaw_sign = 1.0 if yaw_err > 0.0 else -1.0
                 p_box_x = float(current_q[self._obj_x_idx])
                 p_box_y = float(current_q[self._obj_y_idx])
-                mz_signed = []
-                for p_c_W, n_W in ee_box_contacts:
+                p_box_z = float(current_q[self._obj_z_idx])
+                p_box_w = np.array([p_box_x, p_box_y, p_box_z])
+                box_quat = np.array([qw, qx, qy, qz])
+                pc = _predicted_box_contact(
+                    sample_pos, p_box_w, box_quat, self._box_half_extent,
+                )
+                if pc is not None:
+                    p_c_W, n_W = pc
                     rx = float(p_c_W[0]) - p_box_x
                     ry = float(p_c_W[1]) - p_box_y
-                    nx = float(n_W[0]);  ny = float(n_W[1])
+                    nx = float(n_W[0]); ny = float(n_W[1])
                     m_z = rx * ny - ry * nx          # (r × n̂)·ẑ
-                    mz_signed.append(m_z * yaw_sign)
-                rot_score = max(mz_signed)
-                rot_bonus = self.w_rot * max(0.0, rot_score)
+                    rot_score = m_z * yaw_sign
+                    rot_bonus = self.w_rot * max(0.0, rot_score)
 
         c_sample       = c_C3_raw - align_bonus - rot_bonus + travel_penalty
 
