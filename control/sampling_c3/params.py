@@ -497,6 +497,11 @@ class SamplingC3Params:
     # Project-specific (no upstream equivalent)
     w_align:            float = 30_000.0
     w_travel:           float = 200.0
+    # Rotation-aware sample bonus (analog of w_align for pure-rotation tasks).
+    # Rewards samples whose off-center contact produces a moment M_z = (r x n).z
+    # that turns the box toward goal_yaw. Only active when both w_rot > 0 and
+    # the task has w_yaw > 0 (i.e. cost has a rotation goal); inert otherwise.
+    w_rot:              float = 0.0
 
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
@@ -561,6 +566,7 @@ class SamplingC3Params:
             repos_ik_params   = RepositionIKParams.from_dict(raw.get("repos_ik_params", {}) or {}),
             w_align              = float(raw.get("w_align", 30_000.0)),
             w_travel             = float(raw.get("w_travel", 200.0)),
+            w_rot                = float(raw.get("w_rot", 0.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
             use_osc              = bool(raw.get("use_osc", False)),
             osc_gains_yaml       = str(raw.get("osc_gains_yaml", "config/osc_franka.yaml")),

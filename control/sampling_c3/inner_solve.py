@@ -46,6 +46,16 @@ from control.sampling_c3.ik import ik_seed_one_step, solve_ik_to_ee_pos
 from control.sampling_c3.params import SamplingC3Params
 
 
+def _yaw_from_quat(qw: float, qx: float, qy: float, qz: float) -> float:
+    """Drake-convention quaternion (w,x,y,z) → yaw about world z, in [-π, π]."""
+    return float(np.arctan2(2.0 * (qw * qz + qx * qy),
+                            1.0 - 2.0 * (qy * qy + qz * qz)))
+
+
+def _wrap_to_pi(a: float) -> float:
+    return float(np.arctan2(np.sin(a), np.cos(a)))
+
+
 # ---------------------------------------------------------------------------
 # Per-sample evaluation result
 # ---------------------------------------------------------------------------
@@ -71,6 +81,11 @@ class SampleResult:
     align_bonus:      float                   # w_align * align_score
     travel_dist:      float                   # ||sample_pos - ee_pos_now||
     travel_penalty:   float                   # w_travel * travel_dist
+    # Layer-2 rotation-aware bonus (analog of align_bonus). Rewards
+    # off-center contacts whose moment turns the box toward goal_yaw.
+    # Inert when w_rot=0 or task has w_yaw=0.
+    rot_score:        float                   # max(0, max_i M_z_i * yaw_sign)
+    rot_bonus:        float                   # w_rot * rot_score
     c_sample:         float                   # ranked cost (lower is better)
 
     # C3 plan output (None when infeasible)
@@ -190,6 +205,7 @@ class InnerSolver:
         self.surrogate_iter   = int(params.surrogate_admm_iters)
         self.w_align          = float(params.w_align)
         self.w_travel         = float(params.w_travel)
+        self.w_rot            = float(getattr(params, "w_rot", 0.0))
 
         self.n_u = plant.num_actuators()
         self.n_q = plant.num_positions()
@@ -251,6 +267,7 @@ class InnerSolver:
 
         feasible = False
         nhats: list = []
+        ee_box_contacts: list = []   # (p_W, n_W) tuples for rotation bonus
         c_C3_raw = float("inf")
         u_seq = x_seq = None
         A = B = D = d = J_n = J_t = phi = mu = None
@@ -266,9 +283,12 @@ class InnerSolver:
                  E_lcs, F_lcs, H_lcs, c_lcs,
                  J_n, J_t, phi, mu) = \
                     self.formulator.linearize_discrete(plant_ctx, self.dt)
-                # Capture immediately — _last_nhats is overwritten on the
-                # next linearize_discrete call.
+                # Capture immediately — _last_nhats / _last_ee_box_contacts
+                # are overwritten on the next linearize_discrete call.
                 nhats = list(self.formulator._last_nhats)
+                ee_box_contacts = list(
+                    getattr(self.formulator, "_last_ee_box_contacts", [])
+                )
                 Q, R, QN, x_ref = self.quad_cost.build(
                     target_xy, plant_ctx=plant_ctx, current_q=q_seed,
                     target_yaw=target_yaw,
@@ -301,7 +321,37 @@ class InnerSolver:
         align_bonus    = self.w_align  * align_score
         travel_dist    = float(np.linalg.norm(sample_pos - ee_pos_now))
         travel_penalty = self.w_travel * travel_dist
-        c_sample       = c_C3_raw - align_bonus + travel_penalty
+
+        # --- Layer 2: rotation-aware sample bonus ---
+        # Reward samples whose off-center EE-BOX contact produces a moment
+        # M_z = (r × n̂_onto_box)·ẑ that turns the box toward goal_yaw.
+        # n̂_onto_box is the inward push direction (force ON the box), so
+        # M_z is directly the moment of the push force about the box CoM.
+        # Gated on quad_cost.w_yaw > 0 so translation-only tasks see no effect.
+        rot_score = 0.0
+        rot_bonus = 0.0
+        if self.w_rot > 0.0 and getattr(self.quad_cost, "w_yaw", 0.0) > 0.0 \
+                and ee_box_contacts:
+            ps = self._obj_ps
+            qw = float(current_q[ps + 0]); qx = float(current_q[ps + 1])
+            qy = float(current_q[ps + 2]); qz = float(current_q[ps + 3])
+            psi_now = _yaw_from_quat(qw, qx, qy, qz)
+            yaw_err = _wrap_to_pi(float(target_yaw) - psi_now)
+            if abs(yaw_err) > 1e-3:
+                yaw_sign = 1.0 if yaw_err > 0.0 else -1.0
+                p_box_x = float(current_q[self._obj_x_idx])
+                p_box_y = float(current_q[self._obj_y_idx])
+                mz_signed = []
+                for p_c_W, n_W in ee_box_contacts:
+                    rx = float(p_c_W[0]) - p_box_x
+                    ry = float(p_c_W[1]) - p_box_y
+                    nx = float(n_W[0]);  ny = float(n_W[1])
+                    m_z = rx * ny - ry * nx          # (r × n̂)·ẑ
+                    mz_signed.append(m_z * yaw_sign)
+                rot_score = max(mz_signed)
+                rot_bonus = self.w_rot * max(0.0, rot_score)
+
+        c_sample       = c_C3_raw - align_bonus - rot_bonus + travel_penalty
 
         # Restore plant_ctx to current state for downstream consumers
         self.plant.SetPositions(plant_ctx, current_q)
@@ -320,6 +370,8 @@ class InnerSolver:
             align_bonus     = align_bonus,
             travel_dist     = travel_dist,
             travel_penalty  = travel_penalty,
+            rot_score       = rot_score,
+            rot_bonus       = rot_bonus,
             c_sample        = c_sample,
             u_seq           = u_seq,
             x_seq           = x_seq,
@@ -396,7 +448,7 @@ class InnerSolver:
             r.u_seq    = u_seq
             r.x_seq    = x_seq
             r.c_C3_raw = c_C3_raw
-            r.c_sample = c_C3_raw - r.align_bonus + r.travel_penalty
+            r.c_sample = c_C3_raw - r.align_bonus - r.rot_bonus + r.travel_penalty
         except Exception:
             pass
         return r
