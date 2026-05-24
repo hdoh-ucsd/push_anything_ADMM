@@ -27,6 +27,14 @@ w_align:  30000.0
 # of typical c_C3 ~ 60000.
 w_travel: 200.0
 
+# Rotation-aware sample bonus: c_sample[i] -= w_rot * max(0, M_z * yaw_sign)
+# where M_z = (r x n_hat).z is the contact's moment about box CoM, n_hat is the
+# inward push direction, and yaw_sign = sign(goal_yaw - psi_now). Rewards
+# off-center contacts whose push torques the box toward goal_yaw.
+# Gated on quad_cost.w_yaw > 0, so translation-only tasks see no effect.
+# Magnitude matched to w_align (comparable differentiator).
+w_rot:    30000.0
+
 # Cheap-solve ADMM iters for the K-1 hypothetical evaluations.
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3

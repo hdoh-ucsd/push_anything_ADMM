@@ -1398,6 +1398,7 @@ class SamplingC3MPC:
                   f"pos=({p[0]:+.3f},{p[1]:+.3f},{p[2]:+.3f}) "
                   f"c_C3={r.c_C3_raw:10.2f} "
                   f"align={r.align_score:.4f}(bonus={r.align_bonus:8.2f}) "
+                  f"rot={r.rot_score:+.4f}(bonus={r.rot_bonus:8.2f}) "
                   f"travel={r.travel_dist:.3f}m(pen={r.travel_penalty:6.2f}) "
                   f"c_sample={r.c_sample:10.2f} "
                   f"feas={feas} ik_err={r.ik_err:.4f}m{win}")

@@ -223,6 +223,10 @@ class LCSFormulator:
         # Stored for diagnostic access by the MPC controller
         self._last_nhats: list  = []   # world-frame normals (force-on-box direction)
         self._last_contact_info: list = []  # dicts for one-time geometry print
+        # (p_contact_W, nhat_onto_box) tuples for the rotation-bonus sample
+        # scorer (inner_solve.py). HEAD's contact filter admits only EE-BOX
+        # pairs, so every entry here is EE-BOX.
+        self._last_ee_box_contacts: list = []
 
         for sdp in sd_pairs:
             phis.append(sdp.distance)
@@ -264,6 +268,22 @@ class LCSFormulator:
                 "p_BCb": np.array(sdp.p_BCb),
                 "distance": float(sdp.distance),
             })
+
+            # Rotation-bonus scorer needs the world-frame contact point on
+            # the box (the body_box side of the witness pair). Pre-filtered
+            # to EE-BOX above so no tag check is needed here.
+            if a_is_box:
+                body_box = body_A
+                p_BoCo = np.asarray(sdp.p_ACa).reshape(3, 1)
+            else:
+                body_box = body_B
+                p_BoCo = np.asarray(sdp.p_BCb).reshape(3, 1)
+            p_contact_W = self.plant.CalcPointsPositions(
+                context, body_box.body_frame(), p_BoCo, W,
+            ).flatten()
+            self._last_ee_box_contacts.append(
+                (np.array(p_contact_W), np.array(nhat_onto_box))
+            )
 
             # Normal Jacobian row
             J_n_rows.append(nhat @ J_rel)   # (n_v,)
