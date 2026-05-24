@@ -220,7 +220,8 @@ class InnerSolver:
                         g_hat_3d:      np.ndarray,
                         is_current_ee: bool = False,
                         full_iters:    bool = False,
-                        suppress_io:   bool = True) -> SampleResult:
+                        suppress_io:   bool = True,
+                        target_yaw:    float = 0.0) -> SampleResult:
         """Evaluate one sample. Restores plant_ctx to (current_q, current_v)
         before returning."""
         if is_current_ee:
@@ -270,6 +271,7 @@ class InnerSolver:
                 nhats = list(self.formulator._last_nhats)
                 Q, R, QN, x_ref = self.quad_cost.build(
                     target_xy, plant_ctx=plant_ctx, current_q=q_seed,
+                    target_yaw=target_yaw,
                 )
                 x0 = np.concatenate([q_seed, current_v])
                 u_seq, x_seq = self.solver.solve(
@@ -338,7 +340,8 @@ class InnerSolver:
                          target_xy:     np.ndarray,
                          ee_pos_now:    np.ndarray,
                          g_hat_3d:      np.ndarray,
-                         threading:     bool = False) -> List[SampleResult]:
+                         threading:     bool = False,
+                         target_yaw:    float = 0.0) -> List[SampleResult]:
         """Sequential by default. `threading=True` is reserved for future
         parallelisation; raises NotImplementedError until profiled."""
         if threading:
@@ -359,6 +362,7 @@ class InnerSolver:
                 is_current_ee = (k == 0),
                 full_iters    = (k == 0),
                 suppress_io   = (k != 0),   # k=0 is the "real" diagnostic stream
+                target_yaw    = target_yaw,
             )
             results.append(r)
         return results

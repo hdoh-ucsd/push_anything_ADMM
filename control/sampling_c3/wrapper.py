@@ -483,7 +483,8 @@ class SamplingC3MPC:
                         current_q:  np.ndarray,
                         current_v:  np.ndarray,
                         plant_ctx,
-                        target_xy:  np.ndarray) -> np.ndarray:
+                        target_xy:  np.ndarray,
+                        target_yaw: float = 0.0) -> np.ndarray:
         self._step += 1
         t_step_start = time.perf_counter()
 
@@ -587,6 +588,7 @@ class SamplingC3MPC:
             current_q=current_q, current_v=current_v,
             plant_ctx=plant_ctx, target_xy=target_xy,
             ee_pos_now=ee_pos_now, g_hat_3d=g_hat_3d,
+            target_yaw=target_yaw,
         )
         c_samples = [r.c_sample for r in results]
 
@@ -839,6 +841,7 @@ class SamplingC3MPC:
                 self.progress.reset()
             u_opt = self.base_mpc.compute_control(
                 current_q, current_v, plant_ctx, target_xy,
+                target_yaw=target_yaw,
             )
             # [CONTACT-RUN] per-step rich-mode contact diagnostic. Selects
             # the EE-BOX contact pair (not index 0, which may be BOX-GND
@@ -1095,7 +1098,8 @@ class SamplingC3MPC:
                 # No candidates at all (only current EE). Fall back to
                 # base_mpc — should be unreachable when num_additional_*≥1.
                 u_opt = self.base_mpc.compute_control(
-                    current_q, current_v, plant_ctx, target_xy)
+                    current_q, current_v, plant_ctx, target_xy,
+                    target_yaw=target_yaw)
                 self.last_x_seq = self.base_mpc.last_x_seq
                 self._current_repos_target = None
                 self._current_repos_cost   = None
