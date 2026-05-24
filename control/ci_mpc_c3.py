@@ -171,7 +171,8 @@ class C3MPC:
                         current_q:  np.ndarray,
                         current_v:  np.ndarray,
                         plant_ctx,
-                        target_xy:  np.ndarray) -> np.ndarray:
+                        target_xy:  np.ndarray,
+                        target_yaw: float = 0.0) -> np.ndarray:
         """
         Compute one torque command via C3 trajectory optimisation.
 
@@ -273,7 +274,8 @@ class C3MPC:
 
         # 2. Quadratic cost and reference state (with linearised EE approach)
         Q, R, QN, x_ref = self.quad_cost.build(
-            target_xy, plant_ctx=plant_ctx, current_q=current_q
+            target_xy, plant_ctx=plant_ctx, current_q=current_q,
+            target_yaw=target_yaw,
         )
 
         # 3. Current full state x0 = [q; v]

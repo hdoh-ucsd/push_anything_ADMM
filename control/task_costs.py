@@ -162,6 +162,15 @@ class QuadraticManipulationCost:
         self.w_obj_z       = float(c.get("w_obj_z",         10.0))
         self.w_box_z       = float(c.get("w_box_z",        100.0))
         self.w_box_rp      = float(c.get("w_box_rp",        50.0))
+        # Yaw-error penalty (Jin & Posa eq. 40 analog). w_yaw=0 → fully inert.
+        # Residual e_z = c_yaw · q_box where c_yaw = [-sin(α/2),0,0,cos(α/2)]
+        # is EXACTLY linear in the quaternion (not a small-angle approximation):
+        # for an upright yaw-only configuration q_box = [cos(ψ/2),0,0,sin(ψ/2)],
+        # e_z = sin((ψ-α)/2) — the standard quaternion half-angle metric,
+        # globally monotonic on ψ ∈ (α-π, α+π). NOT a raw qz penalty, which is
+        # invalid for a unit quaternion.
+        self.w_yaw         = float(c.get("w_yaw",            0.0))
+        self._target_yaw   = 0.0   # updated each build() call via target_yaw kwarg
         self.w_torque      = float(c.get("w_torque",         0.01))
         self.w_terminal    = float(c.get("w_terminal",        5.0))
         self.z_ref         = float(c.get("z_ee_target",      0.05))
@@ -200,12 +209,18 @@ class QuadraticManipulationCost:
         return Q
 
     def build(self, target_xy: np.ndarray,
-              plant_ctx=None, current_q: np.ndarray = None):
+              plant_ctx=None, current_q: np.ndarray = None,
+              target_yaw: float = 0.0):
         """
         Return (Q, R, QN, x_ref) for one MPC step.
 
         If plant_ctx and current_q are provided, augments Q and x_ref with a
         linearised EE approach cost via the arm Jacobian.
+
+        target_yaw=0.0 + w_yaw=0.0 → no yaw cost contribution (inert path for
+        existing tasks). With w_yaw>0, the quaternion block of Q gets
+        w_yaw · c_yaw c_yawᵀ added on the [qw,qz] slots and x_ref[qw,qz]
+        gets set to the goal quaternion [cos(α/2), sin(α/2)].
         """
         # --- Base object-goal cost ---
         Q     = self._Q_obj.copy()
@@ -213,6 +228,26 @@ class QuadraticManipulationCost:
         x_ref[self._obj_x_idx] = target_xy[0]
         x_ref[self._obj_y_idx] = target_xy[1]
         x_ref[self._obj_z_idx] = self.z_ref
+
+        # --- Yaw-target cost (Jin & Posa eq. 40 analog) ---
+        # Add w_yaw · (c_yaw · (q_box - q_goal))² on the box quaternion slots.
+        # c_yaw = [-sin(α/2), 0, 0, cos(α/2)] is linear in [qw,qx,qy,qz] and
+        # equals the z-component of q_goal⁻¹ ⊗ q_box (vector part of the
+        # relative quaternion). For upright box: c_yaw · q_box = sin((ψ-α)/2).
+        # The xy components of c_yaw are zero, so this is orthogonal to the
+        # existing w_box_rp roll/pitch regularization.
+        self._target_yaw = float(target_yaw)
+        if self.w_yaw > 0.0:
+            a_half = 0.5 * self._target_yaw
+            cy = np.array([-np.sin(a_half), 0.0, 0.0, np.cos(a_half)])
+            ps = self._obj_ps
+            # Outer product on the (qw..qz) 4×4 sub-block of Q
+            Q[ps:ps+4, ps:ps+4] += self.w_yaw * np.outer(cy, cy)
+            # Set the goal quaternion reference on the qw and qz slots.
+            # qx,qy stay at 0 (upright), preserving w_box_rp behavior since
+            # x_ref[qx]=x_ref[qy]=0 makes that block unchanged.
+            x_ref[ps + 0] = np.cos(a_half)   # qw
+            x_ref[ps + 3] = np.sin(a_half)   # qz
 
         # --- Linearised EE approach cost (arm joints only) ---
         if plant_ctx is not None and current_q is not None:

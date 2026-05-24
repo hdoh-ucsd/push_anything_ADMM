@@ -170,7 +170,7 @@ def main():
     )
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "hard_pushing", "shepherding"],
+        choices=["pushing", "hard_pushing", "shepherding", "cube_turning"],
         help="Task to run (default: pushing)",
     )
     parser.add_argument(
@@ -432,6 +432,7 @@ def main():
     )
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
+    target_yaw  = float(task_cfg.get("goal_yaw", 0.0))   # radians; 0 for legacy tasks
     ee_frame    = plant.GetFrameByName(EE_BODY_NAME)
     world_frame = plant.world_frame()
 
@@ -547,7 +548,8 @@ def main():
         # Negated: Drake returns generalized gravity force (the force gravity
         # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
         tau_g = -plant.CalcGravityGeneralizedForces(plant_ctx)
-        u_opt = mpc.compute_control(current_q, current_v, plant_ctx, target_xy)
+        u_opt = mpc.compute_control(current_q, current_v, plant_ctx, target_xy,
+                                    target_yaw=target_yaw)
 
         # Update predicted-trajectory markers in Meshcat
         if mpc.last_x_seq is not None:
