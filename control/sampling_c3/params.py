@@ -557,6 +557,25 @@ class SamplingC3Params:
     # force-tracking must close.
     contact_entry_threshold: float = 0.090
 
+    # Layer 2.6: surface-distance entry gate metric. The original
+    # `contact_entry_threshold` measures ‖ee − box_center‖, which
+    # penalises tangentially-offset (torque-producing) rotation samples
+    # for being further from the CoM. The surface metric
+    # ‖ee − box_center‖ − box_half_extent measures distance to the
+    # nearest face, which is the geometrically relevant quantity for
+    # contact admission. Default 0.060 m derived from:
+    #   - Face-center sample at 30 mm setback → surface dist 30 mm
+    #   - IK arrival tolerance up to 20 mm → worst-case surface 50 mm
+    #   - Off-center sample (y_offset 30 mm) → surface dist ~35 mm,
+    #     worst-case arrival 55 mm
+    #   - 60 mm passes both with margin; blocks pathological >60 mm cases.
+    # When `use_surface_entry_gate` is True (default), this metric
+    # supersedes contact_entry_threshold. Goal-agnostic — applies to
+    # translation tasks too; threshold chosen to preserve their
+    # engagement behavior.
+    use_surface_entry_gate: bool = True
+    contact_entry_surface_threshold: float = 0.060
+
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
         return cls(
@@ -576,6 +595,8 @@ class SamplingC3Params:
             min_push_force       = float(raw.get("min_push_force", 2.0)),
             use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
+            use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),
+            contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
         )
 
     @classmethod

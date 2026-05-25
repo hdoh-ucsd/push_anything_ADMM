@@ -647,8 +647,8 @@ class SamplingC3MPC:
 
         # Contact-proximity entry gate: don't fire kToC3ReachedReposTarget
         # just because the IK arrived at the setback target — require the
-        # EE to be within `contact_entry_threshold` of the box center so
-        # the LCS will actually admit an EE-BOX pair on the first c3 step.
+        # EE to be close enough to the box that LCS will actually admit
+        # an EE-BOX pair on the first c3 step.
         #
         # Diagnosis: the IK's "finished" threshold is 20mm to a 30mm-setback
         # target (reposition_ik.py:1299), so without this gate the EE can
@@ -656,6 +656,12 @@ class SamplingC3MPC:
         # distance threshold (lcs_formulator.py:245) rejects the pair,
         # λ_n=0, and the disengage gate fires after 5 steps. 12/13
         # canonical c3 sessions died this way.
+        #
+        # Layer 2.6: prefer surface-distance metric (‖ee − box_center‖ −
+        # box_half_extent) over the legacy center-distance metric. The
+        # surface metric doesn't penalise tangentially-offset rotation
+        # samples for being further from the CoM; threshold re-derived to
+        # preserve translation engagement.
         #
         # Only the ReachedReposTarget path is affected (via finished_repos
         # -> mode_switch.py:139-140). The kToC3Cost path uses cost-gap
@@ -668,13 +674,23 @@ class SamplingC3MPC:
                 current_q[self._obj_z_idx],
             ])
             _ee_to_box = float(np.linalg.norm(ee_pos_now - _box_xyz))
-            _thr = float(getattr(self.params, "contact_entry_threshold", 0.080))
-            if _ee_to_box >= _thr:
+            if getattr(self.params, "use_surface_entry_gate", True):
+                _box_half = float(self.params.sampling_params.box_half_extent)
+                _ee_to_surf = _ee_to_box - _box_half
+                _thr = float(getattr(self.params,
+                                     "contact_entry_surface_threshold", 0.060))
+                _block = _ee_to_surf >= _thr
+                _label = f"ee_to_surf={_ee_to_surf*1000:.1f}mm"
+            else:
+                _ee_to_surf = None
+                _thr = float(getattr(self.params, "contact_entry_threshold", 0.080))
+                _block = _ee_to_box >= _thr
+                _label = f"ee_to_box={_ee_to_box*1000:.1f}mm"
+            if _block:
                 finished_repos = False
                 if self.log_diag:
                     print(f"[ENTRY-GATE] step={self._step} "
-                          f"ee_to_box={_ee_to_box*1000:.1f}mm >= "
-                          f"thr={_thr*1000:.1f}mm — block "
+                          f"{_label} >= thr={_thr*1000:.1f}mm — block "
                           f"kToC3ReachedReposTarget", flush=True)
 
         met = self.progress.met_progress(near_goal=near_goal)
