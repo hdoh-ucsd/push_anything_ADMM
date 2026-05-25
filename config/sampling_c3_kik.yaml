@@ -27,13 +27,18 @@ w_align:  30000.0
 # of typical c_C3 ~ 60000.
 w_travel: 200.0
 
-# Rotation-aware sample bonus: c_sample[i] -= w_rot * max(0, M_z * yaw_sign)
-# where M_z = (r x n_hat).z is the contact's moment about box CoM, n_hat is the
-# inward push direction, and yaw_sign = sign(goal_yaw - psi_now). Rewards
-# off-center contacts whose push torques the box toward goal_yaw.
+# Rotation-aware sample bonus (L2.6 form):
+#   c_sample[i] -= w_rot * |yaw_err| * max(0, M_z * yaw_sign)
+# where M_z = (r x n_hat).z is the predicted contact moment about box CoM
+# (n_hat = inward push, p_contact from sample geometry — L2.5), and
+# yaw_sign = sign(goal_yaw - psi_now). The |yaw_err| factor makes the
+# bonus track rotational urgency and self-attenuate near the goal.
+# Magnitude derived from L2.5 measured data (current c_C3~12k vs strategy
+# ~26k → gap ~14k; at |yaw_err|=π/4, m_z~0.025, w_rot=8e5 → bonus ~16k,
+# enough to flip selection to the torque-producing off-center sample so
+# kToC3ReachedReposTarget engages c3 on arrival).
 # Gated on quad_cost.w_yaw > 0, so translation-only tasks see no effect.
-# Magnitude matched to w_align (comparable differentiator).
-w_rot:    30000.0
+w_rot:    800000.0
 
 # Cheap-solve ADMM iters for the K-1 hypothetical evaluations.
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
@@ -62,12 +67,15 @@ progress_params:
   # placement is more sensitive than gross translation).
   cost_switching_threshold_distance: 0.05    # m
 
-  # If repositioning total cost falls below this, declare reposition done
-  # and force a re-evaluation in the next control loop.
-  # Bumped from the original seed (5000) to 200000 — empirical c_sample for
-  # well-aligned repos targets in this task is ~165k-200k, so the original
-  # 5000 was unreachable and kToC3ReachedReposTarget never fired.
-  finished_reposition_cost: 200000.0
+  # Reference-aligned arrival penalty (dairlib
+  # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
+  # pursued repos slot's c_sample when the IK tracker reports the EE has
+  # reached the target.  1e9 is the upstream value: large enough that
+  # `repos_target_cost > finished_reposition_cost` distinguishes
+  # arrival cleanly from raw-cost regimes (~165k–200k here).  Geometric
+  # arrival therefore enters mode_switch as a soft cost penalty, not a
+  # hard trigger — see mode_switch.decide_mode and reposition.py:246.
+  finished_reposition_cost: 1.0e9
 
   # Absolute hysteresis values (used when use_relative_hysteresis is False).
   # Required cost gap (J_other - J_current) before a switch fires.
@@ -88,10 +96,16 @@ progress_params:
   # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
   # ~30 steps, fragmenting free mode into incomplete descents. The new
   # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
-  hyst_c3_to_repos_frac:                  0.30
+  hyst_c3_to_repos_frac:                  0.95
   hyst_c3_to_repos_frac_position:         0.50
-  hyst_repos_to_c3_frac:                  0.30
-  hyst_repos_to_c3_frac_position:         0.50
+  # Repos→C3 hysteresis raised to 0.9 (push_t reference value) when
+  # moving to the cost-based entry gate.  The dispatcher now applies the
+  # fraction to best_other_cost (matching the reference at line 765), so
+  # 0.9 means the current EE position must be ≤ 10% of the best other
+  # sample's cost before the switch fires.  Stricter than the prior 0.30
+  # used with the geometric-trigger gate.
+  hyst_repos_to_c3_frac:                  0.9
+  hyst_repos_to_c3_frac_position:         0.9
   hyst_repos_to_repos_frac:               0.10
   hyst_repos_to_repos_frac_position:      0.10
 
@@ -113,9 +127,12 @@ progress_params:
 
 sampling_params:
   # Valid: kRadiallySymmetric | kRandomOnCircle | kRandomOnSphere | kFixed
-  #        | kRandomOnPerimeter | kRandomOnShell | kMeshNormal
-  # Only kRandomOnCircle is implemented in the first cut.
-  sampling_strategy: kRandomOnCircle
+  #        | kRandomOnPerimeter | kRandomOnShell | kMeshNormal | kFaceNormal
+  # kFaceNormal = paper-faithful Push-Anything §IV-B1 sampler: sample on a
+  # box face, project outward along the face normal by sampling_setback,
+  # reject if still too close. Eliminates the ring-sampler's off-axis
+  # interior samples (worst case θ=45° puts pusher 20.7 mm inside box).
+  sampling_strategy: kFaceNormal
 
   # Number of additional samples beyond (current + previous-repos-target).
   num_additional_samples_c3:    3
@@ -127,9 +144,24 @@ sampling_params:
   pos_error_sample_retention:  0.05    # m
   ang_error_sample_retention:  0.30    # rad
 
+  # Number of control loops a random ring sample buffer persists before
+  # being re-randomized. 0 disables (re-samples every loop — broken
+  # behavior verified in results/random_ring_20260518_192051: box motion
+  # 0 mm because IK tracker chases targets that jump 25+ cm/loop).
+  # 30 ≈ 0.3 sec at dt_ctrl=0.01s, ~IK convergence time on the ring.
+  # Buffer also force-refreshes on arrival (finished_repos fires) and
+  # on mode transitions that change n_strategy.
+  sample_buffer_lifetime:      30
+
   # Geometric parameters (interpretation depends on sampling_strategy).
-  sampling_radius: 0.13    # m, circle radius around object xy
-  sampling_height: 0.05    # m, EE z when on contact plane
+  sampling_radius: 0.075        # m, candidate-ring radius — set to contact distance (box half-width 0.05 + EE radius 0.025) so IK targets land on the contact face
+  repos_target_radius: 0.075    # m, IK proxy target — pusher just touching box; see params.py
+  sampling_height: 0.05         # m, EE z when on contact plane
+
+  # kFaceNormal geometry (Push-Anything §IV-B1).
+  box_half_extent:         0.05    # m, cube half-extent
+  sampling_setback:        0.030   # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
+  sample_reject_clearance: 0.005   # m, rejection if post-projection xy is within 5 mm of box surface
 
   # Robot workspace bounds; samples failing this are pruned.
   # (xy_min/xy_max define a planar rectangle, z_min/max define the z slab.)
@@ -156,7 +188,7 @@ reposition_params:
   traj_type: kIK
 
   # Cartesian speed during reposition (translation rate of the EE).
-  speed: 0.20    # m/s
+  speed: 0.40    # m/s
 
   # Below this end-to-end Cartesian distance, skip the lift+traverse+descend
   # and run a direct straight-line in joint space. Avoids over-shoot for tiny
@@ -181,5 +213,8 @@ reposition_params:
   Kp_q:          60.0
   Kd_q:          8.0
   Ki_q:          8.0
-  I_max:         4.0
-  torque_limit:  30.0
+  I_max:         4.0   # reverted from 20.0; see results/imax_fix_north.log —
+                       # the 20.0 value caused intermittent J2 saturation to
+                       # return and slightly worsened landing. Residual is
+                       # target-dynamics-bound, not cap-bound. Restored.
+  torque_limit:  87.0

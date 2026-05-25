@@ -411,7 +411,14 @@ class InnerSolver:
                     nx = float(n_W[0]); ny = float(n_W[1])
                     m_z = rx * ny - ry * nx          # (r × n̂)·ẑ
                     rot_score = m_z * yaw_sign
-                    rot_bonus = self.w_rot * max(0.0, rot_score)
+                    # Layer 2.6: scale by |yaw_err| so the bonus magnitude
+                    # tracks the rotational urgency. L2.5 measured the off-
+                    # center sample's c_C3 ~26k vs current ~12k (gap ~14k);
+                    # at yaw_err=π/4 and m_z~0.025, w_rot~8e5 yields bonus
+                    # ~16k — enough to flip the selection in favor of the
+                    # off-center torque-producing sample. As the box rotates
+                    # toward goal, |yaw_err| → 0 and the bonus self-attenuates.
+                    rot_bonus = self.w_rot * abs(yaw_err) * max(0.0, rot_score)
 
         c_sample       = c_C3_raw - align_bonus - rot_bonus + travel_penalty
 
