@@ -75,6 +75,8 @@ import pydrake.all as ad
 from control.sampling_c3.params import RepositionIKParams
 from control.sampling_c3.reposition import next_waypoint
 
+_IKCONV_TRACE = {"step": None, "done": set(), "triggers": {129, 310, 488}}  # [IK-CONVERGE] plumb
+
 
 # ---------------------------------------------------------------------------
 # Solver-options helpers
@@ -434,6 +436,17 @@ def _solve_single_knot_ik(plant,
     result = ipopt_solver.Solve(prog, None, solver_options)
     elapsed_ms = (time.perf_counter() - t0) * 1e3
     timed_out = (elapsed_ms / 1e3) > float(ik_params.per_knot_solve_timeout_s)
+
+    _ikc_step = _IKCONV_TRACE["step"]
+    if _ikc_step in _IKCONV_TRACE["triggers"] and _ikc_step not in _IKCONV_TRACE["done"]:
+        _IKCONV_TRACE["done"].add(_ikc_step)
+        _qs = np.asarray(result.GetSolution(q_var), dtype=float)
+        plant.SetPositions(plant_ctx, _qs)
+        _pee = plant.CalcPointsPositions(plant_ctx, ee_frame, np.zeros(3), plant.world_frame()).flatten()
+        _slk = float(np.linalg.norm(_pee - np.asarray(p_target))) * 1e3
+        _dqi = float(np.linalg.norm(q_warm_full[:n_arm_dofs] - _qs[:n_arm_dofs])) * 1e3
+        _tms = float(ik_params.per_knot_solve_timeout_s) * 1e3
+        print(f"[IK-CONVERGE] step={_ikc_step}\n  solver={result.get_solver_id().name()}  result_code={result.get_solution_result()}  is_success()={result.is_success()}\n  wall_ms={elapsed_ms:.3f}  timeout_ms={_tms:.3f}  slack_mm={_slk:.3f}  satisfied(<=1mm)={'Y' if _slk<=1.0 else 'N'}  ||q_init-q*||_mrad={_dqi:.3f}")
 
     if result.is_success() and not timed_out:
         q_sol = result.GetSolution(q_var)
@@ -1163,6 +1176,7 @@ class RepositionIKTracker:
         #    (applied in __init__) takes effect inside
         #    AddMinimumDistanceLowerBoundConstraint. The caller's plant_ctx
         #    is left untouched by the IK chain.
+        _IKCONV_TRACE["step"] = getattr(self, "_diag_step", None)  # [IK-CONVERGE] plumb
         q_arm_solved, feasible_solved, solve_ms, _consec, \
             failure_msgs_solved, failure_inputs_solved = \
             self._solve_chain(self._plant_ctx_ik, current_q, p_guide)
@@ -1256,9 +1270,34 @@ class RepositionIKTracker:
         # Negated: Drake returns generalized gravity force (the force gravity
         # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
         tau_g_arm = -self.plant.CalcGravityGeneralizedForces(self._plant_ctx_ik)[:n_arm]
-        u = np.clip(tau_g_arm + u_pd,
+        _u_raw = tau_g_arm + u_pd
+        u = np.clip(_u_raw,
                     -self.repos_params.torque_limit,
                     +self.repos_params.torque_limit)
+        _pd_sat = bool(np.any(
+            np.abs(_u_raw) >= self.repos_params.torque_limit - 1e-9))
+        _q_max_resid_deg = float(np.degrees(np.max(np.abs(q_err))))
+
+        # [TRACKER-DIAG] one-shot dump at the last free-mode step before each
+        # clean-IK c3-commit (steps 130/311/489 = c3; tracker last ran at 129/310/488).
+        _ds = getattr(self, "_diag_step", None)
+        if _ds in (129, 310, 488):
+            _ur=tau_g_arm+u_pd; _tl=self.repos_params.torque_limit
+            _sat=np.abs(_ur)>=_tl-1e-9; _absres=np.abs(q_err); _iw=int(np.argmax(_absres))
+            print(f"[TRACKER-DIAG] step={_ds} (precedes c3-commit step {_ds+1})")
+            print(f"  q_target           = {np.round(q_arm_target,4).tolist()}")
+            print(f"  q_arm_now          = {np.round(q_arm_now,4).tolist()}")
+            print(f"  q_residual = q*-q  = {np.round(q_err,4).tolist()}")
+            print(f"  v_arm_now          = {np.round(v_arm_now,4).tolist()}")
+            print(f"  u_raw (pre-clip)   = {np.round(_ur,3).tolist()}")
+            print(f"  u_out (post-clip)  = {np.round(u,3).tolist()}")
+            print(f"  saturated mask     = {_sat.tolist()}")
+            print(f"  |q_residual| (deg) = {np.round(np.degrees(_absres),3).tolist()}")
+            print(f"  worst-joint i      = {_iw}")
+            print(f"  q_residual[i] deg  = {float(np.degrees(q_err[_iw])):+.3f}")
+            print(f"  u_raw[i] (Nm)      = {float(_ur[_iw]):+.3f}")
+            print(f"  u_out[i] (Nm)      = {float(u[_iw]):+.3f}")
+            print(f"  i saturated?       = {'Y' if bool(_sat[_iw]) else 'N'}")
 
         # 12. Trajectory-finished signal (mirrors PWL tracker @ 2 cm).
         finished = float(np.linalg.norm(p_target - ee_now)) <= 0.02
@@ -1273,6 +1312,13 @@ class RepositionIKTracker:
 
         p_des  = ee_knots[:, 0] if ee_knots.shape[1] > 0 else p_target.copy()
         ik_err = float(np.linalg.norm(p_des - p_guide[:, 0])) if K > 0 else 0.0
+        # Landing error: distance from the last feasible-knot FK to p_target.
+        # Distinguishes "IK can't reach target" from "PD can't track IK".
+        if K > 0 and ee_knots.shape[1] > 0:
+            _landing_err = float(
+                np.linalg.norm(ee_knots[:, -1] - np.asarray(p_target)))
+        else:
+            _landing_err = float("nan")
 
         diag = dict(
             finished           = bool(finished),
@@ -1288,5 +1334,8 @@ class RepositionIKTracker:
             knots_solve_ms     = solve_ms,
             knot0_solve_ms     = knot0_solve_ms,
             knot0_overshoot_ms = knot0_overshoot_ms,
+            landing_err        = _landing_err,
+            pd_sat             = _pd_sat,
+            q_max_resid_deg    = _q_max_resid_deg,
         )
         return u, diag

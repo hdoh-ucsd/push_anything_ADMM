@@ -90,6 +90,44 @@ RE_OSC = re.compile(
 # Goal coordinates from [ENV] line.
 RE_GOAL = re.compile(r"\[ENV\]\s+Goal coords:\s*\[(?P<gx>[+\-\d.]+),\s*(?P<gy>[+\-\d.]+)\]")
 
+# Unified [STEP] line — common prefix (always present).
+RE_STEP_PREFIX = re.compile(
+    r"^\[STEP\] step=(?P<step>\d+) mode=(?P<mode>\w+) t=(?P<t>[\d.]+)s"
+    r" ee=\((?P<ex>[+\-\d.]+),(?P<ey>[+\-\d.]+),(?P<ez>[+\-\d.]+)\)"
+    r" obj=\((?P<ox>[+\-\d.]+),(?P<oy>[+\-\d.]+),(?P<oz>[+\-\d.]+)\)"
+    r" goal_dist=(?P<goal_dist>[\d.]+)m switch=(?P<switch>\w+)"
+)
+# Free-mode payload appended after the prefix.
+RE_STEP_FREE = re.compile(
+    r" target=\((?P<tx>[+\-\d.]+),(?P<ty>[+\-\d.]+),(?P<tz>[+\-\d.]+)\)"
+    r" ee_to_target=(?P<ee_to_tgt>[\d.]+)m"
+    r" landing_err=(?P<landing>[\d.nNaA]+)m"
+    r" ik_ok=(?P<ik_ok>[YN?])"
+    r" ik_resid=(?P<ik_resid>[\d.nNaA]+)m"
+    r" pd_sat=(?P<pd_sat>[YN?])"
+    r" q_max_resid_deg=(?P<qmax>[\-\d.nNaA]+)"
+    r" target_changed=(?P<changed>[YN])"
+)
+# C3-mode payload appended after the prefix.
+RE_STEP_C3 = re.compile(
+    r" c3_cost=(?P<cost>[\d.]+)"
+    r" lam_n=(?P<lam_n>[\d.\-]+)"
+    r" lam_t=(?P<lam_t>[\d.\-]+)"
+    r" contact=(?P<contact>[YN])"
+    r" productive=(?P<productive>[YN])"
+    r" f_cmd=\((?P<fx>[+\-\d.]+),(?P<fy>[+\-\d.]+),(?P<fz>[+\-\d.]+)\)"
+)
+
+
+def _maybe_float(s: str) -> float | None:
+    """Parse a float, tolerating 'nan' tokens."""
+    if s is None:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
 
 def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Parse a log file into (metadata, list_of_per_step_records).
@@ -162,6 +200,46 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             if changed is not None:
                 rec["target_changed"] = (changed == "Y")
             latest_ee = ee
+            continue
+
+        # [STEP] unified per-step line (additive — sits alongside [GS]/[GS-tgt]).
+        # Prefix is always present; the suffix is mode-aware.
+        if m := RE_STEP_PREFIX.match(line):
+            step = int(m["step"])
+            current_step = step
+            rec = per_step.setdefault(step, {"step": step})
+            rec.setdefault("mode", m["mode"])
+            ee = [float(m["ex"]), float(m["ey"]), float(m["ez"])]
+            obj = [float(m["ox"]), float(m["oy"]), float(m["oz"])]
+            rec["ee_pos"] = ee
+            rec["obj_pos"] = obj[:2]
+            rec["obj_z"] = obj[2]
+            rec["goal_dist"] = float(m["goal_dist"])
+            rec.setdefault("switch_reason", m["switch"])
+            latest_ee = ee
+            latest_obj = obj[:2]
+            # Try the free-mode suffix.
+            m_free = RE_STEP_FREE.search(line, pos=m.end())
+            if m_free is not None:
+                rec["p_repos"] = [
+                    float(m_free["tx"]), float(m_free["ty"]), float(m_free["tz"])]
+                rec["ee_to_target"] = float(m_free["ee_to_tgt"])
+                rec["landing_err"]   = _maybe_float(m_free["landing"])
+                rec["ik_ok"]         = (m_free["ik_ok"] == "Y")
+                rec["ik_resid"]      = _maybe_float(m_free["ik_resid"])
+                rec["pd_sat"]        = (m_free["pd_sat"] == "Y")
+                rec["q_max_resid_deg"] = _maybe_float(m_free["qmax"])
+                rec["target_changed"] = (m_free["changed"] == "Y")
+            # Try the c3-mode suffix.
+            m_c3 = RE_STEP_C3.search(line, pos=m.end())
+            if m_c3 is not None:
+                rec["c3_cost"]      = float(m_c3["cost"])
+                rec["lam_n"]        = float(m_c3["lam_n"])
+                rec["lam_t"]        = float(m_c3["lam_t"])
+                rec["contact_active"] = (m_c3["contact"] == "Y")
+                rec["productive"]   = (m_c3["productive"] == "Y")
+                rec["f_cmd"]        = [
+                    float(m_c3["fx"]), float(m_c3["fy"]), float(m_c3["fz"])]
             continue
 
         # [C3+] with full force info — attach to current_step (ignore C3+ step num)
@@ -343,6 +421,19 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "repos_cost": rec.get("repos_cost"),
             "best_other_cost": rec.get("best_other_cost"),
             "attribution": rec.get("attribution"),
+            # Unified [STEP] payload — free-mode reposition diagnostics.
+            "landing_err": rec.get("landing_err"),
+            "ik_ok": rec.get("ik_ok"),
+            "ik_resid": rec.get("ik_resid"),
+            "pd_sat": rec.get("pd_sat"),
+            "q_max_resid_deg": rec.get("q_max_resid_deg"),
+            "goal_dist": rec.get("goal_dist"),
+            # Unified [STEP] payload — c3-mode contact diagnostics.
+            "c3_cost": rec.get("c3_cost"),
+            "lam_n": rec.get("lam_n"),
+            "lam_t": rec.get("lam_t"),
+            "productive": rec.get("productive"),
+            "f_cmd": rec.get("f_cmd"),
         }
         records.append(out)
 

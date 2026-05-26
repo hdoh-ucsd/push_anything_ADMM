@@ -233,8 +233,17 @@ class PiecewiseLinearTracker:
         # Negated: Drake returns generalized gravity force (the force gravity
         # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
         tau_g_arm = -self.plant.CalcGravityGeneralizedForces(plant_ctx)[: self.n_arm_dofs]
-        u = np.clip(tau_g_arm + u_pd,
+        _u_raw = tau_g_arm + u_pd
+        u = np.clip(_u_raw,
                     -self.params.torque_limit, self.params.torque_limit)
+        _pd_sat = bool(np.any(
+            np.abs(_u_raw) >= self.params.torque_limit - 1e-9))
+        _q_max_resid_deg = float(np.degrees(np.max(np.abs(q_err))))
+        # PWL tracker doesn't plan a knot trajectory — landing_err is the
+        # IK solution endpoint distance to p_target (i.e., FK(q_des) ↔
+        # p_target), which equals ‖p_des − p_target‖ since IK constrains FK
+        # to p_des. Free in compute time.
+        _landing_err = float(np.linalg.norm(p_des - p_target))
 
         # Trajectory-finished signal: EE physically at the repos target.
         # Mirrors upstream's `finished_reposition_flag` output from
@@ -243,18 +252,22 @@ class PiecewiseLinearTracker:
         # 2 cm Cartesian tolerance — generous enough to absorb PD lag and
         # IK quantization, tight enough to guarantee the arm has actually
         # descended through phase 3.
-        finished = is_at_target(ee_now, p_target, tol=0.02)
+        finished = is_at_target(ee_now, p_target, tol=0.05)  # widened from 0.02 to match joint-PD tracker steady-state error
 
         diag = dict(
-            up_norm   = float(np.linalg.norm(u_p)),
-            ui_norm   = float(np.linalg.norm(u_i)),
-            ud_norm   = float(np.linalg.norm(u_d)),
-            uclip_norm= float(np.linalg.norm(u)),
-            qerr_norm = float(np.linalg.norm(q_err)),
-            ik_err    = float(ik_err),
-            ik_iters  = int(ik_iters),
-            p_des     = p_des,
-            ee_now    = ee_now,
-            finished  = bool(finished),
+            up_norm         = float(np.linalg.norm(u_p)),
+            ui_norm         = float(np.linalg.norm(u_i)),
+            ud_norm         = float(np.linalg.norm(u_d)),
+            uclip_norm      = float(np.linalg.norm(u)),
+            qerr_norm       = float(np.linalg.norm(q_err)),
+            ik_err          = float(ik_err),
+            ik_iters        = int(ik_iters),
+            p_des           = p_des,
+            ee_now          = ee_now,
+            finished        = bool(finished),
+            landing_err     = _landing_err,
+            pd_sat          = _pd_sat,
+            q_max_resid_deg = _q_max_resid_deg,
+            knot0_feasible  = bool(ik_iters > 0),
         )
         return u, diag
