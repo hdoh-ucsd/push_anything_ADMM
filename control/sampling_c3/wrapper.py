@@ -1175,6 +1175,11 @@ class SamplingC3MPC:
         # planner outputs (last_x_seq, last_lambda_*, formulator J_n/J_t)
         # which feed the Cartesian target and feedforward force term.
         _u_planner = u_opt
+        # Predefine c3-only locals so the unified [STEP] line below can
+        # reference them unconditionally (free branch leaves them None).
+        _lam_n   = None
+        _lam_t   = None
+        _lam_des = None
         # v_ee_desired feedforward intentionally disabled in v1: the IK
         # knot spacing produces a much larger effective velocity than the
         # task tracking can absorb without saturating every joint at
@@ -1328,6 +1333,28 @@ class SamplingC3MPC:
                 met_progress=met,
                 steps_since_improve=self.progress.steps_since_improve(),
             )
+            # [STEP] unified per-step diagnostic: one line per control loop
+            # that follows the EE through both regimes. Free mode carries
+            # the reposition-tracking payload (the dominant 2% target-reach
+            # failure diagnosis); c3 mode carries the contact payload.
+            # Replaces nothing — [GS]/[GS-tgt] still emit for backward compat
+            # with the target-chase overlay (befaed1).
+            self._print_unified_step(
+                step           = self._step,
+                mode           = mode,
+                switch_reason  = reason,
+                ee_pos_now     = ee_pos_now,
+                obj_xy         = obj_xy,
+                current_q      = current_q,
+                goal_dist      = goal_dist,
+                g_hat          = g_hat,
+                p_ee_des       = _p_ee_des,
+                free_diag      = free_diag,
+                curr_cost      = c_samples[0],
+                lam_n          = _lam_n,
+                lam_t          = _lam_t,
+                lam_des        = _lam_des,
+            )
             # [GATE-EVOLVE] — one line per loop: cost-ratio trajectory + EE
             # geometric progress toward the perpendicular-contact optimal
             # target. The cost gate fires when curr/best_other < hyst frac
@@ -1389,6 +1416,109 @@ class SamplingC3MPC:
     # ------------------------------------------------------------------
     # Diagnostics
     # ------------------------------------------------------------------
+
+    def _print_unified_step(self, *, step, mode, switch_reason,
+                            ee_pos_now, obj_xy, current_q, goal_dist, g_hat,
+                            p_ee_des, free_diag,
+                            curr_cost, lam_n, lam_t, lam_des):
+        """One mode-aware [STEP] line per control loop.
+
+        Free-mode suffix: reposition-tracking payload (the 2% target-reach
+        diagnostic — target / ee_to_target / landing_err / ik_ok / ik_resid /
+        pd_sat / q_max_resid_deg / target_changed).
+
+        C3-mode suffix: contact payload (c3_cost / lam_n / lam_t / contact /
+        productive / f_cmd).
+        """
+        sim_t = step * self._dt_ctrl
+        # Object xyz (lift z from current_q for parity with [GS-tgt]).
+        obj_z = float(current_q[self._obj_z_idx])
+        prefix = (
+            f"[STEP] step={step} mode={mode} t={sim_t:.3f}s "
+            f"ee=({ee_pos_now[0]:+.3f},{ee_pos_now[1]:+.3f},{ee_pos_now[2]:+.3f}) "
+            f"obj=({obj_xy[0]:+.3f},{obj_xy[1]:+.3f},{obj_z:+.3f}) "
+            f"goal_dist={goal_dist:.3f}m "
+            f"switch={switch_reason.name}"
+        )
+
+        if mode != "c3":
+            # Free mode: reposition payload from the tracker diag.
+            tgt = (p_ee_des if p_ee_des is not None else ee_pos_now)
+            ee_to_tgt = float(np.linalg.norm(np.asarray(tgt) - ee_pos_now))
+            if free_diag is not None:
+                landing  = free_diag.get("landing_err", float("nan"))
+                ik_ok    = "Y" if free_diag.get("knot0_feasible", False) else "N"
+                ik_resid = free_diag.get("ik_err", float("nan"))
+                pd_sat   = "Y" if free_diag.get("pd_sat", False) else "N"
+                qmax_deg = free_diag.get("q_max_resid_deg", float("nan"))
+            else:
+                landing, ik_ok, ik_resid, pd_sat, qmax_deg = (
+                    float("nan"), "?", float("nan"), "?", float("nan"))
+            # Mirror [GS-tgt]'s target-changed logic on a separate cache so
+            # the two lines stay independent.
+            if not hasattr(self, "_prev_step_target") or self._prev_step_target is None:
+                tgt_changed = "Y"
+            else:
+                tgt_changed = ("Y" if float(np.linalg.norm(
+                    np.asarray(tgt) - self._prev_step_target)) > 1e-3 else "N")
+            self._prev_step_target = np.asarray(tgt).copy()
+            print(
+                f"{prefix} "
+                f"target=({tgt[0]:+.3f},{tgt[1]:+.3f},{tgt[2]:+.3f}) "
+                f"ee_to_target={ee_to_tgt:.3f}m "
+                f"landing_err={float(landing):.4f}m "
+                f"ik_ok={ik_ok} ik_resid={float(ik_resid):.4f}m "
+                f"pd_sat={pd_sat} q_max_resid_deg={float(qmax_deg):.2f} "
+                f"target_changed={tgt_changed}"
+            )
+            return
+
+        # C3 mode: contact payload.
+        # lam_n = max over EE-BOX pair component (n=0 fallback when present).
+        ci = getattr(self.base_mpc.formulator, "_last_contact_info", None)
+        ee_box_idx = None
+        nhat_xy = None
+        if ci:
+            for i, info in enumerate(ci):
+                if isinstance(info, dict) and info.get("tag") == "EE-BOX":
+                    ee_box_idx = i
+                    n = info.get("nhat_BA_W")
+                    if n is not None and len(n) >= 2:
+                        nhat_xy = (float(n[0]), float(n[1]))
+                    break
+        contact = "Y" if ee_box_idx is not None else "N"
+        if (lam_n is not None and hasattr(lam_n, "__len__")
+                and len(lam_n) > 0):
+            if ee_box_idx is not None and len(lam_n) > ee_box_idx:
+                lam_n_val = float(lam_n[ee_box_idx])
+            else:
+                lam_n_val = float(np.max(np.abs(lam_n)))
+        else:
+            lam_n_val = 0.0
+        if lam_t is not None and hasattr(lam_t, "__len__") and len(lam_t) > 0:
+            lam_t_val = float(np.linalg.norm(lam_t))
+        else:
+            lam_t_val = 0.0
+        # Productive direction: nhat (box→EE) anti-aligned with g_hat
+        # (goal direction) — i.e., nhat·g_hat < -0.3 (same threshold as
+        # parser's attribution predicate at parse_log_to_jsonl.py:306).
+        if nhat_xy is not None:
+            dot = nhat_xy[0] * g_hat[0] + nhat_xy[1] * g_hat[1]
+            productive = "Y" if dot < -0.3 else "N"
+        else:
+            productive = "N"
+        # f_cmd: planner-derived OSC force command (force-tracking mode).
+        if lam_des is not None and hasattr(lam_des, "__len__"):
+            f_cmd = (float(lam_des[0]), float(lam_des[1]), float(lam_des[2]))
+        else:
+            f_cmd = (0.0, 0.0, 0.0)
+        print(
+            f"{prefix} "
+            f"c3_cost={float(curr_cost):.2f} "
+            f"lam_n={lam_n_val:.3f} lam_t={lam_t_val:.3f} "
+            f"contact={contact} productive={productive} "
+            f"f_cmd=({f_cmd[0]:+.2f},{f_cmd[1]:+.2f},{f_cmd[2]:+.2f})"
+        )
 
     def _print_step_diag(self, *, step, mode, switch_reason, best_k, best_src,
                          c_samples, best_other_cost,
