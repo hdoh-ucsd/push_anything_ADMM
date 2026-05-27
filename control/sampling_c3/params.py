@@ -298,7 +298,7 @@ class RepositionParams:
     circle_height:                                 float = 0.00
 
     # Piecewise-linear-specific (the only type we currently implement)
-    pwl_waypoint_height:                           float = 0.20  # safe-height m
+    pwl_waypoint_height:                           float = 0.15  # safe-height m (25 mm above 0.10 box top + 0.025 pusher; reclaims horizon budget — see kik.yaml)
 
     # Joint-PD control law for tracking the per-step waypoint.
     # Defaults are calibrated to the operating regime measured in step 8;

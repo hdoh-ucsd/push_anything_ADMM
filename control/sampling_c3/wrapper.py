@@ -1509,8 +1509,15 @@ class SamplingC3MPC:
 
         if mode != "c3":
             # Free mode: reposition payload from the tracker diag.
+            # tgt = next-knot waypoint (~one planner step ahead); ee_stride is
+            # the per-tick stride to that waypoint, NOT the gap to the final
+            # reposition goal. ee_to_ptarget = ||ee_now - p_target|| is the
+            # true goal gap (added in the horizon-coverage fix).
             tgt = (p_ee_des if p_ee_des is not None else ee_pos_now)
-            ee_to_tgt = float(np.linalg.norm(np.asarray(tgt) - ee_pos_now))
+            ee_stride = float(np.linalg.norm(np.asarray(tgt) - ee_pos_now))
+            _ptgt = self._current_repos_target
+            ee_to_ptarget = (float(np.linalg.norm(np.asarray(_ptgt) - ee_pos_now))
+                             if _ptgt is not None else float("nan"))
             if free_diag is not None:
                 landing  = free_diag.get("landing_err", float("nan"))
                 ik_ok    = "Y" if free_diag.get("knot0_feasible", False) else "N"
@@ -1551,7 +1558,8 @@ class SamplingC3MPC:
             print(
                 f"{prefix} "
                 f"target=({tgt[0]:+.3f},{tgt[1]:+.3f},{tgt[2]:+.3f}) "
-                f"ee_to_target={ee_to_tgt:.3f}m "
+                f"ee_stride={ee_stride:.3f}m "
+                f"ee_to_ptarget={ee_to_ptarget:.3f}m "
                 f"landing_err={float(landing):.4f}m "
                 f"ik_ok={ik_ok} ik_resid={float(ik_resid):.4f}m "
                 f"pd_sat={pd_sat} q_max_resid_deg={float(qmax_deg):.2f} "
