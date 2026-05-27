@@ -485,6 +485,30 @@ class SamplingC3MPC:
                         plant_ctx,
                         target_xy:  np.ndarray,
                         target_yaw: float = 0.0) -> np.ndarray:
+        """T-architecture Stage 2a: orchestrate _solve_plan + _run_osc.
+        At default rates (dt_osc=dt_mpc=dt_ctrl=0.01s) the two are called
+        in lockstep every tick and behavior matches pre-Stage-2a within
+        the sim's noise floor. Stage 2b will use the elapsed argument
+        to index into the planner's λ-horizon between dt_mpc boundaries."""
+        plan_ctx = self._solve_plan(current_q, current_v, plant_ctx,
+                                    target_xy, target_yaw)
+        return self._run_osc(current_q, current_v, plant_ctx,
+                             plan_ctx, elapsed=0.0)
+
+    def _solve_plan(self,
+                    current_q:  np.ndarray,
+                    current_v:  np.ndarray,
+                    plant_ctx,
+                    target_xy:  np.ndarray,
+                    target_yaw: float = 0.0) -> dict:
+        """Planning half of the original compute_control: sample evaluation,
+        mode dispatch (c3 vs free), and the planner-side branch (c3
+        invokes base_mpc.compute_control to mutate self.base_mpc.last_*;
+        free runs the IK tracker for target selection). Mutates many
+        self.* attributes (last_x_seq, _current_repos_*, progress, buffer,
+        _no_ee_box_streak, etc.). Returns a plan_ctx dict carrying the
+        locals that _run_osc needs (mode, ee_pos_now, g_hat_3d, free_diag,
+        sample results, t_step_start, etc.)."""
         self._step += 1
         t_step_start = time.perf_counter()
 
@@ -1240,6 +1264,59 @@ class SamplingC3MPC:
                 if results[k_star].x_seq is not None:
                     self.last_x_seq = results[k_star].x_seq
 
+        # End of _solve_plan. Hand off locals _run_osc needs via plan_ctx.
+        return dict(
+            mode            = mode,
+            reason          = reason,
+            ee_pos_now      = ee_pos_now,
+            obj_xy          = obj_xy,
+            g_hat           = g_hat,
+            g_hat_3d        = g_hat_3d,
+            goal_dist       = goal_dist,
+            free_diag       = free_diag,
+            samples         = samples,
+            labels          = labels,
+            results         = results,
+            c_samples       = c_samples,
+            k_star          = k_star,
+            best_src        = best_src,
+            best_other_cost = best_other_cost,
+            met             = met,
+            t_step_start    = t_step_start,
+        )
+
+    def _run_osc(self,
+                 current_q:  np.ndarray,
+                 current_v:  np.ndarray,
+                 plant_ctx,
+                 plan_ctx:   dict,
+                 elapsed:    float = 0.0) -> np.ndarray:
+        """OSC-executor half of the original compute_control: runs the
+        Operational-Space Controller (force-tracking QP), applies the
+        Lever-3 approach-closing override, and emits per-step logging +
+        bookkeeping. The `elapsed` argument is unused in Stage 2a (the
+        OSC still reads self.base_mpc.last_lambda_n_first as before);
+        Stage 2b will use it to index into self.base_mpc.last_lambda_n_horizon
+        when dt_mpc > dt_osc."""
+        # Unpack plan_ctx into the locals the executor body expects.
+        mode            = plan_ctx["mode"]
+        reason          = plan_ctx["reason"]
+        ee_pos_now      = plan_ctx["ee_pos_now"]
+        obj_xy          = plan_ctx["obj_xy"]
+        g_hat           = plan_ctx["g_hat"]
+        g_hat_3d        = plan_ctx["g_hat_3d"]
+        goal_dist       = plan_ctx["goal_dist"]
+        free_diag       = plan_ctx["free_diag"]
+        samples         = plan_ctx["samples"]
+        labels          = plan_ctx["labels"]
+        results         = plan_ctx["results"]
+        c_samples       = plan_ctx["c_samples"]
+        k_star          = plan_ctx["k_star"]
+        best_src        = plan_ctx["best_src"]
+        best_other_cost = plan_ctx["best_other_cost"]
+        met             = plan_ctx["met"]
+        t_step_start    = plan_ctx["t_step_start"]
+
         # --- Executor (OSC or impedance) ---------------------------------
         # The branches above produced an informational `u_opt` (planner
         # u_seq[0] in c3, a zero placeholder from the IK tracker in free).
@@ -1301,24 +1378,58 @@ class SamplingC3MPC:
                     current_q[self._obj_y_idx],
                     current_q[self._obj_z_idx],
                 ])
-                _ee_to_box = _box_xyz - ee_pos_now
-                _dist = float(np.linalg.norm(_ee_to_box))
-                if _dist > 1e-9:
+                # Lever 3.1: aim the approach at the centroid of the EE-facing
+                # box face, not the box CoM. CoM targets produced p_BCb.y
+                # offsets of −40 mm (median) on the East face — within
+                # 10 mm of the SE corner — yielding moment arms that yawed
+                # the box and converted the West force command into S-SW
+                # drift (the route (a) read showed both planner λ and the
+                # heuristic point West but box motion was 73–105° off).
+                # Box-local frame: transform (ee − CoM) into the box's
+                # body frame, pick the dominant axis as the face, then
+                # rotate the face-centroid back to world. Robust to in-run
+                # box yaw (we saw nhat tilt 1.000→0.986 across a burst).
+                _qw = float(current_q[self._obj_qw])
+                _qx = float(current_q[self._obj_qx])
+                _qy = float(current_q[self._obj_qy])
+                _qz = float(current_q[self._obj_qz])
+                _R_box = np.array([
+                    [1 - 2*(_qy*_qy + _qz*_qz),     2*(_qx*_qy - _qz*_qw),     2*(_qx*_qz + _qy*_qw)],
+                    [    2*(_qx*_qy + _qz*_qw), 1 - 2*(_qx*_qx + _qz*_qz),     2*(_qy*_qz - _qx*_qw)],
+                    [    2*(_qx*_qz - _qy*_qw),     2*(_qy*_qz + _qx*_qw), 1 - 2*(_qx*_qx + _qy*_qy)],
+                ])
+                _ee_from_box_W = ee_pos_now - _box_xyz
+                _dist_com = float(np.linalg.norm(_ee_from_box_W))
+                if _dist_com > 1e-9:
                     _box_half = float(self.params.sampling_params.box_half_extent)
-                    _surf_dist = _dist - _box_half - PUSHER_RADIUS
-                    if _surf_dist > LCS_DISTANCE_THRESHOLD:
-                        _advance = min(MAX_APPROACH_STEP,
-                                       _surf_dist - LCS_DISTANCE_THRESHOLD)
-                        _p_ee_des = ee_pos_now + _advance * (_ee_to_box / _dist)
-                        _override_fired_this_tick = True
-                        if self.log_diag:
-                            print(f"[APPROACH-OVERRIDE] step={self._step} "
-                                  f"surf_dist={_surf_dist:.4f}m "
-                                  f"advance={_advance:.4f}m "
-                                  f"p_ee_des=({_p_ee_des[0]:+.4f},"
-                                  f"{_p_ee_des[1]:+.4f},"
-                                  f"{_p_ee_des[2]:+.4f})",
-                                  flush=True)
+                    _ee_in_box_local = _R_box.T @ _ee_from_box_W
+                    _face_axis = int(np.argmax(np.abs(_ee_in_box_local)))
+                    _face_sign = 1 if _ee_in_box_local[_face_axis] >= 0.0 else -1
+                    _face_centroid_local = np.zeros(3)
+                    _face_centroid_local[_face_axis] = _face_sign * _box_half
+                    _face_centroid_W = _box_xyz + _R_box @ _face_centroid_local
+
+                    _ee_to_face = _face_centroid_W - ee_pos_now
+                    _dist_face = float(np.linalg.norm(_ee_to_face))
+                    if _dist_face > 1e-9:
+                        # The face centroid IS the surface — no box_half
+                        # subtraction; only the sphere radius separates
+                        # EE-center from face-plane at contact.
+                        _surf_dist = _dist_face - PUSHER_RADIUS
+                        if _surf_dist > LCS_DISTANCE_THRESHOLD:
+                            _advance = min(MAX_APPROACH_STEP,
+                                           _surf_dist - LCS_DISTANCE_THRESHOLD)
+                            _p_ee_des = ee_pos_now + _advance * (_ee_to_face / _dist_face)
+                            _override_fired_this_tick = True
+                            if self.log_diag:
+                                print(f"[APPROACH-OVERRIDE] step={self._step} "
+                                      f"face_axis={_face_axis} face_sign={_face_sign:+d} "
+                                      f"surf_dist={_surf_dist:.4f}m "
+                                      f"advance={_advance:.4f}m "
+                                      f"p_ee_des=({_p_ee_des[0]:+.4f},"
+                                      f"{_p_ee_des[1]:+.4f},"
+                                      f"{_p_ee_des[2]:+.4f})",
+                                      flush=True)
             # Expose override firing state to the contact-loss gate (read
             # on the next tick).
             self._approach_override_firing = _override_fired_this_tick
@@ -1333,6 +1444,13 @@ class SamplingC3MPC:
                 J_t          = _Jt,
                 lambda_des   = _lam_des,
             )
+            # Sink 3 vs Sink 4 diagnostic: split OSC's commanded vs solved force
+            _ld = imp_diag.get('lambda_des')
+            _le = imp_diag.get('lambda_ext')
+            _ld_mag = float(np.linalg.norm(_ld)) if _ld is not None else float('nan')
+            _le_mag = float(np.linalg.norm(_le)) if _le is not None else float('nan')
+            print(f"[OSC-FORCE] step={self._step} mode=c3 "
+                  f"lam_des={_ld_mag:.3f} lam_ext={_le_mag:.3f}", flush=True)
         else:
             # Free mode: follow the IK tracker's piecewise-linear waypoint
             # path (lift → traverse → descend) instead of the straight line
