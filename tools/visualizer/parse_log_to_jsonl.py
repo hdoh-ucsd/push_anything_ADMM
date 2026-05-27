@@ -12,7 +12,9 @@ Produces one JSON object per simulation step with fields:
     ee_pos            [x, y, z] | null   (latest known)
     obj_pos           [x, y] | null      (latest known)
     p_repos           [x, y, z] | null
-    ee_to_target      float | null
+    ee_to_target      float | null        (legacy [GS-tgt] field)
+    ee_stride         float | null        ([STEP] free: EE→next-knot stride)
+    ee_to_ptarget     float | null        ([STEP] free: EE→p_target goal gap)
     ee_to_box         float | null
     g_hat             [x, y] | null      (goal direction)
     contact_active    bool
@@ -100,13 +102,25 @@ RE_STEP_PREFIX = re.compile(
 # Free-mode payload appended after the prefix.
 RE_STEP_FREE = re.compile(
     r" target=\((?P<tx>[+\-\d.]+),(?P<ty>[+\-\d.]+),(?P<tz>[+\-\d.]+)\)"
-    r" ee_to_target=(?P<ee_to_tgt>[\d.]+)m"
+    r" ee_stride=(?P<ee_stride>[\d.]+)m"
+    r" ee_to_ptarget=(?P<ee_to_ptarget>[\d.nNaA]+)m"
     r" landing_err=(?P<landing>[\d.nNaA]+)m"
     r" ik_ok=(?P<ik_ok>[YN?])"
     r" ik_resid=(?P<ik_resid>[\d.nNaA]+)m"
     r" pd_sat=(?P<pd_sat>[YN?])"
     r" q_max_resid_deg=(?P<qmax>[\-\d.nNaA]+)"
     r" target_changed=(?P<changed>[YN])"
+)
+# Why-replan payload — sub-pattern, appended after RE_STEP_FREE on free-mode lines.
+RE_STEP_RETGT = re.compile(
+    r" retgt=(?P<retgt>[YN?])"
+    r" held_idx=(?P<held_idx>[\-\d?]+)"
+    r" held_cost=(?P<held_cost>[\-\d.?]+)"
+    r" won_cost=(?P<won_cost>[\-\d.]+)"
+    r" margin=(?P<margin>[\+\-\d.?]+)"
+    r" won_src=(?P<won_src>[\w_?\-]+)"
+    r" held_valid=(?P<held_valid>[YN?])"
+    r" reason=(?P<reason>[\w_]+)"
 )
 # C3-mode payload appended after the prefix.
 RE_STEP_C3 = re.compile(
@@ -223,13 +237,27 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             if m_free is not None:
                 rec["p_repos"] = [
                     float(m_free["tx"]), float(m_free["ty"]), float(m_free["tz"])]
-                rec["ee_to_target"] = float(m_free["ee_to_tgt"])
+                rec["ee_stride"]     = float(m_free["ee_stride"])
+                rec["ee_to_ptarget"] = _maybe_float(m_free["ee_to_ptarget"])
                 rec["landing_err"]   = _maybe_float(m_free["landing"])
                 rec["ik_ok"]         = (m_free["ik_ok"] == "Y")
                 rec["ik_resid"]      = _maybe_float(m_free["ik_resid"])
                 rec["pd_sat"]        = (m_free["pd_sat"] == "Y")
                 rec["q_max_resid_deg"] = _maybe_float(m_free["qmax"])
                 rec["target_changed"] = (m_free["changed"] == "Y")
+                # Why-replan payload (always present on free-mode lines).
+                m_rt = RE_STEP_RETGT.search(line, pos=m_free.end())
+                if m_rt is not None:
+                    rec["retgt"]      = (m_rt["retgt"] == "Y")
+                    rec["held_idx"]   = (int(m_rt["held_idx"])
+                                         if m_rt["held_idx"] not in ("-", "?")
+                                         else None)
+                    rec["held_cost"]  = _maybe_float(m_rt["held_cost"])
+                    rec["won_cost"]   = _maybe_float(m_rt["won_cost"])
+                    rec["margin"]     = _maybe_float(m_rt["margin"])
+                    rec["won_src"]    = m_rt["won_src"]
+                    rec["held_valid"] = (m_rt["held_valid"] == "Y")
+                    rec["replan_reason"] = m_rt["reason"]
             # Try the c3-mode suffix.
             m_c3 = RE_STEP_C3.search(line, pos=m.end())
             if m_c3 is not None:
@@ -402,7 +430,9 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "ee_pos": rec.get("ee_pos"),
             "obj_pos": rec.get("obj_pos"),
             "p_repos": rec.get("p_repos"),
-            "ee_to_target": rec.get("ee_to_target"),
+            "ee_to_target": rec.get("ee_to_target"),  # legacy [GS-tgt] field
+            "ee_stride": rec.get("ee_stride"),
+            "ee_to_ptarget": rec.get("ee_to_ptarget"),
             "target_label": rec.get("target_label"),
             "target_changed": rec.get("target_changed"),
             "ee_to_box": rec.get("ee_to_box"),
@@ -428,6 +458,15 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "pd_sat": rec.get("pd_sat"),
             "q_max_resid_deg": rec.get("q_max_resid_deg"),
             "goal_dist": rec.get("goal_dist"),
+            # Why-replan payload.
+            "retgt": rec.get("retgt"),
+            "held_idx": rec.get("held_idx"),
+            "held_cost": rec.get("held_cost"),
+            "won_cost": rec.get("won_cost"),
+            "margin": rec.get("margin"),
+            "won_src": rec.get("won_src"),
+            "held_valid": rec.get("held_valid"),
+            "replan_reason": rec.get("replan_reason"),
             # Unified [STEP] payload — c3-mode contact diagnostics.
             "c3_cost": rec.get("c3_cost"),
             "lam_n": rec.get("lam_n"),

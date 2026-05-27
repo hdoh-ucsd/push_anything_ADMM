@@ -195,9 +195,13 @@ reposition_params:
   # corrections.
   use_straight_line_traj_under_piecewise_linear: 0.008
 
-  # Safe-height for the kPiecewiseLinear lift phase (well above the 0.10 m
-  # box top + 0.10 m contact-detection threshold).
-  pwl_waypoint_height: 0.20    # m
+  # Safe-height for the kPiecewiseLinear lift phase. Sphere center at 0.15 m
+  # → sphere bottom at 0.125 m, i.e. 25 mm clearance over the 0.10 m box top
+  # (pusher_radius 0.025). Was 0.20 — the extra 50 mm lift + 50 mm descend
+  # made the lift-traverse-descend guide overrun the N·ds = 0.40 m horizon
+  # budget by ~100 mm for typical xy_dist ≈ 0.20 m repositions, so
+  # p_guide[:, -1] clamped short of p_target and finished_repos rarely fired.
+  pwl_waypoint_height: 0.15    # m
 
   # (other traj-type knobs left at defaults; ignored when traj_type=kPiecewiseLinear)
   use_straight_line_traj_under_spline: 0.12
