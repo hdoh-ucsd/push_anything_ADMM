@@ -258,6 +258,10 @@ class SamplingC3MPC:
         self._current_repos_target:     Optional[np.ndarray] = None
         self._current_repos_cost:       Optional[float]      = None
         self._prev_logged_repos_target: Optional[np.ndarray] = None
+        # Why-replan diagnostics (one-tick lag state).
+        self._last_held_existed:        bool                 = False
+        self._last_held_cost_logged:    Optional[float]      = None
+        self._last_retgt_payload:       Optional[dict]       = None
 
         self._last_repos_feasible:      bool                 = True
         # Set True by the PWL tracker when the EE has reached the repos
@@ -1098,6 +1102,9 @@ class SamplingC3MPC:
             self._current_repos_cost    = None
             self._last_repos_finished   = False
             self._prev_logged_repos_target = None
+            self._last_held_existed       = False
+            self._last_held_cost_logged   = None
+            self._last_retgt_payload      = None
             best_src = "current"
 
         else:
@@ -1125,6 +1132,65 @@ class SamplingC3MPC:
                 self._current_repos_target = p_repos.copy()
                 self._current_repos_cost   = c_samples[target_idx]
                 best_src = labels[target_idx]
+
+                # Why-replan diagnostics. Compare the won target against the
+                # "held" candidate (the prev_repos slot — k=1 when present).
+                # Selection is pure argmin (wrapper.py:610), so a small margin
+                # over the held candidate means cost noise flipped the
+                # argmin: the absent stickiness hypothesis.
+                _held_idx = (1 if (len(labels) > 1 and labels[1] == "prev_repos")
+                             else None)
+                _held_cost = (c_samples[_held_idx]
+                              if _held_idx is not None else None)
+                _won_cost  = c_samples[target_idx]
+                _margin    = ((_held_cost - _won_cost)
+                              if _held_cost is not None else None)
+                # retgt: did the dispatcher abandon the held target?
+                #   Y if there was no held slot,
+                #     or the won index ≠ the held index.
+                if _held_idx is None:
+                    _retgt = (self._last_held_existed)  # was held last tick?
+                    _reason = "no_held"
+                else:
+                    _retgt = (target_idx != _held_idx)
+                    if not _retgt:
+                        _reason = "hold"
+                    else:
+                        # margin / held_cost — noise-flip if relative gap tiny.
+                        if _held_cost > 0:
+                            _rel = abs(_margin) / abs(_held_cost)
+                        else:
+                            _rel = float("inf")
+                        if _rel < 0.01:
+                            _reason = "noise_flip"  # <1% gap (likely cost noise)
+                        else:
+                            # Compare held_cost to prior tick's held_cost.
+                            _prev_held = getattr(
+                                self, "_last_held_cost_logged", None)
+                            if (_prev_held is not None and _prev_held > 0
+                                    and _held_cost > 1.10 * _prev_held):
+                                _reason = "held_cost_rose"
+                            else:
+                                _reason = "new_sample_better"
+                # held_still_valid: was the held sample's solve feasible? If
+                # not, "held" was structurally invalid this tick.
+                if _held_idx is not None:
+                    _held_valid = bool(results[_held_idx].feasible)
+                else:
+                    _held_valid = False
+                self._last_retgt_payload = dict(
+                    retgt       = _retgt,
+                    held_idx    = _held_idx,
+                    held_cost   = _held_cost,
+                    won_idx     = target_idx,
+                    won_cost    = _won_cost,
+                    margin      = _margin,
+                    won_src     = best_src,
+                    held_valid  = _held_valid,
+                    reason      = _reason,
+                )
+                self._last_held_existed = (_held_idx is not None)
+                self._last_held_cost_logged = _held_cost
 
                 self.tracker._diag_step = self._step  # [TRACKER-DIAG] plumb
                 u_opt, free_diag = self.tracker.compute_torque(
@@ -1462,6 +1528,26 @@ class SamplingC3MPC:
                 tgt_changed = ("Y" if float(np.linalg.norm(
                     np.asarray(tgt) - self._prev_step_target)) > 1e-3 else "N")
             self._prev_step_target = np.asarray(tgt).copy()
+            # Why-replan payload (populated in the free-mode branch above).
+            rp = getattr(self, "_last_retgt_payload", None)
+            if rp is not None:
+                retgt_tag    = "Y" if rp["retgt"] else "N"
+                held_idx_tag = (str(rp["held_idx"])
+                                if rp["held_idx"] is not None else "-")
+                hc = rp["held_cost"]
+                wc = rp["won_cost"]
+                mg = rp["margin"]
+                held_cost_str = (f"{hc:.2f}" if hc is not None else "-")
+                won_cost_str  = f"{wc:.2f}"
+                margin_str    = (f"{mg:+.2f}" if mg is not None else "-")
+                held_valid_tag = "Y" if rp["held_valid"] else "N"
+                reason_tag     = rp["reason"]
+                won_src_tag    = rp["won_src"]
+            else:
+                retgt_tag = held_idx_tag = won_cost_str = "?"
+                held_cost_str = margin_str = won_src_tag = "?"
+                held_valid_tag = "?"
+                reason_tag = "?"
             print(
                 f"{prefix} "
                 f"target=({tgt[0]:+.3f},{tgt[1]:+.3f},{tgt[2]:+.3f}) "
@@ -1469,7 +1555,11 @@ class SamplingC3MPC:
                 f"landing_err={float(landing):.4f}m "
                 f"ik_ok={ik_ok} ik_resid={float(ik_resid):.4f}m "
                 f"pd_sat={pd_sat} q_max_resid_deg={float(qmax_deg):.2f} "
-                f"target_changed={tgt_changed}"
+                f"target_changed={tgt_changed} "
+                f"retgt={retgt_tag} held_idx={held_idx_tag} "
+                f"held_cost={held_cost_str} won_cost={won_cost_str} "
+                f"margin={margin_str} won_src={won_src_tag} "
+                f"held_valid={held_valid_tag} reason={reason_tag}"
             )
             return
 
