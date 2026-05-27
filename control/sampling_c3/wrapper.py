@@ -1192,7 +1192,7 @@ class SamplingC3MPC:
                 self._last_held_existed = (_held_idx is not None)
                 self._last_held_cost_logged = _held_cost
 
-                self.tracker._diag_step = self._step  # [TRACKER-DIAG] plumb
+                self.tracker._diag_step = self._step  # [IK-CONVERGE] plumb
                 u_opt, free_diag = self.tracker.compute_torque(
                     current_q=current_q, current_v=current_v,
                     plant_ctx=plant_ctx, p_target=p_repos,
@@ -1233,14 +1233,12 @@ class SamplingC3MPC:
                 if results[k_star].x_seq is not None:
                     self.last_x_seq = results[k_star].x_seq
 
-        # --- Executor override (impedance or OSC) -------------------------
-        # The branch above produced `u_opt` via either base_mpc (joint-PD-
-        # like u_seq[0]) or the IK tracker (joint-PD-with-grav-comp).
-        # That `u_opt` is the OLD executor and is now informational only.
-        # Substitute the executor (impedance or OSC) output. We retain the
-        # planner outputs (last_x_seq, last_lambda_*, formulator J_n/J_t)
-        # which feed the Cartesian target and feedforward force term.
-        _u_planner = u_opt
+        # --- Executor (OSC or impedance) ---------------------------------
+        # The branches above produced an informational `u_opt` (planner
+        # u_seq[0] in c3, a zero placeholder from the IK tracker in free).
+        # The executor below always overrides it; the tracker's job is to
+        # supply the Cartesian waypoint `free_diag['p_des']`, not the
+        # actuated torque.
         # Predefine c3-only locals so the unified [STEP] line below can
         # reference them unconditionally (free branch leaves them None).
         _lam_n   = None
@@ -1491,7 +1489,7 @@ class SamplingC3MPC:
 
         Free-mode suffix: reposition-tracking payload (the 2% target-reach
         diagnostic — target / ee_to_target / landing_err / ik_ok / ik_resid /
-        pd_sat / q_max_resid_deg / target_changed).
+        q_max_resid_deg / target_changed).
 
         C3-mode suffix: contact payload (c3_cost / lam_n / lam_t / contact /
         productive / f_cmd).
@@ -1522,11 +1520,17 @@ class SamplingC3MPC:
                 landing  = free_diag.get("landing_err", float("nan"))
                 ik_ok    = "Y" if free_diag.get("knot0_feasible", False) else "N"
                 ik_resid = free_diag.get("ik_err", float("nan"))
-                pd_sat   = "Y" if free_diag.get("pd_sat", False) else "N"
                 qmax_deg = free_diag.get("q_max_resid_deg", float("nan"))
+                # Executed-march three-candidate trace (instrument-only).
+                _sp_pt   = free_diag.get("setpoint_to_ptarget", float("nan"))
+                _fin_val = free_diag.get("finished_val", float("nan"))
+                _nwp_pt  = free_diag.get("nextwp_to_ptarget", float("nan"))
+                _gterm   = free_diag.get("guide_terminal_err", float("nan"))
+                _pdresid = free_diag.get("pd_resid_ee", float("nan"))
             else:
-                landing, ik_ok, ik_resid, pd_sat, qmax_deg = (
-                    float("nan"), "?", float("nan"), "?", float("nan"))
+                landing, ik_ok, ik_resid, qmax_deg = (
+                    float("nan"), "?", float("nan"), float("nan"))
+                _sp_pt = _fin_val = _nwp_pt = _gterm = _pdresid = float("nan")
             # Mirror [GS-tgt]'s target-changed logic on a separate cache so
             # the two lines stay independent.
             if not hasattr(self, "_prev_step_target") or self._prev_step_target is None:
@@ -1562,12 +1566,18 @@ class SamplingC3MPC:
                 f"ee_to_ptarget={ee_to_ptarget:.3f}m "
                 f"landing_err={float(landing):.4f}m "
                 f"ik_ok={ik_ok} ik_resid={float(ik_resid):.4f}m "
-                f"pd_sat={pd_sat} q_max_resid_deg={float(qmax_deg):.2f} "
+                f"q_max_resid_deg={float(qmax_deg):.2f} "
                 f"target_changed={tgt_changed} "
                 f"retgt={retgt_tag} held_idx={held_idx_tag} "
                 f"held_cost={held_cost_str} won_cost={won_cost_str} "
                 f"margin={margin_str} won_src={won_src_tag} "
-                f"held_valid={held_valid_tag} reason={reason_tag}"
+                f"held_valid={held_valid_tag} reason={reason_tag} "
+                f"setpoint_to_ptarget={float(_sp_pt):.4f}m "
+                f"finished_val={float(_fin_val):.4f}m "
+                f"finished_thresh=0.0200m "
+                f"pd_resid={float(_pdresid):.4f}m "
+                f"nextwp_to_ptarget={float(_nwp_pt):.4f}m "
+                f"guide_terminal_err={float(_gterm):.4f}m"
             )
             return
 

@@ -107,7 +107,6 @@ RE_STEP_FREE = re.compile(
     r" landing_err=(?P<landing>[\d.nNaA]+)m"
     r" ik_ok=(?P<ik_ok>[YN?])"
     r" ik_resid=(?P<ik_resid>[\d.nNaA]+)m"
-    r" pd_sat=(?P<pd_sat>[YN?])"
     r" q_max_resid_deg=(?P<qmax>[\-\d.nNaA]+)"
     r" target_changed=(?P<changed>[YN])"
 )
@@ -121,6 +120,21 @@ RE_STEP_RETGT = re.compile(
     r" won_src=(?P<won_src>[\w_?\-]+)"
     r" held_valid=(?P<held_valid>[YN?])"
     r" reason=(?P<reason>[\w_]+)"
+)
+# Executed-march trace — sub-pattern, appended after RE_STEP_RETGT on free-mode lines.
+# Three-candidate instrumentation (instrument-only):
+#  setpoint_to_ptarget  — does the per-tick setpoint march reach p_target?  (candidate a)
+#  finished_val         — current ||p_target - ee_now||; cf. finished_thresh (candidate a)
+#  pd_resid             — ||FK(q_knot0_target) - ee_now||                  (candidate b)
+#  nextwp_to_ptarget    — does next_waypoint reach p_target's terminal?    (candidate c)
+#  guide_terminal_err   — ||p_guide[:, -1] - p_target|| (lift-fix metric)
+RE_STEP_MARCH = re.compile(
+    r" setpoint_to_ptarget=(?P<sp_pt>[\d.nNaA]+)m"
+    r" finished_val=(?P<fin_val>[\d.nNaA]+)m"
+    r" finished_thresh=(?P<fin_thr>[\d.]+)m"
+    r" pd_resid=(?P<pd_resid>[\d.nNaA]+)m"
+    r" nextwp_to_ptarget=(?P<nwp_pt>[\d.nNaA]+)m"
+    r" guide_terminal_err=(?P<gterm>[\d.nNaA]+)m"
 )
 # C3-mode payload appended after the prefix.
 RE_STEP_C3 = re.compile(
@@ -242,7 +256,6 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                 rec["landing_err"]   = _maybe_float(m_free["landing"])
                 rec["ik_ok"]         = (m_free["ik_ok"] == "Y")
                 rec["ik_resid"]      = _maybe_float(m_free["ik_resid"])
-                rec["pd_sat"]        = (m_free["pd_sat"] == "Y")
                 rec["q_max_resid_deg"] = _maybe_float(m_free["qmax"])
                 rec["target_changed"] = (m_free["changed"] == "Y")
                 # Why-replan payload (always present on free-mode lines).
@@ -258,6 +271,15 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                     rec["won_src"]    = m_rt["won_src"]
                     rec["held_valid"] = (m_rt["held_valid"] == "Y")
                     rec["replan_reason"] = m_rt["reason"]
+                    # Executed-march trace (optional; appears after retgt).
+                    m_mr = RE_STEP_MARCH.search(line, pos=m_rt.end())
+                    if m_mr is not None:
+                        rec["setpoint_to_ptarget"] = _maybe_float(m_mr["sp_pt"])
+                        rec["finished_val"]        = _maybe_float(m_mr["fin_val"])
+                        rec["finished_thresh"]     = _maybe_float(m_mr["fin_thr"])
+                        rec["pd_resid_ee"]         = _maybe_float(m_mr["pd_resid"])
+                        rec["nextwp_to_ptarget"]   = _maybe_float(m_mr["nwp_pt"])
+                        rec["guide_terminal_err"]  = _maybe_float(m_mr["gterm"])
             # Try the c3-mode suffix.
             m_c3 = RE_STEP_C3.search(line, pos=m.end())
             if m_c3 is not None:
@@ -455,7 +477,6 @@ def parse_log(log_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "landing_err": rec.get("landing_err"),
             "ik_ok": rec.get("ik_ok"),
             "ik_resid": rec.get("ik_resid"),
-            "pd_sat": rec.get("pd_sat"),
             "q_max_resid_deg": rec.get("q_max_resid_deg"),
             "goal_dist": rec.get("goal_dist"),
             # Why-replan payload.
