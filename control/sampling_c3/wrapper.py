@@ -38,6 +38,17 @@ from control.sampling_c3.reposition import PiecewiseLinearTracker
 from control.sampling_c3.reposition_ik import RepositionIKTracker
 from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
 from control.sampling_c3.sampling import generate_samples
+from sim.env_builder import PUSHER_RADIUS
+
+# Lever 3: c3 approach-closing override constants.
+# LCS_DISTANCE_THRESHOLD matches lcs_formulator.extract_lcs_contacts's
+# distance_threshold (2 mm), the value at which Drake's signed-distance
+# query admits an EE-box contact pair into the LCS.
+# MAX_APPROACH_STEP caps the per-tick advance of the commanded EE target;
+# the clamp min(MAX, surf_dist - threshold) keeps the commanded target
+# >= threshold outside the contact surface, so it cannot command penetration.
+LCS_DISTANCE_THRESHOLD = 0.002
+MAX_APPROACH_STEP      = 0.010
 
 
 class SamplingC3MPC:
@@ -1247,6 +1258,44 @@ class SamplingC3MPC:
             _Jn    = self.base_mpc.formulator._last_J_n
             _Jt    = self.base_mpc.formulator._last_J_t
             _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
+
+            # Lever 3: c3 approach-closing override. When LCS admits no
+            # EE-box pair (lam_n empty), the planner sees no contact and
+            # parks the EE in place — but the typical arrival sphere-to-box
+            # gap is ~6 mm while LCS admits only at <= 2 mm: chicken-and-egg.
+            # Drive the EE toward the box CoM along the box-EE vector (not
+            # -g_hat: off-axis arrivals would be pushed away), clamped so
+            # the commanded target stays >= LCS_DISTANCE_THRESHOLD outside
+            # contact (non-penetrating by construction). Self-disabling the
+            # instant LCS admits a pair (lam_n.size > 0): planner authority
+            # returns automatically.
+            _no_admitted_pair = (_lam_n is None
+                                 or not hasattr(_lam_n, "size")
+                                 or _lam_n.size == 0)
+            if _no_admitted_pair:
+                _box_xyz = np.array([
+                    current_q[self._obj_x_idx],
+                    current_q[self._obj_y_idx],
+                    current_q[self._obj_z_idx],
+                ])
+                _ee_to_box = _box_xyz - ee_pos_now
+                _dist = float(np.linalg.norm(_ee_to_box))
+                if _dist > 1e-9:
+                    _box_half = float(self.params.sampling_params.box_half_extent)
+                    _surf_dist = _dist - _box_half - PUSHER_RADIUS
+                    if _surf_dist > LCS_DISTANCE_THRESHOLD:
+                        _advance = min(MAX_APPROACH_STEP,
+                                       _surf_dist - LCS_DISTANCE_THRESHOLD)
+                        _p_ee_des = ee_pos_now + _advance * (_ee_to_box / _dist)
+                        if self.log_diag:
+                            print(f"[APPROACH-OVERRIDE] step={self._step} "
+                                  f"surf_dist={_surf_dist:.4f}m "
+                                  f"advance={_advance:.4f}m "
+                                  f"p_ee_des=({_p_ee_des[0]:+.4f},"
+                                  f"{_p_ee_des[1]:+.4f},"
+                                  f"{_p_ee_des[2]:+.4f})",
+                                  flush=True)
+
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
