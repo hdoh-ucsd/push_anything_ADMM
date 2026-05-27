@@ -365,12 +365,44 @@ class InnerSolver:
         except Exception:
             pass
 
-        # Alignment bonus over contact normals
-        if nhats:
-            alignments  = [max(0.0, float(np.dot(n, g_hat_3d))) for n in nhats]
-            align_score = max(alignments)
-        else:
-            align_score = 0.0
+        # Geometric align_score: bonus for samples whose contact would push
+        # the box in the goal direction. Replaces the prior LCS-admitted-
+        # nhats version which was always 0 at the 30 mm setback position
+        # (samples sit outside the 2 mm LCS admission threshold, so
+        # _last_nhats=[] and align_score=0 dead-by-construction).
+        #
+        # The contact force on the box from a sample-side approach is along
+        # n_onto_box (the inward normal of the contacted face). Aligning that
+        # with g_hat (which points from box toward goal) gives the bonus:
+        #     align = max(0, n_onto_box · g_hat)
+        #
+        # Worked check, west goal g_hat=(-1,0,0):
+        #   east-face sample  → n_onto_box=(-1, 0, 0) → align = +1.0  ✓ favored
+        #   south-face sample → n_onto_box=( 0,+1, 0) → align =  0.0  ✓ unfavored
+        #   west-face sample  → n_onto_box=(+1, 0, 0) → align = -1→0  ✓ unfavored
+        #
+        # Reuses _predicted_box_contact (line 71) for full box-rotation
+        # handling. Returns None when sample is above/below the box (top/
+        # bottom face dominant) — irrelevant for side-pushing, score 0.
+        align_score = 0.0
+        _ps = self._obj_ps
+        _p_box_w = np.array([
+            float(current_q[self._obj_x_idx]),
+            float(current_q[self._obj_y_idx]),
+            float(current_q[self._obj_z_idx]),
+        ])
+        _box_quat = np.array([
+            float(current_q[_ps + 0]),
+            float(current_q[_ps + 1]),
+            float(current_q[_ps + 2]),
+            float(current_q[_ps + 3]),
+        ])
+        _pc = _predicted_box_contact(
+            sample_pos, _p_box_w, _box_quat, self._box_half_extent,
+        )
+        if _pc is not None:
+            _, _n_onto_box_w = _pc
+            align_score = max(0.0, float(np.dot(_n_onto_box_w, g_hat_3d)))
         align_bonus    = self.w_align  * align_score
         travel_dist    = float(np.linalg.norm(sample_pos - ee_pos_now))
         travel_penalty = self.w_travel * travel_dist
