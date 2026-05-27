@@ -25,7 +25,7 @@ def gravity_forces(plant, plant_ctx) -> np.ndarray:
 
     Sign convention (Drake): positive value = gravity drives the joint
     along +ve angle. For gravity compensation in commanded torque, the
-    caller NEGATES (matches `ImpedanceController` and other trackers).
+    caller NEGATES.
     """
     return plant.CalcGravityGeneralizedForces(plant_ctx)
 

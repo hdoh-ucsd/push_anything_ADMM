@@ -1,21 +1,13 @@
 """Operational Space Controller — QP-based executor.
 
-Drop-in replacement for `control.impedance_controller.ImpedanceController`.
-The `compute_torque` signature is identical, so the wrapper can pick one
-or the other via a config flag.
-
-Architecture vs impedance:
-    * impedance: closed-form Λ-weighted task force + nullspace projector
-      + feedforward J^T λ added directly, then np.clip(±torque_limit).
-    * OSC: per-tick QP minimizing weighted (task tracking + posture
-      + torque/accel regularization) subject to the dynamics equality
-      and per-joint URDF effort limits. Torque saturation is handled
-      INSIDE the QP via box constraints, preserving task tracking quality
-      when one joint clips.
+Per-tick QP minimizing weighted (task tracking + posture + torque/accel
+regularization) subject to the dynamics equality and per-joint URDF
+effort limits. Torque saturation is handled INSIDE the QP via box
+constraints, preserving task tracking quality when one joint clips.
 
 The QP treats the planner's λ_planned as a known external force on the
-RHS of the dynamics constraint (sign convention matches impedance —
-see `qp_builder.py` docstring).
+RHS of the dynamics constraint (see `qp_builder.py` docstring for the
+sign convention).
 """
 from __future__ import annotations
 
@@ -66,7 +58,7 @@ def _load_osc_gains(yaml_path: str | Path, n_arm: int) -> tuple[OscGains, np.nda
 
 
 class OperationalSpaceController:
-    """QP-based OSC executor — drop-in compatible with ImpedanceController."""
+    """QP-based OSC executor for the Franka arm."""
 
     def __init__(self,
                  plant,
@@ -87,9 +79,7 @@ class OperationalSpaceController:
         q_nominal     : (n_arm,) posture target for the nullspace cost.
         gains_yaml    : Path to OSC gains YAML (config/osc_franka.yaml).
         torque_limit_override : If set, overrides the URDF/yaml per-joint
-                                limits with a single uniform value. Used
-                                for parity testing against the impedance
-                                controller's 30 Nm uniform clip.
+                                limits with a single uniform value.
         """
         self.plant       = plant
         self.ee_frame    = ee_frame
@@ -141,10 +131,7 @@ class OperationalSpaceController:
                        J_t:          Optional[np.ndarray] = None,
                        lambda_des:   Optional[np.ndarray] = None,
                        ) -> Tuple[np.ndarray, dict]:
-        """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict).
-
-        Drop-in compatible with `ImpedanceController.compute_torque`.
-        """
+        """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict)."""
         plant = self.plant
         plant.SetPositions(plant_ctx, current_q)
         plant.SetVelocities(plant_ctx, current_v)
@@ -183,11 +170,10 @@ class OperationalSpaceController:
         v_arm_err = -v_arm
 
         # --- Feedforward contact force from planner ---
-        # Sign convention matches ImpedanceController docstring:
-        #   λ_n ≥ 0 (Stewart-Trinkle), J_n built from nhat_BA · (J_A − J_B).
-        #   The term +J^T λ on the RHS of dynamics pushes box in goal
-        #   direction (good) and reacts on the arm (the QP must overcome
-        #   this with τ).
+        # Sign convention: λ_n ≥ 0 (Stewart-Trinkle), J_n built from
+        # nhat_BA · (J_A − J_B). The term +J^T λ on the RHS of dynamics
+        # pushes box in goal direction (good) and reacts on the arm
+        # (the QP must overcome this with τ).
         F_ff = np.zeros(n_v)
         had_lam_n = (lambda_n is not None and J_n is not None
                      and J_n.size > 0 and lambda_n.size > 0)
@@ -247,12 +233,11 @@ class OperationalSpaceController:
             print(f"[OSC-INIT]   use_force_tracking={self.use_force_tracking}  "
                   f"W_force={self.gains.W_force}")
 
-        # τ_ff equivalent for impedance-style diag — the EE-arm slice of
-        # the feedforward force (signed to match impedance's tau_ff which
-        # negates because the impedance applied -(J^T λ)[:n_arm]).
-        # In force-tracking mode the planner's reaction enters the QP as a
-        # cost on λ_ext (not as F_ff), so report the *equivalent* tau_ff
-        # produced by the solved λ_ext via J_v.
+        # τ_ff diagnostic — the EE-arm slice of the feedforward force,
+        # signed so it represents the joint torque needed to counter the
+        # planned contact reaction. In force-tracking mode the planner's
+        # reaction enters the QP as a cost on λ_ext (not as F_ff), so
+        # report the *equivalent* tau_ff produced by the solved λ_ext via J_v.
         if self.use_force_tracking:
             tau_ff_equiv = -(J_v.T @ lam_ext_opt)[:n_arm]
         else:
@@ -266,7 +251,7 @@ class OperationalSpaceController:
             v_ee_now    = v_ee_now,
             x_err       = p_err,
             xdot_err    = v_err,
-            tau_imp     = u_opt,      # alias for parity with impedance diag
+            tau_imp     = u_opt,      # legacy alias kept for downstream loggers
             tau_ff      = tau_ff_equiv,
             tau_out     = u_opt,
             vdot_opt    = vdot_opt,
