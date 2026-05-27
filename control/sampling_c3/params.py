@@ -571,6 +571,20 @@ class SamplingC3Params:
     use_surface_entry_gate: bool = True
     contact_entry_surface_threshold: float = 0.060
 
+    # ------------ Contact-loss disengage thresholds -----------------------
+    # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
+    # rich-mode steps had no admitted EE-BOX pair. Conditioned on whether
+    # the approach-closing override (Lever 3) was firing on the previous
+    # tick: when the override is actively trying to close a ~6 mm gap that
+    # the OSC's tracking lag has not yet closed, give it more time before
+    # bailing. When the override is NOT firing (no proximity reason to be
+    # in c3), use the strict default. The `with_override` value is the
+    # hard cap on grace — if the override fires for that many ticks
+    # without LCS admitting a pair, the EE is structurally unable to
+    # reach contact and we bail.
+    contact_loss_threshold_default: int = 5
+    contact_loss_threshold_with_override: int = 12
+
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
         return cls(
@@ -591,6 +605,8 @@ class SamplingC3Params:
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
+            contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
+            contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
         )
 
     @classmethod
