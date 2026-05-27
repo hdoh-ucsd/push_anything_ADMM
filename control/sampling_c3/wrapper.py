@@ -216,6 +216,12 @@ class SamplingC3MPC:
         # the LCS. When the streak exceeds DISENGAGE_THRESHOLD, the
         # mode decision is overridden from kStayInC3 to a forced exit.
         self._no_ee_box_streak:         int   = 0
+        # Override-grace flag. Set True at the end of the approach-closing
+        # override emit block on each tick the override actually commands
+        # an approach target; cleared otherwise. Read by the contact-loss
+        # gate on the NEXT tick (1-tick lag) to pick the extended grace
+        # threshold instead of the strict default.
+        self._approach_override_firing: bool  = False
 
         # λ_planned per-step trace — writes audit_output/lambda_trace.csv
         # at the project root. Captures every rich-mode step (definitive)
@@ -709,16 +715,27 @@ class SamplingC3MPC:
         # only consume the value: if we're proposing to stay in c3 but
         # the last DISENGAGE_THRESHOLD consecutive c3 steps had no
         # EE-BOX pair, force exit to repos.
-        DISENGAGE_THRESHOLD = 5
+        # Threshold is conditioned on whether the approach-closing
+        # override fired on the previous tick. When the override is
+        # actively closing a sub-LCS-threshold gap, give it more time;
+        # snap back to the strict default the instant the override stops
+        # firing (e.g. LCS admitted a pair, or surf_dist ≤ threshold).
+        # The `with_override` value is the hard cap on grace.
+        if self._approach_override_firing:
+            disengage_threshold = self.params.contact_loss_threshold_with_override
+        else:
+            disengage_threshold = self.params.contact_loss_threshold_default
         if (self._prev_mode == "c3"
                 and mode == "c3"
-                and self._no_ee_box_streak >= DISENGAGE_THRESHOLD):
+                and self._no_ee_box_streak >= disengage_threshold):
             mode = "free"
             reason = SwitchReason.kToReposUnproductive
             if self.log_diag:
                 print(f"[CONTACT-LOSS-EXIT] step={self._step} "
                       f"no EE-BOX for {self._no_ee_box_streak} "
-                      f"steps -> exit to repos", flush=True)
+                      f"steps threshold={disengage_threshold} "
+                      f"override_active={self._approach_override_firing} "
+                      f"-> exit to repos", flush=True)
             self._no_ee_box_streak = 0
         if self._prev_mode == "free":
             # Fresh start when re-entering c3 from free.
@@ -1277,6 +1294,7 @@ class SamplingC3MPC:
             _ee_box_pairs = getattr(self.base_mpc.formulator,
                                     "_last_ee_box_contacts", [])
             _no_admitted_pair = (len(_ee_box_pairs) == 0)
+            _override_fired_this_tick = False
             if _no_admitted_pair:
                 _box_xyz = np.array([
                     current_q[self._obj_x_idx],
@@ -1292,6 +1310,7 @@ class SamplingC3MPC:
                         _advance = min(MAX_APPROACH_STEP,
                                        _surf_dist - LCS_DISTANCE_THRESHOLD)
                         _p_ee_des = ee_pos_now + _advance * (_ee_to_box / _dist)
+                        _override_fired_this_tick = True
                         if self.log_diag:
                             print(f"[APPROACH-OVERRIDE] step={self._step} "
                                   f"surf_dist={_surf_dist:.4f}m "
@@ -1300,6 +1319,9 @@ class SamplingC3MPC:
                                   f"{_p_ee_des[1]:+.4f},"
                                   f"{_p_ee_des[2]:+.4f})",
                                   flush=True)
+            # Expose override firing state to the contact-loss gate (read
+            # on the next tick).
+            self._approach_override_firing = _override_fired_this_tick
 
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
