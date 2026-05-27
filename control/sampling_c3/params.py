@@ -585,6 +585,14 @@ class SamplingC3Params:
     contact_loss_threshold_default: int = 5
     contact_loss_threshold_with_override: int = 12
 
+    # ------------ T-architecture rate-split knobs (Stage 1 substrate) -----
+    # Stage 1 introduces these as separate dials defaulting to dt_ctrl=0.01s.
+    # Stage 2 will gate the CI-MPC re-solve on dt_mpc boundaries while the
+    # OSC fires every dt_osc. With defaults equal to dt_ctrl, the system
+    # behaves identically to pre-Stage-1 (tight coupling preserved).
+    dt_osc: float = 0.01   # OSC tick period (sec); defaults to dt_ctrl
+    dt_mpc: float = 0.01   # CI-MPC re-solve period (sec); defaults to dt_ctrl
+
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
         return cls(
@@ -607,6 +615,8 @@ class SamplingC3Params:
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
+            dt_osc = float(raw.get("dt_osc", 0.01)),
+            dt_mpc = float(raw.get("dt_mpc", 0.01)),
         )
 
     @classmethod

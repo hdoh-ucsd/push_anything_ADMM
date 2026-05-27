@@ -75,6 +75,15 @@ class C3PlusMPC:
         self.last_x_seq: np.ndarray | None = None   # (N+1, n_x)
         # Previous solve's u_seq[0] for the next-step linearization (Aydinoglu eq. 8).
         self._last_u: np.ndarray = np.zeros(solver.n_u)
+        # First-horizon planned contact force λ_d (Aydinoglu eq. 36 feedforward).
+        # Mirrored from solver._last_lambda_{n,t}_first after each solve.
+        self.last_lambda_n_first: np.ndarray | None = None
+        self.last_lambda_t_first: np.ndarray | None = None
+        # T-architecture Stage 1: full λ horizon mirrored from solver. Shape
+        # (N, num_normals) and (N, 4*num_normals). Set by every solve; Stage 2
+        # will let the wrapper's OSC index into these between MPC re-solves.
+        self.last_lambda_n_horizon: np.ndarray | None = None
+        self.last_lambda_t_horizon: np.ndarray | None = None
 
     def compute_control(self,
                         current_q:  np.ndarray,
@@ -103,7 +112,10 @@ class C3PlusMPC:
         # ---- [MATH.setup] fires ONCE on first MPC step ----------------------
         if self._math_diag and not self._math_setup_done:
             self._math_setup_done = True
-            n_lambda = J_n.shape[0] + J_t.shape[0]
+            # Stewart-Trinkle: λ = [γ; λ_n; λ_t] = 2·n_c + 4·n_c = 6·n_c.
+            # Earlier this print computed n_c + 4·n_c = 5·n_c, missing γ; the
+            # solver itself (admm_solver.py:752) uses the correct 6·n_c sizing.
+            n_lambda = 2 * J_n.shape[0] + J_t.shape[0]
             # C3+ doubles the per-step block to carry η alongside λ.
             TOT      = self.solver.n_x + n_lambda + self.solver.n_u + n_lambda
             total    = self.horizon * TOT + self.solver.n_x
@@ -184,10 +196,26 @@ class C3PlusMPC:
                 print(f"[MATH.LCS] c   shape={c_lcs.shape}, "
                       f"norm={np.linalg.norm(c_lcs):.4f}")
 
+        # Per-(solve, iter, k) λ probe — first 5 C3+ solves with contact tags
+        # from the formulator. Diagnoses whether λ_n_gnd reaches the gravity-
+        # support level m·g across the horizon (regime A vs B).
+        if (self._math_diag
+                and getattr(self.solver, "_lprobe_path", None) is None
+                and J_n.shape[0] > 0):
+            _tags = [info.get("tag", "?")
+                     for info in self.formulator._last_contact_info]
+            self.solver.enable_lambda_horizon_probe(
+                path="audit_output/lambda_horizon_trace.csv",
+                contact_tags=_tags,
+                max_solves=5,
+            )
+            print(f"[LAMBDA-PROBE] enabled; tags={_tags}  "
+                  f"path=audit_output/lambda_horizon_trace.csv  max_solves=5")
+
         # 2. Quadratic cost and reference state (with linearised EE approach)
         Q, R, QN, x_ref = self.quad_cost.build(
             target_xy, plant_ctx=plant_ctx, current_q=current_q,
-            target_yaw=target_yaw,
+            rich_mode=True, target_yaw=target_yaw,
         )
 
         # 3. Current full state x0 = [q; v]
@@ -207,6 +235,36 @@ class C3PlusMPC:
         # 5. Store predicted trajectory + u[0] for next-step linearization
         self.last_x_seq = x_seq        # (N+1, n_x)
         self._last_u    = u_seq[0].copy()
+        # Plumb first-horizon λ for the impedance controller's feedforward
+        # contact-force term. None until the first solve produces them.
+        self.last_lambda_n_first = (
+            self.solver._last_lambda_n_first.copy()
+            if self.solver._last_lambda_n_first is not None else None
+        )
+        self.last_lambda_t_first = (
+            self.solver._last_lambda_t_first.copy()
+            if self.solver._last_lambda_t_first is not None else None
+        )
+        # T-architecture Stage 1: mirror the full λ horizons too. None until
+        # the first solve produces them.
+        self.last_lambda_n_horizon = (
+            self.solver._last_lambda_n_horizon.copy()
+            if self.solver._last_lambda_n_horizon is not None else None
+        )
+        self.last_lambda_t_horizon = (
+            self.solver._last_lambda_t_horizon.copy()
+            if self.solver._last_lambda_t_horizon is not None else None
+        )
+        # Stash cost-build outputs for the wrapper's [COST-DUMP] diagnostic
+        # (purely additive — read only by one-shot logging).
+        self._last_Q          = Q
+        self._last_R          = R
+        self._last_QN         = QN
+        self._last_x_ref      = x_ref
+        self._last_target_xy  = np.asarray(target_xy, dtype=float).copy()
+        self._last_u_seq      = u_seq
+        self._last_plant_ctx  = plant_ctx
+        self._last_current_q  = np.asarray(current_q, dtype=float).copy()
 
         # ---- [MATH.cost] every 50 MPC steps ----------------------------------
         if self._math_diag and self._mpc_step % 50 == 0:

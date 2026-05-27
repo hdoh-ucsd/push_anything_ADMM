@@ -95,6 +95,52 @@ class C3Solver:
         self._w_G_ee_contact     = 1000.0
         self._eye_total_c3p_dim  = -1
         self._eye_total_c3p      = None
+        # First-horizon contact force from the most recent solve. Read by
+        # the impedance controller (Aydinoglu eq. 36 τ_ff = J_c^T λ_d).
+        # _last_lambda_n_first : (num_normals,) — non-negative normal forces.
+        # _last_lambda_t_first : (4*num_normals,) — non-negative polyhedral
+        #                       tangent components [t1+, t1−, t2+, t2−].
+        # γ slack is intentionally excluded — only the physical force
+        # components contribute to τ_ff.
+        self._last_lambda_n_first: np.ndarray | None = None
+        self._last_lambda_t_first: np.ndarray | None = None
+        # T-architecture Stage 1 substrate: full λ_n / λ_t over the planning
+        # horizon. Populated alongside the first-knot views. Shape (N, num_normals)
+        # for λ_n and (N, 4*num_normals) for λ_t (or empty if no contacts).
+        # Stage 2 will let the OSC index into these between MPC re-solves.
+        self._last_lambda_n_horizon: np.ndarray | None = None
+        self._last_lambda_t_horizon: np.ndarray | None = None
+
+        # Per-(mpc_step, admm_iter, horizon_k) λ probe. Disabled by default.
+        # Enabled via enable_lambda_horizon_probe(); writes one CSV row per
+        # (solve, iter, k, contact). Used to diagnose whether λ_n_gnd is
+        # being driven up to the gravity-support level m·g across the
+        # horizon or pinned to ~0 by the ADMM componentwise projection.
+        self._lprobe_path:        str | None  = None
+        self._lprobe_tags:        list[str]   = []   # contact tags per row of J_n
+        self._lprobe_max_solves:  int         = 5
+        self._lprobe_n_solves:    int         = 0
+        self._lprobe_mpc_step:    int         = 0
+
+    # ------------------------------------------------------------------
+    def enable_lambda_horizon_probe(self,
+                                    path: str,
+                                    contact_tags: list[str],
+                                    max_solves: int = 5) -> None:
+        """Enable per-(solve, iter, k) λ trace dump. Caller passes contact
+        tags (e.g. ['BOX-GND', 'EE-BOX']) ordered to match J_n rows."""
+        import os
+        self._lprobe_path       = path
+        self._lprobe_tags       = list(contact_tags)
+        self._lprobe_max_solves = int(max_solves)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Write header — λ_n per contact, ||λ_t|| per contact, γ per contact.
+        with open(path, "w") as f:
+            tag_cols = ",".join(
+                f"lam_n_{t},lam_t_norm_{t},gamma_{t}"
+                for t in self._lprobe_tags
+            )
+            f.write(f"mpc_step,admm_iter,k,n_c,{tag_cols}\n")
 
     # ------------------------------------------------------------------
     # Lorentz cone projection (per-contact scalar implementation)
@@ -505,6 +551,30 @@ class C3Solver:
             u_seq[i] = z_sol[i * TOT + n_x + n_lam : i * TOT + n_x + n_lam + n_u]
         x_seq[N] = z_sol[N * TOT : N * TOT + n_x]
 
+        # First-horizon contact force for Aydinoglu eq. 36 τ_ff. λ slot
+        # layout matches C3+: [γ; λ_n; λ_t]; expose physical components only.
+        if num_normals > 0:
+            _SLN0 = n_x + SLN
+            _SLT0 = n_x + SLT
+            self._last_lambda_n_first = z_sol[_SLN0 : _SLN0 + num_normals].copy()
+            self._last_lambda_t_first = (z_sol[_SLT0 : _SLT0 + n_t].copy()
+                                         if n_t > 0 else np.zeros(0))
+            # T-architecture Stage 1: full λ horizon, shaped (N, ·).
+            _ln_h = np.zeros((N, num_normals))
+            _lt_h = np.zeros((N, n_t)) if n_t > 0 else np.zeros((N, 0))
+            for _k in range(N):
+                _base = _k * TOT + n_x
+                _ln_h[_k] = z_sol[_base + SLN : _base + SLN + num_normals]
+                if n_t > 0:
+                    _lt_h[_k] = z_sol[_base + SLT : _base + SLT + n_t]
+            self._last_lambda_n_horizon = _ln_h
+            self._last_lambda_t_horizon = _lt_h
+        else:
+            self._last_lambda_n_first = np.zeros(0)
+            self._last_lambda_t_first = np.zeros(0)
+            self._last_lambda_n_horizon = np.zeros((N, 0))
+            self._last_lambda_t_horizon = np.zeros((N, 0))
+
         # ---- Contact diagnostics (Phase 2: LCP projection) --------------
         self._diag_step += 1
 
@@ -907,6 +977,30 @@ class C3Solver:
 
             omega = omega + z_sol - delta
 
+            # ===== λ-horizon probe (writes per-iter, per-k) =====
+            if (self._lprobe_path is not None
+                    and n_lambda > 0
+                    and self._lprobe_n_solves < self._lprobe_max_solves):
+                n_c_probe = num_normals
+                with open(self._lprobe_path, "a") as _pf:
+                    for k_probe in range(N):
+                        z_lam = z_sol[k_probe*TOT + SL : k_probe*TOT + SL + n_lambda]
+                        cols = []
+                        for ci in range(n_c_probe):
+                            lam_n_ci = float(z_lam[n_c_probe + ci])
+                            lam_t_ci = z_lam[2*n_c_probe + 4*ci : 2*n_c_probe + 4*(ci+1)]
+                            lam_t_norm = float(np.linalg.norm(lam_t_ci))
+                            gamma_ci = float(z_lam[ci])
+                            cols.extend([f"{lam_n_ci:.6f}",
+                                         f"{lam_t_norm:.6f}",
+                                         f"{gamma_ci:.6f}"])
+                        # Pad if probe was configured for more contacts than this
+                        # solve has (n_c can vary by step).
+                        while len(cols) < 3 * len(self._lprobe_tags):
+                            cols.append("nan")
+                        _pf.write(f"{self._lprobe_mpc_step},{it},{k_probe},"
+                                  f"{n_c_probe},{','.join(cols)}\n")
+
             # Residuals over (λ, η) blocks
             if n_lambda > 0:
                 lam_vec = np.concatenate([
@@ -969,6 +1063,32 @@ class C3Solver:
             x_seq[i] = z_sol[i * TOT : i * TOT + n_x]
             u_seq[i] = z_sol[i * TOT + SU : i * TOT + SU + n_u]
         x_seq[N] = z_sol[N * TOT : N * TOT + n_x]
+
+        # First-horizon contact force for Aydinoglu eq. 36 τ_ff feedforward.
+        # λ = [γ; λ_n; λ_t]; we expose only the physical components.
+        if num_normals > 0:
+            _SLN0 = SL + num_normals                   # λ_n offset in step 0's λ slot
+            _SLT0 = SL + 2 * num_normals               # λ_t offset
+            _n_t  = J_t.shape[0]
+            self._last_lambda_n_first = z_sol[_SLN0 : _SLN0 + num_normals].copy()
+            self._last_lambda_t_first = (z_sol[_SLT0 : _SLT0 + _n_t].copy()
+                                         if _n_t > 0 else np.zeros(0))
+            # T-architecture Stage 1: full λ horizon, shaped (N, ·). Same per-knot
+            # offsets as the first-knot view but iterated across all N knots.
+            _ln_h = np.zeros((N, num_normals))
+            _lt_h = np.zeros((N, _n_t)) if _n_t > 0 else np.zeros((N, 0))
+            for _k in range(N):
+                _base = _k * TOT
+                _ln_h[_k] = z_sol[_base + _SLN0 : _base + _SLN0 + num_normals]
+                if _n_t > 0:
+                    _lt_h[_k] = z_sol[_base + _SLT0 : _base + _SLT0 + _n_t]
+            self._last_lambda_n_horizon = _ln_h
+            self._last_lambda_t_horizon = _lt_h
+        else:
+            self._last_lambda_n_first = np.zeros(0)
+            self._last_lambda_t_first = np.zeros(0)
+            self._last_lambda_n_horizon = np.zeros((N, 0))
+            self._last_lambda_t_horizon = np.zeros((N, 0))
 
         # ---------------------------------------------------------------
         # Diagnostics — mirror C3's [MATH.QP], [MATH.δ], [MATH.ω] blocks.
@@ -1195,6 +1315,10 @@ class C3Solver:
         else:
             print(f"[C3+] step={self._diag_step} n_λ=0  "
                   f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} Nm")
+
+        if self._lprobe_path is not None:
+            self._lprobe_n_solves += 1
+            self._lprobe_mpc_step  = self._diag_step
 
         return u_seq, x_seq
 
