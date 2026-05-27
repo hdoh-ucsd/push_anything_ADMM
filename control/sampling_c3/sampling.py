@@ -23,6 +23,15 @@ import numpy as np
 from control.sampling_c3.params import SamplingParams, SamplingStrategy
 
 
+# Sampler-centering on goal-aligned faces. When _face_normal_projection
+# picks a face whose contact would push the box toward the goal (cosine of
+# alignment between -n_outward and g_hat exceeds the threshold), the
+# tangential jitter range is reduced to keep the sample near the face
+# center. Other faces keep the existing uniform jitter.
+GOAL_ALIGN_THRESHOLD = 0.7          # cos > 0.7 → ~45° cone around goal
+CENTERED_JITTER_FRACTION = 0.2      # 0.2 × box_half = ±10 mm on a 100 mm box
+
+
 # ---------------------------------------------------------------------------
 # Public dispatch
 # ---------------------------------------------------------------------------
@@ -33,6 +42,7 @@ def generate_samples(strategy:    SamplingStrategy,
                      params:      SamplingParams,
                      rng:         Optional[np.random.Generator] = None,
                      g_hat:       Optional[np.ndarray] = None,
+                     obj_quat:    Optional[np.ndarray] = None,
                      ) -> list[np.ndarray]:
     """
     Generate n_samples 3D EE target positions.
@@ -63,12 +73,16 @@ def generate_samples(strategy:    SamplingStrategy,
         raw = _random_on_circle(n_samples, obj_xy, params, rng, g_hat)
     elif strategy == SamplingStrategy.kRadiallySymmetric:
         raw = _radially_symmetric(n_samples, obj_xy, params, g_hat)
+    elif strategy == SamplingStrategy.kFaceNormal:
+        raw = _face_normal_projection(
+            n_samples, obj_xy, params, rng, g_hat, obj_quat)
     elif strategy == SamplingStrategy.kFixed:
         raw = _fixed_samples(n_samples, params)
     else:
         raise NotImplementedError(
             f"Sampling strategy {strategy.name} not yet implemented; "
-            f"only kRandomOnCircle, kRadiallySymmetric, kFixed are supported.")
+            f"only kRandomOnCircle, kRadiallySymmetric, kFaceNormal, kFixed "
+            f"are supported.")
 
     if not params.filter_samples_for_safety:
         return raw
@@ -84,39 +98,32 @@ def _random_on_circle(n_samples:    int,
                       params:       SamplingParams,
                       rng:          np.random.Generator,
                       g_hat:        Optional[np.ndarray]) -> list[np.ndarray]:
-    """Random points uniformly on the circle of radius params.sampling_radius
-    around obj_xy at z = params.sampling_height.
+    """Paper-faithful random ring sampler — Venkatesh §IV-B.
 
-    When g_hat is provided, the proxy point (behind the box on the push
-    axis) is forced to be sample 0 so the controller always considers it;
-    remaining samples are uniform random on the circle. This matches the
-    behavior of the legacy global_sampling_c3.py wrapper that always
-    seeded k=1=proxy.
+    Draws n_samples independent uniform angles θ_i ~ U[0, 2π) and places
+    each sample at
+        (obj_xy + sampling_radius · [cos θ_i, sin θ_i], sampling_height)
+
+    Restoring the paper's sampler intent — `_random_on_circle` previously
+    returned N copies of a perpendicular task-biased point. With OSC in
+    place the executor no longer needs the kinematic-plowing assist that
+    motivated the task-biased variant, and the dispatcher's cost gate
+    relies on per-sample cost diversity to discriminate worthwhile
+    candidates from kStayInRepos churn.
+
+    `g_hat` is unused now (the sampler is direction-agnostic). Kept on
+    the signature for backward compatibility with the public dispatcher.
     """
-    samples: list[np.ndarray] = []
+    del g_hat  # paper-faithful sampler is direction-agnostic
     r = float(params.sampling_radius)
     z = float(params.sampling_height)
-
-    if g_hat is not None and n_samples >= 1:
-        # Mandatory proxy point: behind the box on the push axis
-        proxy = np.array([
-            obj_xy[0] - r * float(g_hat[0]),
-            obj_xy[1] - r * float(g_hat[1]),
-            z,
-        ])
-        samples.append(proxy)
-        n_remain = n_samples - 1
-    else:
-        n_remain = n_samples
-
-    for _ in range(n_remain):
-        theta = rng.uniform(0.0, 2.0 * np.pi)
-        samples.append(np.array([
-            obj_xy[0] + r * np.cos(theta),
-            obj_xy[1] + r * np.sin(theta),
-            z,
-        ]))
-    return samples
+    thetas = rng.uniform(0.0, 2.0 * np.pi, size=n_samples)
+    return [
+        np.array([obj_xy[0] + r * np.cos(t),
+                  obj_xy[1] + r * np.sin(t),
+                  z])
+        for t in thetas
+    ]
 
 
 def _radially_symmetric(n_samples:  int,
@@ -143,6 +150,144 @@ def _radially_symmetric(n_samples:  int,
             z,
         ]))
     return samples
+
+
+def _face_normal_projection(n_samples:    int,
+                            obj_xy:       np.ndarray,
+                            params:       SamplingParams,
+                            rng:          np.random.Generator,
+                            g_hat:        Optional[np.ndarray],
+                            obj_quat:     Optional[np.ndarray]) -> list[np.ndarray]:
+    """Paper-faithful face-normal sampler — Push-Anything §IV-B1.
+
+    For each sample:
+      1. Pick one of the box's side faces uniformly (equal area for a cube).
+      2. Sample a uniform point on that face (tangential jitter along the
+         face width).
+      3. Project the point outward along the face's world-frame normal by
+         `sampling_setback`.
+      4. Project to fixed world height `sampling_height`.
+      5. Reject (resample) if the post-projection xy is still within
+         `sample_reject_clearance` of the box surface.
+
+    Compared to `_random_on_circle` (which places samples on a ring of
+    radius `sampling_radius` around the box center), this sampler
+    guarantees a constant outward clearance from each face — equivalent
+    at the four cardinal angles but strictly larger at off-axis angles,
+    where the ring sampler's geometry sends samples inside the box.
+
+    `obj_quat=None` → axis-aligned fallback (treats body frame == world
+    frame). Sufficient for our cube under translation-only pushing; if
+    the box rotates during the run, pass the world-frame quaternion so
+    the face normals are rotated correctly.
+
+    `g_hat` (2D, points box→goal) conditions the tangential jitter on the
+    sampled face's goal-alignment: samples on a face whose contact would
+    push the box toward the goal cluster near face center (small jitter),
+    while non-goal faces keep full uniform jitter to preserve sample
+    diversity. If `g_hat` is None or zero-norm (e.g. pure-rotation task
+    with no translation goal), all faces fall through to uniform jitter.
+    """
+    box_half = float(params.box_half_extent)
+    setback  = float(params.sampling_setback)
+    z        = float(params.sampling_height)
+    reject_clearance = float(params.sample_reject_clearance)
+
+    # Goal-alignment conditional jitter setup. Only meaningful when g_hat
+    # has a real direction; rotation-only tasks fall through to uniform.
+    if g_hat is not None:
+        g2 = np.asarray(g_hat, dtype=float).reshape(-1)[:2]
+        _g_norm = float(np.linalg.norm(g2))
+    else:
+        g2 = None
+        _g_norm = 0.0
+    _use_goal_align = (_g_norm > 0.5)   # unit-vector check (excl. degenerate)
+    if _use_goal_align:
+        g2 = g2 / _g_norm
+
+    # Body-frame outward normals of the 4 side faces (+x, -x, +y, -y).
+    body_normals = np.array([
+        [ 1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [ 0.0, 1.0, 0.0],
+        [ 0.0,-1.0, 0.0],
+    ])
+    if obj_quat is not None:
+        R = _quat_to_rot(obj_quat)
+        world_normals = (R @ body_normals.T).T
+    else:
+        world_normals = body_normals
+
+    obj_xy_2 = np.asarray(obj_xy, dtype=float).reshape(2)
+    samples: list[np.ndarray] = []
+    max_tries = n_samples * 20
+    tries = 0
+    while len(samples) < n_samples and tries < max_tries:
+        tries += 1
+        face_idx = int(rng.integers(0, 4))
+        n_world = world_normals[face_idx]
+        face_center_xy = obj_xy_2 + box_half * n_world[:2]
+        tang = np.array([-n_world[1], n_world[0]])
+        tn = float(np.linalg.norm(tang))
+        if tn > 1e-9:
+            tang = tang / tn
+        # Conditional jitter: on a goal-aligned face (contact would push box
+        # toward goal), tighten the range so the sample lands near the face
+        # center. Off-center landings on the goal-aligned face produce a
+        # moment arm → yaw → friction-coupled lateral drift; centered
+        # landings push cleanly. Non-goal faces keep full jitter so rotation
+        # tasks and multi-object scenarios retain sample diversity.
+        # Force on box from a sample-side approach is along -n_world; align
+        # that with g_hat (box→goal) to score the face.
+        if _use_goal_align:
+            _goal_align = float(-n_world[0]*g2[0] - n_world[1]*g2[1])
+            if _goal_align > GOAL_ALIGN_THRESHOLD:
+                _jitter_range = box_half * CENTERED_JITTER_FRACTION
+            else:
+                _jitter_range = box_half
+        else:
+            _jitter_range = box_half
+        jitter = float(rng.uniform(-_jitter_range, _jitter_range))
+        point_on_face_xy = face_center_xy + jitter * tang
+        proj_xy = point_on_face_xy + setback * n_world[:2]
+        # Rejection: in body-frame (post-projection), the |max(x,y)| relative
+        # to the box center must exceed box_half + reject_clearance. We
+        # approximate in world frame by axis-aligned bbox check, which is
+        # exact when obj_quat is None and an upper bound on penetration in
+        # the rotated case.
+        dx = max(abs(proj_xy[0] - obj_xy_2[0]) - box_half, 0.0)
+        dy = max(abs(proj_xy[1] - obj_xy_2[1]) - box_half, 0.0)
+        surf_dist = float(np.hypot(dx, dy))
+        if surf_dist < reject_clearance:
+            continue
+        samples.append(np.array([proj_xy[0], proj_xy[1], z]))
+
+    # Pad with deterministic cardinal-direction setback samples if the
+    # rejection loop failed (shouldn't happen for a free-standing cube).
+    while len(samples) < n_samples:
+        idx = len(samples) % 4
+        n_world = world_normals[idx]
+        face_center_xy = obj_xy_2 + box_half * n_world[:2]
+        proj_xy = face_center_xy + setback * n_world[:2]
+        samples.append(np.array([proj_xy[0], proj_xy[1], z]))
+
+    return samples
+
+
+def _quat_to_rot(q: np.ndarray) -> np.ndarray:
+    """Convert [w,x,y,z] quaternion to 3x3 rotation matrix. Returns
+    identity for a zero-norm quaternion."""
+    q = np.asarray(q, dtype=float).reshape(4)
+    w, x, y, z = q
+    n = w*w + x*x + y*y + z*z
+    if n < 1e-12:
+        return np.eye(3)
+    s = 2.0 / n
+    return np.array([
+        [1.0 - s*(y*y + z*z), s*(x*y - w*z),       s*(x*z + w*y)      ],
+        [s*(x*y + w*z),       1.0 - s*(x*x + z*z), s*(y*z - w*x)      ],
+        [s*(x*z - w*y),       s*(y*z + w*x),       1.0 - s*(x*x + y*y)],
+    ])
 
 
 def _fixed_samples(n_samples: int,
