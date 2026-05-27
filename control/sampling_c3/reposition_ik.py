@@ -1101,9 +1101,14 @@ class RepositionIKTracker:
                        p_target:   np.ndarray,
                        dt_ctrl:    float
                        ) -> Tuple[np.ndarray, dict]:
-        """Plan an N-knot joint trajectory then execute knot 0 with
-        joint-PD-with-grav-comp. Same return contract as
-        PiecewiseLinearTracker.compute_torque.
+        """Plan an N-knot joint trajectory and return the per-knot IK
+        solution as a Cartesian waypoint. The wrapper feeds the executor
+        (OSC) ``diag['p_des'] = FK(q_knots[:, 0])`` as the Cartesian
+        target; the executor produces the actuated torque. The first
+        return value is a zero placeholder kept for signature parity
+        with ``PiecewiseLinearTracker.compute_torque`` — see
+        ``wrapper.py`` where ``u_opt`` is immediately overridden by
+        ``self.executor.compute_torque(...)``.
 
         Side effect: leaves ``plant_ctx`` at the original ``current_q``
         on return so downstream callers see the input state.
@@ -1240,67 +1245,22 @@ class RepositionIKTracker:
         #     no-ops. CalcGravityGeneralizedForces below is position-only;
         #     no velocity write is needed.
 
-        # 11. Joint-PD-with-grav-comp on knot 0. Identical control law to
-        #     PiecewiseLinearTracker — only the q_target source differs.
-        q_arm_now    = current_q[:n_arm]
-        v_arm_now    = current_v[:n_arm]
-        q_arm_target = q_arm_knots[:, 0]
-
-        q_err = q_arm_target - q_arm_now
-        self._integral += q_err * dt_ctrl
-        np.clip(self._integral,
-                -self.repos_params.I_max, self.repos_params.I_max,
-                out=self._integral)
-
-        u_p  = self.repos_params.Kp_q * q_err
-        u_i  = self.repos_params.Ki_q * self._integral
-        u_d  = -self.repos_params.Kd_q * v_arm_now
-        u_pd = u_p + u_i + u_d
-
-        # Step 8 Fix 4: anticipate gravity load at the IK target rather than
-        # the current measured config. Counters the steady-state z-tracking
-        # error characterized in 8.3 (arm settles at z≈25mm regardless of
-        # the 50mm reference) by feeding the controller the gravity load it
-        # SHOULD see at q_arm_target rather than the load at q_arm_now.
-        # _plant_ctx_ik is the tracker's private context; nothing past this
-        # point in compute_torque reads from it (verified at 8.4.1).
-        q_full_target = current_q.copy()
-        q_full_target[:n_arm] = q_arm_target
-        self.plant.SetPositions(self._plant_ctx_ik, q_full_target)
-        # Negated: Drake returns generalized gravity force (the force gravity
-        # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
-        tau_g_arm = -self.plant.CalcGravityGeneralizedForces(self._plant_ctx_ik)[:n_arm]
-        _u_raw = tau_g_arm + u_pd
-        u = np.clip(_u_raw,
-                    -self.repos_params.torque_limit,
-                    +self.repos_params.torque_limit)
-        _pd_sat = bool(np.any(
-            np.abs(_u_raw) >= self.repos_params.torque_limit - 1e-9))
+        # 11. Position-residual diagnostic for the [STEP] line. The PD
+        #     control law previously here was removed once the executor
+        #     (OSC) took over actuation in both free and contact stages;
+        #     the wrapper overrides this function's first return value
+        #     with `self.executor.compute_torque(...)` regardless.
+        #     `q_err` is retained because its worst-joint magnitude
+        #     (`q_max_resid_deg`) is still consumed by [STEP] as an IK
+        #     reachability metric.
+        q_arm_target     = q_arm_knots[:, 0]
+        q_err            = q_arm_target - current_q[:n_arm]
         _q_max_resid_deg = float(np.degrees(np.max(np.abs(q_err))))
-
-        # [TRACKER-DIAG] one-shot dump at the last free-mode step before each
-        # clean-IK c3-commit (steps 130/311/489 = c3; tracker last ran at 129/310/488).
-        _ds = getattr(self, "_diag_step", None)
-        if _ds in (129, 310, 488):
-            _ur=tau_g_arm+u_pd; _tl=self.repos_params.torque_limit
-            _sat=np.abs(_ur)>=_tl-1e-9; _absres=np.abs(q_err); _iw=int(np.argmax(_absres))
-            print(f"[TRACKER-DIAG] step={_ds} (precedes c3-commit step {_ds+1})")
-            print(f"  q_target           = {np.round(q_arm_target,4).tolist()}")
-            print(f"  q_arm_now          = {np.round(q_arm_now,4).tolist()}")
-            print(f"  q_residual = q*-q  = {np.round(q_err,4).tolist()}")
-            print(f"  v_arm_now          = {np.round(v_arm_now,4).tolist()}")
-            print(f"  u_raw (pre-clip)   = {np.round(_ur,3).tolist()}")
-            print(f"  u_out (post-clip)  = {np.round(u,3).tolist()}")
-            print(f"  saturated mask     = {_sat.tolist()}")
-            print(f"  |q_residual| (deg) = {np.round(np.degrees(_absres),3).tolist()}")
-            print(f"  worst-joint i      = {_iw}")
-            print(f"  q_residual[i] deg  = {float(np.degrees(q_err[_iw])):+.3f}")
-            print(f"  u_raw[i] (Nm)      = {float(_ur[_iw]):+.3f}")
-            print(f"  u_out[i] (Nm)      = {float(u[_iw]):+.3f}")
-            print(f"  i saturated?       = {'Y' if bool(_sat[_iw]) else 'N'}")
+        u                = np.zeros(n_arm)
 
         # 12. Trajectory-finished signal (mirrors PWL tracker @ 2 cm).
-        finished = float(np.linalg.norm(p_target - ee_now)) <= 0.02
+        finished_val = float(np.linalg.norm(p_target - ee_now))
+        finished = finished_val <= 0.02
 
         # 13. Diagnostics. Two distinct timing keys per the user's
         #     addition: knot0_solve_ms (raw elapsed) AND knot0_overshoot_ms
@@ -1313,12 +1273,30 @@ class RepositionIKTracker:
         p_des  = ee_knots[:, 0] if ee_knots.shape[1] > 0 else p_target.copy()
         ik_err = float(np.linalg.norm(p_des - p_guide[:, 0])) if K > 0 else 0.0
         # Landing error: distance from the last feasible-knot FK to p_target.
-        # Distinguishes "IK can't reach target" from "PD can't track IK".
+        # With K=1 (the default) the tail is frozen at FK(knot 0), so this
+        # collapses to ||FK(knot 0) − p_target||; instrument-only metric.
         if K > 0 and ee_knots.shape[1] > 0:
             _landing_err = float(
                 np.linalg.norm(ee_knots[:, -1] - np.asarray(p_target)))
         else:
             _landing_err = float("nan")
+
+        # Executed-march diagnostics. Three-candidate trace for the
+        # reposition-undershoot investigation (instrument-only, no behavior
+        # change). See REPORT.md / probe_executed_march.md.
+        _ptarget_arr = np.asarray(p_target, dtype=float)
+        _setpoint_to_ptarget = (
+            float(np.linalg.norm(self._setpoint_pos - _ptarget_arr))
+            if self._setpoint_pos is not None else float("nan"))
+        _nextwp_to_ptarget = (
+            float(np.linalg.norm(p_guide[:, 0]  - _ptarget_arr))
+            if p_guide.shape[1] > 0 else float("nan"))
+        _guide_terminal_err = (
+            float(np.linalg.norm(p_guide[:, -1] - _ptarget_arr))
+            if p_guide.shape[1] > 0 else float("nan"))
+        _pd_resid_ee = (
+            float(np.linalg.norm(ee_knots[:, 0] - ee_now))
+            if ee_knots.shape[1] > 0 else float("nan"))
 
         diag = dict(
             finished           = bool(finished),
@@ -1335,7 +1313,12 @@ class RepositionIKTracker:
             knot0_solve_ms     = knot0_solve_ms,
             knot0_overshoot_ms = knot0_overshoot_ms,
             landing_err        = _landing_err,
-            pd_sat             = _pd_sat,
             q_max_resid_deg    = _q_max_resid_deg,
+            # Executed-march trace (instrument-only).
+            setpoint_to_ptarget = _setpoint_to_ptarget,
+            finished_val        = finished_val,
+            nextwp_to_ptarget   = _nextwp_to_ptarget,
+            guide_terminal_err  = _guide_terminal_err,
+            pd_resid_ee         = _pd_resid_ee,
         )
         return u, diag
