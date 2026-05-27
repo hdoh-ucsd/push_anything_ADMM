@@ -1260,18 +1260,23 @@ class SamplingC3MPC:
             _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
 
             # Lever 3: c3 approach-closing override. When LCS admits no
-            # EE-box pair (lam_n empty), the planner sees no contact and
-            # parks the EE in place — but the typical arrival sphere-to-box
-            # gap is ~6 mm while LCS admits only at <= 2 mm: chicken-and-egg.
-            # Drive the EE toward the box CoM along the box-EE vector (not
-            # -g_hat: off-axis arrivals would be pushed away), clamped so
-            # the commanded target stays >= LCS_DISTANCE_THRESHOLD outside
-            # contact (non-penetrating by construction). Self-disabling the
-            # instant LCS admits a pair (lam_n.size > 0): planner authority
+            # EE-BOX pair, the planner sees no contact and parks the EE in
+            # place — but the typical arrival sphere-to-box gap is ~6 mm
+            # while LCS admits only at <= 2 mm: chicken-and-egg. Drive the
+            # EE toward the box CoM along the box-EE vector (not -g_hat:
+            # off-axis arrivals would be pushed away), clamped so the
+            # commanded target stays >= LCS_DISTANCE_THRESHOLD outside
+            # contact (non-penetrating by construction). Self-disabling
+            # the instant LCS admits an EE-BOX pair: planner authority
             # returns automatically.
-            _no_admitted_pair = (_lam_n is None
-                                 or not hasattr(_lam_n, "size")
-                                 or _lam_n.size == 0)
+            #
+            # Indicator: formulator._last_ee_box_contacts (EE-BOX-only list).
+            # Cannot key on _lam_n.size because lam_n includes the BOX-GND
+            # contact row, which is always admitted (the box rests on the
+            # ground), so lam_n.size >= 1 even with no EE-BOX pair.
+            _ee_box_pairs = getattr(self.base_mpc.formulator,
+                                    "_last_ee_box_contacts", [])
+            _no_admitted_pair = (len(_ee_box_pairs) == 0)
             if _no_admitted_pair:
                 _box_xyz = np.array([
                     current_q[self._obj_x_idx],
