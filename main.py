@@ -591,6 +591,28 @@ def main():
         step     += 1
         simulator.AdvanceTo(sim_time)
 
+        # Sink 3 vs Sink 4 diagnostic: Drake-realized contact force on the
+        # EE-box pair. Filters out box-ground using LCS formulator's geom IDs.
+        try:
+            _cr = plant.get_contact_results_output_port().Eval(plant_ctx)
+            _eebox_fmag = 0.0
+            _n_pairs = _cr.num_point_pair_contacts()
+            for _i in range(_n_pairs):
+                _info = _cr.point_pair_contact_info(_i)
+                _pp = _info.point_pair()
+                _ia, _ib = _pp.id_A, _pp.id_B
+                _is_ee_box = (
+                    (_ia in formulator._ee_geom_ids and _ib in formulator._manipuland_geom_ids)
+                    or (_ib in formulator._ee_geom_ids and _ia in formulator._manipuland_geom_ids)
+                )
+                if _is_ee_box:
+                    _eebox_fmag = float(np.linalg.norm(_info.contact_force()))
+                    break
+            print(f"[DRAKE-CONTACT] step={step} n_pairs={_n_pairs} "
+                  f"ee_box_normal={_eebox_fmag:.3f}", flush=True)
+        except Exception as _e:
+            print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
+
     print("[C3] Simulation complete.")
     if isinstance(mpc, SamplingC3MPC):
         mpc.print_perf_summary()
