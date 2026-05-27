@@ -8,11 +8,11 @@ Equality constraint (dynamics):
     M v̇ + C(q,v) v - τ_g(q) = B τ + J_full^T λ_planned
 
     λ_planned is the planner's desired feedforward contact force.
-    Sign convention matches `ImpedanceController`: J built from
-    nhat_BA · (J_A − J_B), λ ≥ 0, and the term +J^T λ on the RHS
-    represents the contact force pushing the box in the goal direction
-    while reacting on the arm. The QP then solves for τ that produces
-    EE motion consistent with that planned contact.
+    Sign convention: J built from nhat_BA · (J_A − J_B), λ ≥ 0, and
+    the term +J^T λ on the RHS represents the contact force pushing
+    the box in the goal direction while reacting on the arm. The QP
+    then solves for τ that produces EE motion consistent with that
+    planned contact.
 
 Inequality constraints:
     τ_min ≤ τ ≤ τ_max         per-joint URDF effort limits (87/87/87/87/12/12/12 Nm for Franka)

@@ -506,15 +506,10 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
-    # ----- Executor selector -----
-    # When True, the wrapper instantiates `OperationalSpaceController`
-    # (a per-tick QP) instead of `ImpedanceController` (closed-form
-    # Aydinoglu eq. 36). Drop-in compatible: same signature, same
-    # Cartesian-target inputs from rich/free modes. OSC enforces
-    # per-joint URDF effort limits via box constraints rather than
-    # post-hoc np.clip, which preserves task tracking when one joint
-    # would otherwise saturate.
-    use_osc: bool = False
+    # ----- Executor -----
+    # The wrapper always instantiates `OperationalSpaceController` (a
+    # per-tick QP). The alternate closed-form impedance executor was
+    # removed; see git history if a comparison/ablation is needed.
     osc_gains_yaml: str = "config/osc_franka.yaml"
 
     # ------------ Force-tracking executor knobs ---------------------------
@@ -587,7 +582,6 @@ class SamplingC3Params:
             w_travel             = float(raw.get("w_travel", 200.0)),
             w_rot                = float(raw.get("w_rot", 0.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
-            use_osc              = bool(raw.get("use_osc", False)),
             osc_gains_yaml       = str(raw.get("osc_gains_yaml", "config/osc_franka.yaml")),
             use_force_tracking   = bool(raw.get("use_force_tracking", True)),
             W_force              = float(raw.get("W_force", 100.0)),

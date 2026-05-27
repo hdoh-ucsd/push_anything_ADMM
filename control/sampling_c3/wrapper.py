@@ -33,7 +33,6 @@ from control.sampling_c3.params import (
     SamplingC3Params, SamplingStrategy, RepositioningTrajectoryType,
 )
 from control.sampling_c3.progress import ProgressTracker, StepMetrics
-from control.impedance_controller import ImpedanceController
 from control.osc import OperationalSpaceController
 from control.sampling_c3.reposition import PiecewiseLinearTracker
 from control.sampling_c3.reposition_ik import RepositionIKTracker
@@ -171,44 +170,24 @@ class SamplingC3MPC:
                 params=params.reposition_params,
             )
 
-        # ----- Executor: OSC (QP) or Aydinoglu impedance (closed-form) -----
-        # The wrapper picks one per `params.use_osc`. Either matches the
-        # impedance compute_torque signature so the dispatch code below
-        # is a single code path.
-        #
-        # q_nominal here matches the IK params' tuned posture
-        # (J2=0.325) — the existing "comfortable" arm pose that keeps
-        # gravity-comp under the 30 Nm budget.
+        # ----- Executor: OSC (QP) -----
+        # OSC is the sole executor. The alternate closed-form impedance
+        # executor was removed; see git history if comparison/ablation is
+        # needed.  q_nominal matches the IK params' tuned posture
+        # (J2=0.325) — the "comfortable" arm pose that keeps gravity-comp
+        # under the 30 Nm budget.
         _q_nominal = np.asarray(params.repos_ik_params.q_nominal,
                                 dtype=float)[:self.n_u]
-        if getattr(params, "use_osc", False):
-            self.executor = OperationalSpaceController(
-                plant        = plant,
-                ee_frame     = ee_frame,
-                n_arm_dofs   = self.n_u,
-                q_nominal    = _q_nominal,
-                gains_yaml   = params.osc_gains_yaml,
-                log_diag     = self.log_diag,
-                use_force_tracking = bool(getattr(params, "use_force_tracking", True)),
-                W_force      = float(getattr(params, "W_force", 100.0)),
-            )
-            self._executor_kind = "osc"
-        else:
-            self.executor = ImpedanceController(
-                plant        = plant,
-                ee_frame     = ee_frame,
-                n_arm_dofs   = self.n_u,
-                Kp_cart      = np.array([400.0, 400.0, 400.0]),
-                Kd_cart      = np.array([ 40.0,  40.0,  40.0]),
-                Kp_null      = np.full(self.n_u, 10.0),
-                Kd_null      = np.full(self.n_u,  3.0),
-                q_nominal    = _q_nominal,
-                torque_limit = self._tlim,
-            )
-            self._executor_kind = "impedance"
-        # Backwards-compat alias — existing diagnostic code reads
-        # self.impedance. Both names point to the same object.
-        self.impedance = self.executor
+        self.executor = OperationalSpaceController(
+            plant        = plant,
+            ee_frame     = ee_frame,
+            n_arm_dofs   = self.n_u,
+            q_nominal    = _q_nominal,
+            gains_yaml   = params.osc_gains_yaml,
+            log_diag     = self.log_diag,
+            use_force_tracking = bool(getattr(params, "use_force_tracking", True)),
+            W_force      = float(getattr(params, "W_force", 100.0)),
+        )
 
         # Mode state
         self.is_doing_c3 = start_in_c3_mode
@@ -1665,10 +1644,8 @@ class SamplingC3MPC:
               f"cheap_solves={self.inner_solver.cheap_solves}  "
               f"switches={self._n_switches}")
         # OSC end-of-run summary (QP failure rate, saturation rate, avg
-        # solve time). Only meaningful for the OSC executor; the
-        # ImpedanceController doesn't carry these counters.
-        if hasattr(self.executor, "print_summary"):
-            self.executor.print_summary()
+        # solve time).
+        self.executor.print_summary()
         # 9.4.7 Option A — watchdog summary. Only printed when the
         # threshold is enabled in config (otherwise tally is 0 and the
         # line is uninformative).
