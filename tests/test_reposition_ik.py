@@ -243,7 +243,7 @@ def test_reachable_target_no_obstacle(_world: World, root_ctx: RootCtx,
 
     u, _diag = tracker.compute_torque(
         current_q=current_q, current_v=current_v,
-        plant_ctx=root_ctx.plant, p_target=p_target, dt_ctrl=DT_CTRL,
+        plant_ctx=root_ctx.plant, p_target=p_target, dt_osc=DT_CTRL,
     )
 
     assert np.all(np.isfinite(u))
@@ -330,7 +330,7 @@ def test_obstacle_in_path_without_dmin(_world: World, root_ctx: RootCtx,
 
     u, _diag = tracker.compute_torque(
         current_q=current_q, current_v=current_v,
-        plant_ctx=root_ctx.plant, p_target=p_target, dt_ctrl=DT_CTRL,
+        plant_ctx=root_ctx.plant, p_target=p_target, dt_osc=DT_CTRL,
     )
 
     assert np.all(np.isfinite(u))
@@ -356,7 +356,7 @@ def test_obstacle_in_path_with_dmin(_world: World, root_ctx: RootCtx,
 
     tracker.compute_torque(
         current_q=current_q, current_v=current_v,
-        plant_ctx=root_ctx.plant, p_target=p_target, dt_ctrl=DT_CTRL,
+        plant_ctx=root_ctx.plant, p_target=p_target, dt_osc=DT_CTRL,
     )
 
     assert tracker.last_knot0_feasible is False
@@ -412,7 +412,7 @@ def test_joint_limit_continuity(_world: World, root_ctx: RootCtx,
 
     tracker.compute_torque(
         current_q=current_q, current_v=current_v,
-        plant_ctx=root_ctx.plant, p_target=p_target, dt_ctrl=DT_CTRL,
+        plant_ctx=root_ctx.plant, p_target=p_target, dt_osc=DT_CTRL,
     )
 
     # All K IK-solved knots must be feasible — q_warm holds on
@@ -490,7 +490,7 @@ def test_infeasibility_marks_target(_world: World, root_ctx: RootCtx,
 
     u, _diag = tracker.compute_torque(
         current_q=current_q, current_v=current_v,
-        plant_ctx=root_ctx.plant, p_target=p_target, dt_ctrl=DT_CTRL,
+        plant_ctx=root_ctx.plant, p_target=p_target, dt_osc=DT_CTRL,
     )
 
     assert tracker.last_knot0_feasible is False
@@ -528,7 +528,7 @@ def test_timing_p99(_world: World, root_ctx: RootCtx, tracker_factory) -> None:
         current_q=current_q, current_v=current_v,
         plant_ctx=root_ctx.plant,
         p_target=ee_now + np.array([0.01, 0.0, 0.0]),
-        dt_ctrl=DT_CTRL,
+        dt_osc=DT_CTRL,
     )
 
     N_SAMPLES = 50
@@ -547,7 +547,7 @@ def test_timing_p99(_world: World, root_ctx: RootCtx, tracker_factory) -> None:
         p_target = ee_now + offset
         tracker.compute_torque(
             current_q=current_q, current_v=current_v,
-            plant_ctx=root_ctx.plant, p_target=p_target, dt_ctrl=DT_CTRL,
+            plant_ctx=root_ctx.plant, p_target=p_target, dt_osc=DT_CTRL,
         )
         # Sanity: timing distribution is meaningless if any solve failed.
         assert tracker.last_knot0_feasible is True, (

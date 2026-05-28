@@ -167,7 +167,7 @@ class PiecewiseLinearTracker:
                        current_v:  np.ndarray,
                        plant_ctx,
                        p_target:   np.ndarray,
-                       dt_ctrl:    float) -> tuple[np.ndarray, dict]:
+                       dt_osc:     float) -> tuple[np.ndarray, dict]:
         """Compute one control-step's joint torque toward p_target.
 
         Returns (u, diag) where diag is a dict of per-component torque
@@ -195,7 +195,7 @@ class PiecewiseLinearTracker:
         # This makes the desired Cartesian position march at params.speed
         # m/s regardless of how well the arm tracks — the arm chases a
         # moving setpoint, building up integrator authority if it lags.
-        ds = self.params.speed * dt_ctrl
+        ds = self.params.speed * dt_osc
         p_des = next_waypoint(
             self._setpoint_pos, p_target,
             z_safe=self.params.pwl_waypoint_height,
@@ -221,7 +221,7 @@ class PiecewiseLinearTracker:
         q_arm_target = q_des[: self.n_arm_dofs]
 
         q_err = q_arm_target - q_arm_now
-        self._integral += q_err * dt_ctrl
+        self._integral += q_err * dt_osc
         np.clip(self._integral, -self.params.I_max, self.params.I_max,
                 out=self._integral)
 
