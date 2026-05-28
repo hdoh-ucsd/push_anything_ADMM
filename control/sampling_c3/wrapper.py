@@ -204,6 +204,14 @@ class SamplingC3MPC:
         self.is_doing_c3 = start_in_c3_mode
         self._prev_mode:                str   = "c3" if start_in_c3_mode else "free"
         self._step:                     int   = 0
+        # T-architecture Stage 2b: rate-decoupling state. At default rates
+        # (params.dt_osc == params.dt_mpc == 0.01) N_plan=1 and the planner
+        # solves every tick with elapsed=0; Stage 2c flips dt_mpc to e.g.
+        # 0.025 so the planner solves every 25th OSC tick.
+        self._dt_osc:                   float = float(params.dt_osc)
+        self._dt_mpc:                   float = float(params.dt_mpc)
+        self._last_plan_tick:           int   = -1
+        self._last_plan_ctx                   = None
         self._did_lcs_dump:             bool  = False  # one-shot trigger for [MATH.LCS-DUMP]
         self._did_cost_dump:            bool  = False  # one-shot trigger for [COST-DUMP]
         self._did_counterfactual_dump:  bool  = False  # one-shot trigger for [COUNTERFACTUAL-DUMP]
@@ -485,15 +493,50 @@ class SamplingC3MPC:
                         plant_ctx,
                         target_xy:  np.ndarray,
                         target_yaw: float = 0.0) -> np.ndarray:
-        """T-architecture Stage 2a: orchestrate _solve_plan + _run_osc.
-        At default rates (dt_osc=dt_mpc=dt_ctrl=0.01s) the two are called
-        in lockstep every tick and behavior matches pre-Stage-2a within
-        the sim's noise floor. Stage 2b will use the elapsed argument
-        to index into the planner's λ-horizon between dt_mpc boundaries."""
-        plan_ctx = self._solve_plan(current_q, current_v, plant_ctx,
-                                    target_xy, target_yaw)
+        """T-architecture Stage 2b: gate the planner solve on dt_mpc
+        boundaries, run the OSC every tick at dt_osc, and index the
+        planner's λ-horizon by elapsed time since the last solve. At
+        default rates (dt_osc == dt_mpc == 0.01s) N_plan=1, the planner
+        fires every tick with elapsed=0, and the system behaves like
+        pre-Stage-2b within the sim's noise floor."""
+        self._step += 1
+        t_step_start = time.perf_counter()
+
+        # Gating: how many OSC ticks per planner solve?
+        N_plan = max(1, int(round(self._dt_mpc / self._dt_osc)))
+        should_solve = (self._last_plan_tick < 0
+                        or (self._step - self._last_plan_tick) >= N_plan)
+
+        if should_solve:
+            plan_ctx = self._solve_plan(current_q, current_v, plant_ctx,
+                                        target_xy, target_yaw)
+            self._last_plan_tick = self._step
+            self._last_plan_ctx  = plan_ctx
+            elapsed = 0.0
+        else:
+            plan_ctx = self._last_plan_ctx
+            elapsed  = (self._step - self._last_plan_tick) * self._dt_osc
+
+        # Stage 2b integrity invariant: when the solver has populated the
+        # λ-horizon, knot 0 of the horizon must equal the first-knot view
+        # that pre-Stage-2b code used. A mismatch indicates a bug in the
+        # Stage 1 mirror (offset / wrong solve cached / stale state). Skip
+        # when either is empty (no contacts admitted) or None (cold start).
+        _hn = getattr(self.base_mpc, "last_lambda_n_horizon", None)
+        _fn = getattr(self.base_mpc, "last_lambda_n_first",   None)
+        if (_hn is not None and _fn is not None
+                and getattr(_hn, "size", 0) > 0 and getattr(_fn, "size", 0) > 0):
+            assert np.allclose(_hn[0], _fn, atol=1e-9), (
+                f"[Stage2b integrity] last_lambda_n_horizon[0] {_hn[0]} "
+                f"!= last_lambda_n_first {_fn}"
+            )
+
+        # Inject this tick's wall-clock start so _run_osc measures the
+        # OSC tick (not the cached planner-tick) for self._step_times_ms.
+        plan_ctx = {**plan_ctx, "t_step_start": t_step_start}
+
         return self._run_osc(current_q, current_v, plant_ctx,
-                             plan_ctx, elapsed=0.0)
+                             plan_ctx, elapsed=elapsed)
 
     def _solve_plan(self,
                     current_q:  np.ndarray,
@@ -508,10 +551,9 @@ class SamplingC3MPC:
         self.* attributes (last_x_seq, _current_repos_*, progress, buffer,
         _no_ee_box_streak, etc.). Returns a plan_ctx dict carrying the
         locals that _run_osc needs (mode, ee_pos_now, g_hat_3d, free_diag,
-        sample results, t_step_start, etc.)."""
-        self._step += 1
-        t_step_start = time.perf_counter()
-
+        sample results, etc.). Stage 2b note: self._step increment and
+        t_step_start are now owned by compute_control so they fire every
+        OSC tick, not only on planner-solve ticks."""
         # Restore plant_ctx (defensive — base_mpc / inner_solver may have
         # left it elsewhere)
         self.plant.SetPositions(plant_ctx,  current_q)
@@ -1227,7 +1269,7 @@ class SamplingC3MPC:
                 u_opt, free_diag = self.tracker.compute_torque(
                     current_q=current_q, current_v=current_v,
                     plant_ctx=plant_ctx, p_target=p_repos,
-                    dt_ctrl=self._dt_ctrl,
+                    dt_osc=self._dt_osc,
                 )
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
@@ -1282,7 +1324,8 @@ class SamplingC3MPC:
             best_src        = best_src,
             best_other_cost = best_other_cost,
             met             = met,
-            t_step_start    = t_step_start,
+            # t_step_start is injected by compute_control (per OSC tick,
+            # not per planner-solve tick).
         )
 
     def _run_osc(self,
@@ -1347,8 +1390,25 @@ class SamplingC3MPC:
                 self.plant.SetVelocities(plant_ctx, current_v)
             else:
                 _p_ee_des = ee_pos_now
-            _lam_n = getattr(self.base_mpc, "last_lambda_n_first", None)
-            _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
+            # Stage 2b: index into the planner's λ-horizon by elapsed time
+            # since the last solve. k = round(elapsed / self._dt) where
+            # self._dt = base_mpc.dt = 0.05s is the planning-horizon node
+            # spacing. At defaults (N_plan=1, elapsed=0) → k=0 and this
+            # reduces to last_lambda_n_first (verified by the integrity
+            # assert in compute_control). Falls back to first-knot if the
+            # horizon mirror is unavailable (cold start or no contacts).
+            _lh_n = getattr(self.base_mpc, "last_lambda_n_horizon", None)
+            _lh_t = getattr(self.base_mpc, "last_lambda_t_horizon", None)
+            if _lh_n is not None and getattr(_lh_n, "shape", (0,))[0] > 0:
+                _k = min(int(round(elapsed / self._dt)), _lh_n.shape[0] - 1)
+                _lam_n = _lh_n[_k]
+                if _lh_t is not None and getattr(_lh_t, "shape", (0,))[0] > 0:
+                    _lam_t = _lh_t[_k]
+                else:
+                    _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
+            else:
+                _lam_n = getattr(self.base_mpc, "last_lambda_n_first", None)
+                _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
             _Jn    = self.base_mpc.formulator._last_J_n
             _Jt    = self.base_mpc.formulator._last_J_t
             _lam_des = self._derive_force_command(_lam_n, g_hat_3d)

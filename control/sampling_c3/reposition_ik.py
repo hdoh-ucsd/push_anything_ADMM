@@ -1099,7 +1099,7 @@ class RepositionIKTracker:
                        current_v:  np.ndarray,
                        plant_ctx,
                        p_target:   np.ndarray,
-                       dt_ctrl:    float
+                       dt_osc:     float
                        ) -> Tuple[np.ndarray, dict]:
         """Plan an N-knot joint trajectory and return the per-knot IK
         solution as a Cartesian waypoint. The wrapper feeds the executor
@@ -1159,8 +1159,8 @@ class RepositionIKTracker:
         #     decouples the per-tick setpoint stride (control rate) from
         #     the warm-start guide's per-knot stride (planner rate), which
         #     was conflated by the prior implementation and caused the
-        #     setpoint to march 5× too fast (planner_dt / dt_ctrl = 5).
-        ds_ctrl = float(self.repos_params.speed) * float(dt_ctrl)
+        #     setpoint to march 5× too fast (planner_dt / dt_osc = 5).
+        ds_ctrl = float(self.repos_params.speed) * float(dt_osc)
         self._setpoint_pos = next_waypoint(
             p_now=self._setpoint_pos,
             p_target=p_target,

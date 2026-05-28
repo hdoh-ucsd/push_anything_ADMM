@@ -44,6 +44,13 @@ w_rot:    800000.0
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
 
+# T-architecture rate decoupling (Stage 2b adds the machinery; Stage 2c
+# flips values). At defaults dt_osc == dt_mpc so N_plan = 1 and the
+# planner solves every OSC tick — pre-Stage-2b behavior preserved.
+# Paper target: dt_osc ≈ 0.001 (1 kHz OSC), dt_mpc ≈ 0.025-0.143 (7-40 Hz MPC).
+dt_osc: 0.01
+dt_mpc: 0.01
+
 
 # ----------------------------------------------------------------------------
 # Progress + mode-switch hysteresis

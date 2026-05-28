@@ -190,6 +190,9 @@ class QuadraticManipulationCost:
         self._bias_last_face    = None    # last correct face label ('E','W','N','S')
         self._bias_face_init    = False   # one-time initial wrong-face check done
 
+        # EE-approach cost diagnostic (off by default; enabled via --ee-cost-diag)
+        self._diag_ee_cost      = False
+
         # Static parts of the base object-goal cost
         self._Q_obj = self._make_Q_obj()
         self._R     = self.w_torque * np.eye(n_u)
@@ -210,12 +213,18 @@ class QuadraticManipulationCost:
 
     def build(self, target_xy: np.ndarray,
               plant_ctx=None, current_q: np.ndarray = None,
+              rich_mode: bool = False,
               target_yaw: float = 0.0):
         """
         Return (Q, R, QN, x_ref) for one MPC step.
 
         If plant_ctx and current_q are provided, augments Q and x_ref with a
         linearised EE approach cost via the arm Jacobian.
+
+        rich_mode=True disables the EE-approach proxy gradient (see
+        counterfactual audit, results/counterfactual_north.log). Both the
+        J_arm^T J_arm cost block and the arm x_ref shift are skipped; the
+        perpendicular-box-velocity block (task-tracking) is retained.
 
         target_yaw=0.0 + w_yaw=0.0 → no yaw cost contribution (inert path for
         existing tasks). With w_yaw>0, the quaternion block of Q gets
@@ -326,7 +335,7 @@ class QuadraticManipulationCost:
                     _N_I          = 60
                     # N_II: E1 far-approach ~100 steps before contact; matched here
                     _N_II         = 100
-                    # N_STALL: 100-step window (1.0 s at dt_ctrl=0.01s)
+                    # N_STALL: 100-step window (1.0 s at dt_osc=0.01s)
                     _N_STALL      = 100
                     # STALL_THRESH: 0.003m cumulative goal progress in N_STALL steps;
                     # E1 active push ≈106mm in 100 steps >> 3mm; plateau ≈1mm < 3mm
@@ -465,11 +474,28 @@ class QuadraticManipulationCost:
                 dq    = J_arm.T @ np.linalg.solve(JJT, ee_err)  # (n_u,)
 
                 # Add J^T J block to Q (arm q indices 0..n_u-1)
-                w = self.w_ee_approach
+                w = self.w_ee_approach if not rich_mode else 0.0
                 Q[: self.n_u, : self.n_u] += 2.0 * w * (J_arm.T @ J_arm)
 
                 # Shift arm reference toward effective proxy
-                x_ref[: self.n_u] = current_q[: self.n_u] + dq
+                if not rich_mode:
+                    x_ref[: self.n_u] = current_q[: self.n_u] + dq
+
+                if self._diag_ee_cost:
+                    ee2proxy = effective_proxy - ee_pos
+                    q_arm = current_q[: self.n_u]
+                    q_arm_str = "[" + ",".join(f"{v:+.4f}" for v in q_arm) + "]"
+                    print(f"[EE-COST] "
+                          f"obj=({obj_xy[0]:+.4f},{obj_xy[1]:+.4f}) "
+                          f"ghat=({g_hat[0]:+.4f},{g_hat[1]:+.4f}) "
+                          f"ee=({ee_pos[0]:+.4f},{ee_pos[1]:+.4f},{ee_pos[2]:+.4f}) "
+                          f"ee_to_box={ee_to_box_dist*1000:.1f}mm "
+                          f"stage={stage} "
+                          f"proxy=({effective_proxy[0]:+.4f},{effective_proxy[1]:+.4f},{effective_proxy[2]:+.4f}) "
+                          f"ee2proxy=({ee2proxy[0]:+.4f},{ee2proxy[1]:+.4f},{ee2proxy[2]:+.4f}) "
+                          f"w_ee={w:.0f} "
+                          f"q_arm={q_arm_str}",
+                          flush=True)
 
             elif self.w_yaw > 0.0:
                 # --- Rotation-task EE-approach (Jin & Posa eq. 40 w1 analog) ---
@@ -498,10 +524,11 @@ class QuadraticManipulationCost:
                 JJT   = J_arm @ J_arm.T + lam * np.eye(3)
                 dq    = J_arm.T @ np.linalg.solve(JJT, ee_err)
 
-                w = self.w_ee_approach
+                w = self.w_ee_approach if not rich_mode else 0.0
                 Q[: self.n_u, : self.n_u] += 2.0 * w * (J_arm.T @ J_arm)
 
-                x_ref[: self.n_u] = current_q[: self.n_u] + dq
+                if not rich_mode:
+                    x_ref[: self.n_u] = current_q[: self.n_u] + dq
 
             # --- Perpendicular box velocity penalty ---
             # Penalise object velocity components orthogonal to the goal direction.
