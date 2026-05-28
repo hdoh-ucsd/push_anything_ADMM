@@ -446,6 +446,15 @@ def main():
             _was = sc3_params.sampling_params.workspace_xy_max[1]
             sc3_params.sampling_params.workspace_xy_max[1] = args.workspace_y_max
             print(f"[OVERRIDE] workspace_xy_max[1]={args.workspace_y_max} (was {_was})")
+        # D6: per-task sampling_height override. pushing/hard_pushing set 0.03
+        # (sub-CoM, restoring tip moment); cube_turning/shepherding read the
+        # sampler default. tasks.yaml is the source of truth; absent → no override.
+        _task_sample_h = task_cfg.get("sampling_height")
+        if _task_sample_h is not None:
+            _was_sh = sc3_params.sampling_params.sampling_height
+            sc3_params.sampling_params.sampling_height = float(_task_sample_h)
+            print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
+                  f"(was {_was_sh:.3f}, per-task '{task_name}')")
         # With the new IK-based --prepositioned pose, k=0 captures the
         # ~30k alignment bonus (vs zero contact for every k>=1 at sampling
         # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
