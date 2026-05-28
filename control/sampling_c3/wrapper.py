@@ -543,6 +543,33 @@ class SamplingC3MPC:
         # OSC tick (not the cached planner-tick) for self._step_times_ms.
         plan_ctx = {**plan_ctx, "t_step_start": t_step_start}
 
+        # B0-diagnostic: per-step planner prediction probe. Prints x_seq[1]
+        # box xyz + box translational velocity so we can measure whether
+        # ground-pair admission (commit e96ccdd) eliminated the prior
+        # T3 "1600× predicted-vs-actual" mismatch. Compact one-line form;
+        # consumed by the B0 analyzer in /tmp.
+        try:
+            _xseq = getattr(self.base_mpc, "last_x_seq", None)
+            if _xseq is not None and _xseq.shape[0] >= 2:
+                _ps = self.obj_body.floating_positions_start()
+                _vs = self.obj_body.floating_velocities_start_in_v()
+                _nq = self.base_mpc.formulator.n_q
+                _ox, _oy, _oz = _ps + 4, _ps + 5, _ps + 6
+                # In the [q;v] state layout, box translational v indices in v
+                # are floating_velocities_start_in_v + [3,4,5].
+                _vxr, _vyr, _vzr = _nq + _vs + 3, _nq + _vs + 4, _nq + _vs + 5
+                x1 = _xseq[1]
+                print(
+                    f"[X-SEQ-PROBE] step={self._step} "
+                    f"x0_box=({current_q[_ox]:+.5f},{current_q[_oy]:+.5f},{current_q[_oz]:+.5f}) "
+                    f"x1_box=({x1[_ox]:+.5f},{x1[_oy]:+.5f},{x1[_oz]:+.5f}) "
+                    f"x1_box_v=({x1[_vxr]:+.5f},{x1[_vyr]:+.5f},{x1[_vzr]:+.5f}) "
+                    f"dt={self.base_mpc.dt:.3f}",
+                    flush=True,
+                )
+        except Exception:  # noqa: BLE001 — probe must not affect control
+            pass
+
         return self._run_osc(current_q, current_v, plant_ctx,
                              plan_ctx, elapsed=elapsed)
 
