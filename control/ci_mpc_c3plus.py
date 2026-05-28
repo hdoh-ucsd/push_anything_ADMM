@@ -84,6 +84,9 @@ class C3PlusMPC:
         # will let the wrapper's OSC index into these between MPC re-solves.
         self.last_lambda_n_horizon: np.ndarray | None = None
         self.last_lambda_t_horizon: np.ndarray | None = None
+        # D2: convergence flag for the wrapper's force-derive degrade.
+        # True until the first solve (so a missing flag doesn't trip the cap).
+        self.last_converged: bool = True
 
     def compute_control(self,
                         current_q:  np.ndarray,
@@ -255,6 +258,11 @@ class C3PlusMPC:
             self.solver._last_lambda_t_horizon.copy()
             if self.solver._last_lambda_t_horizon is not None else None
         )
+        # D2: surface ADMM convergence to the wrapper's force-derive logic.
+        # When False, wrapper caps the OSC λ_des magnitude at nominal so we
+        # don't amplify ω-leakage (delta view) or complementarity-leakage
+        # (z_sol view). True by default — only set False on actual divergence.
+        self.last_converged = bool(getattr(self.solver, "_last_converged", True))
         # Stash cost-build outputs for the wrapper's [COST-DUMP] diagnostic
         # (purely additive — read only by one-shot logging).
         self._last_Q          = Q
