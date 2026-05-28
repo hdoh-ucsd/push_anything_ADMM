@@ -111,6 +111,24 @@ class C3Solver:
         self._last_lambda_n_horizon: np.ndarray | None = None
         self._last_lambda_t_horizon: np.ndarray | None = None
 
+        # D1+D2: dual-view (z_sol vs delta) exposure + convergence flag.
+        # When ADMM converges (pr<tol AND dr<tol), z_sol and delta agree
+        # on the λ block. When non-converged, z_sol is QP-optimal but
+        # complementarity-leaked; delta is complementarity-feasible but
+        # ω-leaked. Expose BOTH so consumer A/B is one bool flip.
+        # Default consumers see delta (the GATE verdict's safer choice
+        # under non-convergence).
+        self.expose_zsol:        bool = False
+        self._last_converged:    bool = True
+        self._last_lambda_n_first_zsol:    np.ndarray | None = None
+        self._last_lambda_n_first_delta:   np.ndarray | None = None
+        self._last_lambda_t_first_zsol:    np.ndarray | None = None
+        self._last_lambda_t_first_delta:   np.ndarray | None = None
+        self._last_lambda_n_horizon_zsol:  np.ndarray | None = None
+        self._last_lambda_n_horizon_delta: np.ndarray | None = None
+        self._last_lambda_t_horizon_zsol:  np.ndarray | None = None
+        self._last_lambda_t_horizon_delta: np.ndarray | None = None
+
         # Per-(mpc_step, admm_iter, horizon_k) λ probe. Disabled by default.
         # Enabled via enable_lambda_horizon_probe(); writes one CSV row per
         # (solve, iter, k, contact). Used to diagnose whether λ_n_gnd is
@@ -1054,6 +1072,20 @@ class C3Solver:
                   f"dual: {dual_hist[0]:.4f}->{dual_hist[-1]:.4f}  "
                   f"mono={mono}  iters={actual_iters}/{admm_iter}  rho={rho:.1f}")
 
+        # D2: surface ADMM convergence + non-converged warning. Consumed
+        # by C3PlusMPC.last_converged → wrapper._derive_force_command,
+        # which caps the OSC λ_des magnitude at nominal_push_force when
+        # the planner did not converge (avoids amplifying ω-leakage on
+        # the delta view, or complementarity-leakage on the z_sol view).
+        _pr_final = primal_hist[-1] if primal_hist else 0.0
+        _dr_final = dual_hist[-1]   if dual_hist   else 0.0
+        self._last_converged = bool(
+            n_lambda == 0 or (_pr_final < tol and _dr_final < tol)
+        )
+        if not self._last_converged:
+            print(f"[ADMM-C3+] WARNING non-converged: "
+                  f"pr={_pr_final:.4f} dr={_dr_final:.4f} tol={tol:.0e}")
+
         # ---------------------------------------------------------------
         # Extract outputs
         # ---------------------------------------------------------------
@@ -1066,29 +1098,61 @@ class C3Solver:
 
         # First-horizon contact force for Aydinoglu eq. 36 τ_ff feedforward.
         # λ = [γ; λ_n; λ_t]; we expose only the physical components.
+        # D1: expose BOTH z_sol and delta views. Default consumers see
+        # delta (the complementarity-feasible projection — see GATE
+        # verdict + investigation T2). Flip via `solver.expose_zsol = True`
+        # for A/B comparison.
         if num_normals > 0:
             _SLN0 = SL + num_normals                   # λ_n offset in step 0's λ slot
             _SLT0 = SL + 2 * num_normals               # λ_t offset
             _n_t  = J_t.shape[0]
-            self._last_lambda_n_first = z_sol[_SLN0 : _SLN0 + num_normals].copy()
-            self._last_lambda_t_first = (z_sol[_SLT0 : _SLT0 + _n_t].copy()
-                                         if _n_t > 0 else np.zeros(0))
-            # T-architecture Stage 1: full λ horizon, shaped (N, ·). Same per-knot
-            # offsets as the first-knot view but iterated across all N knots.
-            _ln_h = np.zeros((N, num_normals))
-            _lt_h = np.zeros((N, _n_t)) if _n_t > 0 else np.zeros((N, 0))
+            # First-knot dual views
+            self._last_lambda_n_first_zsol  = z_sol[_SLN0 : _SLN0 + num_normals].copy()
+            self._last_lambda_n_first_delta = delta[_SLN0 : _SLN0 + num_normals].copy()
+            self._last_lambda_t_first_zsol  = (z_sol[_SLT0 : _SLT0 + _n_t].copy()
+                                               if _n_t > 0 else np.zeros(0))
+            self._last_lambda_t_first_delta = (delta[_SLT0 : _SLT0 + _n_t].copy()
+                                               if _n_t > 0 else np.zeros(0))
+            # Horizon dual views, shape (N, ·).
+            _ln_h_z = np.zeros((N, num_normals))
+            _ln_h_d = np.zeros((N, num_normals))
+            _lt_h_z = np.zeros((N, _n_t)) if _n_t > 0 else np.zeros((N, 0))
+            _lt_h_d = np.zeros((N, _n_t)) if _n_t > 0 else np.zeros((N, 0))
             for _k in range(N):
                 _base = _k * TOT
-                _ln_h[_k] = z_sol[_base + _SLN0 : _base + _SLN0 + num_normals]
+                _ln_h_z[_k] = z_sol[_base + _SLN0 : _base + _SLN0 + num_normals]
+                _ln_h_d[_k] = delta[_base + _SLN0 : _base + _SLN0 + num_normals]
                 if _n_t > 0:
-                    _lt_h[_k] = z_sol[_base + _SLT0 : _base + _SLT0 + _n_t]
-            self._last_lambda_n_horizon = _ln_h
-            self._last_lambda_t_horizon = _lt_h
+                    _lt_h_z[_k] = z_sol[_base + _SLT0 : _base + _SLT0 + _n_t]
+                    _lt_h_d[_k] = delta[_base + _SLT0 : _base + _SLT0 + _n_t]
+            self._last_lambda_n_horizon_zsol  = _ln_h_z
+            self._last_lambda_n_horizon_delta = _ln_h_d
+            self._last_lambda_t_horizon_zsol  = _lt_h_z
+            self._last_lambda_t_horizon_delta = _lt_h_d
+            # Default-consumer aliases (selectable via expose_zsol).
+            if self.expose_zsol:
+                self._last_lambda_n_first   = self._last_lambda_n_first_zsol
+                self._last_lambda_t_first   = self._last_lambda_t_first_zsol
+                self._last_lambda_n_horizon = _ln_h_z
+                self._last_lambda_t_horizon = _lt_h_z
+            else:
+                self._last_lambda_n_first   = self._last_lambda_n_first_delta
+                self._last_lambda_t_first   = self._last_lambda_t_first_delta
+                self._last_lambda_n_horizon = _ln_h_d
+                self._last_lambda_t_horizon = _lt_h_d
         else:
-            self._last_lambda_n_first = np.zeros(0)
-            self._last_lambda_t_first = np.zeros(0)
-            self._last_lambda_n_horizon = np.zeros((N, 0))
-            self._last_lambda_t_horizon = np.zeros((N, 0))
+            self._last_lambda_n_first        = np.zeros(0)
+            self._last_lambda_t_first        = np.zeros(0)
+            self._last_lambda_n_horizon      = np.zeros((N, 0))
+            self._last_lambda_t_horizon      = np.zeros((N, 0))
+            self._last_lambda_n_first_zsol   = None
+            self._last_lambda_n_first_delta  = None
+            self._last_lambda_t_first_zsol   = None
+            self._last_lambda_t_first_delta  = None
+            self._last_lambda_n_horizon_zsol  = None
+            self._last_lambda_n_horizon_delta = None
+            self._last_lambda_t_horizon_zsol  = None
+            self._last_lambda_t_horizon_delta = None
 
         # ---------------------------------------------------------------
         # Diagnostics — mirror C3's [MATH.QP], [MATH.δ], [MATH.ω] blocks.

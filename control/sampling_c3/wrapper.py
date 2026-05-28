@@ -405,9 +405,17 @@ class SamplingC3MPC:
         has_lam_n = (lambda_n is not None
                      and hasattr(lambda_n, "size")
                      and lambda_n.size > 0)
+        # D2: when ADMM did not converge this tick, the exposed λ is either
+        # complementarity-leaked (z_sol view) or ω-leaked (delta view).
+        # In either case do NOT amplify the leakage — cap the commanded
+        # magnitude at nominal_push_force so we still commit a force but
+        # don't push the leakage scale.
+        converged = bool(getattr(self.base_mpc, "last_converged", True))
         if has_lam_n:
             mag = float(np.sum(np.abs(lambda_n)))
             mag = max(mag, floor)
+            if not converged:
+                mag = min(mag, nominal)
         else:
             mag = nominal
         return mag * recoil_dir
