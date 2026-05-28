@@ -35,7 +35,7 @@ def next_waypoint(p_now:                np.ndarray,
                   z_safe:               float,
                   ds:                   float,
                   straight_line_thresh: float = 0.008,
-                  z_eps:                float = 1e-4) -> np.ndarray:
+                  z_eps:                float = 5e-3) -> np.ndarray:
     """Advance one control-step worth (`ds` metres) along the
     piecewise-linear path from p_now to p_target via z=z_safe.
 
