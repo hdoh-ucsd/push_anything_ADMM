@@ -596,6 +596,9 @@ def main():
         try:
             _cr = plant.get_contact_results_output_port().Eval(plant_ctx)
             _eebox_fmag = 0.0
+            _gate_F_W = None
+            _gate_n_BA = None
+            _gate_ia_ee = None
             _n_pairs = _cr.num_point_pair_contacts()
             for _i in range(_n_pairs):
                 _info = _cr.point_pair_contact_info(_i)
@@ -606,10 +609,44 @@ def main():
                     or (_ib in formulator._ee_geom_ids and _ia in formulator._manipuland_geom_ids)
                 )
                 if _is_ee_box:
-                    _eebox_fmag = float(np.linalg.norm(_info.contact_force()))
+                    _Fvec = _info.contact_force()
+                    _eebox_fmag = float(np.linalg.norm(_Fvec))
+                    # GATE-only: capture force vector + contact normal +
+                    # which side is the EE so we can sign-correct n_BA.
+                    _gate_F_W   = np.asarray(_Fvec, dtype=float).reshape(3)
+                    _gate_n_BA  = np.asarray(_pp.nhat_BA_W, dtype=float).reshape(3)
+                    _gate_ia_ee = (_ia in formulator._ee_geom_ids)
                     break
             print(f"[DRAKE-CONTACT] step={step} n_pairs={_n_pairs} "
                   f"ee_box_normal={_eebox_fmag:.3f}", flush=True)
+            # [GATE-CONTACT] one line per step. Always emitted (zero vec when
+            # no EE-box contact). Box quat lives at pos_start+[0..3].
+            if _gate_F_W is None:
+                _gate_F_W  = np.zeros(3)
+                _gate_n_BA = np.zeros(3)
+                _gate_ia_ee = False
+            _box_q = current_q[pos_start : pos_start + 4]
+            # Drake convention (PointPairContactInfo):
+            #   contact_force() = force ON body B at the contact point
+            #   nhat_BA_W       = unit normal in world frame, B → A
+            # If A_is_ee: A = EE, B = box → F_W is already force on box,
+            #             and nhat_BA_W points box→EE = OUT of box surface.
+            # If !A_is_ee: A = box, B = EE → F_W is force on EE
+            #              (flip for box), and nhat_BA_W points EE→box =
+            #              INTO box surface (flip for "out of box").
+            _F_on_box   = _gate_F_W  if _gate_ia_ee else -_gate_F_W
+            _n_face_out = _gate_n_BA if _gate_ia_ee else -_gate_n_BA
+            print(
+                f"[GATE-CONTACT] step={step} "
+                f"F_W=({_gate_F_W[0]:+.4f},{_gate_F_W[1]:+.4f},{_gate_F_W[2]:+.4f}) "
+                f"F_on_box=({_F_on_box[0]:+.4f},{_F_on_box[1]:+.4f},{_F_on_box[2]:+.4f}) "
+                f"n_face_out=({_n_face_out[0]:+.4f},{_n_face_out[1]:+.4f},{_n_face_out[2]:+.4f}) "
+                f"A_is_ee={int(_gate_ia_ee)} "
+                f"box_q=({_box_q[0]:+.5f},{_box_q[1]:+.5f},{_box_q[2]:+.5f},{_box_q[3]:+.5f}) "
+                f"box_p=({current_q[obj_x_idx]:+.5f},{current_q[obj_y_idx]:+.5f},{current_q[obj_z_idx]:+.5f}) "
+                f"ee_p=({ee_pos[0]:+.5f},{ee_pos[1]:+.5f},{ee_pos[2]:+.5f})",
+                flush=True,
+            )
         except Exception as _e:
             print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
 
