@@ -230,10 +230,11 @@ class PiecewiseLinearTracker:
         u_d = -self.params.Kd_q * v_arm_now
         u_pd = u_p + u_i + u_d
 
-        # Negated: Drake returns generalized gravity force (the force gravity
-        # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
-        tau_g_arm = -self.plant.CalcGravityGeneralizedForces(plant_ctx)[: self.n_arm_dofs]
-        _u_raw = tau_g_arm + u_pd
+        # Gravity-comp is owned by the main loop, not the tracker; emit a
+        # task-only torque. (Note: under the SamplingC3MPC wrapper this
+        # tracker's `u` is overwritten by the OSC executor at wrapper.py
+        # line ~1608, so this only matters when PWL is used standalone.)
+        _u_raw = u_pd
         u = np.clip(_u_raw,
                     -self.params.torque_limit, self.params.torque_limit)
         _pd_sat = bool(np.any(

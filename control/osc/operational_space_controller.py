@@ -147,11 +147,12 @@ class OperationalSpaceController:
         Jdot_v_v= ee_jacobian_bias(plant, plant_ctx,
                                    self.ee_frame)                # (3,)
 
-        # bias = C v − τ_g (sign convention: Drake's CalcGravity returns
-        # the generalized force gravity EXERTS; subtracting gives the
-        # net non-control side of the dynamics equation
-        #   M v̇ + (C v − τ_g) = B u + F_external)
-        bias = Cv - g
+        # Singular gravity-comp ownership: the main loop adds tau_g to the
+        # actuation port (see main.py around the FixValue call), so the QP
+        # treats gravity as cancelled. bias = Cv (no -g term). Dynamics
+        # constraint then becomes M v̇ + Cv = B u + F_external, and u is
+        # the task-only torque (no implicit gravity-comp).
+        bias = Cv
 
         # --- EE Cartesian state ---
         p_ee_now = ee_position(plant, plant_ctx, self.ee_frame)  # (3,)
@@ -210,6 +211,7 @@ class OperationalSpaceController:
         self._n_calls += 1
         if not success:
             self._qp_failures += 1
+
 
         # Saturation = any joint hit its box constraint within tolerance
         saturated = bool(np.any(
