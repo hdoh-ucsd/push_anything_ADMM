@@ -566,14 +566,16 @@ def main():
                 meshcat, mpc.last_x_seq, obj_x_idx, obj_y_idx, obj_z_idx
             )
 
-        # SamplingC3MPC returns self-contained torque in free mode — its
-        # tracker already includes gravity compensation. Adding tau_g again
-        # here would double-compensate.
-        if isinstance(mpc, SamplingC3MPC) and mpc.last_mode == "free":
-            plant.get_actuation_input_port().FixValue(plant_ctx, u_opt)
-        else:
-            total_torque = tau_g[:n_u] + u_opt
-            plant.get_actuation_input_port().FixValue(plant_ctx, total_torque)
+        # Singular gravity-comp ownership: the main loop always applies
+        # tau_g[:n_u] + u_opt. Executors/trackers strip their internal
+        # gravity-comp (OSC: bias = Cv only; PWL: u_raw = u_pd only).
+        # Replaces the stale free-vs-c3 conditional, which assumed only
+        # the FREE-mode tracker was self-contained — but the OSC executor
+        # was also self-contained in c3 mode, and the old else-branch
+        # double-counted gravity (see audit_output/wire_probe/
+        # CLIMB_SOURCE_REPORT.md).
+        total_torque = tau_g[:n_u] + u_opt
+        plant.get_actuation_input_port().FixValue(plant_ctx, total_torque)
 
         ee_pos = plant.CalcPointsPositions(
             plant_ctx, ee_frame, np.zeros(3), world_frame
