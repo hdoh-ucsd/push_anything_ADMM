@@ -595,6 +595,16 @@ class SamplingC3Params:
     # this many ticks, the system gives up and the dispatcher routes to
     # free mode. 120 ≈ 1.5× the expected 80 ticks.
     contact_loss_threshold_phaseA_ltd: int = 120
+    # PHASE B (descend beside the face from z_safe down to face-centroid z)
+    # needs ~215 ticks at the realized ~0.84 mm/tick rate to cover
+    # ~150 mm of vertical travel. Per the PHASE-B lateral-clearance probe
+    # (ee.x stays 4–16 mm east of the face plane through the entire
+    # descent, monotonically drifting outward toward W_side), the
+    # fall-onto-top objection that motivated the strict default does not
+    # apply: EE is laterally outside the box footprint, so a free-mode
+    # interlude would fall east of the box, not onto its top. Extend the
+    # threshold with the same 1.5× watchdog margin as PHASE A.
+    contact_loss_threshold_phaseB_ltd: int = 300
 
     # ------------ T-architecture rate-split knobs (Stage 1 substrate) -----
     # Stage 1 introduces these as separate dials defaulting to dt_ctrl=0.01s.
@@ -662,6 +672,7 @@ class SamplingC3Params:
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
+            contact_loss_threshold_phaseB_ltd    = int(raw.get("contact_loss_threshold_phaseB_ltd", 300)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
             use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", True)),
