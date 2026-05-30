@@ -1699,10 +1699,16 @@ class SamplingC3MPC:
             # on the next tick). Phase is needed too because PHASE A gets
             # an extended grace threshold (longer traverse).
             self._approach_override_firing = _override_fired_this_tick
-            if _override_fired_this_tick:
-                self._approach_override_phase = _phase
-            else:
-                self._approach_override_phase = 'none'
+            _new_phase = _phase if _override_fired_this_tick else 'none'
+            if _new_phase != self._approach_override_phase:
+                # On any LTD phase transition (A→B, B→C, override on/off),
+                # reset the contact-loss streak so each phase gets its own
+                # grace budget. Without this, an inherited streak from
+                # PHASE B's extended threshold (300) immediately fires the
+                # gate as soon as PHASE C's stricter default (12) takes
+                # effect (see audit_output/ltd_diag_phaseB).
+                self._no_ee_box_streak = 0
+            self._approach_override_phase = _new_phase
 
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
