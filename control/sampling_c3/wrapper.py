@@ -1473,17 +1473,26 @@ class SamplingC3MPC:
                     current_q[self._obj_y_idx],
                     current_q[self._obj_z_idx],
                 ])
-                # Lever 3.1: aim the approach at the centroid of the EE-facing
-                # box face, not the box CoM. CoM targets produced p_BCb.y
-                # offsets of −40 mm (median) on the East face — within
-                # 10 mm of the SE corner — yielding moment arms that yawed
-                # the box and converted the West force command into S-SW
-                # drift (the route (a) read showed both planner λ and the
-                # heuristic point West but box motion was 73–105° off).
-                # Box-local frame: transform (ee − CoM) into the box's
-                # body frame, pick the dominant axis as the face, then
-                # rotate the face-centroid back to world. Robust to in-run
-                # box yaw (we saw nhat tilt 1.000→0.986 across a burst).
+                # Lever 3.1: aim the approach at the centroid of the box
+                # face the EE must contact to push the box toward goal.
+                # Selection rule (directional): among the four SIDE faces
+                # (body axes 0, 1; both signs — exclude top/bottom z), pick
+                # the face whose outward normal in world frame best aligns
+                # with -g_hat. Score = sign * (R_box.T @ (-g_hat))[axis];
+                # the argmax is the face the EE should push from to send
+                # the box toward goal.
+                #
+                # Replaces argmax(|ee_in_box_local|), which picked the
+                # nearest face geometrically. That logic picked face_axis=2
+                # (TOP) whenever |z_local| dominated — i.e. whenever the EE
+                # was above the box footprint — and aimed Lever-3 at the
+                # top centroid. Result on canonical baseline (20 seeds,
+                # commit 38dbf18): 192/192 top-face picks, surf_dist grew
+                # 7.5 cm → 33 cm as EE chased the target upward, 0/20
+                # seeds formed any EE-BOX contact.
+                #
+                # Box-local rotation kept (handles in-run box yaw — we saw
+                # nhat tilt 1.000 → 0.986 across a contact burst).
                 _qw = float(current_q[self._obj_qw])
                 _qx = float(current_q[self._obj_qx])
                 _qy = float(current_q[self._obj_qy])
@@ -1495,11 +1504,20 @@ class SamplingC3MPC:
                 ])
                 _ee_from_box_W = ee_pos_now - _box_xyz
                 _dist_com = float(np.linalg.norm(_ee_from_box_W))
-                if _dist_com > 1e-9:
+                _push_dir_W = -np.asarray(g_hat_3d, dtype=float).reshape(3)
+                _push_dir_L = _R_box.T @ _push_dir_W
+                _best_score = -np.inf
+                _face_axis = 0
+                _face_sign = 1
+                for _a in (0, 1):
+                    for _s in (1, -1):
+                        _sc = _s * float(_push_dir_L[_a])
+                        if _sc > _best_score:
+                            _best_score = _sc
+                            _face_axis = _a
+                            _face_sign = _s
+                if _dist_com > 1e-9 and _best_score > 1e-6:
                     _box_half = float(self.params.sampling_params.box_half_extent)
-                    _ee_in_box_local = _R_box.T @ _ee_from_box_W
-                    _face_axis = int(np.argmax(np.abs(_ee_in_box_local)))
-                    _face_sign = 1 if _ee_in_box_local[_face_axis] >= 0.0 else -1
                     _face_centroid_local = np.zeros(3)
                     _face_centroid_local[_face_axis] = _face_sign * _box_half
                     _face_centroid_W = _box_xyz + _R_box @ _face_centroid_local
@@ -1519,6 +1537,7 @@ class SamplingC3MPC:
                             if self.log_diag:
                                 print(f"[APPROACH-OVERRIDE] step={self._step} "
                                       f"face_axis={_face_axis} face_sign={_face_sign:+d} "
+                                      f"face_score={_best_score:+.3f} "
                                       f"surf_dist={_surf_dist:.4f}m "
                                       f"advance={_advance:.4f}m "
                                       f"p_ee_des=({_p_ee_des[0]:+.4f},"
