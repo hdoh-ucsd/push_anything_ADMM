@@ -840,8 +840,16 @@ class SamplingC3MPC:
         # extended threshold there. Also acts as the stuck-watchdog: if
         # PHASE A can't form contact in `contact_loss_threshold_phaseA_ltd`
         # ticks, the system gives up.
+        # PHASE B (descend beside the face): probe at audit_output/ltd_diag
+        # shows ee.x holds 4–16 mm east of the face plane through the
+        # entire descent, drifting outward toward W_side. A free-mode
+        # interlude would fall east of the box, not onto its top, so the
+        # fall-onto-top objection does not apply here either. Extend with
+        # the same watchdog pattern as PHASE A.
         if self._approach_override_phase == 'A_lift_trav':
             disengage_threshold = self.params.contact_loss_threshold_phaseA_ltd
+        elif self._approach_override_phase == 'B_descend':
+            disengage_threshold = self.params.contact_loss_threshold_phaseB_ltd
         elif self._approach_override_firing:
             disengage_threshold = self.params.contact_loss_threshold_with_override
         else:
