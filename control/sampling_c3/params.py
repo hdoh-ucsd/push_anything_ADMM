@@ -584,6 +584,17 @@ class SamplingC3Params:
     # reach contact and we bail.
     contact_loss_threshold_default: int = 5
     contact_loss_threshold_with_override: int = 12
+    # LTD PHASE A traverse needs ~80-110 ticks at realized lateral rate
+    # (~0.8 mm/tick observed) to cover the box_half + clearance ~ 75 mm
+    # to W_side. With the `_with_override` value of 12 ticks, the gate
+    # killed PHASE A 9× too early during LTD smoke tests. PHASE A holds
+    # EE.z at z_safe (above box top) under active z-Kp tracking, so the
+    # earlier objection to a longer timer ("EE has more time to fall
+    # onto the top") does not apply in PHASE A specifically. The threshold
+    # also acts as a stuck-watchdog: if PHASE A can't form contact by
+    # this many ticks, the system gives up and the dispatcher routes to
+    # free mode. 120 ≈ 1.5× the expected 80 ticks.
+    contact_loss_threshold_phaseA_ltd: int = 120
 
     # ------------ T-architecture rate-split knobs (Stage 1 substrate) -----
     # Stage 1 introduces these as separate dials defaulting to dt_ctrl=0.01s.
@@ -592,6 +603,41 @@ class SamplingC3Params:
     # behaves identically to pre-Stage-1 (tight coupling preserved).
     dt_osc: float = 0.01   # OSC tick period (sec); defaults to dt_ctrl
     dt_mpc: float = 0.01   # CI-MPC re-solve period (sec); defaults to dt_ctrl
+
+    # ------------ Lift-Traverse-Descend (LTD) override geometry -----------
+    # The contact-free override (wrapper.py face-picker block) used to aim
+    # a direct line at the face centroid. From above-box starts that line
+    # was 67° below horizontal → EE descended onto the box top before
+    # reaching the side face. Stage-3 sweep with the directional picker
+    # but legacy direct-line target: 30/30 EE-BOX events landed on TOP
+    # face (nhat≈[0,0,+1]), 3.82 mm box motion across the one seed of 20
+    # that completed.
+    #
+    # LTD routes the override's approach through a beside-box waypoint at
+    # face mid-height, with a lift-above-box-top traverse phase if needed.
+    # Three phases (stateless, decided per-tick from EE geometry):
+    #   A: lift-and-traverse — aim above-and-beside box at face-x/y
+    #   B: descend           — aim at W_side (beside box, face mid-height)
+    #   C: approach          — aim at face centroid (z rigidly clamped)
+    use_lift_traverse_descend_override: bool = True
+    # PHASE B descent puts the sphere SURFACE at (clearance - PUSHER_RADIUS)
+    # from the face plane. Floor is PUSHER_RADIUS + LCS_THRESHOLD + 5 mm
+    # safety = 32 mm: smaller would admit contact mid-descent and re-
+    # introduce the very bypass that motivated LTD. Asserted at every
+    # override entry; never sweep below the floor.
+    ltd_clearance: float = 0.050
+    # PHASE A safe-traverse height above box top:
+    #   z_safe = box.z + box_half + PUSHER_RADIUS + ltd_z_margin
+    # Margin > LCS_THRESHOLD (2 mm) so accidental grazing doesn't admit.
+    ltd_z_margin: float = 0.010
+    # PHASE A → B transition: lateral distance to W_side below which the
+    # override switches from lift-and-traverse to descend. Sized above
+    # typical OSC steady-state xy error to prevent boundary ping-pong.
+    ltd_xy_tol: float = 0.020
+    # PHASE B → C transition: z above W_side at which the override
+    # switches from descend to approach. Orthogonal to ltd_xy_tol so the
+    # two boundaries cannot couple into a single oscillating state.
+    ltd_z_band: float = 0.005
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
@@ -615,8 +661,14 @@ class SamplingC3Params:
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
+            contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
+            use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", True)),
+            ltd_clearance = float(raw.get("ltd_clearance", 0.050)),
+            ltd_z_margin  = float(raw.get("ltd_z_margin",  0.010)),
+            ltd_xy_tol    = float(raw.get("ltd_xy_tol",    0.020)),
+            ltd_z_band    = float(raw.get("ltd_z_band",    0.005)),
         )
 
     @classmethod

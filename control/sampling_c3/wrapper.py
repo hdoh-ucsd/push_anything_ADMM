@@ -230,6 +230,17 @@ class SamplingC3MPC:
         # gate on the NEXT tick (1-tick lag) to pick the extended grace
         # threshold instead of the strict default.
         self._approach_override_firing: bool  = False
+        # Phase the override was firing in last tick. One of:
+        #   'none'         — override did not fire
+        #   'A_lift_trav'  — LTD PHASE A (lift-and-traverse)
+        #   'B_descend'    — LTD PHASE B (descend beside box)
+        #   'C_approach'   — LTD PHASE C (push into face)
+        #   'fallback_ws'  — LTD workspace fallback (legacy direct-line)
+        #   'legacy'       — LTD disabled, legacy direct-line
+        # PHASE A gets an extended contact-loss-exit threshold because
+        # the traverse takes longer than the standard with_override grace
+        # (~80-110 ticks vs 12).
+        self._approach_override_phase:  str   = 'none'
 
         # λ_planned per-step trace — writes audit_output/lambda_trace.csv
         # at the project root. Captures every rich-mode step (definitive)
@@ -822,7 +833,16 @@ class SamplingC3MPC:
         # snap back to the strict default the instant the override stops
         # firing (e.g. LCS admitted a pair, or surf_dist ≤ threshold).
         # The `with_override` value is the hard cap on grace.
-        if self._approach_override_firing:
+        # PHASE A of the LTD override holds EE.z at z_safe (above box top)
+        # under active z-Kp tracking, so the earlier objection to a longer
+        # grace timer ("EE has more time to fall onto the top") does not
+        # apply: there's nowhere for the EE to fall in PHASE A. Use the
+        # extended threshold there. Also acts as the stuck-watchdog: if
+        # PHASE A can't form contact in `contact_loss_threshold_phaseA_ltd`
+        # ticks, the system gives up.
+        if self._approach_override_phase == 'A_lift_trav':
+            disengage_threshold = self.params.contact_loss_threshold_phaseA_ltd
+        elif self._approach_override_firing:
             disengage_threshold = self.params.contact_loss_threshold_with_override
         else:
             disengage_threshold = self.params.contact_loss_threshold_default
@@ -835,7 +855,7 @@ class SamplingC3MPC:
                 print(f"[CONTACT-LOSS-EXIT] step={self._step} "
                       f"no EE-BOX for {self._no_ee_box_streak} "
                       f"steps threshold={disengage_threshold} "
-                      f"override_active={self._approach_override_firing} "
+                      f"override_phase={self._approach_override_phase} "
                       f"-> exit to repos", flush=True)
             self._no_ee_box_streak = 0
         if self._prev_mode == "free":
@@ -1529,24 +1549,152 @@ class SamplingC3MPC:
                         # subtraction; only the sphere radius separates
                         # EE-center from face-plane at contact.
                         _surf_dist = _dist_face - PUSHER_RADIUS
-                        if _surf_dist > LCS_DISTANCE_THRESHOLD:
-                            _advance = min(MAX_APPROACH_STEP,
-                                           _surf_dist - LCS_DISTANCE_THRESHOLD)
-                            _p_ee_des = ee_pos_now + _advance * (_ee_to_face / _dist_face)
+
+                        # Pick the per-tick aim target: lift-traverse-descend
+                        # waypoints, or legacy direct-to-face-centroid line.
+                        if self.params.use_lift_traverse_descend_override:
+                            # Clearance is a CORRECTNESS FLOOR, not a knob.
+                            # During PHASE B descent the sphere SURFACE sits
+                            # at (clearance - PUSHER_RADIUS) from the face
+                            # plane. Below the floor the sphere admits
+                            # contact mid-descent, re-introducing the same
+                            # bypass LTD exists to fix.
+                            _clearance = float(self.params.ltd_clearance)
+                            _min_clearance = (PUSHER_RADIUS
+                                              + LCS_DISTANCE_THRESHOLD
+                                              + 0.005)
+                            assert _clearance >= _min_clearance, (
+                                f"ltd_clearance={_clearance:.4f} m < floor "
+                                f"{_min_clearance:.4f} m (PUSHER_RADIUS + "
+                                f"LCS_DISTANCE_THRESHOLD + 5 mm safety); "
+                                f"PHASE B descent would admit contact "
+                                f"before reaching the face."
+                            )
+
+                            # W_side: sphere center beside box at face mid-
+                            # height. n̂_face is purely lateral for face_axis
+                            # ∈ {0,1}, so W_side.z equals box_xyz.z for an
+                            # upright box — clamp z explicitly so the spec
+                            # holds independent of R_box rounding.
+                            _face_centroid_z = float(_box_xyz[2])
+                            _n_face_W = _R_box[:, _face_axis] * _face_sign
+                            _W_side = (_box_xyz
+                                       + _n_face_W * (_box_half + _clearance))
+                            _W_side[2] = _face_centroid_z
+
+                            # Workspace bounds: assert + log + fall back to
+                            # legacy direct-line if W_side is outside the
+                            # planner's workspace. Silent clipping would
+                            # aim the EE at a geometrically wrong point.
+                            _ws_min = np.asarray(
+                                self.params.sampling_params.workspace_xy_min,
+                                dtype=float)
+                            _ws_max = np.asarray(
+                                self.params.sampling_params.workspace_xy_max,
+                                dtype=float)
+                            _W_side_in_ws = (
+                                _ws_min[0] <= _W_side[0] <= _ws_max[0]
+                                and _ws_min[1] <= _W_side[1] <= _ws_max[1]
+                            )
+
+                            if not _W_side_in_ws:
+                                if self.log_diag:
+                                    print(
+                                        f"[LTD-WORKSPACE-FALLBACK] "
+                                        f"step={self._step} "
+                                        f"W_side=({_W_side[0]:+.4f},"
+                                        f"{_W_side[1]:+.4f}) outside "
+                                        f"workspace_xy="
+                                        f"[{_ws_min[0]:+.3f},"
+                                        f"{_ws_max[0]:+.3f}]x"
+                                        f"[{_ws_min[1]:+.3f},"
+                                        f"{_ws_max[1]:+.3f}]; "
+                                        f"falling back to direct-line",
+                                        flush=True)
+                                _target = _face_centroid_W
+                                _phase = 'fallback_ws'
+                            else:
+                                _z_margin = float(self.params.ltd_z_margin)
+                                _z_safe = (_box_xyz[2] + _box_half
+                                           + PUSHER_RADIUS + _z_margin)
+                                _W_lift_trav = _W_side.copy()
+                                _W_lift_trav[2] = max(float(ee_pos_now[2]),
+                                                      _z_safe)
+
+                                # Stateless phase decision from EE
+                                # position alone (no persisted state,
+                                # no contact-pair input, no dispatcher
+                                # mode coupling).
+                                _xy_dist_to_W_side = float(np.linalg.norm(
+                                    (ee_pos_now - _W_side)[:2]))
+                                _z_above_W_side = float(
+                                    ee_pos_now[2] - _W_side[2])
+                                _xy_tol = float(self.params.ltd_xy_tol)
+                                _z_band = float(self.params.ltd_z_band)
+
+                                if _xy_dist_to_W_side > _xy_tol:
+                                    _target = _W_lift_trav
+                                    _phase = 'A_lift_trav'
+                                elif _z_above_W_side > _z_band:
+                                    _target = _W_side
+                                    _phase = 'B_descend'
+                                else:
+                                    # PHASE C: rigid z clamp to face mid-
+                                    # height. Per-tick command never aims
+                                    # above face_centroid_z regardless of
+                                    # where the sphere has drifted. The
+                                    # OSC's Kp_z provides the restoring
+                                    # force toward face center; if shear
+                                    # creeps EE upward despite that, the
+                                    # verification surfaces it cleanly.
+                                    _target = np.array([
+                                        float(_face_centroid_W[0]),
+                                        float(_face_centroid_W[1]),
+                                        _face_centroid_z,
+                                    ])
+                                    _phase = 'C_approach'
+                        else:
+                            _target = _face_centroid_W
+                            _phase = 'legacy'
+
+                        _ee_to_target = _target - ee_pos_now
+                        _dist_target = float(np.linalg.norm(_ee_to_target))
+                        # Cap advance to avoid (a) overshooting the chosen
+                        # target and (b) penetrating LCS_DISTANCE_THRESHOLD
+                        # against the chosen face plane.
+                        _advance_target = max(
+                            _dist_target - LCS_DISTANCE_THRESHOLD, 0.0)
+                        _advance_face = max(
+                            _surf_dist - LCS_DISTANCE_THRESHOLD, 0.0)
+                        _advance = min(MAX_APPROACH_STEP,
+                                       _advance_target, _advance_face)
+                        if _advance > 0 and _dist_target > 1e-9:
+                            _p_ee_des = (ee_pos_now
+                                         + _advance * (_ee_to_target
+                                                       / _dist_target))
                             _override_fired_this_tick = True
                             if self.log_diag:
                                 print(f"[APPROACH-OVERRIDE] step={self._step} "
+                                      f"phase={_phase} "
                                       f"face_axis={_face_axis} face_sign={_face_sign:+d} "
                                       f"face_score={_best_score:+.3f} "
                                       f"surf_dist={_surf_dist:.4f}m "
                                       f"advance={_advance:.4f}m "
+                                      f"target=({_target[0]:+.4f},"
+                                      f"{_target[1]:+.4f},"
+                                      f"{_target[2]:+.4f}) "
                                       f"p_ee_des=({_p_ee_des[0]:+.4f},"
                                       f"{_p_ee_des[1]:+.4f},"
                                       f"{_p_ee_des[2]:+.4f})",
                                       flush=True)
             # Expose override firing state to the contact-loss gate (read
-            # on the next tick).
+            # on the next tick). Phase is needed too because PHASE A gets
+            # an extended grace threshold (longer traverse).
             self._approach_override_firing = _override_fired_this_tick
+            if _override_fired_this_tick:
+                self._approach_override_phase = _phase
+            else:
+                self._approach_override_phase = 'none'
 
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
