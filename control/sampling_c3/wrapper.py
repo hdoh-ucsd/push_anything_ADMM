@@ -242,6 +242,30 @@ class SamplingC3MPC:
         # (~80-110 ticks vs 12).
         self._approach_override_phase:  str   = 'none'
 
+        # PHASE C progress trackers (Layer 2.5/2.6 progress-gated C exit).
+        # Updated in _solve_plan at the same site as the [CONTACT-RUN]
+        # streak (line ~1043) so the gate at line ~849 next tick reads a
+        # consistent end-of-prev-tick triple (_no_ee_box_streak,
+        # _phaseC_*_streak, _approach_override_phase). Reset on
+        #   (a) free→c3 edge at line 871 — UNCONDITIONAL, phase-agnostic
+        #       (load-bearing for C→free→C re-entry where 1710's
+        #       phase-change reset does NOT fire because _new_phase ==
+        #       _approach_override_phase == 'C_approach'),
+        #   (b) intra-c3 phase change at line 1710 (covers B→C, C→B/A
+        #       ping-pong inside a single c3 run),
+        #   (c) C gate's own fire path (line ~880 added below — bookkeeping
+        #       so the trackers reach the next entry already zeroed).
+        # Either (a) or (b) leaves trackers fresh on every C entry.
+        self._phaseC_stall_streak:      int   = 0
+        self._phaseC_active_streak:     int   = 0
+        self._phaseC_surf_dist_min:     float = float('inf')
+        # surf_dist cached by _run_osc's LTD override at end of each
+        # PHASE C tick (None on non-C ticks and on every free tick via
+        # the unconditional reset). Read by the PHASE C tracker update
+        # in _solve_plan next tick — end-of-prev-tick geometry, matches
+        # the gate's end-of-prev-tick read pattern, no cross-half lag.
+        self._last_C_surf_dist:         "float | None" = None
+
         # λ_planned per-step trace — writes audit_output/lambda_trace.csv
         # at the project root. Captures every rich-mode step (definitive)
         # and a sample of free-mode steps (baseline for ee_box_dist).
@@ -850,6 +874,17 @@ class SamplingC3MPC:
             disengage_threshold = self.params.contact_loss_threshold_phaseA_ltd
         elif self._approach_override_phase == 'B_descend':
             disengage_threshold = self.params.contact_loss_threshold_phaseB_ltd
+        elif self._approach_override_phase == 'C_approach':
+            # In PHASE C, the new progress-gated gate below (keyed on
+            # surf_dist convergence) is the authoritative productivity
+            # check. Use phaseC_hard_cap as the contact-loss tick-count
+            # ceiling so the existing tick-count gate doesn't pre-empt
+            # the C gate at 12 ticks (with_override). The C gate's
+            # stall_threshold fires earlier when surf_dist isn't
+            # actually moving; this ceiling only matters if surf_dist
+            # IS moving but never quite admits — a near-impossible
+            # corner case at the configured hard_cap.
+            disengage_threshold = self.params.phaseC_hard_cap
         elif self._approach_override_firing:
             disengage_threshold = self.params.contact_loss_threshold_with_override
         else:
@@ -867,8 +902,67 @@ class SamplingC3MPC:
                       f"-> exit to repos", flush=True)
             self._no_ee_box_streak = 0
         if self._prev_mode == "free":
-            # Fresh start when re-entering c3 from free.
+            # Fresh start when re-entering c3 from free. Phase-agnostic
+            # by design: zeroes BOTH the LCS contact-loss counter and
+            # the PHASE C tracker triple, regardless of what
+            # _approach_override_phase carried across the free
+            # interlude (it's stale for the whole interlude — the
+            # override block in _run_osc only runs when mode=='c3').
+            # Load-bearing for C→free→C re-entry: 1710's phase-change
+            # reset does NOT fire when _new_phase ('C_approach') ==
+            # _approach_override_phase ('C_approach', stale from the
+            # tick before the free interlude began). Without this
+            # block the C trackers would carry stale active_streak /
+            # surf_dist_min into the second C run and the C gate could
+            # fire on the first tick.
             self._no_ee_box_streak = 0
+            self._phaseC_stall_streak = 0
+            self._phaseC_active_streak = 0
+            self._phaseC_surf_dist_min = float('inf')
+            self._last_C_surf_dist = None
+
+        # 6a-bis. PHASE C progress-gated exit. When prev tick was in
+        # PHASE C (_approach_override_phase=='C_approach', set at the
+        # end of last tick's override block in _run_osc), evaluate
+        # whether C is still productively closing surf_dist. Two
+        # independent fire conditions:
+        #   * stall: _phaseC_stall_streak ≥ phaseC_stall_threshold —
+        #     no surf_dist improvement ≥ phaseC_progress_eps for that
+        #     many consecutive C ticks. Catches asymptotic non-closure.
+        #   * hard_cap: _phaseC_active_streak ≥ phaseC_hard_cap —
+        #     absolute time budget. Bounds worst case even when
+        #     surf_dist is creeping in but never quite admits.
+        # Reads end-of-prev-tick (_phaseC_stall_streak,
+        # _phaseC_active_streak, _approach_override_phase) — same
+        # temporal pattern as the contact-loss gate above. Update
+        # site is the [CONTACT-RUN] block at line ~1043 (consistent
+        # within _solve_plan; no cross-half lag).
+        if (self._prev_mode == "c3"
+                and mode == "c3"
+                and self._approach_override_phase == 'C_approach'):
+            _stall_fire = (self._phaseC_stall_streak
+                           >= self.params.phaseC_stall_threshold)
+            _cap_fire = (self._phaseC_active_streak
+                         >= self.params.phaseC_hard_cap)
+            if _stall_fire or _cap_fire:
+                mode = "free"
+                reason = SwitchReason.kToReposUnproductive
+                if self.log_diag:
+                    _tag = "PHASEC-STALL" if _stall_fire else "PHASEC-HARDCAP"
+                    _smin = (float('nan')
+                             if not np.isfinite(self._phaseC_surf_dist_min)
+                             else self._phaseC_surf_dist_min)
+                    print(f"[{_tag}] step={self._step} "
+                          f"stall_streak={self._phaseC_stall_streak} "
+                          f"active_streak={self._phaseC_active_streak} "
+                          f"stall_thr={self.params.phaseC_stall_threshold} "
+                          f"hard_cap={self.params.phaseC_hard_cap} "
+                          f"surf_dist_min={_smin*1000:.2f}mm "
+                          f"-> exit to repos", flush=True)
+                self._phaseC_stall_streak = 0
+                self._phaseC_active_streak = 0
+                self._phaseC_surf_dist_min = float('inf')
+                self._last_C_surf_dist = None
 
         # 6a. 1d watchdog override (9.4.7 Option A re-test). When the
         # configured threshold is > 0 and steps_since_improve has reached it
@@ -1041,6 +1135,30 @@ class SamplingC3MPC:
                     # current EE config — bump the streak. Next step's
                     # mode gate will read this and force exit if ≥ 5.
                     self._no_ee_box_streak += 1
+
+            # PHASE C progress tracker update. Co-located with the
+            # contact-loss streak update so the gate next tick reads a
+            # consistent end-of-prev-tick triple (no cross-half lag).
+            # Conditional on _approach_override_phase=='C_approach' —
+            # this is the END-OF-PREV-TICK phase (set last tick at
+            # line 1711 in _run_osc), so the update only fires when
+            # the previous tick was actually in C.
+            # surf_dist source: self._last_C_surf_dist cached at end
+            # of prev tick by _run_osc's override block (line ~1716
+            # below). On the first C tick after entry, prev tick's
+            # phase was not C, so this block is skipped; the cache
+            # gets populated this tick in _run_osc, and the next C
+            # tick begins consuming it.
+            if (self._approach_override_phase == 'C_approach'
+                    and self._last_C_surf_dist is not None):
+                self._phaseC_active_streak += 1
+                _prev_surf = float(self._last_C_surf_dist)
+                if _prev_surf < (self._phaseC_surf_dist_min
+                                 - self.params.phaseC_progress_eps):
+                    self._phaseC_surf_dist_min = _prev_surf
+                    self._phaseC_stall_streak = 0
+                else:
+                    self._phaseC_stall_streak += 1
             # One-shot full LCS matrix dump at first rich-mode entry.
             # Triggers exactly once (any step) for the LCS matrix audit.
             if not self._did_lcs_dump:
@@ -1708,7 +1826,29 @@ class SamplingC3MPC:
                 # gate as soon as PHASE C's stricter default (12) takes
                 # effect (see audit_output/ltd_diag_phaseB).
                 self._no_ee_box_streak = 0
+                # PHASE C tracker triple: reset on any intra-c3 phase
+                # transition (B→C entry, C→B/A ping-pong). Belt-and-braces
+                # with the free→c3 reset at line 871 — that reset handles
+                # C→free→C re-entry (where this block does NOT fire because
+                # _new_phase == _approach_override_phase == 'C_approach'),
+                # this reset handles in-c3 transitions (where the free
+                # reset does NOT fire because prev_mode is still 'c3').
+                self._phaseC_stall_streak = 0
+                self._phaseC_active_streak = 0
+                self._phaseC_surf_dist_min = float('inf')
+                self._last_C_surf_dist = None
             self._approach_override_phase = _new_phase
+            # Cache surf_dist for the PHASE C tracker update next tick
+            # (read at line ~1043 in _solve_plan). Only set when the
+            # override fired in PHASE C this tick — _surf_dist exists
+            # in scope because 'C_approach' is only reachable via the
+            # LTD path that sets _surf_dist at line ~1559. None on all
+            # other phases / non-firing ticks so the tracker update
+            # next tick skips silently when prev tick wasn't C.
+            if _override_fired_this_tick and _phase == 'C_approach':
+                self._last_C_surf_dist = float(_surf_dist)
+            else:
+                self._last_C_surf_dist = None
 
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
