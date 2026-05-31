@@ -34,6 +34,7 @@ from control.sampling_c3.params import (
 )
 from control.sampling_c3.progress import ProgressTracker, StepMetrics
 from control.osc import OperationalSpaceController
+from control.osc.dynamics_helpers import ee_jacobian_translational
 from control.sampling_c3.reposition import PiecewiseLinearTracker
 from control.sampling_c3.reposition_ik import RepositionIKTracker
 from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
@@ -266,15 +267,6 @@ class SamplingC3MPC:
         # the gate's end-of-prev-tick read pattern, no cross-half lag.
         self._last_C_surf_dist:         "float | None" = None
 
-        # Velocity feedforward (bounded re-enable of v_ee_desired).
-        # Caches the previous tick's p_ee_des so v_des can be derived as
-        # α·(p_ee_des − prev_p_ee_des)/dt_osc, clipped per-axis to ±v_max.
-        # Reset to None on every mode transition so the first tick of a
-        # new mode doesn't synthesize a velocity spike from a discontinuity
-        # in the p_ee_des source (c3 branch reads FK(x_seq[1]), free branch
-        # reads IK waypoint). See _velocity_feedforward() below.
-        self._prev_p_ee_des:            "np.ndarray | None" = None
-
         # λ_planned per-step trace — writes audit_output/lambda_trace.csv
         # at the project root. Captures every rich-mode step (definitive)
         # and a sample of free-mode steps (baseline for ee_box_dist).
@@ -464,33 +456,64 @@ class SamplingC3MPC:
             mag = nominal
         return mag * recoil_dir
 
-    def _velocity_feedforward(self,
-                              p_ee_des: np.ndarray) -> Optional[np.ndarray]:
-        """Derive bounded velocity feedforward from successive p_ee_des.
+    def _velocity_feedforward_from_xseq(self,
+                                        plant_ctx,
+                                        current_q: np.ndarray,
+                                        current_v: np.ndarray) -> Optional[np.ndarray]:
+        """Derive bounded EE velocity feedforward from planner x_seq[1].
+
+        v_des = α · clip(J_v(q_at_1) · v_at_1, ±v_max) where (q_at_1,
+        v_at_1) are the arm positions/velocities at planner knot 1
+        (50 ms ahead in the default plant). The arm slice is taken from
+        x_seq[1]; the floating-box slice is left at the current value,
+        because the LCS drives box state via the contact solver and a
+        contradictory box-pose in plant_ctx would corrupt the Jacobian
+        Drake returns.
+
+        Replaces the prior p_ee_des finite-difference path
+        (commit fb1fb1c), which aliased on any p_ee_des source change
+        (override↔planner seam, LTD phase transitions, c3↔free mode
+        transitions) and saturated the OSC at the artifact's clip rather
+        than at the planner's true commanded rate. The diagnostic that
+        forced this rewrite: at the override→planner seam at step 188
+        of seed4-pushing-W-α0.5, |v_des| spiked 60× from 0.015 m/s to
+        0.89 m/s on a single tick and pinned at ±0.75 m/s (the post-α
+        v_max clip) for the whole 6-tick contact burst, with a
+        consistently-negative y-component that wasn't the planner's
+        intent — it was the difference between the override's
+        last-tick p_ee_des and the planner's first-tick x_seq[1] EE
+        position, two heterogeneous setpoint sources.
 
         Returns None when:
-          * `use_velocity_feedforward` is False (default, preserves the
-            v1 'intentionally disabled' behavior bit-for-bit),
-          * `self._prev_p_ee_des is None` (first tick after init or after
-            a mode-transition reset — avoids spurious spike from a
-            discontinuity in the p_ee_des source).
-        Otherwise returns α · clip((p_ee_des − prev) / dt_osc, ±v_max),
-        where dt_osc, α, and v_max come from params.
-
-        The caller is responsible for updating self._prev_p_ee_des after
-        the executor call. Mode-transition reset is handled in the
-        executor-dispatch block in _run_osc.
+          * use_velocity_feedforward is False (default, opt-in flag)
+          * planner has no last_x_seq (cold start, or free mode where
+            the IK tracker — not the C3 solver — drives p_ee_des)
         """
         if not getattr(self.params, "use_velocity_feedforward", False):
             return None
-        if self._prev_p_ee_des is None:
+        x_seq = getattr(self.base_mpc, "last_x_seq", None)
+        if x_seq is None or x_seq.shape[0] < 2:
             return None
-        dt = float(self.params.dt_osc)
+        n_q = self.base_mpc.formulator.n_q
+        q_at_1 = current_q.copy()
+        v_at_1 = current_v.copy()
+        q_at_1[:self.n_u] = x_seq[1][:self.n_u]
+        v_at_1[:self.n_u] = x_seq[1][n_q : n_q + self.n_u]
+        # Compute EE Cartesian velocity at the planner's intended (q,v)
+        # for knot 1. Restoring plant_ctx is defensive: the c3 branch
+        # re-sets it immediately for the executor call, but other code
+        # paths in _run_osc may have read from plant_ctx between the
+        # call site and the executor, and we don't want a stale knot-1
+        # state to leak.
+        self.plant.SetPositions(plant_ctx, q_at_1)
+        self.plant.SetVelocities(plant_ctx, v_at_1)
+        J_v = ee_jacobian_translational(self.plant, plant_ctx, self.ee_frame)
+        v_ee_raw = J_v @ v_at_1
+        self.plant.SetPositions(plant_ctx, current_q)
+        self.plant.SetVelocities(plant_ctx, current_v)
         v_max = float(self.params.velocity_feedforward_v_max)
         alpha = float(self.params.velocity_feedforward_alpha)
-        v_raw = (np.asarray(p_ee_des, dtype=float).reshape(3)
-                 - np.asarray(self._prev_p_ee_des, dtype=float).reshape(3)) / dt
-        v_clipped = np.clip(v_raw, -v_max, v_max)
+        v_clipped = np.clip(v_ee_raw, -v_max, v_max)
         return alpha * v_clipped
 
     def _build_samples(self,
@@ -1888,14 +1911,9 @@ class SamplingC3MPC:
             else:
                 self._last_C_surf_dist = None
 
-            # Mode-transition reset: c3 branch reads FK(x_seq[1]); on the
-            # first c3 tick after a free interlude the prev cache holds
-            # the free branch's last waypoint, which lives in a different
-            # geometric region (lifted z, IK waypoint). Reset so v_des is
-            # derived from a homogeneous source.
-            if self._prev_mode != "c3":
-                self._prev_p_ee_des = None
-            _v_ee_des = self._velocity_feedforward(_p_ee_des)
+            _v_ee_des = self._velocity_feedforward_from_xseq(
+                plant_ctx, current_q, current_v
+            )
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
@@ -1906,7 +1924,6 @@ class SamplingC3MPC:
                 J_t          = _Jt,
                 lambda_des   = _lam_des,
             )
-            self._prev_p_ee_des = np.asarray(_p_ee_des, dtype=float).copy()
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
             # the alpha=0 / disabled run has parsable rows for the baseline
             # comparison (None → 0-vector for the log; the actual semantics
@@ -1965,24 +1982,20 @@ class SamplingC3MPC:
                 _p_ee_des = self._current_repos_target
             else:
                 _p_ee_des = ee_pos_now
-            # Mode-transition reset for the free branch — symmetric to
-            # the c3 branch above. p_ee_des sources differ between
-            # branches (FK(x_seq[1]) in c3 vs IK waypoint in free), so
-            # the prev cache from a c3 tick is geometrically inconsistent
-            # and would synthesize a velocity spike on the c3→free edge.
-            if self._prev_mode != "free":
-                self._prev_p_ee_des = None
-            _v_ee_des = self._velocity_feedforward(_p_ee_des)
+            # Free branch: no planner x_seq, so v_des is always None.
+            # The IK tracker drives p_ee_des through a lift→traverse→
+            # descend waypoint path; injecting a finite-difference
+            # velocity from those waypoints would reintroduce the
+            # source-change aliasing the structural fix retires.
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
-                v_ee_desired = _v_ee_des,
+                v_ee_desired = None,
                 lambda_n     = None,
                 lambda_t     = None,
                 J_n          = None,
                 J_t          = None,
             )
-            self._prev_p_ee_des = np.asarray(_p_ee_des, dtype=float).copy()
         u_opt = u_imp
 
         # --- λ_planned per-step trace ---------------------------------
