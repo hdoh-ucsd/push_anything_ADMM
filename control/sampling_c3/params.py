@@ -606,6 +606,28 @@ class SamplingC3Params:
     # threshold with the same 1.5× watchdog margin as PHASE A.
     contact_loss_threshold_phaseB_ltd: int = 300
 
+    # ------------ PHASE C progress-gated exit (Layer 2.5/2.6) -------------
+    # Once the EE is in PHASE C (pushing into the face), the contact-loss
+    # tick-count gate is the wrong productivity metric: the EE may sit
+    # one tick from LCS admission and need only a few more ticks of
+    # convergence. The C gate keys on surf_dist progress instead.
+    #   * phaseC_stall_threshold — consecutive C ticks without
+    #     surf_dist improving by ≥ phaseC_progress_eps. Fires even
+    #     when the absolute time budget is small.
+    #   * phaseC_hard_cap — absolute max active C ticks. Bounds the
+    #     worst case even when surf_dist creeps in but never closes.
+    #     Also used as the contact-loss tick-count budget during C
+    #     (the elif _approach_override_phase=='C_approach' branch in
+    #     wrapper.py) so the existing tick-count gate doesn't
+    #     pre-empt the progress gate.
+    #   * phaseC_progress_eps — minimum surf_dist improvement (m) to
+    #     count as progress. Default 0.0002 m = 0.2 mm ≈ 0.1 × LCS
+    #     admission threshold (2 mm), so noise-level oscillation
+    #     does not register as progress.
+    phaseC_stall_threshold: int = 30
+    phaseC_hard_cap: int = 100
+    phaseC_progress_eps: float = 0.0002
+
     # ------------ T-architecture rate-split knobs (Stage 1 substrate) -----
     # Stage 1 introduces these as separate dials defaulting to dt_ctrl=0.01s.
     # Stage 2 will gate the CI-MPC re-solve on dt_mpc boundaries while the
@@ -673,6 +695,9 @@ class SamplingC3Params:
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
             contact_loss_threshold_phaseB_ltd    = int(raw.get("contact_loss_threshold_phaseB_ltd", 300)),
+            phaseC_stall_threshold = int(raw.get("phaseC_stall_threshold", 30)),
+            phaseC_hard_cap        = int(raw.get("phaseC_hard_cap", 100)),
+            phaseC_progress_eps    = float(raw.get("phaseC_progress_eps", 0.0002)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
             use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", True)),
