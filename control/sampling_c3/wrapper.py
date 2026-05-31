@@ -266,6 +266,15 @@ class SamplingC3MPC:
         # the gate's end-of-prev-tick read pattern, no cross-half lag.
         self._last_C_surf_dist:         "float | None" = None
 
+        # Velocity feedforward (bounded re-enable of v_ee_desired).
+        # Caches the previous tick's p_ee_des so v_des can be derived as
+        # α·(p_ee_des − prev_p_ee_des)/dt_osc, clipped per-axis to ±v_max.
+        # Reset to None on every mode transition so the first tick of a
+        # new mode doesn't synthesize a velocity spike from a discontinuity
+        # in the p_ee_des source (c3 branch reads FK(x_seq[1]), free branch
+        # reads IK waypoint). See _velocity_feedforward() below.
+        self._prev_p_ee_des:            "np.ndarray | None" = None
+
         # λ_planned per-step trace — writes audit_output/lambda_trace.csv
         # at the project root. Captures every rich-mode step (definitive)
         # and a sample of free-mode steps (baseline for ee_box_dist).
@@ -454,6 +463,35 @@ class SamplingC3MPC:
         else:
             mag = nominal
         return mag * recoil_dir
+
+    def _velocity_feedforward(self,
+                              p_ee_des: np.ndarray) -> Optional[np.ndarray]:
+        """Derive bounded velocity feedforward from successive p_ee_des.
+
+        Returns None when:
+          * `use_velocity_feedforward` is False (default, preserves the
+            v1 'intentionally disabled' behavior bit-for-bit),
+          * `self._prev_p_ee_des is None` (first tick after init or after
+            a mode-transition reset — avoids spurious spike from a
+            discontinuity in the p_ee_des source).
+        Otherwise returns α · clip((p_ee_des − prev) / dt_osc, ±v_max),
+        where dt_osc, α, and v_max come from params.
+
+        The caller is responsible for updating self._prev_p_ee_des after
+        the executor call. Mode-transition reset is handled in the
+        executor-dispatch block in _run_osc.
+        """
+        if not getattr(self.params, "use_velocity_feedforward", False):
+            return None
+        if self._prev_p_ee_des is None:
+            return None
+        dt = float(self.params.dt_osc)
+        v_max = float(self.params.velocity_feedforward_v_max)
+        alpha = float(self.params.velocity_feedforward_alpha)
+        v_raw = (np.asarray(p_ee_des, dtype=float).reshape(3)
+                 - np.asarray(self._prev_p_ee_des, dtype=float).reshape(3)) / dt
+        v_clipped = np.clip(v_raw, -v_max, v_max)
+        return alpha * v_clipped
 
     def _build_samples(self,
                        ee_pos_now:  np.ndarray,
@@ -1850,16 +1888,63 @@ class SamplingC3MPC:
             else:
                 self._last_C_surf_dist = None
 
+            # Mode-transition reset: c3 branch reads FK(x_seq[1]); on the
+            # first c3 tick after a free interlude the prev cache holds
+            # the free branch's last waypoint, which lives in a different
+            # geometric region (lifted z, IK waypoint). Reset so v_des is
+            # derived from a homogeneous source.
+            if self._prev_mode != "c3":
+                self._prev_p_ee_des = None
+            _v_ee_des = self._velocity_feedforward(_p_ee_des)
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
-                v_ee_desired = None,
+                v_ee_desired = _v_ee_des,
                 lambda_n     = _lam_n,
                 lambda_t     = _lam_t,
                 J_n          = _Jn,
                 J_t          = _Jt,
                 lambda_des   = _lam_des,
             )
+            self._prev_p_ee_des = np.asarray(_p_ee_des, dtype=float).copy()
+            # Velocity-feedforward A/B telemetry. Emit unconditionally so
+            # the alpha=0 / disabled run has parsable rows for the baseline
+            # comparison (None → 0-vector for the log; the actual semantics
+            # are the imp_diag.xdot_err which the executor used).
+            if self.log_diag:
+                if _v_ee_des is None:
+                    _vff_dump = np.zeros(3)
+                    _vff_mag  = 0.0
+                else:
+                    _vff_dump = _v_ee_des
+                    _vff_mag  = float(np.linalg.norm(_v_ee_des))
+                _alpha_eff = (float(self.params.velocity_feedforward_alpha)
+                              if getattr(self.params,
+                                         "use_velocity_feedforward", False)
+                              else 0.0)
+                _sat_flag = bool(imp_diag.get("saturated", False))
+                _tau = imp_diag.get("tau_out")
+                _tau_max = np.asarray(
+                    self.executor.limits.tau_max
+                    if hasattr(self.executor, "limits")
+                    else [87.0] * len(_tau), dtype=float)
+                # Per-joint headroom: |tau_i| / tau_max_i. Closest-to-1.0
+                # joint is the bottleneck; >0.95 == near-saturation.
+                if _tau is not None and len(_tau) == len(_tau_max):
+                    _util = np.abs(np.asarray(_tau, dtype=float)) / _tau_max
+                    _util_max = float(np.max(_util))
+                    _util_argmax = int(np.argmax(_util))
+                else:
+                    _util_max = float('nan')
+                    _util_argmax = -1
+                print(f"[VFF] step={self._step} mode=c3 "
+                      f"alpha={_alpha_eff:.3f} "
+                      f"v_des=({_vff_dump[0]:+.4f},{_vff_dump[1]:+.4f},"
+                      f"{_vff_dump[2]:+.4f}) "
+                      f"|v_des|={_vff_mag:.4f} "
+                      f"sat={int(_sat_flag)} "
+                      f"util_max={_util_max:.3f}@j{_util_argmax}",
+                      flush=True)
             # Sink 3 vs Sink 4 diagnostic: split OSC's commanded vs solved force
             _ld = imp_diag.get('lambda_des')
             _le = imp_diag.get('lambda_ext')
@@ -1880,15 +1965,24 @@ class SamplingC3MPC:
                 _p_ee_des = self._current_repos_target
             else:
                 _p_ee_des = ee_pos_now
+            # Mode-transition reset for the free branch — symmetric to
+            # the c3 branch above. p_ee_des sources differ between
+            # branches (FK(x_seq[1]) in c3 vs IK waypoint in free), so
+            # the prev cache from a c3 tick is geometrically inconsistent
+            # and would synthesize a velocity spike on the c3→free edge.
+            if self._prev_mode != "free":
+                self._prev_p_ee_des = None
+            _v_ee_des = self._velocity_feedforward(_p_ee_des)
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
-                v_ee_desired = None,
+                v_ee_desired = _v_ee_des,
                 lambda_n     = None,
                 lambda_t     = None,
                 J_n          = None,
                 J_t          = None,
             )
+            self._prev_p_ee_des = np.asarray(_p_ee_des, dtype=float).copy()
         u_opt = u_imp
 
         # --- λ_planned per-step trace ---------------------------------
