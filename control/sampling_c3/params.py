@@ -628,6 +628,54 @@ class SamplingC3Params:
     phaseC_hard_cap: int = 100
     phaseC_progress_eps: float = 0.0002
 
+    # ------------ Velocity feedforward to OSC (bounded re-enable) ---------
+    # `v_ee_desired` was set to None at commit 02c48e9 (2026-05-20). Reason
+    # from the code comment at wrapper.py around the executor call:
+    #   "the IK knot spacing produces a much larger effective velocity
+    #    than the task tracking can absorb without saturating every joint
+    #    at URDF limits. Revisit once the OSC baseline (position-only
+    #    tracking) is verified."
+    # The closed-form decomp (audit_output/phaseC_gate_runs/seed4_diag.log,
+    # parsed by /tmp/decomp_cmd_vs_realized.py) shows the PD law without
+    # v_des settles at v_realized = -Kp·p_err/Kd = -0.1 m/s = -1 mm/tick
+    # in PHASE B against a -10 mm/tick commanded delta — a 9.4% realized
+    # ratio that EXACTLY matches the analytic prediction. Re-enabling v_des
+    # closes this lag.
+    #
+    # BUT the original saturation concern is unobserved, not refuted: 0%
+    # saturation today exists precisely BECAUSE v_des is off, which holds
+    # the a_des target at Kp·p_err = 4 m/s². Re-enabling raises a_des
+    # toward Kp·p_err + Kd·v_des ≈ 4 + 40·1 = 44 m/s² (full feedforward
+    # against the 1 m/s commanded rate), well into the regime 02c48e9
+    # feared. Implement as bounded feedforward — α·v_raw with α in (0,1]
+    # — and sweep α with saturation as the load-bearing observable.
+    #
+    # Default off so the flag is opt-in; current behavior preserved bit-
+    # identically when `use_velocity_feedforward=False`.
+    use_velocity_feedforward: bool = False
+    # Scale on v_des derived from successive p_ee_des. α=1.0 is full
+    # feedforward (analytically eliminates the steady-state lag). Lower α
+    # trades descent rate for actuator headroom.
+    #
+    # A/B sweep at α ∈ {0.25, 0.5, 1.0} (audit_output/phaseC_gate_runs/
+    # vff_ab/, seed4 pushing-W, 4s, default-off baseline as control)
+    # measured saturation 0.25%, 3.24%, 17.96% and final goal-ward box
+    # Δx 1.1 mm, 16.6 mm, 34.4 mm. α=0.25 destabilizes approach without
+    # producing push (0 PHASE-B/C ticks, transient contact bursts).
+    # α=1.0 hits 18% saturation, materializing 02c48e9's safety concern
+    # (joints sit at URDF cap on ~1/5 ticks). α=0.5 is the operating-
+    # point pick: first in-regime SC3 push in the 5-50 mm bin (16.6 mm
+    # goal-ward), bounded saturation (3.24%, p99 util 1.000 only at a
+    # handful of ticks). Flagged PROVISIONAL — cross-track y is 18.3 mm
+    # at α=0.5 (push direction ~48° off goal), so yaw direction-loss is
+    # the next SC3 wall; revisit α after yaw is fixed.
+    velocity_feedforward_alpha: float = 0.5
+    # Per-axis clip on the raw |v_des| before α scaling. Prevents pathological
+    # spikes when p_ee_des jumps across discontinuities (e.g. mode change,
+    # phase change with target re-aim). 1.5 m/s leaves 50% headroom over
+    # the LTD per-tick advance velocity (1.0 m/s = 10 mm / 0.01 s).
+    velocity_feedforward_v_max: float = 1.5
+
     # ------------ T-architecture rate-split knobs (Stage 1 substrate) -----
     # Stage 1 introduces these as separate dials defaulting to dt_ctrl=0.01s.
     # Stage 2 will gate the CI-MPC re-solve on dt_mpc boundaries while the
@@ -698,6 +746,9 @@ class SamplingC3Params:
             phaseC_stall_threshold = int(raw.get("phaseC_stall_threshold", 30)),
             phaseC_hard_cap        = int(raw.get("phaseC_hard_cap", 100)),
             phaseC_progress_eps    = float(raw.get("phaseC_progress_eps", 0.0002)),
+            use_velocity_feedforward    = bool(raw.get("use_velocity_feedforward", False)),
+            velocity_feedforward_alpha  = float(raw.get("velocity_feedforward_alpha", 0.5)),
+            velocity_feedforward_v_max  = float(raw.get("velocity_feedforward_v_max", 1.5)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
             use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", True)),
