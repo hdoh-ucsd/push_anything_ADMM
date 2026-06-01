@@ -494,6 +494,16 @@ class SamplingC3MPC:
         x_seq = getattr(self.base_mpc, "last_x_seq", None)
         if x_seq is None or x_seq.shape[0] < 2:
             return None
+        # EE-space planner: v_ee is already a state slot in x_seq, read it
+        # directly — no J · v computation. (Slice indices verified bit-equal
+        # by scripts/verify_slice_indices.py.)
+        if bool(getattr(self.base_mpc, "use_ee_space", False)):
+            v_ee_raw = x_seq[1][16:19].copy()
+            v_max = float(self.params.velocity_feedforward_v_max)
+            alpha = float(self.params.velocity_feedforward_alpha)
+            v_clipped = np.clip(v_ee_raw, -v_max, v_max)
+            return alpha * v_clipped
+        # R^7 path (legacy): finite-difference + J · v on planner knot 1.
         n_q = self.base_mpc.formulator.n_q
         q_at_1 = current_q.copy()
         v_at_1 = current_v.copy()
@@ -1621,15 +1631,24 @@ class SamplingC3MPC:
         if mode == "c3":
             # Cartesian target from C3+'s next-step state prediction.
             _x_seq = self.base_mpc.last_x_seq
+            # EE-space planner: p_ee is already a state slot in x_seq, read
+            # it directly — no FK. (Slice indices verified bit-equal to FK
+            # at the linearization point by scripts/verify_slice_indices.py;
+            # max |x_seq[0][7:10] - p_ee_now| = 1.11e-15.) R^7 planner path
+            # below retains the original FK extraction.
+            _use_ee_space = bool(getattr(self.base_mpc, "use_ee_space", False))
             if _x_seq is not None and len(_x_seq) > 1:
-                _q_full_next = current_q.copy()
-                _q_full_next[:self.n_u] = _x_seq[1][:self.n_u]
-                self.plant.SetPositions(plant_ctx, _q_full_next)
-                _p_ee_des = self.plant.CalcPointsPositions(
-                    plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
-                ).flatten()
-                self.plant.SetPositions(plant_ctx, current_q)
-                self.plant.SetVelocities(plant_ctx, current_v)
+                if _use_ee_space:
+                    _p_ee_des = _x_seq[1][7:10].copy()
+                else:
+                    _q_full_next = current_q.copy()
+                    _q_full_next[:self.n_u] = _x_seq[1][:self.n_u]
+                    self.plant.SetPositions(plant_ctx, _q_full_next)
+                    _p_ee_des = self.plant.CalcPointsPositions(
+                        plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
+                    ).flatten()
+                    self.plant.SetPositions(plant_ctx, current_q)
+                    self.plant.SetVelocities(plant_ctx, current_v)
             else:
                 _p_ee_des = ee_pos_now
             # Stage 2b: index into the planner's λ-horizon by elapsed time
