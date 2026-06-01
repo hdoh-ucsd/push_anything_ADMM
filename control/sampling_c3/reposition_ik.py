@@ -905,7 +905,9 @@ class RepositionIKTracker:
 
     def _build_guide_path(self,
                           anchor:    np.ndarray,
-                          p_target:  np.ndarray) -> np.ndarray:
+                          p_target:  np.ndarray,
+                          z_safe_override: Optional[float] = None,
+                          ) -> np.ndarray:
         """Return a (3, N) Cartesian guide. Each knot advances
         ``repos_params.speed * self.dt`` metres along the lift-traverse-
         descend PWL path (z_safe = ``repos_params.pwl_waypoint_height``)
@@ -928,7 +930,8 @@ class RepositionIKTracker:
         """
         ds = float(self.repos_params.speed) * float(self.dt)
         N  = self.horizon
-        z_safe = float(self.repos_params.pwl_waypoint_height)
+        z_safe = (float(z_safe_override) if z_safe_override is not None
+                  else float(self.repos_params.pwl_waypoint_height))
         thresh = float(self.repos_params.use_straight_line_traj_under_piecewise_linear)
 
         p_guide = np.zeros((3, N))
@@ -1183,27 +1186,34 @@ class RepositionIKTracker:
         elif self._admit_latch > 0:
             self._admit_latch -= 1
         guard_active = (self._admit_latch > 0)
-        _advanced = next_waypoint(
+        # Override z_safe to the EE's CURRENT z when latched. This makes
+        # Phase 1 lift a no-op (ee.z >= z_safe always), so neither the
+        # setpoint advance NOR the guide-path knots climb — the IK target
+        # at knot 0 stays at the contact face. v1 of this fix only capped
+        # _setpoint_pos.z but _build_guide_path still used the configured
+        # pwl_waypoint_height, so guide knots kept climbing and the IK
+        # solved to a still-climbing target. This v2 caps z_safe itself.
+        z_safe_eff = float(ee_now[2]) if guard_active else \
+                     float(self.repos_params.pwl_waypoint_height)
+        self._setpoint_pos = next_waypoint(
             p_now=self._setpoint_pos,
             p_target=p_target,
-            z_safe=float(self.repos_params.pwl_waypoint_height),
+            z_safe=z_safe_eff,
             ds=ds_ctrl,
             straight_line_thresh=float(
                 self.repos_params.use_straight_line_traj_under_piecewise_linear),
         )
-        if guard_active and _advanced[2] > ee_now[2]:
-            # SUSPEND Phase 1 lift: cap next setpoint z at the EE's current z.
-            # Holds the EE at the face during admit (the minimal version);
-            # press-in is a pre-registered Stage-3 refinement if hold-at-z
-            # turns out to be insufficient for sustained Drake contact.
-            _advanced = np.array([_advanced[0], _advanced[1], float(ee_now[2])])
-        self._setpoint_pos = _advanced
 
         # 3b. Build the warm-start guide at PLANNER rate (knots span the
         #     C3 horizon — knot i is i planning steps ahead of the
         #     setpoint). Do NOT write p_guide[:, 0] back to _setpoint_pos;
         #     the setpoint advance is already done above.
-        p_guide = self._build_guide_path(self._setpoint_pos, p_target)
+        # Pass z_safe_override when latched so the guide doesn't climb
+        # either — same admit-suspend semantics applied to all N knots.
+        p_guide = self._build_guide_path(
+            self._setpoint_pos, p_target,
+            z_safe_override=(z_safe_eff if guard_active else None),
+        )
 
         # 4. Full-IK chain on knots 0..K-1. Routed through the tracker's
         #    private _plant_ctx_ik so the context-local collision filter
