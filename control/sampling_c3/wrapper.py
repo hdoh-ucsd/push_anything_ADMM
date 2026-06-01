@@ -1249,7 +1249,14 @@ class SamplingC3MPC:
             # One-shot cost-decomposition dump at first rich-mode entry with
             # n_c ≥ 1 (admissible contact pairs exist; otherwise H is shape
             # (0, n_u) and the λ_n indexing below would crash).
-            if not self._did_cost_dump and self.base_mpc.formulator._last_n_c > 0:
+            # EE-space planner uses 19-dim state; the R^7-sized algebra in
+            # this dump block (_A @ [current_q, current_v]_27) is out-of-spec.
+            # Skip the dump under --ee-space; held follow-up to re-implement
+            # against [box_q, p_ee, box_v, v_ee]_19.
+            _skip_r7_dump = bool(getattr(self.base_mpc, "use_ee_space", False))
+            if (not self._did_cost_dump
+                    and self.base_mpc.formulator._last_n_c > 0
+                    and not _skip_r7_dump):
                 self._did_cost_dump = True
                 _f  = self.base_mpc.formulator
                 _qc = self.base_mpc.quad_cost
@@ -1307,7 +1314,9 @@ class SamplingC3MPC:
             # One-shot counterfactual dump: re-solve C3+ with w_ee_approach=0.
             # Gated on n_c ≥ 1 so the comparison is meaningful (no contact ⇒
             # nothing to counterfactual-test against).
-            if not self._did_counterfactual_dump and self.base_mpc.formulator._last_n_c > 0:
+            if (not self._did_counterfactual_dump
+                    and self.base_mpc.formulator._last_n_c > 0
+                    and not _skip_r7_dump):
                 self._did_counterfactual_dump = True
                 try:
                     from control.sampling_c3.inner_solve import traj_cost
@@ -1380,7 +1389,9 @@ class SamplingC3MPC:
             # Record planner-side data for the [PLAN-VS-EXEC] dump fired on
             # the next call. Compares LCS one-step prediction against the
             # simulator's actual result by reading current_q on the next entry.
-            if not self._did_planvsexec_dump and self.base_mpc.formulator._last_n_c > 0:
+            if (not self._did_planvsexec_dump
+                    and self.base_mpc.formulator._last_n_c > 0
+                    and not _skip_r7_dump):
                 self._did_planvsexec_dump = True
                 _f  = self.base_mpc.formulator
                 _qc = self.base_mpc.quad_cost
