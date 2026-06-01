@@ -1946,14 +1946,26 @@ class SamplingC3MPC:
             )
             # Under --ee-space, the planner's J_n / J_t are in low-dim
             # velocity coords [box_v(6), v_ee(3)] — not n_v_full(13). The
-            # executor uses J_n.T @ lambda_n in n_v space, so passing the
-            # EE-space-sized matrices would shape-mismatch. Drop them and
-            # the contact-feedforward (lambda_des still drives the OSC's
-            # force-tracking λ_ext path). Held follow-up: re-project
-            # planner λ into n_v coords via a Drake J at the executor.
+            # executor uses J_n.T @ λ_n in n_v space; the planner's λ
+            # scalar values map identically (one entry per contact pair),
+            # only the Jacobian shape changes. linearize_discrete_ee_space
+            # stashes the n_v_full Drake Jacobians; pass those instead so
+            # the τ_ff = -J_n^T λ feedforward composes correctly.
             if bool(getattr(self.base_mpc, "use_ee_space", False)):
-                _exec_lam_n, _exec_lam_t = None, None
-                _exec_Jn, _exec_Jt = None, None
+                _f = self.base_mpc.formulator
+                _exec_Jn = getattr(_f, "_last_J_n_n_v_full", None)
+                _exec_Jt = getattr(_f, "_last_J_t_n_v_full", None)
+                _exec_lam_n = _lam_n
+                _exec_lam_t = _lam_t
+                # Defensive: if shapes still don't match (cold start, or
+                # contact count drift between planner and executor ticks),
+                # drop the feedforward rather than crash.
+                if (_exec_Jn is None or _exec_Jt is None
+                        or _exec_lam_n is None or _exec_lam_t is None
+                        or _exec_Jn.shape[0] != len(_exec_lam_n)
+                        or _exec_Jt.shape[0] != len(_exec_lam_t)):
+                    _exec_lam_n, _exec_lam_t = None, None
+                    _exec_Jn, _exec_Jt = None, None
             else:
                 _exec_lam_n, _exec_lam_t = _lam_n, _lam_t
                 _exec_Jn, _exec_Jt = _Jn, _Jt

@@ -1356,6 +1356,12 @@ class LCSFormulator:
         self._last_ee_space_F = F_lcs
         self._last_ee_space_H = H_lcs
         self._last_ee_space_c = c_lcs
+        # Also stash the Drake-side (n_c, n_v_full) Jacobians so the
+        # downstream OSC can compose τ_ff = -J_n^T λ in n_v space (the
+        # planner's scalar λ values map identically; only the Jacobian
+        # changes shape between the EE-space LCS coords and Drake n_v).
+        self._last_J_n_n_v_full = J_n_drake
+        self._last_J_t_n_v_full = J_t_drake
         return (
             A, B_ctrl, D, d_vec,
             E_lcs, F_lcs, H_lcs, c_lcs,
