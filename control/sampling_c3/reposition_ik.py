@@ -617,6 +617,17 @@ class RepositionIKTracker:
         # ---- Joint-PD state (mirrors PiecewiseLinearTracker) ----
         self._integral:        np.ndarray            = np.zeros(self.n_arm_dofs)
         self._prev_target_pos: Optional[np.ndarray]  = None
+        # Contact-admit guard latch (Stage 2 of 2026-06-01 contact-duration fix).
+        # Counts down each control tick; reset to ADMIT_LATCH_TICKS whenever
+        # admit_active=True is passed to compute_torque. When > 0, the
+        # per-tick setpoint advance caps target_z at the EE's current z
+        # (suspends the Phase 1 lift) to keep the EE pressed at the box
+        # face during admitted contact. Debounced (not instantaneous) so
+        # admit-toggle flicker can't re-create chatter. Default ADMIT_LATCH_TICKS
+        # = 8 (~400ms at dt_ctrl=50ms) — tuned for the 1-tick admit drops
+        # observed in v6.
+        self.ADMIT_LATCH_TICKS = 8
+        self._admit_latch:     int                    = 0
         # Remembered setpoint position — see PiecewiseLinearTracker
         # docstring at reposition.py:142-148. Anchoring the per-tick
         # guide on live FK(q) instead of a remembered setpoint causes a
@@ -727,6 +738,7 @@ class RepositionIKTracker:
         self._integral[:]          = 0.0
         self._prev_target_pos      = None
         self._setpoint_pos         = None
+        self._admit_latch          = 0
         self._last_knot0_feasible  = True
         self.last_q_knots          = None
         self.last_ee_knots         = None
@@ -1099,7 +1111,8 @@ class RepositionIKTracker:
                        current_v:  np.ndarray,
                        plant_ctx,
                        p_target:   np.ndarray,
-                       dt_osc:     float
+                       dt_osc:     float,
+                       admit_active: bool = False,
                        ) -> Tuple[np.ndarray, dict]:
         """Plan an N-knot joint trajectory and return the per-knot IK
         solution as a Cartesian waypoint. The wrapper feeds the executor
@@ -1161,7 +1174,16 @@ class RepositionIKTracker:
         #     was conflated by the prior implementation and caused the
         #     setpoint to march 5× too fast (planner_dt / dt_osc = 5).
         ds_ctrl = float(self.repos_params.speed) * float(dt_osc)
-        self._setpoint_pos = next_waypoint(
+        # Debounced admit-active latch (Stage 2 of 2026-06-01 contact-duration fix).
+        # Reset to ADMIT_LATCH_TICKS on admit, decrement otherwise. Robust to
+        # 1-tick admit drops (the contact-persistence flicker class) — an
+        # instantaneous gate would re-create chatter (SC6 guards against that).
+        if admit_active:
+            self._admit_latch = self.ADMIT_LATCH_TICKS
+        elif self._admit_latch > 0:
+            self._admit_latch -= 1
+        guard_active = (self._admit_latch > 0)
+        _advanced = next_waypoint(
             p_now=self._setpoint_pos,
             p_target=p_target,
             z_safe=float(self.repos_params.pwl_waypoint_height),
@@ -1169,6 +1191,13 @@ class RepositionIKTracker:
             straight_line_thresh=float(
                 self.repos_params.use_straight_line_traj_under_piecewise_linear),
         )
+        if guard_active and _advanced[2] > ee_now[2]:
+            # SUSPEND Phase 1 lift: cap next setpoint z at the EE's current z.
+            # Holds the EE at the face during admit (the minimal version);
+            # press-in is a pre-registered Stage-3 refinement if hold-at-z
+            # turns out to be insufficient for sustained Drake contact.
+            _advanced = np.array([_advanced[0], _advanced[1], float(ee_now[2])])
+        self._setpoint_pos = _advanced
 
         # 3b. Build the warm-start guide at PLANNER rate (knots span the
         #     C3 horizon — knot i is i planning steps ahead of the
