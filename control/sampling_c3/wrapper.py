@@ -1944,14 +1944,27 @@ class SamplingC3MPC:
             _v_ee_des = self._velocity_feedforward_from_xseq(
                 plant_ctx, current_q, current_v
             )
+            # Under --ee-space, the planner's J_n / J_t are in low-dim
+            # velocity coords [box_v(6), v_ee(3)] — not n_v_full(13). The
+            # executor uses J_n.T @ lambda_n in n_v space, so passing the
+            # EE-space-sized matrices would shape-mismatch. Drop them and
+            # the contact-feedforward (lambda_des still drives the OSC's
+            # force-tracking λ_ext path). Held follow-up: re-project
+            # planner λ into n_v coords via a Drake J at the executor.
+            if bool(getattr(self.base_mpc, "use_ee_space", False)):
+                _exec_lam_n, _exec_lam_t = None, None
+                _exec_Jn, _exec_Jt = None, None
+            else:
+                _exec_lam_n, _exec_lam_t = _lam_n, _lam_t
+                _exec_Jn, _exec_Jt = _Jn, _Jt
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
                 v_ee_desired = _v_ee_des,
-                lambda_n     = _lam_n,
-                lambda_t     = _lam_t,
-                J_n          = _Jn,
-                J_t          = _Jt,
+                lambda_n     = _exec_lam_n,
+                lambda_t     = _exec_lam_t,
+                J_n          = _exec_Jn,
+                J_t          = _exec_Jt,
                 lambda_des   = _lam_des,
             )
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
