@@ -419,9 +419,11 @@ def main():
                                plant_ad=plant_ad, context_ad=context_ad)
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
     # R^7 path remains the default unless --ee-space is passed.
+    # Supported on BOTH solvers — c3plus (componentwise projection) and c3
+    # (LCP projection, Aydinoglu §V-B.3.b feasibility-guaranteed) — so the
+    # projection variant can be flipped as a clean CLI test holding all
+    # other dimensions (state, input, cost) constant.
     if args.ee_space:
-        if args.solver != "c3plus":
-            parser.error("--ee-space currently only supported with --solver c3plus.")
         _solver_n_x, _solver_n_u = 19, 3
         _torque_limit = 30.0    # Newtons under EE-space (EE-force cap)
     else:

@@ -148,7 +148,8 @@ class C3MPC:
                  dt:           float = 0.03,
                  torque_limit: float = 30.0,
                  admm_iter:    int   = 10,
-                 math_diag:    bool  = False):
+                 math_diag:    bool  = False,
+                 use_ee_space: bool  = False):
         self.formulator    = formulator
         self.solver        = solver
         self.quad_cost     = quadratic_cost
@@ -160,6 +161,29 @@ class C3MPC:
         self._mpc_step         = 0
         self._math_setup_done  = False
         self._printed_force_diag = False
+        # Stage D parity: support EE-space dispatch for the clean flag-flip
+        # test against the C3+ path. When True, compute_control runs the
+        # paper-aligned EE-space LCS with R^3 input + LCP projection (the
+        # variant Aydinoglu §V-B.3.b says guarantees feasibility).
+        self.use_ee_space  = bool(use_ee_space)
+        # Banner-vs-reality guard (mirror C3PlusMPC fix-1).
+        if self.use_ee_space:
+            assert solver.n_x == 19 and solver.n_u == 3, (
+                f"C3MPC use_ee_space=True requires C3Solver(n_x=19, n_u=3); "
+                f"got n_x={solver.n_x}, n_u={solver.n_u}."
+            )
+        else:
+            _expected_n_x = formulator.n_q + formulator.n_v
+            _expected_n_u = formulator.n_u
+            assert solver.n_x == _expected_n_x and solver.n_u == _expected_n_u, (
+                f"C3MPC R^7 requires C3Solver(n_x={_expected_n_x}, "
+                f"n_u={_expected_n_u}); got n_x={solver.n_x}, n_u={solver.n_u}."
+            )
+        print(f"[C3] planner construction verified: "
+              f"use_ee_space={self.use_ee_space} "
+              f"solver.n_x={solver.n_x} solver.n_u={solver.n_u}  "
+              f"({'EE force (Newtons)' if self.use_ee_space else 'joint torque (Nm)'})",
+              flush=True)
 
         # Last predicted trajectory — set after every solve, used for Meshcat viz
         self.last_x_seq: np.ndarray | None = None   # (N+1, n_x)
@@ -198,11 +222,18 @@ class C3MPC:
         # the previous solve's u[0] (Aydinoglu 2024 eq. 8 linearization point).
         # Phase 2: linearize_discrete now also returns the Stewart-Trinkle
         # LCP slack expression (E, F, H, c) for use by the LCP projection.
-        (A, B_ctrl, D, d,
-         E_lcs, F_lcs, H_lcs, c_lcs,
-         J_n, J_t, phi, mu) = \
-            self.formulator.linearize_discrete(plant_ctx, self.dt,
-                                               u_lin=self._last_u)
+        if self.use_ee_space:
+            (A, B_ctrl, D, d,
+             E_lcs, F_lcs, H_lcs, c_lcs,
+             J_n, J_t, phi, mu) = \
+                self.formulator.linearize_discrete_ee_space(
+                    plant_ctx, self.dt, u_lin=self._last_u)
+        else:
+            (A, B_ctrl, D, d,
+             E_lcs, F_lcs, H_lcs, c_lcs,
+             J_n, J_t, phi, mu) = \
+                self.formulator.linearize_discrete(plant_ctx, self.dt,
+                                                   u_lin=self._last_u)
 
         # ---- [MATH.setup] fires ONCE on first MPC step ----------------------
         if self._math_diag and not self._math_setup_done:
@@ -273,13 +304,39 @@ class C3MPC:
                       f"norm={np.linalg.norm(c_lcs):.4f}")
 
         # 2. Quadratic cost and reference state (with linearised EE approach)
-        Q, R, QN, x_ref = self.quad_cost.build(
-            target_xy, plant_ctx=plant_ctx, current_q=current_q,
-            target_yaw=target_yaw,
-        )
+        if self.use_ee_space:
+            Q, R, QN, x_ref = self.quad_cost.build_ee_space(
+                target_xy, plant_ctx=plant_ctx, current_q=current_q,
+                target_yaw=target_yaw,
+            )
+        else:
+            Q, R, QN, x_ref = self.quad_cost.build(
+                target_xy, plant_ctx=plant_ctx, current_q=current_q,
+                target_yaw=target_yaw,
+            )
 
-        # 3. Current full state x0 = [q; v]
-        x0 = np.concatenate([current_q, current_v])
+        # 3. Current state x0 — EE-space layout when active.
+        if self.use_ee_space:
+            BOX_Q_START = self.formulator._obj_body.floating_positions_start()
+            BOX_V_START = self.formulator._obj_body.floating_velocities_start_in_v()
+            box_q = current_q[BOX_Q_START : BOX_Q_START + 7]
+            box_v = current_v[BOX_V_START : BOX_V_START + 6]
+            ee_body  = plant.GetBodyByName('pusher')
+            p_ee_now = plant.CalcPointsPositions(
+                plant_ctx, ee_body.body_frame(), np.zeros((3, 1)),
+                plant.world_frame(),
+            ).flatten()
+            J_ee_full = plant.CalcJacobianTranslationalVelocity(
+                plant_ctx,
+                __import__('pydrake.all', fromlist=['JacobianWrtVariable'])
+                .JacobianWrtVariable.kV,
+                ee_body.body_frame(), np.zeros(3),
+                plant.world_frame(), plant.world_frame(),
+            )
+            v_ee_now = J_ee_full @ current_v
+            x0 = np.concatenate([box_q, p_ee_now, box_v, v_ee_now])
+        else:
+            x0 = np.concatenate([current_q, current_v])
 
         # 4. Full-horizon C3 ADMM solve. Phase 2: forwards (E, F, H, c) for
         # the LCP projection in the δ-step.
