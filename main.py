@@ -238,6 +238,15 @@ def main():
                              "+ H u + c (eq. 5c) and Bui eq (12) componentwise "
                              "δ-projection. v1 implements normal-direction "
                              "complementarity only — friction LCS is a TODO.")
+    parser.add_argument("--c3plus-projection", choices=["componentwise", "lcp"],
+                        default="componentwise",
+                        help="C3+ δ-step projection variant. "
+                             "'componentwise' = Bui 2026 eq (12) per-pair test "
+                             "(paper's no-feasibility-guarantee class; FAST). "
+                             "'lcp' = Aydinoglu §V-B.3.b LCP-projection retrofit "
+                             "applied to the C3+ η-slack structure "
+                             "(feasibility-guaranteed; SLOWER per iter). "
+                             "Only consulted when --solver c3plus.")
     parser.add_argument("--ee-space", action="store_true",
                         help="Use the paper-aligned EE-space LCS planner "
                              "(Push-Anything §IV-A): x ∈ ℝ^19, u ∈ ℝ^3 EE force. "
@@ -431,9 +440,13 @@ def main():
         _torque_limit = 30.0    # Nm under R^7 (joint-torque cap)
     solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
                           math_diag=args.math_diag,
-                          mode=args.solver)
+                          mode=args.solver,
+                          c3plus_projection=args.c3plus_projection)
+    _proj_label = (args.c3plus_projection
+                   if args.solver == "c3plus" else "n/a (mode=c3)")
     print(f"[C3] Solver mode: {args.solver}  "
-          f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'})")
+          f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'}, "
+          f"c3+ projection: {_proj_label})")
     quad_cost  = QuadraticManipulationCost(
         plant, EE_BODY_NAME, obj_body, task_cfg["cost"], n_x, n_u,
         math_diag=args.math_diag,
