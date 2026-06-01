@@ -1,0 +1,22 @@
+BASELINE R^7 — seed-4 off, HEAD=37418f67d296c9f4fba5e91222a871196ff24e56
+Source: seed4_off_source.log (audit_output/seed_sign_probe_20260531_141043/seed4_off.log)
+
+--- GATE-CONTACT step coverage ---
+  total ticks logged:        351
+  Drake-realized contact (A_is_ee=1) n_cont: 20
+--- F_W magnitude on A_is_ee=1 ticks ---
+  n=20 min=0.0000 med=3.5839 max=45.9088 mean=9.5952
+  p90: 37.9858
+  range: [0.0000, 45.9088]
+
+--- ADMM (C3+) convergence ---
+  C3+ solves logged: 559
+  solves hitting iters_max (25/25): 559 / 559  (100.0%)
+  non-converged warnings emitted: 559
+  primal residual at termination: n=559 min=3.8655 med=4.9359 max=18.2901 mean=6.3260
+  dual residual at termination:   n=559 min=69.7662 med=80.4553 max=723.8630 mean=169.3831
+
+--- Pre-registered comparison targets (post-EE-space-rewrite) ---
+  SUCCESS = F_W magnitude on A_is_ee=1 collapses to a stable value
+           AND ADMM convergence improves (fewer iters_max hits, smaller pr/dr).
+  NOT-A-FAILURE = box still falls short of goal (over-admission is a separate wall).
