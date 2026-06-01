@@ -1529,11 +1529,27 @@ class SamplingC3MPC:
                 self._last_held_cost_logged = _held_cost
 
                 self.tracker._diag_step = self._step  # [IK-CONVERGE] plumb
+                # Contact-admit guard (Stage 2 of 2026-06-01 contact-duration fix):
+                # signal the IK tracker that LCS has admitted an EE-BOX pair
+                # so it can suspend its Phase 1 lift while contact is forming.
+                # Debouncing happens inside the tracker (ADMIT_LATCH_TICKS).
+                _ee_box_pairs = getattr(self.base_mpc.formulator,
+                                        "_last_ee_box_contacts", [])
+                _admit_active = bool(_ee_box_pairs)
                 u_opt, free_diag = self.tracker.compute_torque(
                     current_q=current_q, current_v=current_v,
                     plant_ctx=plant_ctx, p_target=p_repos,
                     dt_osc=self._dt_osc,
+                    admit_active=_admit_active,
                 )
+                # Diagnostic: emit one-line [ADMIT-GUARD] per step the latch
+                # is decrementing or active so post-fix logs can verify SC1
+                # (target_z holds) and SC6 (no chatter at boundary).
+                if self.log_diag:
+                    print(f"[ADMIT-GUARD] step={self._step} "
+                          f"admit_active={int(_admit_active)} "
+                          f"latch={self.tracker._admit_latch}/{self.tracker.ADMIT_LATCH_TICKS}",
+                          flush=True)
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(
