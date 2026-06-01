@@ -628,6 +628,36 @@ class RepositionIKTracker:
         # observed in v6.
         self.ADMIT_LATCH_TICKS = 8
         self._admit_latch:     int                    = 0
+        # Target-stability counter (Stage 1 of 2026-06-01 wrong-face
+        # race-fix plan). Counts consecutive ticks for which `p_target`
+        # has NOT jumped more than TARGET_STABLE_TOL m from the previous
+        # tick's target. Phase 3 descent is blocked until this counter
+        # reaches TARGET_STABLE_TICKS, so dispatcher oscillation between
+        # samples cannot drop the EE onto the wrong face during a
+        # re-target burst. See
+        # docs/superpowers/plans/2026-06-01-wrong-face-race-fix.md.
+        #
+        # On the two 5mm constants: TARGET_STABLE_TOL = 5e-3 is the
+        # "target-identity" floor — dispatcher noise / sample shifts
+        # below this are treated as the same target. `next_waypoint`'s
+        # `z_eps` (also 5e-3) is the orthogonal "xy-convergence" floor.
+        # Same number, different job. Tune independently.
+        self.TARGET_STABLE_TICKS: int   = 5
+        self.TARGET_STABLE_TOL:   float = 5e-3
+        self._target_stable_ticks: int  = 0
+        # Diagnostic memo for Stage-1 deadlock disambiguation: tick
+        # interval between consecutive p_target jumps > TARGET_STABLE_TOL.
+        # Read by the wrapper to emit [TGT-CHANGE] events; sized-bounded
+        # to keep memory flat over an 8s sim (~160 control ticks).
+        self._target_change_intervals: list = []
+        self._last_target_change_step: int  = 0
+        # One-shot flag: True on the tick `p_target` jumped > TOL. Read
+        # and cleared by the wrapper after the [TGT-CHANGE] emission.
+        self._target_changed_this_tick: bool = False
+        # Separate memo from `_prev_target_pos` (which uses a 1mm tolerance
+        # for integrator reset). This one uses TARGET_STABLE_TOL (5mm) so
+        # the descent-gate counter only resets on real re-targets.
+        self._prev_target_pos_for_stability: Optional[np.ndarray] = None
         # Remembered setpoint position — see PiecewiseLinearTracker
         # docstring at reposition.py:142-148. Anchoring the per-tick
         # guide on live FK(q) instead of a remembered setpoint causes a
@@ -907,6 +937,7 @@ class RepositionIKTracker:
                           anchor:    np.ndarray,
                           p_target:  np.ndarray,
                           z_safe_override: Optional[float] = None,
+                          allow_descent:   bool = True,
                           ) -> np.ndarray:
         """Return a (3, N) Cartesian guide. Each knot advances
         ``repos_params.speed * self.dt`` metres along the lift-traverse-
@@ -943,6 +974,7 @@ class RepositionIKTracker:
                 z_safe=z_safe,
                 ds=ds,
                 straight_line_thresh=thresh,
+                allow_descent=allow_descent,
             )
             p_guide[:, i] = p_next
             p_curr = p_next
@@ -1139,6 +1171,12 @@ class RepositionIKTracker:
         ).flatten()
 
         # 2. Reset PD integral on target change (matches PWL tracker).
+        #    Stage 1 (2026-06-01 wrong-face race-fix): the > 1mm threshold
+        #    used for integrator reset is kept distinct from the > 5mm
+        #    TARGET_STABLE_TOL used for the descent-gate stability counter.
+        #    The integrator reset is forgiving of mm-scale dispatcher
+        #    noise; the descent gate requires a larger jump to declare
+        #    re-target (and reset the stability counter).
         target_changed = (
             self._prev_target_pos is None
             or float(np.linalg.norm(p_target - self._prev_target_pos)) > 1e-3
@@ -1146,6 +1184,32 @@ class RepositionIKTracker:
         if target_changed:
             self._integral[:]     = 0.0
             self._prev_target_pos = p_target.copy()
+
+        # 2a. Stage-1 descent-gate stability counter. Uses a larger TOL
+        #     (TARGET_STABLE_TOL = 5mm) so dispatcher mm-noise doesn't
+        #     reset it; only genuine re-targets do.
+        curr_step = int(getattr(self, "_diag_step", 0) or 0)
+        if self._prev_target_pos_for_stability is None:
+            self._prev_target_pos_for_stability = p_target.copy()
+            self._target_stable_ticks = 0
+            self._target_changed_this_tick = False
+        else:
+            jump = float(np.linalg.norm(
+                p_target - self._prev_target_pos_for_stability))
+            if jump > self.TARGET_STABLE_TOL:
+                # Genuine re-target: log interval, reset stability counter.
+                if self._last_target_change_step > 0:
+                    interval = curr_step - self._last_target_change_step
+                    self._target_change_intervals.append(interval)
+                    if len(self._target_change_intervals) > 200:
+                        self._target_change_intervals.pop(0)
+                self._last_target_change_step = curr_step
+                self._target_stable_ticks = 0
+                self._target_changed_this_tick = True
+                self._prev_target_pos_for_stability = p_target.copy()
+            else:
+                self._target_stable_ticks += 1
+                self._target_changed_this_tick = False
 
         # 3. Cartesian guide (warm-start only). Anchor is a remembered
         #    setpoint that marches forward at CONTROL rate (matches the
@@ -1195,6 +1259,16 @@ class RepositionIKTracker:
         # solved to a still-climbing target. This v2 caps z_safe itself.
         z_safe_eff = float(ee_now[2]) if guard_active else \
                      float(self.repos_params.pwl_waypoint_height)
+        # Stage-1 descent-gate (2026-06-01 wrong-face race-fix plan).
+        # Block Phase 3 (and direct-line downward steps) until p_target has
+        # been stable for TARGET_STABLE_TICKS consecutive ticks. Composes
+        # with the admit-guard z_safe_eff cap above: guard suspends lift
+        # (Phase 1 no-op), gate suspends descent (Phase 3 blocked) — so
+        # the EE neither lifts nor falls while contact is forming on an
+        # unsettled target. Pre-registered SC' in
+        # docs/superpowers/plans/2026-06-01-wrong-face-race-fix.md.
+        allow_descent = bool(
+            self._target_stable_ticks >= self.TARGET_STABLE_TICKS)
         self._setpoint_pos = next_waypoint(
             p_now=self._setpoint_pos,
             p_target=p_target,
@@ -1202,6 +1276,7 @@ class RepositionIKTracker:
             ds=ds_ctrl,
             straight_line_thresh=float(
                 self.repos_params.use_straight_line_traj_under_piecewise_linear),
+            allow_descent=allow_descent,
         )
 
         # 3b. Build the warm-start guide at PLANNER rate (knots span the
@@ -1210,9 +1285,12 @@ class RepositionIKTracker:
         #     the setpoint advance is already done above.
         # Pass z_safe_override when latched so the guide doesn't climb
         # either — same admit-suspend semantics applied to all N knots.
+        # Pass allow_descent so the guide knots also respect the Stage-1
+        # descent gate (warm-start consistency with the setpoint advance).
         p_guide = self._build_guide_path(
             self._setpoint_pos, p_target,
             z_safe_override=(z_safe_eff if guard_active else None),
+            allow_descent=allow_descent,
         )
 
         # 4. Full-IK chain on knots 0..K-1. Routed through the tracker's

@@ -35,7 +35,8 @@ def next_waypoint(p_now:                np.ndarray,
                   z_safe:               float,
                   ds:                   float,
                   straight_line_thresh: float = 0.008,
-                  z_eps:                float = 5e-3) -> np.ndarray:
+                  z_eps:                float = 5e-3,
+                  allow_descent:        bool = True) -> np.ndarray:
     """Advance one control-step worth (`ds` metres) along the
     piecewise-linear path from p_now to p_target via z=z_safe.
 
@@ -50,6 +51,24 @@ def next_waypoint(p_now:                np.ndarray,
     next waypoint is `ds` along the direct line — avoids over-shoot for
     sub-cm corrections.
 
+    Stage 1 of the wrong-face race-fix plan (2026-06-01): `allow_descent`
+    gates Phase 3 and the direct-line shortcut's downward component. When
+    False, the path holds altitude (lifting to z_safe if below, otherwise
+    staying put). Used by `RepositionIKTracker` to suspend descent until
+    the dispatcher's `p_target` has been stable for N consecutive ticks,
+    preventing the EE from being dropped onto a wrong face during
+    dispatcher oscillation. Default True preserves pre-Stage-1 behavior
+    for callers that don't opt in (e.g. PiecewiseLinearTracker standalone).
+
+    Note on the two 5mm constants in this file's neighborhood:
+      - `z_eps` (default 5e-3) = "xy within 5mm of target → at_target_xy".
+        Used by Phase 3 to declare xy convergence.
+      - `TARGET_STABLE_TOL` (5e-3) in `reposition_ik.RepositionIKTracker` =
+        "p_target jumped > 5mm → not the same target anymore, reset
+        stability counter". Used by the Stage-1 gate to gate `allow_descent`.
+      They share a numeric value but serve distinct jobs (xy-convergence
+      vs. target-identity). Tune independently if needed.
+
     Pure numpy. Returns a (3,) ndarray.
     """
     p_now    = np.asarray(p_now,    dtype=float)
@@ -60,22 +79,26 @@ def next_waypoint(p_now:                np.ndarray,
     if ds <= 0:
         raise ValueError(f"ds must be positive, got {ds}")
 
-    # Direct-line shortcut
+    # Direct-line shortcut for sub-cm corrections. When descent is blocked
+    # and the shortcut would step the EE downward, fall through to the
+    # phased logic which holds altitude.
     direct = float(np.linalg.norm(p_target - p_now))
     if direct < straight_line_thresh:
         if direct == 0.0:
             return p_target.copy()
-        step = min(ds, direct)
-        return p_now + step * (p_target - p_now) / direct
+        if allow_descent or p_target[2] >= p_now[2] - z_eps:
+            step = min(ds, direct)
+            return p_now + step * (p_target - p_now) / direct
+        # else: fall through to phased logic with descent blocked
 
     xy_dist = float(np.linalg.norm(p_target[:2] - p_now[:2]))
     at_target_xy = xy_dist <= z_eps
 
-    # Phase 3 takes priority once xy is at the target. This prevents the
-    # phase-1/phase-3 oscillation that occurs when the descent drops z
-    # below z_safe-eps and the unconditional Phase 1 check would otherwise
-    # snap back up.
-    if at_target_xy:
+    # Phase 3 takes priority once xy is at the target AND descent is allowed.
+    # This prevents the phase-1/phase-3 oscillation that occurs when the
+    # descent drops z below z_safe-eps and the unconditional Phase 1 check
+    # would otherwise snap back up.
+    if at_target_xy and allow_descent:
         if abs(p_now[2] - p_target[2]) <= z_eps:
             return p_target.copy()
         if p_now[2] > p_target[2]:
@@ -86,12 +109,20 @@ def next_waypoint(p_now:                np.ndarray,
             next_z = min(p_target[2], p_now[2] + ds)
         return np.array([p_target[0], p_target[1], next_z])
 
-    # Phase 1: lift to z_safe (only when xy still has work to do)
+    # Phase 1: lift to z_safe (when there is still work to do — either xy
+    # is not at target, or descent is blocked and we have not yet reached
+    # z_safe). In the descent-blocked at-target case this re-lifts after a
+    # prior trajectory had partially descended.
     if p_now[2] < z_safe - z_eps:
         next_z = min(z_safe, p_now[2] + ds)
         return np.array([p_now[0], p_now[1], next_z])
 
-    # Phase 2: traverse horizontally at current z (which is ≥ z_safe)
+    # Hold-at-xy: descent blocked, xy already at target, z at or above
+    # z_safe. Stay put — Stage-1 descent-blocked analogue of Phase 3.
+    if at_target_xy:
+        return p_now.copy()
+
+    # Phase 2: traverse horizontally at current z (which is ≥ z_safe).
     direction = (p_target[:2] - p_now[:2]) / xy_dist
     step = min(ds, xy_dist)
     return np.array([

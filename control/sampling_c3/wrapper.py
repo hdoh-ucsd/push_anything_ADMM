@@ -1550,6 +1550,30 @@ class SamplingC3MPC:
                           f"admit_active={int(_admit_active)} "
                           f"latch={self.tracker._admit_latch}/{self.tracker.ADMIT_LATCH_TICKS}",
                           flush=True)
+                    # Stage 1 (2026-06-01 wrong-face race-fix): emit the
+                    # descent-gate state and a one-shot [TGT-CHANGE] event
+                    # when p_target jumped > TARGET_STABLE_TOL this tick.
+                    # The change-interval distribution disambiguates Stage-1
+                    # deadlock cause (real oscillation vs mistuned constant).
+                    _stable_ticks = int(getattr(self.tracker,
+                                                "_target_stable_ticks", 0))
+                    _stable_req = int(getattr(self.tracker,
+                                              "TARGET_STABLE_TICKS", 0))
+                    _allow_desc = int(_stable_ticks >= _stable_req
+                                      if _stable_req > 0 else 1)
+                    print(f"[ALT-GATE] step={self._step} "
+                          f"target_stable={_stable_ticks}/{_stable_req} "
+                          f"allow_descent={_allow_desc}",
+                          flush=True)
+                    if bool(getattr(self.tracker,
+                                    "_target_changed_this_tick", False)):
+                        _intervals = getattr(self.tracker,
+                                             "_target_change_intervals", [])
+                        _last_int = (_intervals[-1] if _intervals else -1)
+                        print(f"[TGT-CHANGE] step={self._step} "
+                              f"interval_ticks={_last_int} "
+                              f"n_changes={len(_intervals)}",
+                              flush=True)
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(
