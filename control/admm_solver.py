@@ -64,8 +64,25 @@ class C3Solver:
     """
 
     def __init__(self, n_x: int, n_u: int, rho: float = 1.0,
-                 math_diag: bool = False, mode: str = "c3"):
+                 math_diag: bool = False, mode: str = "c3",
+                 c3plus_projection: str = "componentwise"):
         assert mode in ("c3", "c3plus"), f"unknown solver mode: {mode}"
+        # C3+ δ-projection variant (only consulted when mode='c3plus'):
+        #   'componentwise' : Bui 2026 eq (12) per-scalar-pair test —
+        #                     the paper's no-feasibility-guarantee class
+        #                     (paper §V-B3). FAST (~µs) but lets non-
+        #                     converged z carry fictional λ.
+        #   'lcp'           : Aydinoglu §V-B.3.b LCP-projection retrofit
+        #                     applied to the C3+ structure (η-slack kept,
+        #                     LCP enforces 0≤λ⊥η≥0 per timestep using F).
+        #                     Feasibility-guaranteed per iteration.
+        #                     SLOWER (Lemke pivot per ADMM iter per knot).
+        # Default 'componentwise' preserves prior behavior for unflagged
+        # callers. Multi-seed verification of 'lcp' is pending.
+        assert c3plus_projection in ("componentwise", "lcp"), (
+            f"unknown c3plus_projection: {c3plus_projection}"
+        )
+        self.c3plus_projection = c3plus_projection
         self.n_x        = n_x
         self.n_u        = n_u
         self.rho        = rho
@@ -991,17 +1008,52 @@ class C3Solver:
                 # ===== δ-update (C3+ NEW): x and u pass through =====
                 delta = z_sol + omega
 
-                # ===== δ-update (C3+ NEW): per-component eq (12) on (λ, η) =====
+                # ===== δ-update on (λ, η): two variants =====
+                #   componentwise (Bui eq 12)  : per-scalar-pair, no F coupling
+                #   lcp           (Aydinoglu)  : per-knot LCP solve, F coupling,
+                #                                δ_η = F·δ_λ + (E·δ_x + H·δ_u + c)
+                # Both produce δ_λ ≥ 0 and δ_η ≥ 0 with complementarity, but
+                # only the LCP variant guarantees δ satisfies the η equality
+                # (which is the QP equality constraint at OSQP-feasibility).
+                # The componentwise variant lets δ_λ and δ_η disagree from the
+                # affine expression — which is the mechanism that let the v6
+                # planner harvest fictional λ_n=7.5.
                 if n_lambda > 0:
+                    use_lcp = (self.c3plus_projection == "lcp")
+                    if use_lcp:
+                        # Local import — Drake-dependent (mirrors C3 path).
+                        from control.lcp_solver import solve_lcp
+                    lcp_residuals_block: list[float] = []
                     for i in range(N):
                         li = i * TOT + SL
                         ei = i * TOT + SE
+                        xi = i * TOT          # x slot start
+                        ui = i * TOT + n_x + n_lambda  # u slot start
                         lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
                         eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
-                        d_lam, d_eta = self._project_componentwise(
-                            lam_blk, eta_blk, u_lam_w, u_eta_w)
+                        if use_lcp:
+                            # Same LCP recipe as the C3 path's δ-step:
+                            # q_lcp = E·δ_x + H·δ_u + c with δ_* = z + ω.
+                            d_x_iter = z_sol[xi:xi+n_x] + omega[xi:xi+n_x]
+                            d_u_iter = z_sol[ui:ui+n_u] + omega[ui:ui+n_u]
+                            q_lcp    = E @ d_x_iter + H @ d_u_iter + c_lcs
+                            d_lam, lcp_res = solve_lcp(F, q_lcp)
+                            # δ_η derived from F·δ_λ + q makes the LCP
+                            # solution consistent with the η equality
+                            # constraint of C3+ (Bui eq 5c).
+                            d_eta = F @ d_lam + q_lcp
+                            # Numerical floor: tiny negative from Lemke
+                            # round-off → clamp.
+                            d_eta = np.maximum(d_eta, 0.0)
+                            lcp_residuals_block.append(lcp_res)
+                        else:
+                            d_lam, d_eta = self._project_componentwise(
+                                lam_blk, eta_blk, u_lam_w, u_eta_w)
                         delta[li:li+n_lambda] = d_lam
                         delta[ei:ei+n_lambda] = d_eta
+                    # Stash LCP residual for diagnostics on the LCP path.
+                    if use_lcp and lcp_residuals_block:
+                        self._last_lcp_res_max = float(max(lcp_residuals_block))
 
             omega = omega + z_sol - delta
 
