@@ -238,6 +238,13 @@ def main():
                              "+ H u + c (eq. 5c) and Bui eq (12) componentwise "
                              "δ-projection. v1 implements normal-direction "
                              "complementarity only — friction LCS is a TODO.")
+    parser.add_argument("--ee-space", action="store_true",
+                        help="Use the paper-aligned EE-space LCS planner "
+                             "(Push-Anything §IV-A): x ∈ ℝ^19, u ∈ ℝ^3 EE force. "
+                             "Solver dims auto-set to n_x=19, n_u=3. Downstream OSC "
+                             "still handles the J^-T mapping to joint torques. "
+                             "Replaces the R^7-joint-torque LCS path. Force-limit "
+                             "(--torque-limit semantics) is now Newtons.")
     parser.add_argument("--workspace-y-max", type=float, default=None,
                         metavar="YMAX",
                         help="F3 sweep override: override sampling_params."
@@ -410,26 +417,40 @@ def main():
     # ------------------------------------------------------------------
     formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body,
                                plant_ad=plant_ad, context_ad=context_ad)
-    solver     = C3Solver(n_x=n_x, n_u=n_u, rho=100.0,
+    # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
+    # R^7 path remains the default unless --ee-space is passed.
+    if args.ee_space:
+        if args.solver != "c3plus":
+            parser.error("--ee-space currently only supported with --solver c3plus.")
+        _solver_n_x, _solver_n_u = 19, 3
+        _torque_limit = 30.0    # Newtons under EE-space (EE-force cap)
+    else:
+        _solver_n_x, _solver_n_u = n_x, n_u
+        _torque_limit = 30.0    # Nm under R^7 (joint-torque cap)
+    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
                           math_diag=args.math_diag,
                           mode=args.solver)
-    print(f"[C3] Solver mode: {args.solver}")
+    print(f"[C3] Solver mode: {args.solver}  "
+          f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'})")
     quad_cost  = QuadraticManipulationCost(
         plant, EE_BODY_NAME, obj_body, task_cfg["cost"], n_x, n_u,
         math_diag=args.math_diag,
         cost_bias=args.cost_bias,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
-    mpc = _MPCClass(
+    _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
         quadratic_cost=quad_cost,
         horizon=20,
         dt=0.05,
-        torque_limit=30.0,
+        torque_limit=_torque_limit,
         admm_iter=args.admm_iter,
         math_diag=args.math_diag,
     )
+    if args.ee_space:
+        _mpc_kwargs["use_ee_space"] = True
+    mpc = _MPCClass(**_mpc_kwargs)
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
     target_yaw  = float(task_cfg.get("goal_yaw", 0.0))   # radians; 0 for legacy tasks
