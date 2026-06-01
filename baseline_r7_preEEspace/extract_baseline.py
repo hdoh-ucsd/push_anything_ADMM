@@ -61,6 +61,32 @@ def main():
     admm_warn_rows = []
     n_aee1 = 0
     _i_warn = 0
+    # Header values derived FROM the source log itself so the SUMMARY
+    # header cannot lie about which run produced these numbers. (Earlier
+    # versions hardcoded "BASELINE R^7" + a specific HEAD and were misread
+    # as describing the body data when run on a different log.)
+    derived_head: str | None = None       # last seen `HEAD=...` line
+    derived_n_x_planner: int | None = None  # from [DEBUG-C3+] slot dump
+    derived_n_u_planner: int | None = None
+    derived_plant_dofs: str | None = None   # from `[C3] DOFs:` line
+    derived_use_ee_space: bool | None = None
+    # Match the C3PlusMPC banner that fix-1 emits:
+    #   [C3+] planner construction verified: use_ee_space=True solver.n_x=19 ...
+    _re_banner_c3p = re.compile(
+        r"\[C3\+\] planner construction verified: "
+        r"use_ee_space=(?P<ee>True|False) "
+        r"solver\.n_x=(?P<nx>\d+) solver\.n_u=(?P<nu>\d+)"
+    )
+    # Match the [DEBUG-C3+] slot dim (the source-of-truth for the planner):
+    #   per-step slots:  x=[0:19)  λ=[19:25)  u=[25:28)  η=[28:34)
+    _re_slots = re.compile(
+        r"\[DEBUG-C3\+\] per-step slots:\s+x=\[0:(?P<nx>\d+)\)\s+"
+        r"λ=\[\d+:\d+\)\s+u=\[\d+:(?P<u_end>\d+)\)"
+    )
+    _re_plant_dofs = re.compile(
+        r"\[C3\] DOFs:\s+(?P<txt>n_q=\d+, n_v=\d+, n_u=\d+, n_x=\d+)"
+    )
+    _re_head = re.compile(r"\bHEAD=(?P<sha>[0-9a-f]{7,40})")
     with src.open(errors="replace") as fh:
         # admm warnings are emitted just after the corresponding [C3+] line —
         # join by ordinal index since neither carries a step on its own here.
@@ -101,6 +127,36 @@ def main():
                     "dr": float(m["dr"]),
                     "tol": m["tol"],
                 })
+                continue
+            # Derive header values from log content. These are best-effort;
+            # if a given line type isn't present, the SUMMARY says "unknown"
+            # for that field rather than reusing a stale constant.
+            m = _re_banner_c3p.search(line)
+            if m:
+                derived_use_ee_space = (m["ee"] == "True")
+                derived_n_x_planner  = int(m["nx"])
+                derived_n_u_planner  = int(m["nu"])
+                continue
+            m = _re_slots.search(line)
+            if m and derived_n_x_planner is None:
+                # Fallback: derive planner n_x from the slot dump (oldest
+                # logs without the banner still expose this).
+                derived_n_x_planner = int(m["nx"])
+                derived_n_u_planner = int(m["u_end"]) - derived_n_x_planner - (
+                    int(m["u_end"]) - derived_n_x_planner - 0)  # 0; placeholder
+                # Actually compute n_u directly from the slot bounds.
+                m2 = re.search(
+                    r"u=\[(\d+):(\d+)\)", line)
+                if m2:
+                    derived_n_u_planner = int(m2.group(2)) - int(m2.group(1))
+                continue
+            m = _re_plant_dofs.search(line)
+            if m and derived_plant_dofs is None:
+                derived_plant_dofs = m["txt"]
+                continue
+            m = _re_head.search(line)
+            if m:
+                derived_head = m["sha"]
 
     # Emit CSVs
     def write(name, rows, fields):
@@ -136,9 +192,28 @@ def main():
             f"n={len(xs)}", f"min={xs[0]:.4f}", f"med={xs[len(xs)//2]:.4f}",
             f"max={xs[-1]:.4f}", f"mean={sum(xs)/len(xs):.4f}",
         )
+    # Derive the formulation label from the planner dims so the header
+    # always describes the body data.
+    if derived_use_ee_space is True or (
+            derived_n_x_planner == 19 and derived_n_u_planner == 3):
+        formulation_label = "EE-SPACE (planner n_x=19, u in Newtons)"
+    elif derived_use_ee_space is False or (
+            derived_n_x_planner == 27 and derived_n_u_planner == 7):
+        formulation_label = "R^7 (planner n_x=27, u in Nm)"
+    elif derived_n_x_planner is not None:
+        formulation_label = (
+            f"UNKNOWN formulation "
+            f"(planner n_x={derived_n_x_planner}, n_u={derived_n_u_planner})"
+        )
+    else:
+        formulation_label = "UNKNOWN formulation (no [DEBUG-C3+] / banner found)"
+    head_str = derived_head if derived_head else "unknown (no HEAD= line in log)"
+    plant_str = derived_plant_dofs if derived_plant_dofs else "unknown"
     with sum_path.open("w") as fh:
-        fh.write(f"BASELINE R^7 — seed-4 off, HEAD=37418f67d296c9f4fba5e91222a871196ff24e56\n")
-        fh.write(f"Source: seed4_off_source.log (audit_output/seed_sign_probe_20260531_141043/seed4_off.log)\n\n")
+        fh.write(f"{formulation_label} — seed-4 off, HEAD={head_str}\n")
+        fh.write(f"Source: {src.name}  (full path: {src})\n")
+        fh.write(f"Plant DOFs (Drake sim): {plant_str}\n")
+        fh.write(f"Planner solver: n_x={derived_n_x_planner}  n_u={derived_n_u_planner}\n\n")
         fh.write(f"--- GATE-CONTACT step coverage ---\n")
         fh.write(f"  total ticks logged:        {n_fw}\n")
         fh.write(f"  Drake-realized contact (A_is_ee=1) n_cont: {n_aee1}\n")

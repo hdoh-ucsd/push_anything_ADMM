@@ -1,5 +1,7 @@
-BASELINE R^7 — seed-4 off, HEAD=37418f67d296c9f4fba5e91222a871196ff24e56
-Source: seed4_off_source.log (audit_output/seed_sign_probe_20260531_141043/seed4_off.log)
+R^7 (planner n_x=27, u in Nm) — seed-4 off, HEAD=unknown (no HEAD= line in log)
+Source: seed4_off_source.log  (full path: /root/push_anything_ADMM/baseline_r7_preEEspace/seed4_off_source.log)
+Plant DOFs (Drake sim): n_q=14, n_v=13, n_u=7, n_x=27
+Planner solver: n_x=27  n_u=7
 
 --- GATE-CONTACT step coverage ---
   total ticks logged:        351
