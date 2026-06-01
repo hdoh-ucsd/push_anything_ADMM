@@ -1335,6 +1335,19 @@ class LCSFormulator:
         # -----------------------------------------------------------------
         # 6. Stash for diagnostics + return (mirror R^7 path's API).
         # -----------------------------------------------------------------
+        # Mirror the R^7 path's _last_* stash so downstream diagnostics in
+        # wrapper.py (e.g. the [COST-DUMP] / [PLAN-VS-EXEC] dumps at
+        # wrapper.py:1240, 1266, 1325, 1388) find the attributes they
+        # expect. Values are EE-space-sized; diagnostic code that
+        # multiplies by current_q+current_v (R^7 layout) would still
+        # silently fail via its own try/except, but it won't AttributeError
+        # the run.
+        self._last_A, self._last_B, self._last_D, self._last_d = A, B_ctrl, D, d_vec
+        self._last_E, self._last_F, self._last_H, self._last_c = E_lcs, F_lcs, H_lcs, c_lcs
+        self._last_n_c = n_c
+        self._last_J_n, self._last_J_t = J_n_new, J_t_new
+        self._last_phi, self._last_mu  = phi, mu
+        # Separate stash for tests that want to distinguish R^7 vs EE-space.
         self._last_ee_space_A = A
         self._last_ee_space_B = B_ctrl
         self._last_ee_space_D = D
