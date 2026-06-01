@@ -71,6 +71,15 @@ class C3Solver:
         self.rho        = rho
         self._math_diag = math_diag
         self.mode       = mode                          # ← C3+ NEW
+        # Unit string for u, derived from n_u (NOT hardcoded):
+        #   n_u == 3 → EE Cartesian force in Newtons (Push-Anything §IV-A).
+        #   else      → joint torque in Nm.
+        # Used in [C3]/[C3+] step printouts and the MATH.QP torque-limit
+        # line. A hardcoded "Nm" misled the reviewer this round (a 3-vector
+        # of Newtons under --ee-space was printed with the Nm label); the
+        # unit must be a function of the active formulation.
+        self.u_unit_str = "N" if n_u == 3 else "Nm"
+        self.u_unit_kind = "EE force" if n_u == 3 else "joint torque"
         # Soft-complementarity penalty: disabled in BOTH modes from Phase 2
         # onward.  C3 now uses LCP projection (Aydinoglu §V-B.3.b) which
         # produces feasible λ by construction; C3+ uses the slack-equality
@@ -610,13 +619,13 @@ class C3Solver:
             pr_last   = primal_hist[-1] if primal_hist else float('nan')
             lcp_max_res = max(lcp_residuals) if lcp_residuals else 0.0
             print(f"[C3] step={self._diag_step} "
-                  f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}Nm "
+                  f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}{self.u_unit_str} "
                   f"λ_n_max={lam_n_max:.3f} λ_t_max={lt_max:.3f} "
                   f"lcp_res_max={lcp_max_res:.2e} "
                   f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter}")
         else:
             print(f"[C3] step={self._diag_step} n_λ=0  "
-                  f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} Nm")
+                  f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} {self.u_unit_str}")
 
         # ---- [MATH.QP] every 10th control step --------------------------------
         if self._math_diag and self._diag_step % 10 == 0:
@@ -649,7 +658,8 @@ class C3Solver:
             print(f"[MATH.QP]   s.t. A_eq z = b_eq  "
                   f"({n_eq} rows — x_0 fixation + {N} LCS steps)")
             print(f"[MATH.QP]        bbox: γ ≥ 0, λ_n ≥ 0, λ_t ≥ 0, "
-                  f"|u| ≤ {torque_limit:.1f} Nm")
+                  f"|u| ≤ {torque_limit:.1f} {self.u_unit_str} "
+                  f"({self.u_unit_kind})")
             print(f"[MATH.QP] P shape=({dim},{dim}), symmetric={is_sym}, "
                   f"pos-semidef={pos_sd}, cond(P)={cond_str}")
             print(f"[MATH.QP] q norm={_fmt(q_norm)}")
@@ -1190,7 +1200,9 @@ class C3Solver:
             print(f"[MATH.QP-C3+]   s.t. A_eq z = b_eq  "
                   f"({n_eq} rows = x_0 fixation + {N} dynamics + "
                   f"{n_eq_eta} η-slack rows; slack-equality block ADDED)")
-            print(f"[MATH.QP-C3+]        bbox: λ_n ≥ 0, |u| ≤ {torque_limit:.1f} Nm  "
+            print(f"[MATH.QP-C3+]        bbox: λ_n ≥ 0, "
+                  f"|u| ≤ {torque_limit:.1f} {self.u_unit_str} "
+                  f"({self.u_unit_kind})  "
                   f"(η is unbounded — sign enforced via projection eq 12)")
             print(f"[MATH.QP-C3+] P shape=({dim},{dim}), symmetric={is_sym}, "
                   f"pos-semidef={pos_sd}, cond(P)={cond_str}")
@@ -1373,12 +1385,12 @@ class C3Solver:
             eta_n_max = float(eta_n_all.max()) if eta_n_all.size else 0.0
             pr_last   = primal_hist[-1] if primal_hist else float('nan')
             print(f"[C3+] step={self._diag_step} "
-                  f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}Nm "
+                  f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}{self.u_unit_str} "
                   f"λ_n_max={lam_n_max:.3f} η_n_max={eta_n_max:.3f} "
                   f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter}")
         else:
             print(f"[C3+] step={self._diag_step} n_λ=0  "
-                  f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} Nm")
+                  f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} {self.u_unit_str}")
 
         if self._lprobe_path is not None:
             self._lprobe_n_solves += 1
