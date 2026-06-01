@@ -54,7 +54,8 @@ class C3PlusMPC:
                  dt:           float = 0.03,
                  torque_limit: float = 30.0,
                  admm_iter:    int   = 10,
-                 math_diag:    bool  = False):
+                 math_diag:    bool  = False,
+                 use_ee_space: bool  = False):
         assert getattr(solver, 'mode', None) == 'c3plus', (
             "C3PlusMPC requires a C3Solver with mode='c3plus'. "
             "Use control.ci_mpc_c3.C3MPC for the baseline C3 path."
@@ -64,8 +65,20 @@ class C3PlusMPC:
         self.quad_cost     = quadratic_cost
         self.horizon       = horizon
         self.dt            = dt
+        # When use_ee_space=True, `torque_limit` is reinterpreted as the
+        # EE-force limit (Newtons), since u is now R^3 EE Cartesian force.
+        # The downstream OSC realizes the joint torques.
         self.torque_limit  = torque_limit
         self.admm_iter     = admm_iter
+        # Stage D: when True, the planner runs in the EE-space LCS
+        # (Push-Anything §IV-A) with x ∈ ℝ^19 and u ∈ ℝ^3.
+        # When False, the legacy R^7 joint-torque path remains.
+        self.use_ee_space  = bool(use_ee_space)
+        if self.use_ee_space:
+            assert solver.n_x == 19 and solver.n_u == 3, (
+                f"use_ee_space requires C3Solver(n_x=19, n_u=3); "
+                f"got n_x={solver.n_x}, n_u={solver.n_u}."
+            )
         self._math_diag        = math_diag
         self._mpc_step         = 0
         self._math_setup_done  = False
@@ -106,11 +119,18 @@ class C3PlusMPC:
 
         # 1. Linearise Drake plant into discrete LCS + slack expression, around
         # the previous solve's u[0] (Aydinoglu 2024 eq. 8 linearization point).
-        (A, B_ctrl, D, d,
-         E_lcs, F_lcs, H_lcs, c_lcs,
-         J_n, J_t, phi, mu) = \
-            self.formulator.linearize_discrete_with_complementarity(
-                plant_ctx, self.dt, u_lin=self._last_u)
+        if self.use_ee_space:
+            (A, B_ctrl, D, d,
+             E_lcs, F_lcs, H_lcs, c_lcs,
+             J_n, J_t, phi, mu) = \
+                self.formulator.linearize_discrete_ee_space(
+                    plant_ctx, self.dt, u_lin=self._last_u)
+        else:
+            (A, B_ctrl, D, d,
+             E_lcs, F_lcs, H_lcs, c_lcs,
+             J_n, J_t, phi, mu) = \
+                self.formulator.linearize_discrete_with_complementarity(
+                    plant_ctx, self.dt, u_lin=self._last_u)
 
         # ---- [MATH.setup] fires ONCE on first MPC step ----------------------
         if self._math_diag and not self._math_setup_done:
@@ -216,13 +236,39 @@ class C3PlusMPC:
                   f"path=audit_output/lambda_horizon_trace.csv  max_solves=5")
 
         # 2. Quadratic cost and reference state (with linearised EE approach)
-        Q, R, QN, x_ref = self.quad_cost.build(
-            target_xy, plant_ctx=plant_ctx, current_q=current_q,
-            rich_mode=True, target_yaw=target_yaw,
-        )
+        if self.use_ee_space:
+            Q, R, QN, x_ref = self.quad_cost.build_ee_space(
+                target_xy, plant_ctx=plant_ctx, current_q=current_q,
+                target_yaw=target_yaw,
+            )
+        else:
+            Q, R, QN, x_ref = self.quad_cost.build(
+                target_xy, plant_ctx=plant_ctx, current_q=current_q,
+                rich_mode=True, target_yaw=target_yaw,
+            )
 
-        # 3. Current full state x0 = [q; v]
-        x0 = np.concatenate([current_q, current_v])
+        # 3. Current state x0 — in EE-space mode build [box_q, p_ee, box_v, v_ee].
+        if self.use_ee_space:
+            BOX_Q_START = self.formulator._obj_body.floating_positions_start()
+            BOX_V_START = self.formulator._obj_body.floating_velocities_start_in_v()
+            box_q = current_q[BOX_Q_START : BOX_Q_START + 7]
+            box_v = current_v[BOX_V_START : BOX_V_START + 6]
+            ee_body  = plant.GetBodyByName('pusher')
+            p_ee_now = plant.CalcPointsPositions(
+                plant_ctx, ee_body.body_frame(), np.zeros((3, 1)),
+                plant.world_frame(),
+            ).flatten()
+            J_ee_full = plant.CalcJacobianTranslationalVelocity(
+                plant_ctx,
+                __import__('pydrake.all', fromlist=['JacobianWrtVariable'])
+                .JacobianWrtVariable.kV,
+                ee_body.body_frame(), np.zeros(3),
+                plant.world_frame(), plant.world_frame(),
+            )
+            v_ee_now = J_ee_full @ current_v
+            x0 = np.concatenate([box_q, p_ee_now, box_v, v_ee_now])
+        else:
+            x0 = np.concatenate([current_q, current_v])
 
         # 4. Full-horizon C3+ ADMM solve — forwards slack expression (E, F, H, c)
         u_seq, x_seq = self.solver.solve(
