@@ -913,4 +913,440 @@ class LCSFormulator:
         """
         return self.linearize_discrete(context, dt, u_lin=u_lin)
 
+    # ==================================================================
+    # EE-space LCS (Push-Anything §IV-A reference architecture).
+    # ==================================================================
+    # State (n_x_new = 19):
+    #     x = [ box_q (7=quat+pos), p_ee (3), box_v (6=omega+lin), v_ee (3) ]
+    # Slot indices in x:
+    BOX_Q_SLOT = slice(0,  7)    # length 7
+    P_EE_SLOT  = slice(7, 10)    # length 3
+    BOX_V_SLOT = slice(10,16)    # length 6
+    V_EE_SLOT  = slice(16,19)    # length 3
+    N_X_NEW    = 19
+    N_U_NEW    = 3               # u = EE Cartesian force ∈ ℝ^3
+
+    # EE point-mass for the planner. Configuration-INDEPENDENT by construction.
+    # Numerical value chosen so B_ctrl entries are O(1) at dt=0.05: dt²/m_ee
+    # ≈ 2.5e-3 for m_ee=1.0. Paper-typical effective EE mass; the downstream
+    # OSC is what realizes the actual joint torque from u, so this is a
+    # planner-internal scaling, not a physical claim.
+    _EE_MASS = 1.0   # kg
+
+    def linearize_discrete_ee_space(self, context, dt: float, u_lin=None):
+        """
+        Paper-aligned low-dim LCS at (q*, v*, u*).
+
+            x = [box_q, p_ee, box_v, v_ee]  ∈ ℝ^19
+            u = F_ee (EE Cartesian force)   ∈ ℝ^3
+            λ = [γ, λ_n, λ_t]                ∈ ℝ^(6 n_c)
+
+        Continuous dynamics:
+            d(box_q)/dt = N_box(box_q) · box_v
+            d(p_ee)/dt  = v_ee
+            M_box · d(box_v)/dt = -Cv_box + tau_g_box
+                                 + J_n_box^T λ_n + J_t_box^T λ_t  + drag
+            m_ee · d(v_ee)/dt   = u  +  J_n_ee^T λ_n + J_t_ee^T λ_t
+
+        Where:
+            M_box ∈ ℝ^{6×6}   sliced from CalcMassMatrix at box v indices.
+                              For a free-floating box + fixed-base arm
+                              (no kinematic coupling), this block is
+                              INDEPENDENT of arm q. (verified Stage A.)
+            J_n_box, J_t_box  box-velocity columns of Drake's contact J
+                              (geometric, depends on box pose + contact
+                              witness, NOT on arm q).
+            J_n_ee = ±nhat    EE-position gradient of φ (just the unit
+                              normal; depends on contact geometry, NOT
+                              on arm Jacobian).
+            m_ee = 1.0 kg     planner-internal EE point-mass.
+
+        B_ctrl is CONFIGURATION-INDEPENDENT (only entries are dt²/m_ee · I
+        and dt/m_ee · I on the EE rows). H_lcs depends on contact geometry
+        (nhat, M_box) but NOT on arm. Arm Jacobian and arm M^{-1} do NOT
+        appear anywhere in this construction. The downstream OSC remains
+        responsible for mapping the planner's u (R^3 EE force) into joint
+        torque — paper §IV-A reference architecture.
+
+        Returns the same 12-tuple shape as linearize_discrete (R^7 path)
+        so Stage B/C/D can plug it in with parallel sizing:
+            A      : (19, 19)
+            B_ctrl : (19,  3)
+            D      : (19, 6 n_c)
+            d      : (19,)
+            E      : (6 n_c, 19)
+            F      : (6 n_c, 6 n_c)   (identical to R^7 path)
+            H      : (6 n_c, 3)
+            c      : (6 n_c,)
+            J_n    : (n_c, 9)   in new velocity coords [box_v(6), v_ee(3)]
+            J_t    : (4n_c, 9)
+            phi    : (n_c,)
+            mu     : float
+        """
+        if u_lin is None:
+            u_lin = np.zeros(self.N_U_NEW)
+        else:
+            u_lin = np.asarray(u_lin, dtype=float).reshape(self.N_U_NEW)
+
+        # Plant index layout (verified at runtime; cached on first call).
+        # Box is the free-floating manipuland; arm is the fixed-base Franka.
+        # Drake puts the arm q first (q[0:7]), then box q (q[7:14]).
+        # In v: arm v first (v[0:7]), then box v (v[7:13]).
+        if self._obj_body is None:
+            raise RuntimeError(
+                "linearize_discrete_ee_space requires obj_body to be set "
+                "so we can locate the box's floating velocity slot."
+            )
+        BOX_Q_START = self._obj_body.floating_positions_start()        # 7
+        BOX_V_START = self._obj_body.floating_velocities_start_in_v()  # 7
+        BOX_N_Q     = 7   # quat (4) + pos (3)
+        BOX_N_V     = 6   # omega (3) + lin (3)
+        N_X = self.N_X_NEW
+        N_U = self.N_U_NEW
+
+        # -----------------------------------------------------------------
+        # 1. Read current state (for the linearization point).
+        # -----------------------------------------------------------------
+        q_full = self.plant.GetPositions(context)
+        v_full = self.plant.GetVelocities(context)
+        box_q  = q_full[BOX_Q_START : BOX_Q_START + BOX_N_Q]
+        box_v  = v_full[BOX_V_START : BOX_V_START + BOX_N_V]
+        # EE position from forward kinematics on the arm. NOTE: the arm
+        # Jacobian / FK is used HERE only to read the current EE position
+        # (a state-space coordinate). It does NOT enter B_ctrl, H_lcs, or
+        # the LCS dynamics. After Stage D, the planner's solved x_seq will
+        # carry p_ee directly; the OSC will track that.
+        ee_body  = self.plant.GetBodyByName(_EE_BODY_NAME)
+        ee_frame = ee_body.body_frame()
+        W        = self.plant.world_frame()
+        p_ee = self.plant.CalcPointsPositions(
+            context, ee_frame, np.zeros((3, 1)), W
+        ).flatten()
+        # EE velocity from arm: J_arm · v_arm. Same caveat — used only to
+        # set the linearization point. Not folded into B/H.
+        J_ee_full = self.plant.CalcJacobianTranslationalVelocity(
+            context, ad.JacobianWrtVariable.kV,
+            ee_frame, np.zeros(3), W, W,
+        )  # (3, n_v_full)
+        v_ee = J_ee_full @ v_full
+
+        x_star = np.zeros(N_X)
+        x_star[self.BOX_Q_SLOT] = box_q
+        x_star[self.P_EE_SLOT]  = p_ee
+        x_star[self.BOX_V_SLOT] = box_v
+        x_star[self.V_EE_SLOT]  = v_ee
+        u_star = u_lin
+
+        # -----------------------------------------------------------------
+        # 2. Extract box-only dynamics by SLICING the full plant. For a
+        #    fixed-base arm + free-floating box (independent kinematic
+        #    trees), M is block-diagonal between arm and box, so the box
+        #    slice is INDEPENDENT of arm q. Verified by Stage A test.
+        # -----------------------------------------------------------------
+        with timed("lcs.extract_dynamics"):
+            M_full     = self.plant.CalcMassMatrixViaInverseDynamics(context)
+            Cv_full    = self.plant.CalcBiasTerm(context)
+            tau_g_full = self.plant.CalcGravityGeneralizedForces(context)
+        BS = BOX_V_START
+        BE = BS + BOX_N_V
+        M_box     = M_full[BS:BE, BS:BE]                  # (6, 6)
+        Cv_box    = Cv_full[BS:BE]                        # (6,)
+        tau_g_box = tau_g_full[BS:BE]                     # (6,)
+        M_box_inv = np.linalg.inv(M_box)
+
+        # Box's N(q) sub-block: q_dot_box = N_box · box_v.
+        N_box = np.zeros((BOX_N_Q, BOX_N_V))
+        for i in range(BOX_N_V):
+            e_full = np.zeros(self.n_v)
+            e_full[BS + i] = 1.0
+            qdot_full = self.plant.MapVelocityToQDot(context, e_full)
+            N_box[:, i] = qdot_full[BOX_Q_START : BOX_Q_START + BOX_N_Q]
+
+        # Box accel at linearization point (continuous): f_box = M_box^-1
+        # (-Cv_box + tau_g_box).  λ and u contributions are added through
+        # the LCS structure (D and H), so f_box here is the AUTONOMOUS part.
+        f_box = M_box_inv @ (-Cv_box + tau_g_box)
+
+        # EE accel at linearization point (continuous): f_ee = u/m_ee + λ-term.
+        m_ee = float(self._EE_MASS)
+        f_ee = u_star / m_ee   # autonomous (no λ) part
+
+        # -----------------------------------------------------------------
+        # 3. Contacts: phi, Drake's J_n (n_c, n_v_full), nhat list. We then
+        #    PROJECT to the new low-dim velocity space [box_v(6), v_ee(3)].
+        # -----------------------------------------------------------------
+        phi, J_n_drake, J_t_drake, mu = self.extract_lcs_contacts(context)
+        n_c = J_n_drake.shape[0]
+        n_t = J_t_drake.shape[0]               # 4·n_c
+        n_lam = 2 * n_c + n_t                  # 6·n_c — [γ; λ_n; λ_t]
+        SG  = 0
+        SLN = n_c
+        SLT = 2 * n_c
+
+        # Project J_n, J_t to (n_c, 9) and (4n_c, 9).
+        # New velocity coords: u_vel = [box_v (6), v_ee (3)].
+        # Box columns: take Drake J_n[:, box_v_start : box_v_start + 6].
+        # EE columns:
+        #   - EE-BOX contact: J_n_ee = -nhat_onto_box (3-vec).
+        #     Sign reasoning: nhat_onto_box points INTO box (from EE side);
+        #     when EE moves OUTWARD (-nhat_onto_box direction), φ grows,
+        #     so dφ/dv_ee = -nhat_onto_box.
+        #   - BOX-GND  contact: EE not involved → J_n_ee = 0.
+        # J_t_ee analogous: t1, -t1, t2, -t2 in EE coords for EE-BOX pairs,
+        #   zeros for BOX-GND pairs.
+        J_n_new = np.zeros((n_c, BOX_N_V + 3))
+        J_t_new = np.zeros((n_t, BOX_N_V + 3))
+        if n_c > 0:
+            J_n_new[:, :BOX_N_V] = J_n_drake[:, BS:BE]
+            J_t_new[:, :BOX_N_V] = J_t_drake[:, BS:BE]
+            for i, info in enumerate(self._last_contact_info):
+                tag = info["tag"]
+                nhat_onto_box = info["nhat_onto_box"]  # into box
+                if tag == "EE-BOX":
+                    nhat_box_to_ee = -np.asarray(nhat_onto_box, dtype=float)
+                    J_n_new[i, BOX_N_V:BOX_N_V + 3] = nhat_box_to_ee
+                    # Tangent basis (same as extract_lcs_contacts):
+                    nhat = info["nhat_BA_W"]
+                    ref = np.array([1.0, 0.0, 0.0])
+                    if abs(float(np.dot(nhat, ref))) > 0.99:
+                        ref = np.array([0.0, 1.0, 0.0])
+                    t1 = np.cross(nhat, ref); t1 /= np.linalg.norm(t1)
+                    t2 = np.cross(nhat, t1)
+                    # EE-contribution to dφ_t/dt = (±t) · v_ee.
+                    # Sign: same as J_n_ee — when EE moves in +t direction,
+                    # tangential slip grows in that t direction.
+                    a_is_box = info["a_is_box"]
+                    sign_ee = +1.0 if (not a_is_box) else -1.0
+                    for d, drow in zip((t1, -t1, t2, -t2),
+                                       (4*i, 4*i+1, 4*i+2, 4*i+3)):
+                        J_t_new[drow, BOX_N_V:BOX_N_V + 3] = sign_ee * d
+
+        # Convenience aliases for box and EE columns in J_n_new / J_t_new.
+        J_n_box = J_n_new[:, :BOX_N_V]            # (n_c, 6)
+        J_n_ee  = J_n_new[:, BOX_N_V:]            # (n_c, 3)
+        J_t_box = J_t_new[:, :BOX_N_V]            # (4n_c, 6)
+        J_t_ee  = J_t_new[:, BOX_N_V:]            # (4n_c, 3)
+
+        # -----------------------------------------------------------------
+        # 4. Build A, B_ctrl, D, d (state-step matrices).
+        #
+        # State stride (Euler step):
+        #   box_q_{k+1} = box_q + dt · N_box · box_v_{k+1}
+        #               = box_q + dt · N_box · (box_v + dt · f_box_full)
+        #     where f_box_full = f_box + M_box^-1 · J_n_box^T λ_n
+        #                              + M_box^-1 · J_t_box^T λ_t
+        #   p_ee_{k+1} = p_ee  + dt · v_ee_{k+1}
+        #              = p_ee  + dt · (v_ee + dt · f_ee_full)
+        #     where f_ee_full = u/m_ee + J_n_ee^T λ_n / m_ee
+        #                             + J_t_ee^T λ_t / m_ee
+        #   box_v_{k+1} = box_v + dt · f_box_full
+        #   v_ee_{k+1}  = v_ee  + dt · f_ee_full
+        #
+        # Linearization (∂/∂x and ∂/∂u). For B_ctrl / D / H_lcs we
+        # short-circuit ∂f/∂q ≈ 0 for the box dynamics state-coupling — the
+        # exact linearization of f_box wrt box_q is computed below via the
+        # full-plant autodiff, restricted to box-velocity rows and box-q
+        # columns (still arm-independent because of block diagonality).
+        # -----------------------------------------------------------------
+
+        # 4a. Exact linearization of box autonomous dynamics ∂f_box/∂(box_q,
+        # box_v) via Drake autodiff. f_box = M^-1 (−Cv + tau_g) is computed
+        # on the full plant; we read out only the box rows and box columns.
+        with timed("lcs.extract_dynamics"):
+            q_star_full = q_full.copy()
+            v_star_full = v_full.copy()
+            decvar = np.concatenate([q_star_full, v_star_full])
+            decvar_ad = InitializeAutoDiff(decvar)
+            decvar_ad = (decvar_ad.flatten()
+                         if decvar_ad.ndim > 1 else decvar_ad)
+            q_ad = decvar_ad[:self.n_q]
+            v_ad = decvar_ad[self.n_q:self.n_q + self.n_v]
+            self.plant_ad.SetPositions(self.context_ad, q_ad)
+            self.plant_ad.SetVelocities(self.context_ad, v_ad)
+            M_full_ad     = self.plant_ad.CalcMassMatrixViaInverseDynamics(
+                self.context_ad)
+            Cv_full_ad    = self.plant_ad.CalcBiasTerm(self.context_ad)
+            tau_g_full_ad = self.plant_ad.CalcGravityGeneralizedForces(
+                self.context_ad)
+            rhs_box_ad    = (- Cv_full_ad[BS:BE] + tau_g_full_ad[BS:BE])
+        # Extract box-block of M and gradient.
+        # df_box/d(q, v) = M_box^-1 [ d(rhs_box)/d(q,v) - (dM_box/d(q,v)) f_box ]
+        J_rhs_box_full = ExtractGradient(rhs_box_ad)     # (6, n_q + n_v)
+        J_M_full = ExtractGradient(M_full_ad).reshape(
+            self.n_v, self.n_v, self.n_q + self.n_v)
+        # Slice box-block: M_box is M_full[BS:BE, BS:BE]; its gradient wrt
+        # each (q,v) variable is J_M_full[BS:BE, BS:BE, k].
+        df_box_dxfull = np.zeros((BOX_N_V, self.n_q + self.n_v))
+        for k in range(self.n_q + self.n_v):
+            dM_box_k = J_M_full[BS:BE, BS:BE, k]
+            df_box_dxfull[:, k] = M_box_inv @ (
+                J_rhs_box_full[:, k] - dM_box_k @ f_box
+            )
+        # Project to new state coords. Only the box-q columns of df_box/dq
+        # and box-v columns of df_box/dv are non-trivial (in principle the
+        # arm columns could be nonzero from CalcMassMatrix's full-plant
+        # numerics, but for an independent kinematic tree they're zero
+        # within autodiff noise; Stage A verifies this empirically).
+        df_box_dboxq = df_box_dxfull[:, BOX_Q_START : BOX_Q_START + BOX_N_Q]
+        df_box_dboxv = df_box_dxfull[:, self.n_q + BS : self.n_q + BE]
+
+        # 4b. Assemble A.
+        A = np.zeros((N_X, N_X))
+        # box_q rows.
+        # A[box_q, box_q] = I + dt² · N_box · df_box_dboxq
+        A[self.BOX_Q_SLOT, self.BOX_Q_SLOT] = (
+            np.eye(BOX_N_Q) + (dt * dt) * (N_box @ df_box_dboxq)
+        )
+        # A[box_q, box_v] = dt · N_box · (I + dt · df_box_dboxv)
+        A[self.BOX_Q_SLOT, self.BOX_V_SLOT] = (
+            dt * N_box @ (np.eye(BOX_N_V) + dt * df_box_dboxv)
+        )
+        # p_ee rows.
+        # A[p_ee, p_ee] = I; A[p_ee, v_ee] = dt · I (since v_ee_{k+1} = v_ee + ...).
+        A[self.P_EE_SLOT, self.P_EE_SLOT] = np.eye(3)
+        A[self.P_EE_SLOT, self.V_EE_SLOT] = dt * np.eye(3)
+        # box_v rows.
+        A[self.BOX_V_SLOT, self.BOX_Q_SLOT] = dt * df_box_dboxq
+        A[self.BOX_V_SLOT, self.BOX_V_SLOT] = np.eye(BOX_N_V) + dt * df_box_dboxv
+        # v_ee rows.
+        A[self.V_EE_SLOT, self.V_EE_SLOT] = np.eye(3)  # no damping
+
+        # 4c. Box-ground drag — mirrors R^7 path (lcs_formulator.py:778-794).
+        if self._box_drag_c > 0.0:
+            # The box's translational velocity is at box_v slots 3..5
+            # (after omega at 0..2). In the NEW state, those are at
+            # BOX_V_SLOT.start + 3 .. BOX_V_SLOT.start + 5.
+            base = self.BOX_V_SLOT.start
+            for k in (3, 4, 5):
+                A[base + k, base + k] -= self._box_drag_c * dt
+
+        # 4d. B_ctrl — CONFIGURATION-INDEPENDENT (Stage A crux).
+        B_ctrl = np.zeros((N_X, N_U))
+        # p_ee rows: ∂p_ee_{k+1}/∂u = dt · ∂v_ee_{k+1}/∂u = dt² / m_ee · I.
+        B_ctrl[self.P_EE_SLOT, :] = (dt * dt / m_ee) * np.eye(3)
+        # v_ee rows: ∂v_ee_{k+1}/∂u = dt / m_ee · I.
+        B_ctrl[self.V_EE_SLOT, :] = (dt / m_ee) * np.eye(3)
+        # box_q rows and box_v rows: zero (u doesn't enter box dynamics).
+
+        # 4e. D — contact force coupling on state.
+        # D has zero columns in γ slot.
+        # For λ_n: ∂(box_v_{k+1})/∂λ_n = dt · M_box^-1 · J_n_box^T  (6, n_c)
+        #         ∂(v_ee_{k+1})/∂λ_n  = dt · J_n_ee^T / m_ee         (3, n_c)
+        #         ∂(box_q_{k+1})/∂λ_n = dt² · N_box · M_box^-1 · J_n_box^T
+        #         ∂(p_ee_{k+1})/∂λ_n  = dt² · J_n_ee^T / m_ee
+        # Same for λ_t.
+        D = np.zeros((N_X, n_lam))
+        if n_c > 0:
+            Minv_JnT_box = M_box_inv @ J_n_box.T               # (6, n_c)
+            Minv_JtT_box = M_box_inv @ J_t_box.T               # (6, 4n_c)
+            # box_q rows
+            D[self.BOX_Q_SLOT, SLN:SLN + n_c]   = (dt*dt) * (N_box @ Minv_JnT_box)
+            D[self.BOX_Q_SLOT, SLT:SLT + n_t]   = (dt*dt) * (N_box @ Minv_JtT_box)
+            # p_ee rows: dt² / m_ee · J_n_ee^T (and J_t_ee^T)
+            D[self.P_EE_SLOT, SLN:SLN + n_c]    = (dt*dt / m_ee) * J_n_ee.T
+            D[self.P_EE_SLOT, SLT:SLT + n_t]    = (dt*dt / m_ee) * J_t_ee.T
+            # box_v rows
+            D[self.BOX_V_SLOT, SLN:SLN + n_c]   = dt * Minv_JnT_box
+            D[self.BOX_V_SLOT, SLT:SLT + n_t]   = dt * Minv_JtT_box
+            # v_ee rows
+            D[self.V_EE_SLOT, SLN:SLN + n_c]    = (dt / m_ee) * J_n_ee.T
+            D[self.V_EE_SLOT, SLT:SLT + n_t]    = (dt / m_ee) * J_t_ee.T
+
+        # 4f. d_vec — affine offset (constant term in x_{k+1} after linearization).
+        # d_box_v_offset = f_box(box_q*, box_v*) − df_box_dboxq · box_q*
+        #                  − df_box_dboxv · box_v*
+        # d_v_ee_offset  = f_ee(u*) − (∂f_ee/∂u) · u*  = u*/m_ee − u*/m_ee = 0
+        d_box_v_offset = f_box - df_box_dboxq @ box_q - df_box_dboxv @ box_v
+        d_v_ee_offset  = np.zeros(3)   # purely linear in u (no constant offset)
+        d_vec = np.zeros(N_X)
+        d_vec[self.BOX_Q_SLOT] = (dt * dt) * (N_box @ d_box_v_offset)
+        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset    # zero
+        d_vec[self.BOX_V_SLOT] = dt * d_box_v_offset
+        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset           # zero
+
+        # -----------------------------------------------------------------
+        # 5. Stewart-Trinkle LCP slack:
+        #      η = E·x + F·λ + H·u + c,    0 ≤ λ ⊥ η ≥ 0
+        # -----------------------------------------------------------------
+        E_lcs = np.zeros((n_lam, N_X))
+        F_lcs = np.zeros((n_lam, n_lam))
+        H_lcs = np.zeros((n_lam, N_U))
+        c_lcs = np.zeros(n_lam)
+
+        if n_c > 0:
+            E_t = np.zeros((n_c, n_t))
+            for i in range(n_c):
+                E_t[i, 4 * i : 4 * (i + 1)] = 1.0
+
+            # γ rows (state-independent, identical to R^7 path).
+            F_lcs[SG:SG + n_c,  SLN:SLN + n_c]  = mu * np.eye(n_c)
+            F_lcs[SG:SG + n_c,  SLT:SLT + n_t]  = -E_t
+
+            # λ_n rows: η_n = φ/dt + J_n · v_{k+1}
+            # In new coords J_n · v = J_n_box · box_v + J_n_ee · v_ee.
+            # v_{k+1} = current_v + dt · (autonomous f + λ-coupling + u-coupling).
+            # The E-row picks up the v_{k+1}-vs-x dependence:
+            #   ∂(J_n_box · box_v_{k+1}) / ∂box_q = dt · J_n_box · df_box_dboxq
+            #   ∂(J_n_box · box_v_{k+1}) / ∂box_v = J_n_box + dt · J_n_box · df_box_dboxv
+            #   ∂(J_n_ee  · v_ee_{k+1})  / ∂v_ee  = J_n_ee
+            #   ∂(J_n_ee  · v_ee_{k+1})  / ∂u     = dt · J_n_ee / m_ee
+            E_lcs[SLN:SLN + n_c, self.BOX_Q_SLOT] = dt * (J_n_box @ df_box_dboxq)
+            E_lcs[SLN:SLN + n_c, self.BOX_V_SLOT] = J_n_box + dt * (J_n_box @ df_box_dboxv)
+            E_lcs[SLN:SLN + n_c, self.V_EE_SLOT]  = J_n_ee
+            # F: λ-coupling — ∂v_{k+1}/∂λ via D-style entries.
+            F_lcs[SLN:SLN + n_c, SLN:SLN + n_c] = (
+                dt * (J_n_box @ Minv_JnT_box) + (dt / m_ee) * (J_n_ee @ J_n_ee.T)
+            )
+            F_lcs[SLN:SLN + n_c, SLT:SLT + n_t] = (
+                dt * (J_n_box @ Minv_JtT_box) + (dt / m_ee) * (J_n_ee @ J_t_ee.T)
+            )
+            # H: u-coupling — only the v_ee path contributes, m_ee scaling.
+            H_lcs[SLN:SLN + n_c, :] = (dt / m_ee) * J_n_ee
+            # c: const offset: φ/dt + J_n · (current_v + dt · d_offset)
+            #    − E_lcs · x* − H_lcs · u*   (linearization residual)
+            c_const_v_box  = J_n_box @ (box_v + dt * d_box_v_offset)
+            c_const_v_ee   = J_n_ee  @ (v_ee  + dt * d_v_ee_offset)
+            c_lcs[SLN:SLN + n_c] = phi / dt + c_const_v_box + c_const_v_ee
+            # NOTE: c_lcs absorbs the "constant" of η linearized at (x*, u*);
+            # E and H carry the gradient parts. We subtract E·x* + H·u* below.
+
+            # λ_t rows analogously.
+            E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] = dt * (J_t_box @ df_box_dboxq)
+            E_lcs[SLT:SLT + n_t, self.BOX_V_SLOT] = J_t_box + dt * (J_t_box @ df_box_dboxv)
+            E_lcs[SLT:SLT + n_t, self.V_EE_SLOT]  = J_t_ee
+            F_lcs[SLT:SLT + n_t, SG:SG + n_c]     = E_t.T
+            F_lcs[SLT:SLT + n_t, SLN:SLN + n_c]   = (
+                dt * (J_t_box @ Minv_JnT_box) + (dt / m_ee) * (J_t_ee @ J_n_ee.T)
+            )
+            F_lcs[SLT:SLT + n_t, SLT:SLT + n_t]   = (
+                dt * (J_t_box @ Minv_JtT_box) + (dt / m_ee) * (J_t_ee @ J_t_ee.T)
+            )
+            H_lcs[SLT:SLT + n_t, :] = (dt / m_ee) * J_t_ee
+            c_const_v_box_t = J_t_box @ (box_v + dt * d_box_v_offset)
+            c_const_v_ee_t  = J_t_ee  @ (v_ee  + dt * d_v_ee_offset)
+            c_lcs[SLT:SLT + n_t] = c_const_v_box_t + c_const_v_ee_t
+
+            # Subtract E·x* and H·u* so c carries the "value of η at (x*, u*)".
+            # This makes η(x*, u*, λ=?) = E·x* + F·λ + H·u* + c equal to the
+            # linearization value at the operating point — same convention as
+            # the R^7 path.
+            c_lcs -= E_lcs @ x_star + H_lcs @ u_star
+
+        # -----------------------------------------------------------------
+        # 6. Stash for diagnostics + return (mirror R^7 path's API).
+        # -----------------------------------------------------------------
+        self._last_ee_space_A = A
+        self._last_ee_space_B = B_ctrl
+        self._last_ee_space_D = D
+        self._last_ee_space_d = d_vec
+        self._last_ee_space_E = E_lcs
+        self._last_ee_space_F = F_lcs
+        self._last_ee_space_H = H_lcs
+        self._last_ee_space_c = c_lcs
+        return (
+            A, B_ctrl, D, d_vec,
+            E_lcs, F_lcs, H_lcs, c_lcs,
+            J_n_new, J_t_new, phi, mu,
+        )
+
 
