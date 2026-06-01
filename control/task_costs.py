@@ -600,3 +600,164 @@ class QuadraticManipulationCost:
                       f"perp-vel adds cross-terms to Q[vx,vy]")
 
         return Q, self._R, QN, x_ref
+
+    # ==================================================================
+    # EE-space cost (paper-aligned, Stage C of the EE-space rewrite).
+    # ==================================================================
+    # State layout in the new LCS (must match LCSFormulator.*_SLOT):
+    #     x = [box_q (7=quat+pos), p_ee (3), box_v (6=omega+lin), v_ee (3)]
+    # Indices (absolute):
+    #     box_q: 0..6   (qw=0, qx=1, qy=2, qz=3, x=4, y=5, z=6)
+    #     p_ee : 7..9
+    #     box_v: 10..15 (ωx=10, ωy=11, ωz=12, vx=13, vy=14, vz=15)
+    #     v_ee : 16..18
+    #
+    # Key simplification vs R^7 path: p_ee is a STATE variable. The
+    # EE-approach cost is therefore a direct quadratic on the p_ee slot
+    # (Q[7:10, 7:10] = w_ee_approach · I_3, x_ref[7:10] = effective_proxy).
+    # No arm Jacobian needed — that mapping happens downstream in the OSC.
+
+    N_X_EE_SPACE = 19
+    N_U_EE_SPACE = 3
+    _NEW_OBJ_QW   = 0
+    _NEW_OBJ_QX   = 1
+    _NEW_OBJ_QY   = 2
+    _NEW_OBJ_QZ   = 3
+    _NEW_OBJ_X    = 4
+    _NEW_OBJ_Y    = 5
+    _NEW_OBJ_Z    = 6
+    _NEW_PEE_SLOT = slice(7, 10)
+    _NEW_VBOX_OMEGA = slice(10, 13)
+    _NEW_VBOX_LIN_X = 13
+    _NEW_VBOX_LIN_Y = 14
+    _NEW_VBOX_LIN_Z = 15
+    _NEW_VEE_SLOT   = slice(16, 19)
+
+    def build_ee_space(self, target_xy: np.ndarray,
+                       plant_ctx=None, current_q: np.ndarray = None,
+                       target_yaw: float = 0.0):
+        """
+        Return (Q, R, QN, x_ref) for the EE-space LCS.
+
+        Same cost components as build() but in low-dim coords:
+          - object xy goal     : Q[4,4] = Q[5,5] = w_obj_xy
+          - object z upright   : Q[6,6] = w_obj_z + w_box_z
+          - box roll/pitch     : Q[1,1] = Q[2,2] = w_box_rp
+          - yaw target         : w_yaw outer product on Q[0:4, 0:4]
+          - EE-approach        : Q[7:10, 7:10] = w_ee_approach · I_3,
+                                 x_ref[7:10] = effective_proxy (3-stage)
+          - perp box velocity  : penalize box-linear-vx/vy components
+                                 orthogonal to g_hat (Q[13:15, 13:15])
+
+        Returns
+        -------
+        Q       : (19, 19)
+        R       : (3, 3)  =  w_torque · I_3   (now a force-cost, not torque)
+        QN      : (19, 19)
+        x_ref   : (19,)
+        """
+        n_x = self.N_X_EE_SPACE
+        n_u = self.N_U_EE_SPACE
+
+        # --- Base Q (object xy/z, roll/pitch) ---
+        Q = np.zeros((n_x, n_x))
+        Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy
+        Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy
+        Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = self.w_obj_z + self.w_box_z
+        Q[self._NEW_OBJ_QX, self._NEW_OBJ_QX] = self.w_box_rp   # roll
+        Q[self._NEW_OBJ_QY, self._NEW_OBJ_QY] = self.w_box_rp   # pitch
+
+        # --- x_ref base ---
+        x_ref = np.zeros(n_x)
+        x_ref[self._NEW_OBJ_X] = target_xy[0]
+        x_ref[self._NEW_OBJ_Y] = target_xy[1]
+        x_ref[self._NEW_OBJ_Z] = self.z_ref
+
+        # --- Yaw target (linear-in-quaternion residual) ---
+        self._target_yaw = float(target_yaw)
+        if self.w_yaw > 0.0:
+            a_half = 0.5 * self._target_yaw
+            cy = np.array([-np.sin(a_half), 0.0, 0.0, np.cos(a_half)])
+            Q[0:4, 0:4] += self.w_yaw * np.outer(cy, cy)
+            x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
+            x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
+
+        # --- EE-approach cost (DIRECT — no arm Jacobian) ---
+        if plant_ctx is not None and current_q is not None:
+            obj_xy = np.array([current_q[self._obj_x_idx],
+                               current_q[self._obj_y_idx]])
+            v_goal = target_xy - obj_xy
+            dist   = float(np.linalg.norm(v_goal))
+
+            if dist > 1e-3:
+                g_hat = v_goal / dist
+                # Current EE position (used to pick approach stage; in the new
+                # LCS this is also a state variable, but for cost-building we
+                # read it from the plant context).
+                ee_pos = self.plant.CalcPointsPositions(
+                    plant_ctx, self.ee_frame, np.zeros(3), self.world_frame
+                ).flatten()
+                ee_xy          = ee_pos[:2]
+                ee_to_box_dist = float(np.linalg.norm(ee_xy - obj_xy))
+
+                # Three-stage approach proxy (same as R^7 build()).
+                proxy_3d = np.array([
+                    obj_xy[0] - self.d_push * g_hat[0],
+                    obj_xy[1] - self.d_push * g_hat[1],
+                    self.z_ref,
+                ])
+                pre_approach_3d = np.array([
+                    obj_xy[0] - 0.16 * g_hat[0],
+                    obj_xy[1] - 0.16 * g_hat[1],
+                    self.z_ref,
+                ])
+                approach_3d = np.array([
+                    obj_xy[0] - (self.d_push + 0.15) * g_hat[0],
+                    obj_xy[1] - (self.d_push + 0.15) * g_hat[1],
+                    self.z_ref,
+                ])
+                if ee_to_box_dist > 0.25:
+                    effective_proxy = pre_approach_3d.copy()
+                elif ee_to_box_dist > 0.10:
+                    t = (ee_to_box_dist - 0.10) / 0.15
+                    effective_proxy = t * pre_approach_3d + (1.0 - t) * approach_3d
+                else:
+                    t = ee_to_box_dist / 0.10
+                    effective_proxy = t * approach_3d + (1.0 - t) * proxy_3d
+
+                # Close-range lateral alignment toward push axis.
+                rel_vec        = ee_xy - obj_xy
+                along_push     = float(np.dot(rel_vec, g_hat))
+                perp_vec       = rel_vec - along_push * g_hat
+                perp_magnitude = float(np.linalg.norm(perp_vec))
+                if ee_to_box_dist < 0.15 and perp_magnitude > 1e-4:
+                    extra_shift = -perp_vec * min(1.0, perp_magnitude / 0.05)
+                    effective_proxy = effective_proxy.copy()
+                    effective_proxy[:2] += extra_shift
+
+                # DIRECT EE-approach cost on the p_ee state slot.
+                # No arm Jacobian, no J^T J block — paper-aligned.
+                Q[self._NEW_PEE_SLOT, self._NEW_PEE_SLOT] = (
+                    self.w_ee_approach * np.eye(3)
+                )
+                x_ref[self._NEW_PEE_SLOT] = effective_proxy
+
+            # --- Perpendicular box-velocity penalty ---
+            # Penalize box linear velocity components orthogonal to g_hat.
+            if dist > 1e-3:
+                g_hat = v_goal / dist
+                g_perp = np.array([-g_hat[1], g_hat[0]])
+                w_perp = 10.0 * self.w_obj_xy
+                ix = self._NEW_VBOX_LIN_X
+                iy = self._NEW_VBOX_LIN_Y
+                Q[ix, ix] += w_perp * g_perp[0] ** 2
+                Q[iy, iy] += w_perp * g_perp[1] ** 2
+                Q[ix, iy] += w_perp * g_perp[0] * g_perp[1]
+                Q[iy, ix] += w_perp * g_perp[0] * g_perp[1]
+
+        # --- R: torque cost is now an EE-force cost. Same scalar weight,
+        #     applied to R^3 input. ---
+        R = self.w_torque * np.eye(n_u)
+
+        QN = self.w_terminal * Q
+        return Q, R, QN, x_ref
