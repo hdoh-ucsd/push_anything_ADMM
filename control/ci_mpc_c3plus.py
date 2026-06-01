@@ -74,11 +74,38 @@ class C3PlusMPC:
         # (Push-Anything §IV-A) with x ∈ ℝ^19 and u ∈ ℝ^3.
         # When False, the legacy R^7 joint-torque path remains.
         self.use_ee_space  = bool(use_ee_space)
+        # Banner-vs-reality guard: assert solver dims match the active
+        # formulation in BOTH directions. A label that fools the reviewer
+        # is a correctness hazard; the only thing that can prevent a future
+        # "ran R^7 but banner said EE-space" confound is a hard-fail here.
         if self.use_ee_space:
             assert solver.n_x == 19 and solver.n_u == 3, (
-                f"use_ee_space requires C3Solver(n_x=19, n_u=3); "
-                f"got n_x={solver.n_x}, n_u={solver.n_u}."
+                f"use_ee_space=True requires C3Solver(n_x=19, n_u=3); "
+                f"got n_x={solver.n_x}, n_u={solver.n_u}. "
+                f"The active LCS path is linearize_discrete_ee_space, which "
+                f"produces 19-dim state and 3-dim input. Mismatch would "
+                f"silently run the wrong dimensions."
             )
+        else:
+            # Under R^7, expected n_x = formulator.n_q + formulator.n_v and
+            # n_u = formulator.n_u (Drake plant DOFs). The expected values are
+            # DERIVED from the formulator instance, not hardcoded — so any
+            # future plant change (e.g. different arm) propagates here too.
+            _expected_n_x = formulator.n_q + formulator.n_v
+            _expected_n_u = formulator.n_u
+            assert solver.n_x == _expected_n_x and solver.n_u == _expected_n_u, (
+                f"R^7 (use_ee_space=False) requires "
+                f"C3Solver(n_x={_expected_n_x}, n_u={_expected_n_u}) "
+                f"derived from formulator's plant DOFs; got "
+                f"n_x={solver.n_x}, n_u={solver.n_u}."
+            )
+        # Print the verified dims with their formulation label so a log
+        # reader sees both at once and can't misread one for the other.
+        print(f"[C3+] planner construction verified: "
+              f"use_ee_space={self.use_ee_space} "
+              f"solver.n_x={solver.n_x} solver.n_u={solver.n_u}  "
+              f"({'EE force (Newtons)' if self.use_ee_space else 'joint torque (Nm)'})",
+              flush=True)
         self._math_diag        = math_diag
         self._mpc_step         = 0
         self._math_setup_done  = False
