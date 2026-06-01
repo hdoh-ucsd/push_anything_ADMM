@@ -292,8 +292,32 @@ class InnerSolver:
                         suppress_io:   bool = True,
                         target_yaw:    float = 0.0) -> SampleResult:
         """Evaluate one sample. Restores plant_ctx to (current_q, current_v)
-        before returning."""
+        before returning.
+
+        EE-space dispatch (when solver is constructed at n_x=19): the
+        "sample" is just an EE position, so no IK is needed for non-current
+        samples — x0[7:10] is set to sample_pos directly. The LCS is
+        linearized at the current Drake state (plant context unchanged),
+        which means contact admission reflects the CURRENT EE position
+        rather than the hypothetical sample. This is the simplest fix that
+        gets c_samples finite; a follow-up could compute sample-specific
+        contact admission analytically (sphere-vs-box SDF) or via IK.
+        """
+        # Dispatch indicator: EE-space planner has n_x=19, n_u=3.
+        # When that's the active solver, route through the EE-space path.
+        _ee_space = (self.solver.n_x == 19 and self.solver.n_u == 3)
+
+        # --- IK / state setup --------------------------------------------
         if is_current_ee:
+            q_seed   = current_q.copy()
+            ik_err   = 0.0
+            ik_iters = 0
+            self.plant.SetPositions(plant_ctx, q_seed)
+            self.plant.SetVelocities(plant_ctx, current_v)
+        elif _ee_space:
+            # Skip the IK-to-arm-q step — the EE-space LCS doesn't need
+            # the arm to be at a sample-matching config. Plant context
+            # stays at (current_q, current_v).
             q_seed   = current_q.copy()
             ik_err   = 0.0
             ik_iters = 0
@@ -310,7 +334,8 @@ class InnerSolver:
             )
             self.plant.SetVelocities(plant_ctx, current_v)
 
-        # FK current EE at the IK-resolved config
+        # FK current EE at the IK-resolved (or current) config — used as a
+        # "where did the planner think we are?" reference downstream.
         ee_pos_resolved = self.plant.CalcPointsPositions(
             plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
         ).flatten().copy()
@@ -330,23 +355,50 @@ class InnerSolver:
         ctx = redirect_stdout(_buf) if suppress_io else _NullContext()
         try:
             with ctx:
-                # Phase 2: linearize_discrete now returns 12 elements with
-                # the Stewart-Trinkle (E, F, H, c) slack expression.
-                (A, B, D, d,
-                 E_lcs, F_lcs, H_lcs, c_lcs,
-                 J_n, J_t, phi, mu) = \
-                    self.formulator.linearize_discrete(plant_ctx, self.dt)
-                # Capture immediately — _last_nhats / _last_ee_box_contacts
-                # are overwritten on the next linearize_discrete call.
-                nhats = list(self.formulator._last_nhats)
-                ee_box_contacts = list(
-                    getattr(self.formulator, "_last_ee_box_contacts", [])
-                )
-                Q, R, QN, x_ref = self.quad_cost.build(
-                    target_xy, plant_ctx=plant_ctx, current_q=q_seed,
-                    target_yaw=target_yaw,
-                )
-                x0 = np.concatenate([q_seed, current_v])
+                if _ee_space:
+                    # EE-space dispatch — paper-aligned (Push-Anything §IV-A).
+                    (A, B, D, d,
+                     E_lcs, F_lcs, H_lcs, c_lcs,
+                     J_n, J_t, phi, mu) = \
+                        self.formulator.linearize_discrete_ee_space(
+                            plant_ctx, self.dt)
+                    nhats = list(self.formulator._last_nhats)
+                    ee_box_contacts = list(
+                        getattr(self.formulator, "_last_ee_box_contacts", [])
+                    )
+                    Q, R, QN, x_ref = self.quad_cost.build_ee_space(
+                        target_xy, plant_ctx=plant_ctx,
+                        current_q=q_seed, target_yaw=target_yaw,
+                    )
+                    # x0 = [box_q (7), p_ee_sample (3), box_v (6), v_ee=0 (3)]
+                    BOX_Q_START = self.obj_body.floating_positions_start()
+                    BOX_V_START = self.obj_body.floating_velocities_start_in_v()
+                    box_q = current_q[BOX_Q_START : BOX_Q_START + 7]
+                    box_v = current_v[BOX_V_START : BOX_V_START + 6]
+                    # For is_current_ee: use FK on current arm config (matches
+                    # base_mpc's x0 construction). For non-current: use sample_pos.
+                    if is_current_ee:
+                        p_ee_for_x0 = ee_pos_resolved
+                    else:
+                        p_ee_for_x0 = np.asarray(sample_pos, dtype=float).reshape(3)
+                    v_ee_for_x0 = np.zeros(3)   # hypothetical: EE starts at rest
+                    x0 = np.concatenate([box_q, p_ee_for_x0, box_v, v_ee_for_x0])
+                else:
+                    # R^7 path (legacy).
+                    (A, B, D, d,
+                     E_lcs, F_lcs, H_lcs, c_lcs,
+                     J_n, J_t, phi, mu) = \
+                        self.formulator.linearize_discrete(plant_ctx, self.dt)
+                    nhats = list(self.formulator._last_nhats)
+                    ee_box_contacts = list(
+                        getattr(self.formulator, "_last_ee_box_contacts", [])
+                    )
+                    Q, R, QN, x_ref = self.quad_cost.build(
+                        target_xy, plant_ctx=plant_ctx, current_q=q_seed,
+                        target_yaw=target_yaw,
+                    )
+                    x0 = np.concatenate([q_seed, current_v])
+
                 u_seq, x_seq = self.solver.solve(
                     x0, A, B, D, d, J_n, J_t, mu,
                     Q, R, QN, x_ref,
@@ -362,7 +414,11 @@ class InnerSolver:
                 self.full_solves += 1
             else:
                 self.cheap_solves += 1
-        except Exception:
+        except Exception as _evexc:
+            # NOTE: silent swallow is a known hazard (it just confounded the
+            # first EE-space comparison run by hiding a dimension mismatch).
+            # Held follow-up: log _evexc when not feasible. For now we keep
+            # the swallow to avoid a behavioural change in this commit.
             pass
 
         # Geometric align_score: bonus for samples whose contact would push
