@@ -901,11 +901,12 @@ class SamplingC3MPC:
                           f"kToC3ReachedReposTarget", flush=True)
 
             # Stage 2 L1 gate: goal-aligned contact-normal requirement.
-            # Even when distance passes, refuse c3 admission unless the
-            # planner's projected contact normal points opposite g_hat
-            # (i.e., contact will push the box toward goal). Catches
-            # cardinal-on-wrong-face (alignment ≈ 0) and off-cardinal/
-            # edge contact (alignment small) with one cosine check.
+            # nhat_onto_box points INTO the box (lcs_formulator.py:1090);
+            # the EE-on-box force is along nhat_onto_box. Goal-aligned
+            # contact ≡ nhat_onto_box · g_hat > entry_align_threshold (the
+            # push direction matches the goal direction). Catches cardinal-
+            # on-wrong-face (alignment ≈ 0) and off-cardinal/edge contact
+            # (alignment small) with one cosine check.
             # 0.0 → identity (regression-safe default).
             _align_thr = float(getattr(self.params,
                                        "entry_align_threshold", 0.0))
@@ -922,8 +923,8 @@ class SamplingC3MPC:
                                 _nhat_xy = (float(_n[0]), float(_n[1]))
                                 break
                 if _nhat_xy is not None:
-                    _align = -(_nhat_xy[0] * g_hat[0]
-                               + _nhat_xy[1] * g_hat[1])
+                    _align = (_nhat_xy[0] * g_hat[0]
+                              + _nhat_xy[1] * g_hat[1])
                     if _align <= _align_thr:
                         finished_repos = False
                         if self.log_diag:
