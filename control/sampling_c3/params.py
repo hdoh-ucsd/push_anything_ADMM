@@ -579,6 +579,16 @@ class SamplingC3Params:
     use_surface_entry_gate: bool = True
     contact_entry_surface_threshold: float = 0.060
 
+    # Stage 2 L1: goal-aligned contact-normal requirement at admission.
+    # Applies AFTER the distance check passes. With -nhat_xy·g_hat as the
+    # alignment cosine (+1 = perfect goal-ward contact, 0 = perpendicular,
+    # -1 = anti-goal): admit c3 only when align > entry_align_threshold.
+    # 0.0 → identity / disabled (regression-safe default).
+    # 0.7 → reuses GOAL_ALIGN_THRESHOLD convention (sampling.py:31, ~45°
+    # cone), refuses wrong-face cardinal contact (alignment 0.04) AND
+    # off-cardinal/edge contact (alignment ≤ 0.5) with one cosine check.
+    entry_align_threshold: float = 0.0
+
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
     # rich-mode steps had no admitted EE-BOX pair. Conditioned on whether
@@ -747,6 +757,7 @@ class SamplingC3Params:
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
+            entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),

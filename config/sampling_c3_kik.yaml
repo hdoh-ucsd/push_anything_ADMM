@@ -51,6 +51,13 @@ surrogate_admm_iters: 3
 dt_osc: 0.01
 dt_mpc: 0.01
 
+# Stage 2 L1: goal-aligned contact-normal requirement at admission gate.
+# 0.7 reuses GOAL_ALIGN_THRESHOLD convention (sampling.py:31) — refuses
+# wrong-face cardinal contact (align ≈ 0.04 on -y at β=0) AND off-cardinal
+# contact (align ≤ 0.5 from seed-3 β=2 cracks). Working seeds first-contact
+# alignment is ≈1.0 — wide margin. 0.0 disables (regression-safe identity).
+entry_align_threshold: 0.7
+
 
 # ----------------------------------------------------------------------------
 # Progress + mode-switch hysteresis

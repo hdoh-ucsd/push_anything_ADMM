@@ -900,6 +900,41 @@ class SamplingC3MPC:
                           f"{_label} >= thr={_thr*1000:.1f}mm — block "
                           f"kToC3ReachedReposTarget", flush=True)
 
+            # Stage 2 L1 gate: goal-aligned contact-normal requirement.
+            # Even when distance passes, refuse c3 admission unless the
+            # planner's projected contact normal points opposite g_hat
+            # (i.e., contact will push the box toward goal). Catches
+            # cardinal-on-wrong-face (alignment ≈ 0) and off-cardinal/
+            # edge contact (alignment small) with one cosine check.
+            # 0.0 → identity (regression-safe default).
+            _align_thr = float(getattr(self.params,
+                                       "entry_align_threshold", 0.0))
+            if (not _block) and _align_thr > 0.0:
+                _ci = getattr(self.base_mpc.formulator,
+                              "_last_contact_info", None)
+                _nhat_xy = None
+                if _ci:
+                    for _info in _ci:
+                        if (isinstance(_info, dict)
+                                and _info.get("tag") == "EE-BOX"):
+                            _n = _info.get("nhat_onto_box")
+                            if _n is not None and len(_n) >= 2:
+                                _nhat_xy = (float(_n[0]), float(_n[1]))
+                                break
+                if _nhat_xy is not None:
+                    _align = -(_nhat_xy[0] * g_hat[0]
+                               + _nhat_xy[1] * g_hat[1])
+                    if _align <= _align_thr:
+                        finished_repos = False
+                        if self.log_diag:
+                            print(f"[GATE-ALIGN] step={self._step} "
+                                  f"refused: align={_align:+.3f} "
+                                  f"<= thr={_align_thr:.2f} "
+                                  f"nhat_xy=({_nhat_xy[0]:+.3f},"
+                                  f"{_nhat_xy[1]:+.3f}) "
+                                  f"g_hat=({g_hat[0]:+.3f},"
+                                  f"{g_hat[1]:+.3f})", flush=True)
+
         met = self.progress.met_progress(near_goal=near_goal)
         mode, reason = decide_mode(
             prev_mode          = self._prev_mode,
