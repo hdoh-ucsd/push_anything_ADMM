@@ -245,6 +245,14 @@ class SamplingParams:
     sampling_setback:                    float = 0.030  # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
     sample_reject_clearance:             float = 0.005  # m, post-projection minimum gap to box surface
 
+    # Face-selection bias toward goal-aligned faces (Stage 2B Mode-B fix).
+    # When > 0, each face's draw probability is weighted by
+    #   w_i = 1 + face_bias_strength * max(0, -n_world_i . g_hat_xy)
+    # so the face whose outward normal points opposite the goal direction
+    # (i.e., contact on that face pushes the box toward the goal) is over-
+    # represented. 0.0 -> uniform 1-of-4 (regression-safe identity).
+    face_bias_strength:                  float = 0.0
+
     # Workspace bounds (kept here, not in a separate sampling_c3_options.yaml)
     workspace_xy_min:                    list  = field(default_factory=lambda: [-0.5, -0.7])
     # F3 ship 2026-05-14: y_max raised from 0.0 to 0.13 to match sampling_radius.

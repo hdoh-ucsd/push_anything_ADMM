@@ -170,6 +170,14 @@ sampling_params:
   sampling_setback:        0.030   # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
   sample_reject_clearance: 0.005   # m, rejection if post-projection xy is within 5 mm of box surface
 
+  # Stage 2B Mode-B fix: bias face selection toward goal-aligned faces.
+  # At β=2 with g_hat=[-1,0] (push west), the +x face draw weight is 3 vs
+  # 1 for the others, so P(+x)=50% instead of uniform 25%. /understand
+  # showed seed-1 +x supply was 20%; seeds 0/3/4 were 28-38% and the
+  # dispatcher already prefers +x — the bias is monotone-helpful for
+  # seed 1 and harmless-to-helpful for the working seeds.
+  face_bias_strength:      2.0
+
   # Robot workspace bounds; samples failing this are pruned.
   # (xy_min/xy_max define a planar rectangle, z_min/max define the z slab.)
   workspace_xy_min: [-0.5, -0.7]
