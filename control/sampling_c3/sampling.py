@@ -219,12 +219,29 @@ def _face_normal_projection(n_samples:    int,
         world_normals = body_normals
 
     obj_xy_2 = np.asarray(obj_xy, dtype=float).reshape(2)
+
+    # Stage 2B sampler bias: weight the face draw so the face whose outward
+    # normal points opposite g_hat (contact would push box toward goal) is
+    # over-represented. β = 0 -> uniform 1-of-4 (regression-safe identity).
+    _beta = float(getattr(params, "face_bias_strength", 0.0))
+    if _use_goal_align and _beta > 0.0:
+        # max(0, -n_world . g_hat) per face -> 0 on anti-goal & perpendicular,
+        # 1 on the perfectly goal-aligned face (downhill bias).
+        _aligns = np.maximum(0.0, -(world_normals[:, :2] @ g2))
+        _face_weights = 1.0 + _beta * _aligns
+        _face_probs = _face_weights / _face_weights.sum()
+    else:
+        _face_probs = None
+
     samples: list[np.ndarray] = []
     max_tries = n_samples * 20
     tries = 0
     while len(samples) < n_samples and tries < max_tries:
         tries += 1
-        face_idx = int(rng.integers(0, 4))
+        if _face_probs is None:
+            face_idx = int(rng.integers(0, 4))
+        else:
+            face_idx = int(rng.choice(4, p=_face_probs))
         n_world = world_normals[face_idx]
         face_center_xy = obj_xy_2 + box_half * n_world[:2]
         tang = np.array([-n_world[1], n_world[0]])
