@@ -106,6 +106,7 @@ class C3Solver:
         self._w_comp    = 0.0
         self._solver    = ad.OsqpSolver()
         self._diag_step = 0
+        self._last_lcp_res_max = float('nan')
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
         self._eye_total_dim  = -1       # sentinel: rebuild when total_dim changes
@@ -1439,7 +1440,8 @@ class C3Solver:
             print(f"[C3+] step={self._diag_step} "
                   f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}{self.u_unit_str} "
                   f"λ_n_max={lam_n_max:.3f} η_n_max={eta_n_max:.3f} "
-                  f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter}")
+                  f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter} "
+                  f"lcp_res_max={self._last_lcp_res_max:.2e}")
         else:
             print(f"[C3+] step={self._diag_step} n_λ=0  "
                   f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} {self.u_unit_str}")
