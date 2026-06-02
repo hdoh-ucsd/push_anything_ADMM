@@ -170,13 +170,17 @@ sampling_params:
   sampling_setback:        0.030   # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
   sample_reject_clearance: 0.005   # m, rejection if post-projection xy is within 5 mm of box surface
 
-  # Stage 2B Mode-B fix: bias face selection toward goal-aligned faces.
-  # At β=2 with g_hat=[-1,0] (push west), the +x face draw weight is 3 vs
-  # 1 for the others, so P(+x)=50% instead of uniform 25%. /understand
-  # showed seed-1 +x supply was 20%; seeds 0/3/4 were 28-38% and the
-  # dispatcher already prefers +x — the bias is monotone-helpful for
-  # seed 1 and harmless-to-helpful for the working seeds.
-  face_bias_strength:      2.0
+  # Face-selection bias toward goal-aligned faces (Stage 2B infrastructure).
+  # NEUTRALIZED 2026-06-01 after the β=2 sweep produced pre-registered
+  # outcome 2: SC-modeB-convert PASSED (seeds 1,2 converted) but
+  # SC-noregress-working FAILED on seeds 0/3/4 AND SC-noregress-lambda
+  # FAILED on seed 3 (lcp_res_max p99=1.75e-5, λ_n max=66.5 — the
+  # off-cardinal-contact regime cracks the projection, amending the
+  # earlier "benign lambda" verdict to regime-dependent).
+  # Infra retained (params.py field + sampling.py hook) for future redesign
+  # once dispatcher distribution-sensitivity is /understood (H1/H2/H3
+  # rescope).
+  face_bias_strength:      0.0
 
   # Robot workspace bounds; samples failing this are pruned.
   # (xy_min/xy_max define a planar rectangle, z_min/max define the z slab.)
