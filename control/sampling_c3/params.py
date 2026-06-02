@@ -589,6 +589,22 @@ class SamplingC3Params:
     # off-cardinal/edge contact (alignment ≤ 0.5) with one cosine check.
     entry_align_threshold: float = 0.0
 
+    # Stage 2 L2: commit-trigger face gate. When finished_repos==True at
+    # wrapper.py:853, evaluate the active self._current_repos_target's
+    # face: n_face_out · g_hat must be ≤ commit_face_gate_threshold for
+    # kToC3ReachedReposTarget to fire. Default -0.7 is a 45° cone
+    # admitting any cardinal face within ~45° of strict goal-aligned
+    # (robust to off-axis goals and box rotation). For push-west: +x
+    # (cos=-1) admits; ±y (cos=0) and -x (cos=+1) refuse.
+    #
+    # Distinct from L1 (entry_align_threshold above): L1 keys on
+    # formulator._last_contact_info which is empty 80 mm pre-contact;
+    # L2 keys on _current_repos_target which is populated by definition
+    # when finished_repos==True. Both run alongside during the L2 sweep
+    # so SC-L2-L1-redundancy is measurable.
+    use_commit_face_gate: bool = True
+    commit_face_gate_threshold: float = -0.7
+
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
     # rich-mode steps had no admitted EE-BOX pair. Conditioned on whether
@@ -758,6 +774,8 @@ class SamplingC3Params:
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
             entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
+            use_commit_face_gate           = bool(raw.get("use_commit_face_gate", True)),
+            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", -0.7)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
