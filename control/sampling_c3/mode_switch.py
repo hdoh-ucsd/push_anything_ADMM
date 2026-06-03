@@ -123,10 +123,16 @@ def decide_mode(prev_mode:          str,
     if finished_repos:
         return "c3", SwitchReason.kToC3ReachedReposTarget
 
-    # 2. Cost-based switch back to C3
-    gap_back = _hysteresis(params, "repos_to_c3", near_goal, c3_cost)
-    if c3_cost + gap_back < best_other_cost:
-        return "c3", SwitchReason.kToC3Cost
+    # 2. Cost-based switch back to C3. Skip when best_other_cost == inf:
+    # no feasible repos alternative exists (empty buffer, workspace-filtered
+    # strategy samples, all infeasible). Without this guard, c3_cost + gap
+    # < inf is trivially true and the dispatcher snaps back into a dead
+    # c3 push the tick after kToReposUnproductive fires (seed-3 wedge
+    # re-entry trap, 7× in stage2_L2_seed3_16s/run.log).
+    if best_other_cost != float("inf"):
+        gap_back = _hysteresis(params, "repos_to_c3", near_goal, c3_cost)
+        if c3_cost + gap_back < best_other_cost:
+            return "c3", SwitchReason.kToC3Cost
 
     # 3. Re-target within repos mode (only if a current repos target exists)
     if current_repos_cost is not None:
