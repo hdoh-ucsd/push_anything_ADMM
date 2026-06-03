@@ -25,6 +25,7 @@ from typing import List, Optional
 
 import numpy as np
 
+from control.sampling_c3.commit_face_gate import decide_commit_face_gate
 from control.sampling_c3.inner_solve import (
     InnerSolver, SampleResult, traj_cost_breakdown,
 )
@@ -935,6 +936,45 @@ class SamplingC3MPC:
                                   f"{_nhat_xy[1]:+.3f}) "
                                   f"g_hat=({g_hat[0]:+.3f},"
                                   f"{g_hat[1]:+.3f})", flush=True)
+
+            # Stage 2 L2 gate: commit-face requirement on the reposition
+            # target's outward face. Keys on self._current_repos_target
+            # (populated by definition when finished_repos==True) — works
+            # 80 mm pre-contact where L1's contact_info is empty.
+            #
+            # Runs alongside L1 (not in series): if L1 already set
+            # finished_repos=False, L2 still evaluates and logs its
+            # decision so SC-L2-L1 redundancy is measurable from logs.
+            #
+            # Sign convention is inverted vs L1: L2's n_face_out points
+            # OUTWARD (box→target), L1's nhat_onto_box points INTO box;
+            # both use <= but the meanings are mirrored — see
+            # commit_face_gate.py module docstring.
+            if ((not _block)
+                    and getattr(self.params, "use_commit_face_gate", False)
+                    and self._current_repos_target is not None):
+                _l2_thr = float(getattr(self.params,
+                                        "commit_face_gate_threshold", -0.7))
+                _box_xy = np.array([
+                    current_q[self._obj_x_idx],
+                    current_q[self._obj_y_idx],
+                ])
+                _l2_dec = decide_commit_face_gate(
+                    p_repos_target_xy=self._current_repos_target,
+                    box_xy=_box_xy,
+                    g_hat_xy=g_hat,
+                    threshold=_l2_thr,
+                )
+                if not _l2_dec.commit:
+                    finished_repos = False
+                    if self.log_diag:
+                        print(f"[GATE-COMMIT-FACE] step={self._step} "
+                              f"refused: face_align={_l2_dec.face_align:+.3f} "
+                              f"tag={_l2_dec.severity_tag} "
+                              f"n_face_out=({_l2_dec.n_face_out_xy[0]:+.3f},"
+                              f"{_l2_dec.n_face_out_xy[1]:+.3f}) "
+                              f"g_hat=({g_hat[0]:+.3f},"
+                              f"{g_hat[1]:+.3f})", flush=True)
 
         met = self.progress.met_progress(near_goal=near_goal)
         mode, reason = decide_mode(
