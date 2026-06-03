@@ -275,3 +275,52 @@ def test_invalid_prev_mode_raises():
 def test_switch_reasons_have_distinct_int_values():
     vals = [r.value for r in SwitchReason]
     assert len(vals) == len(set(vals))
+
+
+# ---------------------------------------------------------------------------
+# inf-re-entry guard (Q1 fix)
+# ---------------------------------------------------------------------------
+
+def test_free_to_c3_NOT_triggered_when_best_other_is_inf():
+    """When the dispatcher has no feasible repos alternative
+    (best_other_cost == inf), kToC3Cost must NOT fire — otherwise the
+    trivially-true `c3_cost + gap_back < inf` snaps c3 back on the tick
+    after kToReposUnproductive, trapping a wedged EE. Repro from
+    stage2_L2_seed3_16s/run.log step 459 (best_other=- = inf,
+    switch=kToC3Cost)."""
+    p = _params(use_relative_hysteresis=True, hyst_repos_to_c3_frac=0.9)
+    mode, reason = decide_mode(
+        prev_mode="free",
+        c3_cost=88385.26,
+        best_other_cost=float("inf"),
+        current_repos_cost=None,
+        met_progress=False,
+        near_goal=False,
+        finished_repos=False,
+        params=p,
+    )
+    assert mode == "free", f"expected stay in free, got mode={mode}"
+    assert reason == SwitchReason.kStayInRepos, (
+        f"expected kStayInRepos, got {reason.name}")
+
+
+def test_free_to_c3_still_triggered_when_best_other_finite_and_c3_better():
+    """Sanity: the guard only blocks the inf case. When best_other is
+    finite and c3 is much cheaper, kToC3Cost must still fire (no
+    regression on the working path). Uses repos_to_c3_frac=0.9 so the
+    gate fires only when c3_cost*(1+0.9) < best_other_cost, i.e.,
+    best_other >= 1.9*c3."""
+    p = _params(use_relative_hysteresis=True, hyst_repos_to_c3_frac=0.9)
+    mode, reason = decide_mode(
+        prev_mode="free",
+        c3_cost=10000.0,
+        best_other_cost=25000.0,   # 25000 > 1.9 * 10000 = 19000 ✓
+        current_repos_cost=None,
+        met_progress=False,
+        near_goal=False,
+        finished_repos=False,
+        params=p,
+    )
+    assert mode == "c3", f"expected c3, got mode={mode}"
+    assert reason == SwitchReason.kToC3Cost, (
+        f"expected kToC3Cost, got {reason.name}")
