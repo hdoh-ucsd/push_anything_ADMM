@@ -29,7 +29,7 @@ from control.sampling_c3.params import SamplingParams, SamplingStrategy
 # tangential jitter range is reduced to keep the sample near the face
 # center. Other faces keep the existing uniform jitter.
 GOAL_ALIGN_THRESHOLD = 0.7          # cos > 0.7 → ~45° cone around goal
-CENTERED_JITTER_FRACTION = 0.2      # 0.2 × box_half = ±10 mm on a 100 mm box
+CENTERED_JITTER_FRACTION = 0.0      # 0.2 → 0.0: removes ±10mm tangent re-roll on the goal-aligned face; centered contact stays centered across the active push (matches the failure-mode prediction at lines 251-256).
 
 
 # ---------------------------------------------------------------------------
