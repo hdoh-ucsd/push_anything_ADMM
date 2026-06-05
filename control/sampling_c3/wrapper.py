@@ -1622,9 +1622,17 @@ class SamplingC3MPC:
                 # is decrementing or active so post-fix logs can verify SC1
                 # (target_z holds) and SC6 (no chatter at boundary).
                 if self.log_diag:
+                    # Q2c (2026-06-04): extended with ee_z + gate_cap so the
+                    # parser at scripts/parse_admit_guard_gate.py can verify
+                    # SC-collision-gone (pass-through at high ee_z) and the
+                    # gate's per-tick decision history. ee_z comes from
+                    # free_diag (the tracker already computed FK).
+                    _ee_z_log = float(free_diag.get("ee_now", [0.0, 0.0, 0.0])[2])
                     print(f"[ADMIT-GUARD] step={self._step} "
                           f"admit_active={int(_admit_active)} "
-                          f"latch={self.tracker._admit_latch}/{self.tracker.ADMIT_LATCH_TICKS}",
+                          f"latch={self.tracker._admit_latch}/{self.tracker.ADMIT_LATCH_TICKS} "
+                          f"ee_z={_ee_z_log:.3f} "
+                          f"gate_cap={int(getattr(self.tracker, '_last_cap_z_safe', False))}",
                           flush=True)
                     # Stage 1 (2026-06-01 wrong-face race-fix): emit the
                     # descent-gate state and a one-shot [TGT-CHANGE] event

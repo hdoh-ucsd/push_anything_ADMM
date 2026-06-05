@@ -79,6 +79,47 @@ _IKCONV_TRACE = {"step": None, "done": set(), "triggers": {129, 310, 488}}  # [I
 
 
 # ---------------------------------------------------------------------------
+# Admit-guard EE_z gate (Q2c swing-collision fix, 2026-06-04)
+# ---------------------------------------------------------------------------
+# The admit-guard at compute_torque caps z_safe to the EE's current z when
+# an LCS-admitted EE-BOX pair is present. The cap exists to prevent the EE
+# from climbing AWAY from a contact while settling into a face push — but
+# the same condition fires on incidental near-miss admits during mid-
+# traversal, suppressing the safe-altitude lift and causing the sphere to
+# clip the box (Q2c bump, F=5 seed3 t=5.2–5.6s).
+#
+# Discriminator: the EE is "at face-approach altitude" only when ee_z is
+# below the gate. Above the gate, an LCS admit is a traversal near-miss
+# and the cap must NOT fire.
+#
+# Threshold pinned at 0.090 m: peak observed legit-push EE_z = 0.088 m
+# (F=5 seed3 mid-push wobble, q2_force_sweep_seed3/nominal5.0N/run.log
+# steps 165–185) plus 2 mm safety margin. Bump-onset EE_z = 0.099 m,
+# providing 9 mm clearance above gate. Seed-stability of the threshold
+# verified against seeds 0/2/3/4 baseline approach altitudes (Task 3
+# checkpoint of the plan).
+EE_Z_GATE: float = 0.090  # metres
+
+
+def _should_cap_z_safe(admit_latch: int, ee_z: float, ee_z_gate: float) -> bool:
+    """Return True iff the admit-guard should cap z_safe_eff to ee_now[2].
+
+    Gate semantics:
+        - admit_latch <= 0  → no recent admit, cap MUST NOT fire.
+        - ee_z >= ee_z_gate → mid-traverse, cap MUST NOT fire (else: bump).
+        - ee_z <  ee_z_gate → face-approach altitude, cap fires (legit).
+
+    ee_z_gate == 0.0 disables the gate (legacy unconditional-cap behavior),
+    useful for emergency revert without touching the call site.
+    """
+    if admit_latch <= 0:
+        return False
+    if ee_z_gate <= 0.0:
+        return True  # gate disabled — fall back to unconditional cap
+    return ee_z < ee_z_gate
+
+
+# ---------------------------------------------------------------------------
 # Solver-options helpers
 # ---------------------------------------------------------------------------
 
@@ -769,6 +810,7 @@ class RepositionIKTracker:
         self._prev_target_pos      = None
         self._setpoint_pos         = None
         self._admit_latch          = 0
+        self._last_cap_z_safe      = False  # Q2c gate decision (stashed for wrapper log)
         self._last_knot0_feasible  = True
         self.last_q_knots          = None
         self.last_ee_knots         = None
@@ -1250,14 +1292,22 @@ class RepositionIKTracker:
         elif self._admit_latch > 0:
             self._admit_latch -= 1
         guard_active = (self._admit_latch > 0)
-        # Override z_safe to the EE's CURRENT z when latched. This makes
-        # Phase 1 lift a no-op (ee.z >= z_safe always), so neither the
-        # setpoint advance NOR the guide-path knots climb — the IK target
-        # at knot 0 stays at the contact face. v1 of this fix only capped
-        # _setpoint_pos.z but _build_guide_path still used the configured
-        # pwl_waypoint_height, so guide knots kept climbing and the IK
-        # solved to a still-climbing target. This v2 caps z_safe itself.
-        z_safe_eff = float(ee_now[2]) if guard_active else \
+        # Q2c (2026-06-04): the cap fires only at face-approach altitude.
+        # See module-level _should_cap_z_safe + EE_Z_GATE. The unconditional
+        # cap (pre-Q2c) was the root cause of the F=5 seed3 swing collision
+        # (35-tick EE-BOX contact during mode=free traversal, q2_force_sweep_
+        # seed3/nominal5.0N/run.log steps 521–557). Comment from the v2 fix:
+        # the override makes Phase 1 lift a no-op (ee.z >= z_safe always),
+        # so neither the setpoint advance NOR the guide-path knots climb —
+        # the IK target at knot 0 stays at the contact face. Q2c keeps that
+        # semantics but only when EE is genuinely at face-approach altitude.
+        cap_z_safe = _should_cap_z_safe(
+            admit_latch=self._admit_latch,
+            ee_z=float(ee_now[2]),
+            ee_z_gate=EE_Z_GATE,
+        )
+        self._last_cap_z_safe = bool(cap_z_safe)  # stash for [ADMIT-GUARD] log
+        z_safe_eff = float(ee_now[2]) if cap_z_safe else \
                      float(self.repos_params.pwl_waypoint_height)
         # Stage-1 descent-gate (2026-06-01 wrong-face race-fix plan).
         # Block Phase 3 (and direct-line downward steps) until p_target has
@@ -1283,13 +1333,15 @@ class RepositionIKTracker:
         #     C3 horizon — knot i is i planning steps ahead of the
         #     setpoint). Do NOT write p_guide[:, 0] back to _setpoint_pos;
         #     the setpoint advance is already done above.
-        # Pass z_safe_override when latched so the guide doesn't climb
-        # either — same admit-suspend semantics applied to all N knots.
-        # Pass allow_descent so the guide knots also respect the Stage-1
-        # descent gate (warm-start consistency with the setpoint advance).
+        # Pass z_safe_override when the gate caps so the guide doesn't
+        # climb either — same admit-suspend semantics applied to all N
+        # knots. Q2c: uses cap_z_safe (gate-aware) instead of guard_active
+        # so the warm-start guide stays consistent with the setpoint
+        # advance above. Pass allow_descent so the guide knots also
+        # respect the Stage-1 descent gate.
         p_guide = self._build_guide_path(
             self._setpoint_pos, p_target,
-            z_safe_override=(z_safe_eff if guard_active else None),
+            z_safe_override=(z_safe_eff if cap_z_safe else None),
             allow_descent=allow_descent,
         )
 
