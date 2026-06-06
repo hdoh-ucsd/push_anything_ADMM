@@ -13,13 +13,21 @@ examples/sampling_c3/parameter_headers/progress_params.h:
   kConfigCostDrop   stricter version of kConfigCost: requires the config
                     cost to drop by at least progress_enforced_cost_drop
                     within progress_enforced_over_n_loops.
-
-For the project's push tasks there is no rotation goal, so kPosOrRotCost
-collapses to "position improved within the window."
+  kPosOnly          pushing-task variant: pos timer only. Fixes a latent
+                    OR-mask in kPosOrRotCost when rot_error is constantly 0
+                    (the pushing-task case).
 
 `met_progress(near_goal)` returns True when the configured metric is
 still improving — meaning the no-progress timeout has NOT fired and we
 should stay in C3 mode.
+
+`pos_regression()` is a separate, variant-independent diagnostic returning
+current pos_error − best pos_error since the last reset(). The dispatcher
+consumes it at wrapper.py:979 as an absolute-regression early-exit:
+forces met_progress=False when the box has drifted more than
+ProgressParams.pos_regression_threshold metres away from its best,
+regardless of which variant is configured or how many ticks the window
+allows.
 """
 from __future__ import annotations
 
@@ -172,6 +180,11 @@ class ProgressTracker:
             return (self._steps_since_pos_improve < wait
                     or self._steps_since_rot_improve < wait)
 
+        if m == ProgressMetric.kPosOnly:
+            # Pushing-task variant: pos timer only. Avoids the OR-mask when
+            # rot_error is constant 0.
+            return self._steps_since_pos_improve < wait
+
         if m == ProgressMetric.kConfigCostDrop:
             # over the last N loops, cost must have dropped by ≥ required
             n = self.params.progress_enforced_over_n_loops
@@ -201,9 +214,26 @@ class ProgressTracker:
         if m == ProgressMetric.kPosOrRotCost:
             return min(self._steps_since_pos_improve,
                        self._steps_since_rot_improve)
+        if m == ProgressMetric.kPosOnly:
+            return self._steps_since_pos_improve
         if m == ProgressMetric.kConfigCostDrop:
             return self._steps_since_config_improve
         return -1
+
+    def pos_regression(self) -> float:
+        """Current pos_error minus the best pos_error observed since the last
+        reset(). Returns 0.0 when no updates yet, or when current pos_error
+        is at or below the best (no regression).
+
+        Variant-independent: works the same for every ProgressMetric. The
+        dispatcher consumes this at wrapper.py:979 as an absolute-regression
+        early-exit (forces met_progress=False when this exceeds
+        ProgressParams.pos_regression_threshold).
+        """
+        if self._n_updates == 0:
+            return 0.0
+        current = self._pos_error_history[-1]
+        return max(0.0, current - self._best_pos_error)
 
     def reset(self) -> None:
         """Wipe history. Call when entering a fresh repos→c3 cycle so the
