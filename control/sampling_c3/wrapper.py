@@ -977,6 +977,23 @@ class SamplingC3MPC:
                               f"{g_hat[1]:+.3f})", flush=True)
 
         met = self.progress.met_progress(near_goal=near_goal)
+
+        # Absolute-regression early-exit. Catches runaway trajectories where
+        # the box drifts AWAY from its best position by more than
+        # ProgressParams.pos_regression_threshold (metres), regardless of the
+        # no-improvement tick counter. Root-independent — fires on the
+        # runaway signature directly, not on the wait-expiry symptom.
+        # Plan: docs/superpowers/plans/2026-06-06-position-progress-fix-combined.md
+        _pos_reg = self.progress.pos_regression()
+        _pos_reg_thr = float(self.params.progress_params.pos_regression_threshold)
+        if _pos_reg_thr > 0.0 and _pos_reg > _pos_reg_thr and met:
+            met = False
+            if self.log_diag:
+                print(f"[POS-REGRESSION] step={self._step} "
+                      f"pos_regression={_pos_reg*1000:.1f}mm "
+                      f"> threshold={_pos_reg_thr*1000:.1f}mm "
+                      f"— forcing met_progress=False", flush=True)
+
         mode, reason = decide_mode(
             prev_mode          = self._prev_mode,
             c3_cost            = c_curr,
