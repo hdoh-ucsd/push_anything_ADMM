@@ -220,3 +220,34 @@ def test_no_position_frac_typo():
     ]
     for n in good_names:
         assert hasattr(p, n), f"ProgressParams missing upstream field {n!r}"
+
+
+# ---------------------------------------------------------------------------
+# kPosOnly enum + pos_regression_threshold
+# (combined-fix plan 2026-06-06)
+# ---------------------------------------------------------------------------
+
+def test_progress_metric_kPosOnly_exists_and_coerces():
+    """kPosOnly=4 must be a valid ProgressMetric, accepted by from_dict
+    as both string and int (consistent with the other variants)."""
+    assert int(ProgressMetric.kPosOnly) == 4
+    p_str = ProgressParams.from_dict({"track_c3_progress_via": "kPosOnly"})
+    assert p_str.track_c3_progress_via == ProgressMetric.kPosOnly
+    p_int = ProgressParams.from_dict({"track_c3_progress_via": 4})
+    assert p_int.track_c3_progress_via == ProgressMetric.kPosOnly
+
+
+def test_pos_regression_threshold_default_is_safe():
+    """Default must be > 0 so the early-exit is active by default after this
+    plan ships. 0.030m is the pre-CP1 default; CP1 may pin a different value
+    in YAML, but the dataclass default ships armed."""
+    p = ProgressParams()
+    assert p.pos_regression_threshold == 0.030
+
+
+def test_pos_regression_threshold_loads_from_yaml_dict():
+    """from_dict must accept and propagate the new field, defaulting if absent."""
+    p_explicit = ProgressParams.from_dict({"pos_regression_threshold": 0.05})
+    assert p_explicit.pos_regression_threshold == 0.05
+    p_default = ProgressParams.from_dict({})
+    assert p_default.pos_regression_threshold == 0.030
