@@ -178,3 +178,84 @@ def test_steps_since_improve_increments_correctly():
     assert t.steps_since_improve() == 2
     t.update(_step(c3=50.0))
     assert t.steps_since_improve() == 0
+
+
+# ---------------------------------------------------------------------------
+# kPosOnly variant — bypasses the rot=0 OR-mask
+# (combined-fix plan 2026-06-06)
+# ---------------------------------------------------------------------------
+
+def test_kPosOnly_fires_on_pos_regression_with_rot_zero_constant():
+    """Latent-bug regression guard. Pushing-task trajectory has rot=0 constant.
+    kPosOrRotCost's OR keeps met_progress=True until pos catches up to wait;
+    kPosOnly fires when pos timer alone hits wait."""
+    t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOnly,
+                                num_control_loops_to_wait=3))
+    t.update(_step(pos=0.10, rot=0.0))   # establishes pos best=0.10
+    for _ in range(4):
+        t.update(_step(pos=0.30, rot=0.0))
+    assert t.met_progress(near_goal=False) is False
+
+
+def test_kPosOnly_keeps_progressing_when_pos_improves():
+    t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOnly,
+                                num_control_loops_to_wait=3))
+    for p in [0.30, 0.28, 0.25, 0.22, 0.19, 0.16]:
+        t.update(_step(pos=p, rot=0.0))
+    assert t.met_progress(near_goal=False) is True
+
+
+def test_kPosOnly_steps_since_improve_returns_pos_timer():
+    """Diagnostic API for kPosOnly returns pos timer alone, not min(pos, rot)."""
+    t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOnly,
+                                num_control_loops_to_wait=10))
+    t.update(_step(pos=0.10, rot=0.0))
+    assert t.steps_since_improve() == 0
+    t.update(_step(pos=0.20, rot=0.0))
+    t.update(_step(pos=0.20, rot=0.0))
+    assert t.steps_since_improve() == 2
+
+
+def test_kPosOnly_unchanged_by_rot_variation():
+    """kPosOnly must ignore rot even when rot varies. Defensive guard for any
+    future task that emits rot_error != 0."""
+    t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOnly,
+                                num_control_loops_to_wait=3))
+    t.update(_step(pos=0.10, rot=0.50))
+    for r in [0.40, 0.30, 0.20, 0.10]:
+        t.update(_step(pos=0.50, rot=r))
+    assert t.met_progress(near_goal=False) is False
+
+
+# ---------------------------------------------------------------------------
+# pos_regression() — absolute-regression diagnostic (variant-independent)
+# ---------------------------------------------------------------------------
+
+def test_pos_regression_zero_at_start():
+    t = ProgressTracker(_params())
+    assert t.pos_regression() == 0.0
+
+
+def test_pos_regression_zero_when_pos_keeps_improving():
+    t = ProgressTracker(_params())
+    for p in [0.30, 0.25, 0.20, 0.15]:
+        t.update(_step(pos=p))
+    assert t.pos_regression() == 0.0
+
+
+def test_pos_regression_reports_current_minus_best():
+    t = ProgressTracker(_params())
+    t.update(_step(pos=0.10))   # best=0.10
+    t.update(_step(pos=0.18))   # current=0.18, best=0.10
+    assert abs(t.pos_regression() - 0.08) < 1e-9
+
+
+def test_pos_regression_independent_of_variant():
+    """pos_regression() must work the same for every ProgressMetric variant."""
+    for variant in [ProgressMetric.kC3Cost, ProgressMetric.kConfigCost,
+                    ProgressMetric.kPosOrRotCost, ProgressMetric.kPosOnly,
+                    ProgressMetric.kConfigCostDrop]:
+        t = ProgressTracker(_params(track_c3_progress_via=variant))
+        t.update(_step(pos=0.10))
+        t.update(_step(pos=0.15))
+        assert abs(t.pos_regression() - 0.05) < 1e-9, f"failed for {variant}"
