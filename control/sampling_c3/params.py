@@ -45,11 +45,19 @@ from sim.env_builder import INITIAL_ARM_Q
 # ---------------------------------------------------------------------------
 
 class ProgressMetric(IntEnum):
-    """Match enum ProgressMetric in dairlib parameter_headers/progress_params.h."""
+    """Match enum ProgressMetric in dairlib parameter_headers/progress_params.h.
+
+    kPosOnly is a project-specific extension (no upstream equivalent). Pushing
+    tasks emit rot_error=0.0 constant; kPosOrRotCost's OR-aggregation can
+    artificially extend met_progress=True via the rot branch (a latent bug
+    unrelated to the current absolute-regression early-exit). kPosOnly
+    reports the pos timer only.
+    """
     kC3Cost          = 0
     kConfigCost      = 1
     kPosOrRotCost    = 2
     kConfigCostDrop  = 3
+    kPosOnly         = 4
 
 
 class SamplingStrategy(IntEnum):
@@ -141,6 +149,16 @@ class ProgressParams:
     # Timeout (in control loops) for the timeout-based progress check
     num_control_loops_to_wait:           int   = 60
     num_control_loops_to_wait_position:  int   = 30
+
+    # Absolute-regression early-exit threshold (metres). When the current
+    # pos_error minus the best pos_error since reset() exceeds this, the
+    # dispatcher forces met_progress=False at wrapper.py:979 — regardless
+    # of which ProgressMetric variant is active or how many ticks the
+    # no-improvement window allows. Catches runaway trajectories by their
+    # actual signature (box moving AWAY from best) instead of by tick count.
+    # Default 0.030m; CP1 of the combined-fix plan pins the YAML value
+    # against working-seed wobble. Set <= 0 to disable.
+    pos_regression_threshold:            float = 0.030
 
     # kConfigCostDrop variant: required object-config cost drop over N loops
     progress_enforced_cost_drop:         float = 0.0
