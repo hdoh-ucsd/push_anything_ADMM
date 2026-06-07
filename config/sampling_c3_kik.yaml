@@ -65,12 +65,23 @@ entry_align_threshold: 0.7
 
 progress_params:
   # Which progress metric drives the timeout decision.
-  # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kConfigCostDrop
-  track_c3_progress_via: kPosOrRotCost
+  # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kPosOnly | kConfigCostDrop
+  # kPosOnly: pushing-task variant; avoids the rot=0 OR-mask in kPosOrRotCost.
+  track_c3_progress_via: kPosOnly
 
   # Number of control loops to wait before declaring "no progress" timeout.
   num_control_loops_to_wait:           60
   num_control_loops_to_wait_position:  30
+
+  # Absolute-regression early-exit threshold (metres). When current pos_error
+  # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
+  # at wrapper.py:979 — regardless of variant or wait length. Catches
+  # runaways by the box-moves-away signature, not by no-improvement tick
+  # count. Pinned at CP1 of the combined-fix plan: gap analysis on
+  # q5_head_default_noregress + q5_seed4_goal_reach gives [11mm wobble-max,
+  # 35mm runaway-catch-max] -> midpoint 25mm. See
+  # q6_combined_fix/CP1_threshold_pin.txt for full derivation.
+  pos_regression_threshold:            0.025
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
   progress_enforced_cost_drop:    0.0
