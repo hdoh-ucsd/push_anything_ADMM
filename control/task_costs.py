@@ -176,6 +176,15 @@ class QuadraticManipulationCost:
         self.z_ref         = float(c.get("z_ee_target",      0.05))
         self.d_push        = float(c.get("d_push",           0.10))
         self.w_ee_approach = float(c.get("w_ee_approach",   800.0))
+        # Lateral-alignment clamp scale (metres). The proxy shift at
+        # build_ee_space()::~739 (and the legacy build()::~438) saturates at
+        # `extra_shift = -perp_vec * min(1.0, perp_magnitude / scale)`. Smaller
+        # scale = more responsive correction (full strength at smaller
+        # off-equator distance). Default 0.05 preserves legacy behavior;
+        # pushing/tasks.yaml pins the operational value. See plan
+        # docs/superpowers/plans/2026-06-07-B-lateral-align-clamp-harden.md.
+        self.lateral_align_full_scale = float(
+            c.get("lateral_align_full_scale", 0.05))
 
         self._math_diag = math_diag
         self._q_printed = False
@@ -433,7 +442,8 @@ class QuadraticManipulationCost:
                 # --- end cost-bias block ---
 
                 if ee_to_box_dist < 0.15 and perp_magnitude > 1e-4:
-                    extra_shift = -perp_vec * min(1.0, perp_magnitude / 0.05)
+                    extra_shift = -perp_vec * min(1.0,
+                        perp_magnitude / self.lateral_align_full_scale)
                     effective_proxy = effective_proxy.copy()
                     effective_proxy[:2] += extra_shift
 
@@ -731,9 +741,19 @@ class QuadraticManipulationCost:
                 perp_vec       = rel_vec - along_push * g_hat
                 perp_magnitude = float(np.linalg.norm(perp_vec))
                 if ee_to_box_dist < 0.15 and perp_magnitude > 1e-4:
-                    extra_shift = -perp_vec * min(1.0, perp_magnitude / 0.05)
+                    _scale = self.lateral_align_full_scale
+                    _strength = min(1.0, perp_magnitude / _scale)
+                    extra_shift = -perp_vec * _strength
                     effective_proxy = effective_proxy.copy()
                     effective_proxy[:2] += extra_shift
+                    # B-fix diagnostic: only emit when correction is non-trivial
+                    # (>10% of full) to keep log volume bounded.
+                    if _strength > 0.10:
+                        print(f"[LATERAL] perp={perp_magnitude*1000:.1f}mm "
+                              f"scale={_scale*1000:.1f}mm "
+                              f"strength={_strength:.2f} "
+                              f"shift_mm=({extra_shift[0]*1000:+.1f},"
+                              f"{extra_shift[1]*1000:+.1f})", flush=True)
 
                 # DIRECT EE-approach cost on the p_ee state slot.
                 # No arm Jacobian, no J^T J block — paper-aligned.
