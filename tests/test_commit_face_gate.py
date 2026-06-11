@@ -238,10 +238,14 @@ def test_production_threshold_admits_known_productive_face_align():
 
 
 # ---------------------------------------------------------------------------
-# 5c. Boundary at dot = 0.0 — Q7-CP2 tightened production default
-#     The +0.3 default was tightened to 0.0 after the Q7 sweep showed
-#     seed-2 drift-causing admitted entries at face_align +0.190 / +0.269
-#     (both in the band 0.0 admits/refuses cleanly).
+# 5c. Boundary coverage at threshold=0.0 (regression coverage)
+#     0.0 was the tightened-then-reverted threshold (Q7-CP2 sweep showed
+#     seed-2 drift-causing admitted entries at +0.190/+0.269 in this band,
+#     but the Q7b OVERLAP read confirmed seed-0's productive entries
+#     INTERLEAVE there too — production reverted to +0.3 per params.py:644).
+#     These tests pin the GATE FUNCTION'S behavior at threshold=0.0 — the
+#     literal-threshold tests remain valid coverage regardless of which
+#     default is shipped.
 # ---------------------------------------------------------------------------
 
 def test_boundary_at_zero_threshold_commits():
