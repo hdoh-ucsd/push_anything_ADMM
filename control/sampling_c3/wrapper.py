@@ -457,6 +457,36 @@ class SamplingC3MPC:
             mag = nominal
         return mag * recoil_dir
 
+    def _evaluate_commit_face_gate(self,
+                                   current_q: np.ndarray,
+                                   g_hat: np.ndarray):
+        """Run the L2 commit-face gate against the active repos target.
+
+        Pure helper. Returns the ``CommitFaceDecision`` from
+        ``decide_commit_face_gate(...)`` when the gate is enabled
+        (``use_commit_face_gate=True``) and a repos target is active
+        (``self._current_repos_target is not None``); returns ``None``
+        otherwise. No mutation of ``self`` state — caller decides how
+        to act (mutate ``finished_repos`` at the pre-decide site;
+        override ``mode`` at the post-decide site, plan 2026-06-10).
+        """
+        if not getattr(self.params, "use_commit_face_gate", False):
+            return None
+        if self._current_repos_target is None:
+            return None
+        thr = float(getattr(self.params,
+                            "commit_face_gate_threshold", 0.3))
+        box_xy = np.array([
+            current_q[self._obj_x_idx],
+            current_q[self._obj_y_idx],
+        ])
+        return decide_commit_face_gate(
+            p_repos_target_xy=self._current_repos_target,
+            box_xy=box_xy,
+            g_hat_xy=g_hat,
+            threshold=thr,
+        )
+
     def _velocity_feedforward_from_xseq(self,
                                         plant_ctx,
                                         current_q: np.ndarray,
@@ -950,22 +980,9 @@ class SamplingC3MPC:
             # OUTWARD (box→target), L1's nhat_onto_box points INTO box;
             # both use <= but the meanings are mirrored — see
             # commit_face_gate.py module docstring.
-            if ((not _block)
-                    and getattr(self.params, "use_commit_face_gate", False)
-                    and self._current_repos_target is not None):
-                _l2_thr = float(getattr(self.params,
-                                        "commit_face_gate_threshold", -0.7))
-                _box_xy = np.array([
-                    current_q[self._obj_x_idx],
-                    current_q[self._obj_y_idx],
-                ])
-                _l2_dec = decide_commit_face_gate(
-                    p_repos_target_xy=self._current_repos_target,
-                    box_xy=_box_xy,
-                    g_hat_xy=g_hat,
-                    threshold=_l2_thr,
-                )
-                if not _l2_dec.commit:
+            if not _block:
+                _l2_dec = self._evaluate_commit_face_gate(current_q, g_hat)
+                if _l2_dec is not None and not _l2_dec.commit:
                     finished_repos = False
                     if self.log_diag:
                         print(f"[GATE-COMMIT-FACE] step={self._step} "
