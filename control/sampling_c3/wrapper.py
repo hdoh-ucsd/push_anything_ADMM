@@ -1022,6 +1022,40 @@ class SamplingC3MPC:
             params             = self.params.progress_params,
         )
 
+        # 6a-pre0. Wrong-face re-engagement guard (post-decide L2 override).
+        # The pre-decide L2 site above mutates finished_repos, which only
+        # short-circuits kToC3ReachedReposTarget (mode_switch.py:123-124).
+        # The cost-gap path (mode_switch.py:132-135 -> kToC3Cost) reaches
+        # c3 without consulting finished_repos. Re-evaluate L2 here on
+        # every free->c3 transition so the gate covers all entry paths.
+        # Plan: docs/superpowers/plans/2026-06-10-wrong-face-reengage-guard.md
+        #
+        # Empirical threshold +0.3 (params.py:624): refuses confirmed
+        # runaway entries (face_align ≈ +0.97-class, seed-0 step 434 and
+        # seed-4 step 519, both producing +60-91 mm north-drift) while
+        # admitting the productive seed-4 step-315 session (face_align
+        # = -0.497, 114 ticks, +136 mm westward push) that the prior
+        # -0.7 threshold would have false-blocked.
+        if (self._prev_mode == "free"
+                and mode == "c3"
+                and getattr(self.params, "use_commit_face_gate", False)):
+            _post_dec = self._evaluate_commit_face_gate(current_q, g_hat)
+            if _post_dec is not None and not _post_dec.commit:
+                _orig_reason_name = reason.name
+                mode = "free"
+                reason = SwitchReason.kStayInRepos
+                if self.log_diag:
+                    print(f"[GATE-COMMIT-FACE-POST] step={self._step} "
+                          f"refused: face_align={_post_dec.face_align:+.3f} "
+                          f"tag={_post_dec.severity_tag} "
+                          f"n_face_out=({_post_dec.n_face_out_xy[0]:+.3f},"
+                          f"{_post_dec.n_face_out_xy[1]:+.3f}) "
+                          f"g_hat=({g_hat[0]:+.3f},"
+                          f"{g_hat[1]:+.3f}) "
+                          f"orig_reason={_orig_reason_name} "
+                          f"-> override mode=free reason=kStayInRepos",
+                          flush=True)
+
         # 6a-pre. Contact-loss disengagement (W13 fix). The kik config's
         # hyst_c3_to_repos_frac=0.95 makes the cost gate fire only when
         # best_other < 0.05·c3_cost — too sticky to react when the EE
