@@ -23,11 +23,14 @@ from control.sampling_c3.commit_face_gate import (
 from control.sampling_c3.mode_switch import SwitchReason
 
 
-# Production threshold pinned by plan 2026-06-10 (params.py:624).
-# Tightened from +0.3 to 0.0 after Q7 sweep CP2 read: seed-2 drift-causing
-# admitted entries at face_align=+0.190 / +0.269 (both in (0.0, +0.3]).
-# Productive -0.497 session has 0.497 margin under 0.0 — preserved.
-PROD_THRESHOLD = 0.0
+# Production threshold pinned by plan 2026-06-10 (params.py:644).
+# Reverted from 0.0 → +0.3 after the Q7b OVERLAP read: seed-0's productive
+# entries (+0.025/+0.175/+0.272/+0.273) INTERLEAVE seed-2's drift entries
+# (+0.190/+0.269); no threshold separates them (arithmetic OVERLAP).
+# Tightening cost seed-0 its clean win (-33% goal_dist) to partially fix
+# seed-2 (still ok=NO). Reverted: gate handles BLATANT wrong-face (>+0.3);
+# off-axis contact-point is the universal residual on seed-2 AND seed-4.
+PROD_THRESHOLD = 0.3
 
 
 def _apply_override(prev_mode, mode, reason, dec):

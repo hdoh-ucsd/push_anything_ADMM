@@ -615,18 +615,23 @@ class SamplingC3Params:
     # strictly on the goal-anti face). For push-west: +x (cos=-1) and
     # ±y (cos=0) admit; -x (cos=+1) refuses.
     #
-    # Default 0.0 set after the Q7 sweep CP2 read (commit 424a6ad).
-    # The +0.3 sweep showed seed-0 PASS clean (drift 0.021 m, goal_dist
-    # 0.263 -> 0.177 = -33%), seed-2 FAIL via drift-causing admitted
-    # entries at face_align = +0.190 (step 67) and +0.269 (step 554)
-    # — both in (0.0, +0.3], the band that +0.3 admits but 0.0 refuses.
-    # The seed-4 q1_noregress productive session at face_align=-0.497
-    # survives 0.0 with margin 0.497 (still admits). Tightening from
-    # +0.3 to 0.0 closes the seed-2 admit-but-drift band without
-    # regressing noregress. Seed-4's 6/7 drift-causing admitted entries
-    # at face_align <= -0.74 are face-correct off-axis pushes — beyond
-    # this gate's reach (named next binding layer = EE-positioning,
-    # cost-weight-dead).
+    # Default +0.3 reverted from 0.0 after the Q7b OVERLAP read.
+    # The 0.0 sweep fixed seed-2 (drift +0.250 -> -0.050, goal_dist 0.141)
+    # but REGRESSED seed-0's clean win (drift +0.021 -> +0.198, goal_dist
+    # 0.177 -> 0.234). The cheap read of seed-0's 0.0 [GATE-COMMIT-FACE]
+    # refusals showed seed-0's productive entries at face_align = +0.025,
+    # +0.175, +0.272, +0.273 — INTERLEAVED with seed-2's drift entries
+    # at +0.190, +0.269. No threshold separates them (arithmetic-proven
+    # OVERLAP): every threshold in (0, +0.3] either kills seed-0's win
+    # or admits seed-2's drift. face_align is an INCOMPLETE predictor of
+    # push direction; the same ~+0.2 entry geometry is productive for
+    # seed-0 and drift-causing for seed-2. The residual is the EE
+    # contact-point / off-equator offset — the SAME mechanism as
+    # seed-4's face-correct (-0.74 to -0.99) drift entries.
+    # Reverting to +0.3 keeps seed-0's validated clean win; seed-2 is
+    # covered by the off-axis investigation alongside seed-4 (universal
+    # residual). The -0.497 productive session survives at +0.3 margin
+    # 0.797 (noregress pin).
     #
     # Two gate sites in wrapper.py:
     #   - pre-decide (line ~983): mutates finished_repos to suppress
@@ -642,7 +647,7 @@ class SamplingC3Params:
     # L2 keys on _current_repos_target which is populated by
     # definition when finished_repos==True.
     use_commit_face_gate: bool = True
-    commit_face_gate_threshold: float = 0.0
+    commit_face_gate_threshold: float = 0.3
 
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
@@ -814,7 +819,7 @@ class SamplingC3Params:
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
             entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
             use_commit_face_gate           = bool(raw.get("use_commit_face_gate", True)),
-            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.0)),
+            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.3)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
