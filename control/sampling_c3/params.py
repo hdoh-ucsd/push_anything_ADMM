@@ -607,21 +607,39 @@ class SamplingC3Params:
     # off-cardinal/edge contact (alignment ≤ 0.5) with one cosine check.
     entry_align_threshold: float = 0.0
 
-    # Stage 2 L2: commit-trigger face gate. When finished_repos==True at
-    # wrapper.py:853, evaluate the active self._current_repos_target's
-    # face: n_face_out · g_hat must be ≤ commit_face_gate_threshold for
-    # kToC3ReachedReposTarget to fire. Default -0.7 is a 45° cone
-    # admitting any cardinal face within ~45° of strict goal-aligned
-    # (robust to off-axis goals and box rotation). For push-west: +x
-    # (cos=-1) admits; ±y (cos=0) and -x (cos=+1) refuse.
+    # Stage 2 L2: commit-trigger face gate. Evaluate the active
+    # self._current_repos_target's face: n_face_out · g_hat must be
+    # ≤ commit_face_gate_threshold for c3 to commit. Default +0.3
+    # admits any face whose projection onto -g_hat is positive
+    # (i.e. the EE is anywhere on the goal-anti hemisphere, not just
+    # strictly on the goal-anti face). For push-west: +x (cos=-1) and
+    # ±y (cos=0) admit; -x (cos=+1) refuses.
+    #
+    # Empirical default +0.3 set per direct read of q1_noregress
+    # seed-{0,4} logs (HEAD fa8db2b) — see CP1 in plan
+    # docs/superpowers/plans/2026-06-10-wrong-face-reengage-guard.md.
+    # The deciding measurement: seed-4 step 315 entry at
+    # face_align=-0.497 produced a 114-tick westward push (+136 mm,
+    # -26 mm goal_dist); a tighter threshold (-0.7) would have
+    # false-blocked the only goal-reaching session. Confirmed runaway
+    # entries at face_align ≈ +0.98 (seed-0 step 434) and +0.97
+    # (seed-4 step 519) are refused with 0.675 margin.
+    #
+    # Two gate sites in wrapper.py:
+    #   - pre-decide (line ~983): mutates finished_repos to suppress
+    #     kToC3ReachedReposTarget.
+    #   - post-decide (line ~1024, plan 2026-06-10): override mode
+    #     -> "free", reason -> kStayInRepos when prev_mode=="free"
+    #     and decide_mode returned "c3". Catches kToC3Cost and any
+    #     other free->c3 transition the pre-decide site doesn't
+    #     cover.
     #
     # Distinct from L1 (entry_align_threshold above): L1 keys on
     # formulator._last_contact_info which is empty 80 mm pre-contact;
-    # L2 keys on _current_repos_target which is populated by definition
-    # when finished_repos==True. Both run alongside during the L2 sweep
-    # so SC-L2-L1-redundancy is measurable.
+    # L2 keys on _current_repos_target which is populated by
+    # definition when finished_repos==True.
     use_commit_face_gate: bool = True
-    commit_face_gate_threshold: float = -0.7
+    commit_face_gate_threshold: float = 0.3
 
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
@@ -793,7 +811,7 @@ class SamplingC3Params:
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
             entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
             use_commit_face_gate           = bool(raw.get("use_commit_face_gate", True)),
-            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", -0.7)),
+            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.3)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
