@@ -238,6 +238,79 @@ def test_production_threshold_admits_known_productive_face_align():
 
 
 # ---------------------------------------------------------------------------
+# 5c. Boundary at dot = 0.0 — Q7-CP2 tightened production default
+#     The +0.3 default was tightened to 0.0 after the Q7 sweep showed
+#     seed-2 drift-causing admitted entries at face_align +0.190 / +0.269
+#     (both in the band 0.0 admits/refuses cleanly).
+# ---------------------------------------------------------------------------
+
+def test_boundary_at_zero_threshold_commits():
+    """At threshold=0.0 the exact-boundary face_align=0.0 case COMMITs
+    (the inequality is ``<=``). Tag is 'commit' (commit branch wins
+    over the perpendicular tag)."""
+    box_xy = np.array([0.0, 0.0])
+    # face_align = 0.0 means n_face_out is perpendicular to g_hat.
+    # Pick n_face_out = (0, +1), g_hat = (-1, 0) -> face_align = 0.
+    p_tgt = _make_target(box_xy, (0.0, +1.0))
+    g_hat = np.array([-1.0, 0.0])
+
+    d = decide_commit_face_gate(p_tgt, box_xy, g_hat, threshold=0.0)
+
+    assert d.face_align == pytest.approx(0.0, abs=1e-12)
+    assert d.commit is True
+    assert d.severity_tag == "commit"
+
+
+def test_just_outside_zero_threshold_refuses():
+    """face_align=+0.01 is just outside the 0.0 threshold -> refuse."""
+    box_xy = np.array([0.0, 0.0])
+    cx = -0.01
+    cy = float(np.sqrt(1.0 - cx ** 2))
+    p_tgt = _make_target(box_xy, (cx, cy))
+    g_hat = np.array([-1.0, 0.0])
+
+    d = decide_commit_face_gate(p_tgt, box_xy, g_hat, threshold=0.0)
+
+    assert d.face_align == pytest.approx(+0.01, abs=1e-9)
+    assert d.commit is False
+    # +0.01 is in the perpendicular band (-0.3, +0.3].
+    assert d.severity_tag == "perpendicular"
+
+
+def test_zero_threshold_refuses_seed2_drift_entries():
+    """The seed-2 drift-causing admitted entries (Q7 sweep, commit 424a6ad,
+    HEAD a1677bb at sweep time) at face_align=+0.190 (step 67) and +0.269
+    (step 554) must be REFUSED under threshold 0.0."""
+    box_xy = np.array([0.0, 0.0])
+    g_hat = np.array([-1.0, 0.0])
+    for fa in (0.190, 0.269):
+        cx = float(-fa)
+        cy = float(np.sqrt(1.0 - cx ** 2))
+        p_tgt = _make_target(box_xy, (cx, cy))
+        d = decide_commit_face_gate(p_tgt, box_xy, g_hat, threshold=0.0)
+        assert d.face_align == pytest.approx(fa, abs=1e-9), fa
+        assert d.commit is False, f"seed-2 drift entry fa={fa} must refuse"
+
+
+def test_zero_threshold_admits_productive_minus_0p497():
+    """Threshold 0.0 must STILL admit the q1_noregress seed-4 step-315
+    productive 114-tick session at face_align=-0.497 (margin 0.497).
+    This is the noregress pin for the tightened threshold."""
+    box_xy = np.array([0.0, 0.0])
+    g_hat = np.array([-1.0, 0.0])
+    fa = -0.497
+    cx = float(-fa)
+    cy = float(np.sqrt(1.0 - cx ** 2))
+    p_tgt = _make_target(box_xy, (cx, cy))
+    d = decide_commit_face_gate(p_tgt, box_xy, g_hat, threshold=0.0)
+    assert d.face_align == pytest.approx(fa, abs=1e-9)
+    assert d.commit is True, (
+        "the productive -0.497 session must SURVIVE the tightened 0.0 "
+        "threshold (margin 0.497)"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 6. Severity tags across the full face_align range
 # ---------------------------------------------------------------------------
 

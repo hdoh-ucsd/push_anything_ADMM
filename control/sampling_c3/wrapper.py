@@ -475,7 +475,7 @@ class SamplingC3MPC:
         if self._current_repos_target is None:
             return None
         thr = float(getattr(self.params,
-                            "commit_face_gate_threshold", 0.3))
+                            "commit_face_gate_threshold", 0.0))
         box_xy = np.array([
             current_q[self._obj_x_idx],
             current_q[self._obj_y_idx],
