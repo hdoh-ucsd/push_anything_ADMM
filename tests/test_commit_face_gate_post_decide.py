@@ -24,7 +24,10 @@ from control.sampling_c3.mode_switch import SwitchReason
 
 
 # Production threshold pinned by plan 2026-06-10 (params.py:624).
-PROD_THRESHOLD = 0.3
+# Tightened from +0.3 to 0.0 after Q7 sweep CP2 read: seed-2 drift-causing
+# admitted entries at face_align=+0.190 / +0.269 (both in (0.0, +0.3]).
+# Productive -0.497 session has 0.497 margin under 0.0 — preserved.
+PROD_THRESHOLD = 0.0
 
 
 def _apply_override(prev_mode, mode, reason, dec):

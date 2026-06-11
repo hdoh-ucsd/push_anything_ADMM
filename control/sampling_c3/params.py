@@ -615,15 +615,18 @@ class SamplingC3Params:
     # strictly on the goal-anti face). For push-west: +x (cos=-1) and
     # ±y (cos=0) admit; -x (cos=+1) refuses.
     #
-    # Empirical default +0.3 set per direct read of q1_noregress
-    # seed-{0,4} logs (HEAD fa8db2b) — see CP1 in plan
-    # docs/superpowers/plans/2026-06-10-wrong-face-reengage-guard.md.
-    # The deciding measurement: seed-4 step 315 entry at
-    # face_align=-0.497 produced a 114-tick westward push (+136 mm,
-    # -26 mm goal_dist); a tighter threshold (-0.7) would have
-    # false-blocked the only goal-reaching session. Confirmed runaway
-    # entries at face_align ≈ +0.98 (seed-0 step 434) and +0.97
-    # (seed-4 step 519) are refused with 0.675 margin.
+    # Default 0.0 set after the Q7 sweep CP2 read (commit 424a6ad).
+    # The +0.3 sweep showed seed-0 PASS clean (drift 0.021 m, goal_dist
+    # 0.263 -> 0.177 = -33%), seed-2 FAIL via drift-causing admitted
+    # entries at face_align = +0.190 (step 67) and +0.269 (step 554)
+    # — both in (0.0, +0.3], the band that +0.3 admits but 0.0 refuses.
+    # The seed-4 q1_noregress productive session at face_align=-0.497
+    # survives 0.0 with margin 0.497 (still admits). Tightening from
+    # +0.3 to 0.0 closes the seed-2 admit-but-drift band without
+    # regressing noregress. Seed-4's 6/7 drift-causing admitted entries
+    # at face_align <= -0.74 are face-correct off-axis pushes — beyond
+    # this gate's reach (named next binding layer = EE-positioning,
+    # cost-weight-dead).
     #
     # Two gate sites in wrapper.py:
     #   - pre-decide (line ~983): mutates finished_repos to suppress
@@ -639,7 +642,7 @@ class SamplingC3Params:
     # L2 keys on _current_repos_target which is populated by
     # definition when finished_repos==True.
     use_commit_face_gate: bool = True
-    commit_face_gate_threshold: float = 0.3
+    commit_face_gate_threshold: float = 0.0
 
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
@@ -811,7 +814,7 @@ class SamplingC3Params:
             contact_entry_surface_threshold = float(raw.get("contact_entry_surface_threshold", 0.060)),
             entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
             use_commit_face_gate           = bool(raw.get("use_commit_face_gate", True)),
-            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.3)),
+            commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.0)),
             contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
             contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
             contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
