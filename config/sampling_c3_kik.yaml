@@ -27,6 +27,9 @@ w_align:  30000.0
 # of typical c_C3 ~ 60000.
 w_travel: 200.0
 
+# Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
+use_commit_face_gate: false
+
 # Rotation-aware sample bonus (L2.6 form):
 #   c_sample[i] -= w_rot * |yaw_err| * max(0, M_z * yaw_sign)
 # where M_z = (r x n_hat).z is the predicted contact moment about box CoM
