@@ -280,11 +280,24 @@ class PiecewiseLinearTracker:
         # Trajectory-finished signal: EE physically at the repos target.
         # Mirrors upstream's `finished_reposition_flag` output from
         # examples/sampling_c3/reposition.h (set when the trajectory
-        # generator reaches the target within a single timestep). We use
-        # 2 cm Cartesian tolerance — generous enough to absorb PD lag and
-        # IK quantization, tight enough to guarantee the arm has actually
-        # descended through phase 3.
-        finished = is_at_target(ee_now, p_target, tol=0.05)  # widened from 0.02 to match joint-PD tracker steady-state error
+        # generator reaches the target within a single timestep).
+        #
+        # Z-aware predicate (2026-06-16): require ee_z within 5 mm of
+        # p_target.z, NOT euclidean to the sliding setpoint. The previous
+        # euclidean tol=0.05 m fired whenever xy was aligned (which it is
+        # during descent), so finished triggered at ee_z ≈ +0.073 m — 43 mm
+        # above the +0.030 m design landing height. Downstream effect: c3
+        # entry inherited the wrong contact height, contact landed body z =
+        # +0.024 m (ABOVE box COM), and the resulting τ_y ≈ -1.06 N·m
+        # rotated the box ~90° about y over the productive push burst,
+        # which then defeated the LTD face-picker (no rotated-body face
+        # aligns with -g_hat). Probe at the z-aware predicate (5 mm z-only)
+        # realized sub-CoM landing under sustained 16 N push: max |box_q.y|
+        # at contact dropped from -0.704 (demo) to 0.0016, validating the
+        # "restoring tip moment" design at main.py:498-500. See
+        # docs/superpowers/plans/2026-06-16-kToC3Cost-ee-z-landing-gate.md
+        # for the discrimination chain (Bar 2 strict).
+        finished = abs(float(ee_now[2]) - float(p_target[2])) <= 0.005
 
         diag = dict(
             up_norm         = float(np.linalg.norm(u_p)),
