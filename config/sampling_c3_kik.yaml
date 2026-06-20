@@ -17,9 +17,16 @@
 # ----------------------------------------------------------------------------
 
 # Sample-cost alignment bonus: c_sample[i] -= w_align * max(0, n_hat_i · g_hat).
-# Counters the friction-cone discretization bias that otherwise picks
-# perpendicular contacts on directional pushes. Validated empirically;
-# see CLAUDE.md "Polyhedral Friction-Cone Bias" note.
+# PARTIAL-REVERT (w_align A/B verdict): w_align is FREE in the executor's
+# early window (seeds 0/1) — the original ablation that called it "free"
+# was measuring only that — but LOAD-BEARING at the dispatcher's LATE
+# window on seeds 1/2: removing it produced a 2/3 catastrophic 24-26cm
+# north-misdirection (wa0 obj_y=+0.239/+0.256 → wa30k obj_y=+0.006/+0.004).
+# Mechanism is late-window dispatcher RANKING toward goal-aligned contacts
+# (NOT early face-pick — early p_repos picks are byte-identical between
+# w_align=0 and w_align=30000 across all 3 seeds).  Restored at 30000;
+# seed-0 takes a 0.147→0.264 soft trade-off but the 2/3 catastrophic
+# outcome avoidance dominates.
 w_align:  30000.0
 
 # Cartesian travel penalty per metre on sample selection.
@@ -55,11 +62,10 @@ dt_osc: 0.01
 dt_mpc: 0.01
 
 # Stage 2 L1: goal-aligned contact-normal requirement at admission gate.
-# 0.7 reuses GOAL_ALIGN_THRESHOLD convention (sampling.py:31) — refuses
-# wrong-face cardinal contact (align ≈ 0.04 on -y at β=0) AND off-cardinal
-# contact (align ≤ 0.5 from seed-3 β=2 cracks). Working seeds first-contact
-# alignment is ≈1.0 — wide margin. 0.0 disables (regression-safe identity).
-entry_align_threshold: 0.7
+# Conformance landing (early_window verdict): entry-align gate is STRUCTURALLY
+# BYPASSED at c3-admission (LCS has no EE-BOX pair at the admission tick, so
+# wrapper.py:1084 is a no-op). Land 0.0 (uniform-conformance, no-op confirmed).
+entry_align_threshold: 0.0
 
 
 # ----------------------------------------------------------------------------
@@ -222,10 +228,13 @@ sampling_params:
 # ----------------------------------------------------------------------------
 
 reposition_params:
-  # Valid: kSpline | kSpherical | kCircular | kPiecewiseLinear
-  # We default to kPiecewiseLinear (lift to safe height, traverse, descend);
-  # this is the only trajectory type implemented in the first cut.
-  traj_type: kIK
+  # Valid: kStraightLine | kSawtoothLine | kPiecewiseLinear | kIK
+  # Conformance landing: matches push_anything_dev's PiecewiseLinearTracker
+  # (lift→traverse→descend in operational space, no per-knot IPOPT solve).
+  # kIK was the project-specific extension with Ipopt FP-noise floor (52.6mm
+  # same-seed spread per `project_ik_ipopt_nondeterminism_pinned`); kPWL is
+  # the reference's tracker and matches push_anything_dev.
+  traj_type: kPiecewiseLinear
 
   # Cartesian speed during reposition (translation rate of the EE).
   speed: 0.40    # m/s

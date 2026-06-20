@@ -198,12 +198,32 @@ class PiecewiseLinearTracker:
                        current_v:  np.ndarray,
                        plant_ctx,
                        p_target:   np.ndarray,
-                       dt_osc:     float) -> tuple[np.ndarray, dict]:
+                       dt_osc:     float,
+                       admit_active: bool = False,
+                       **_kwargs) -> tuple[np.ndarray, dict]:
         """Compute one control-step's joint torque toward p_target.
 
         Returns (u, diag) where diag is a dict of per-component torque
         norms suitable for the [GS-free] diagnostic line.
+
+        ── TEMPORARY MARKED NO-OP SHIM (2026-06-17 LPF validation) ──
+        ``admit_active`` is consumed-and-IGNORED here. This is a temporary
+        plumbing shim so that wrapper.py:1815's unconditional
+        ``admit_active=...`` kwarg does not crash when the YAML selects
+        the PWL tracker. This is NOT an implementation of the debounced
+        admit-active latch — see RepositionIKTracker for that behavior
+        (reposition_ik.py:693, 1320-1327: 8-tick latch that suspends
+        Phase-1 lift to keep the EE pressed against the box face during
+        admitted contact, robust to 1-tick admit drops).
+
+        The PWL-latch question is OPEN: the canonical kPWL config is
+        running WITHOUT a contact-persistence mechanism while kIK has
+        one. Adding the equivalent latch to PWL is a SEPARATE
+        evaluation, deferred until after the LPF validation produces
+        its verdict. Do not interpret this shim as resolving that
+        question — it just unblocks the LPF run.
         """
+        _ = admit_active  # consumed-and-ignored; see docstring
         # 1. FK current EE
         self.plant.SetPositions(plant_ctx, current_q)
         ee_now = self.plant.CalcPointsPositions(
