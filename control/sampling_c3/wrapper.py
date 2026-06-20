@@ -19,6 +19,7 @@ sim loop only needs the constructor swapped. Specifically:
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from typing import List, Optional
@@ -51,6 +52,14 @@ from sim.env_builder import PUSHER_RADIUS
 # >= threshold outside the contact surface, so it cannot command penetration.
 LCS_DISTANCE_THRESHOLD = 0.002
 MAX_APPROACH_STEP      = 0.010
+
+# B3c-prime selection-audit lazy-init sentinel. _sel_audit_state starts at
+# this value; on the FIRST hit at wrapper.py:848 the lazy-init reads env vars
+# once and replaces it with either None (disabled) or a (lo, hi) int tuple.
+# Hot path outside the window or when disabled is two attribute reads + an
+# `is`/`None` compare + (if enabled) one int-range check — no env reads, no
+# comprehensions, no f-strings.
+_SEL_AUDIT_UNINIT = object()
 
 
 class SamplingC3MPC:
@@ -319,6 +328,14 @@ class SamplingC3MPC:
         self._sample_buffer:            Optional[list]       = None
         self._sample_buffer_age:        int                  = 0
         self._sample_buffer_n_strategy: Optional[int]        = None
+
+        # B3c-prime selection audit (env-gated, lazy init at first :848 hit).
+        # No env reads here — hot path stays cheap until C3_SEL_AUDIT is set.
+        self._sel_audit_state:       object                = _SEL_AUDIT_UNINIT
+        self._sel_audit_file                               = None
+        self._sel_audit_out_dir:     str                   = ""
+        self._sel_audit_pair_id:     str                   = ""
+        self._sel_audit_run_id:      str                   = ""
 
         # Public introspection (mirrors legacy attrs)
         self.last_x_seq:               Optional[np.ndarray] = None
@@ -710,6 +727,99 @@ class SamplingC3MPC:
         return self._run_osc(current_q, current_v, plant_ctx,
                              plan_ctx, elapsed=elapsed)
 
+    # ------------------------------------------------------------------
+    # B3c-prime selection audit (env-gated)
+    # ------------------------------------------------------------------
+
+    def _sel_audit_lazy_init(self):
+        """One-shot env read on the first :848 hit. Returns (lo, hi) when
+        enabled, None when disabled. Reads C3_SEL_AUDIT (dir; unset → no-op),
+        C3_SEL_LO (default 150), C3_SEL_HI (default 170), and identity tags
+        C3_SEL_PAIR_ID / C3_SEL_RUN_ID. File handle is opened lazily on the
+        first in-window emit, not here."""
+        out_dir = os.environ.get("C3_SEL_AUDIT", "")
+        if not out_dir:
+            return None
+        try:
+            lo = int(os.environ.get("C3_SEL_LO", "150"))
+            hi = int(os.environ.get("C3_SEL_HI", "170"))
+        except ValueError:
+            return None
+        self._sel_audit_out_dir = out_dir
+        self._sel_audit_pair_id = os.environ.get("C3_SEL_PAIR_ID", "unknown")
+        self._sel_audit_run_id  = os.environ.get(
+            "C3_SEL_RUN_ID", f"pid_{os.getpid()}"
+        )
+        return (lo, hi)
+
+    def _sel_audit_emit(self, c_samples, results, labels, k_star, ee_pos_now):
+        """Append one JSONL row for this step. Opens the per-run file on
+        first call. Records all-k cost components, sample positions, the
+        held_idx (None when no prev_repos), ee_pos_now, and PCG64 state int
+        (parity fingerprint). Cost: ~one JSON serialize + file write + flush.
+        Only fires inside [C3_SEL_LO, C3_SEL_HI]."""
+        if self._sel_audit_file is None:
+            os.makedirs(self._sel_audit_out_dir, exist_ok=True)
+            fname = f"sel_{self._sel_audit_run_id}.jsonl"
+            self._sel_audit_file = open(
+                os.path.join(self._sel_audit_out_dir, fname),
+                "w",
+            )
+
+        # Guard: at-most-one prev_repos in labels by construction (built at
+        # wrapper.py:580-582). Violations are genuine bugs, not skip cases —
+        # the all-False case is legitimate (cold start / post-arrival buffer
+        # refresh) and is encoded as held_idx=None.
+        n_prev = sum(1 for lbl in labels if lbl == "prev_repos")
+        assert n_prev <= 1, (
+            f"[SEL-AUDIT] step={self._step} prev_repos count={n_prev} "
+            f"(>1 violates wrapper.py:580-582 invariant)"
+        )
+        held_idx = labels.index("prev_repos") if "prev_repos" in labels else None
+
+        # PCG64 state int (parity fingerprint, NOT a draw counter).
+        try:
+            rng_state = int(
+                self._rng.bit_generator.state["state"]["state"]
+            )
+        except Exception:
+            rng_state = -1
+
+        per_k = []
+        for k in range(len(labels)):
+            r = results[k]
+            lbl = labels[k]
+            per_k.append({
+                "k":              k,
+                "label":          lbl,
+                "pos":            [float(r.sample_pos[0]),
+                                   float(r.sample_pos[1]),
+                                   float(r.sample_pos[2])],
+                "c_sample":       float(c_samples[k]),
+                "c_C3_raw":       float(r.c_C3_raw),
+                "align_bonus":    float(r.align_bonus),
+                "rot_bonus":      float(r.rot_bonus),
+                "travel_penalty": float(r.travel_penalty),
+                "is_current":     (lbl == "current"),
+                "is_prev_repos":  (lbl == "prev_repos"),
+                "feasible":       bool(r.feasible),
+            })
+
+        row = {
+            "pair_id":    self._sel_audit_pair_id,
+            "run_id":     self._sel_audit_run_id,
+            "step":       int(self._step),
+            "k_star":     int(k_star),
+            "held_idx":   held_idx,
+            "ee_pos_now": [float(ee_pos_now[0]),
+                           float(ee_pos_now[1]),
+                           float(ee_pos_now[2])],
+            "rng_state":  rng_state,
+            "samples":    per_k,
+        }
+        self._sel_audit_file.write(json.dumps(row) + "\n")
+        self._sel_audit_file.flush()
+
     def _solve_plan(self,
                     current_q:  np.ndarray,
                     current_v:  np.ndarray,
@@ -846,6 +956,24 @@ class SamplingC3MPC:
 
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
+
+        # === B3c-prime selection audit (env-gated, hot-path-cheap) ===========
+        # Emit at the SOLE site where the full c_samples vector exists. Outside
+        # the [C3_SEL_LO, C3_SEL_HI] window or when C3_SEL_AUDIT is unset, the
+        # cost is two attribute reads + an `is`/`None` compare + one int-range
+        # check. No env reads, no comprehensions, no f-strings on the cold
+        # path. Read-only w.r.t. control flow: does NOT touch k_star, costs,
+        # the buffer, or any branch downstream.
+        _sa = self._sel_audit_state
+        if _sa is _SEL_AUDIT_UNINIT:
+            _sa = self._sel_audit_lazy_init()
+            self._sel_audit_state = _sa
+        if _sa is not None and _sa[0] <= self._step <= _sa[1]:
+            self._sel_audit_emit(
+                c_samples, results, labels, k_star, ee_pos_now,
+            )
+        # ====================================================================
+
         c_curr   = c_samples[0]
         best_other_idx = None
         best_other_cost = float("inf")
