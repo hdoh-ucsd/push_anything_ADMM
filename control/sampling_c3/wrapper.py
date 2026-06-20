@@ -1479,6 +1479,38 @@ class SamplingC3MPC:
                     # mode gate will read this and force exit if ≥ 5.
                     self._no_ee_box_streak += 1
 
+            # Per-contact φ / λ_n breakdown (env-gated: LCS_CONTACT_BREAKDOWN=1).
+            # Logs each contact pair admitted into the LCS this c3-mode tick —
+            # Drake auto-admits plus any synthesized contacts (Stage 1 12-contact
+            # LCS) — with phi, lambda_n, and active/inactive state from the LCP
+            # solution.
+            #   active   = lambda_n > 1e-6   (force flowing through this contact)
+            #   inactive = lambda_n ~= 0     (admitted but phi > 0 → LCP
+            #                                 complementarity case: η_n > 0, λ_n = 0)
+            # Off by default; one print per contact per c3-mode tick when enabled.
+            # Preserved as its own commit so a future revert of the synthesis
+            # (lcs_formulator.py) does not wipe this diagnostic.
+            if os.environ.get("LCS_CONTACT_BREAKDOWN", "0") == "1" and _ci:
+                _lam_n_first = getattr(self.base_mpc, "last_lambda_n_first", None)
+                _n_c_log = len(_ci)
+                print(f"[LCS-CONTACT-BREAKDOWN] step={self._step} n_c={_n_c_log}",
+                      flush=True)
+                for _i_log, _info_log in enumerate(_ci):
+                    _phi_mm = float(_info_log.get("distance", 0.0)) * 1000.0
+                    if (_lam_n_first is not None
+                            and hasattr(_lam_n_first, "__len__")
+                            and _i_log < len(_lam_n_first)):
+                        _lam = float(_lam_n_first[_i_log])
+                    else:
+                        _lam = 0.0
+                    _state = "active" if abs(_lam) > 1e-6 else "inactive"
+                    _tag = _info_log.get("tag", "?")
+                    print(f"[LCS-CONTACT-BREAKDOWN]   i={_i_log} "
+                          f"tag={_tag:<10s} "
+                          f"phi={_phi_mm:+7.2f}mm "
+                          f"lam_n={_lam:+9.4f}N "
+                          f"state={_state}", flush=True)
+
             # PHASE C progress tracker update. Co-located with the
             # contact-loss streak update so the gate next tick reads a
             # consistent end-of-prev-tick triple (no cross-half lag).
