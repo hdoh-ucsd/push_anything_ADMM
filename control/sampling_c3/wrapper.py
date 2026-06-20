@@ -1696,9 +1696,12 @@ class SamplingC3MPC:
                     # gate's per-tick decision history. ee_z comes from
                     # free_diag (the tracker already computed FK).
                     _ee_z_log = float(free_diag.get("ee_now", [0.0, 0.0, 0.0])[2])
+                    _latch = int(getattr(self.tracker, "_admit_latch", 0))
+                    _latch_ticks = int(getattr(self.tracker,
+                                               "ADMIT_LATCH_TICKS", 0))
                     print(f"[ADMIT-GUARD] step={self._step} "
                           f"admit_active={int(_admit_active)} "
-                          f"latch={self.tracker._admit_latch}/{self.tracker.ADMIT_LATCH_TICKS} "
+                          f"latch={_latch}/{_latch_ticks} "
                           f"ee_z={_ee_z_log:.3f} "
                           f"gate_cap={int(getattr(self.tracker, '_last_cap_z_safe', False))}",
                           flush=True)
