@@ -484,6 +484,21 @@ class RepositionIKParams:
     # Infeasibility-poison interface to wrapper.py
     infeasibility_match_radius_m:               float = 0.01
 
+    # Option A noise-floor reducer (default OFF — identity behavior):
+    # on knot[0] IK failure, q_arm_sol == q_warm, so the default
+    # p_des == FK(q_warm) ≈ ee_now commands the executor to stay put,
+    # cascading a missed-motion tick into a 25-35cm trajectory bifurcation
+    # (verified at step 103 of nondet_seed0_serial_16s_pair). Enabling this
+    # flag substitutes p_des := self._last_good_p_des (cached previous
+    # successful target) when knot[0] fails — keeps the executor on the
+    # last-known reachable target rather than stalling. Does NOT confer
+    # bit-determinism (Ipopt FP-noise is sub-ULP per call, not confined to
+    # failures — see project_b3b_refuted_paired_bit_identical.md), but
+    # removes the catastrophic 35cm failure-cascades, leaving only the
+    # silent FP-drift floor. Use as a noise-floor reducer for ablation
+    # studies / video runs.
+    hold_last_good_p_des_on_failure:            bool  = False
+
     # Frames (informational; tracker resolves via the obj_body / ee_frame
     # objects passed at construction — these names are kept for parity with
     # upstream YAMLs and for potential debugging output)

@@ -654,6 +654,29 @@ class RepositionIKTracker:
         # Quiet IPOPT — keep the [GS] log clean.
         self._solver_options.SetOption(ad.IpoptSolver.id(), "print_level", 0)
         self._solver_options.SetOption(ad.IpoptSolver.id(), "sb", "yes")
+        # Determinism knobs (added 2026-06-12 after n=4 same-seed spread
+        # measured 52.6mm at seed=0 / 518bcfa). The non-determinism is
+        # per-knot Ipopt FP-divergence at the c3-entry threshold
+        # (reposition_ik.py:1299, 20mm). Three pins:
+        #  (1) Pin linear_solver=spral explicitly (the only solver Drake's
+        #      Ipopt build ships with besides "custom"; explicit pin is a
+        #      no-op against the default but documents intent and is robust
+        #      to any future build-time change).
+        #  (2) Match acceptable_tol to tol so Ipopt cannot terminate
+        #      early on the loose default (1e-6) — the early-acceptance
+        #      branch is FP-noisy across BLAS thread interleavings.
+        #  (3) bound_relax_factor=0 — disable Ipopt's automatic 1e-8
+        #      bound-constraint relaxation that injects another FP path.
+        # Companion fix: launch with OMP/MKL/OPENBLAS_NUM_THREADS=1 so
+        # BLAS-side parallelism cannot reorder floating-point reductions.
+        self._solver_options.SetOption(
+            ad.IpoptSolver.id(), "linear_solver", "spral")
+        self._solver_options.SetOption(
+            ad.IpoptSolver.id(), "tol", 1e-8)
+        self._solver_options.SetOption(
+            ad.IpoptSolver.id(), "acceptable_tol", 1e-8)
+        self._solver_options.SetOption(
+            ad.IpoptSolver.id(), "bound_relax_factor", 0.0)
 
         # ---- Joint-PD state (mirrors PiecewiseLinearTracker) ----
         self._integral:        np.ndarray            = np.zeros(self.n_arm_dofs)
@@ -709,6 +732,15 @@ class RepositionIKTracker:
 
         # ---- Feasibility memo (read by wrapper.py) ----
         self._last_knot0_feasible: bool = True
+
+        # ---- Option A noise-floor reducer (gated by
+        #      RepositionIKParams.hold_last_good_p_des_on_failure). On knot[0]
+        #      IK failure, the executor would otherwise see p_des == FK(q_warm)
+        #      ≈ ee_now and command zero motion this tick — the trigger of the
+        #      35cm trajectory-cascade catalogued in
+        #      project_b3b_refuted_paired_bit_identical.md. With opt-in ON, we
+        #      substitute this cached previous-successful p_des instead.
+        self._last_good_p_des: Optional[np.ndarray] = None
 
         # ---- Latest-plan memos (read by diagnostics) ----
         self.last_q_knots:         Optional[np.ndarray] = None
@@ -812,6 +844,7 @@ class RepositionIKTracker:
         self._admit_latch          = 0
         self._last_cap_z_safe      = False  # Q2c gate decision (stashed for wrapper log)
         self._last_knot0_feasible  = True
+        self._last_good_p_des      = None
         self.last_q_knots          = None
         self.last_ee_knots         = None
         self.last_feasible         = None
@@ -1439,7 +1472,23 @@ class RepositionIKTracker:
         timeout_ms     = 1e3 * float(self.ik_params.per_knot_solve_timeout_s)
         knot0_overshoot_ms = max(0.0, knot0_solve_ms - timeout_ms)
 
-        p_des  = ee_knots[:, 0] if ee_knots.shape[1] > 0 else p_target.copy()
+        p_des_from_ik = (
+            ee_knots[:, 0] if ee_knots.shape[1] > 0 else p_target.copy()
+        )
+        # Option A: when knot[0] failed, q_arm_sol == q_warm so
+        # p_des_from_ik == FK(q_warm) ≈ ee_now. Substituting the cached
+        # last-good p_des keeps the executor on the prior reachable target
+        # rather than stalling and triggering the 35cm cascade.
+        if (
+            self.ik_params.hold_last_good_p_des_on_failure
+            and feasible and not feasible[0]
+            and self._last_good_p_des is not None
+        ):
+            p_des = self._last_good_p_des.copy()
+        else:
+            p_des = p_des_from_ik
+            if feasible and feasible[0]:
+                self._last_good_p_des = np.asarray(p_des, dtype=float).copy()
         ik_err = float(np.linalg.norm(p_des - p_guide[:, 0])) if K > 0 else 0.0
         # Landing error: distance from the last feasible-knot FK to p_target.
         # With K=1 (the default) the tail is frozen at FK(knot 0), so this
