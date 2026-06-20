@@ -2546,6 +2546,7 @@ class SamplingC3MPC:
                       f"forcing buffer refresh + clearing prev_repos")
         self._prev_mode              = mode
         self.last_mode               = mode
+        self.last_switch_reason      = reason
         self.last_winning_sample_idx = k_star
         self._step_times_ms.append((time.perf_counter() - t_step_start) * 1e3)
 

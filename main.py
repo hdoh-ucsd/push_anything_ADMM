@@ -3,7 +3,7 @@ C3 Contact-Implicit MPC — main entry point.
 
 Usage
 -----
-    python main.py [task] [--save-video [OUTPUT.mp4]]
+    python main.py [task] [--drake-frames-dir DIR] [--video-path PATH.html]
 
 Task options
 ------------
@@ -13,16 +13,19 @@ Task options
 
 Flags
 -----
-    --save-video            Auto-name MP4 as results/<stem>.mp4
-    --save-video OUT.mp4    Save to a specific path
+    --drake-frames-dir DIR  OOM-safe Drake VTK PNG-per-tick capture.
+                            Encode to MP4 offline via ffmpeg (or use
+                            tools/visualizer/paint_mode_text.py for
+                            the annotated-render pipeline).
     --video-path            Auto-name HTML as results/<stem>.html
     --video-path PATH.html  Save Meshcat replay HTML to a specific path
-    --no-record             Disable both MP4 and HTML recording
-    --name BASENAME         Shared <stem> for all outputs (txt + mp4 + html)
+    --no-record             Disable HTML recording
+    --name BASENAME         Shared <stem> for all outputs (txt + html)
 
-Default behavior records both MP4 and Meshcat HTML, sharing the same
+Default behavior records the Meshcat HTML replay sharing the same
 stem as the _Tee log (results/<stem>.txt). The stem is BASENAME when
---name is given, else <task>_<timestamp>.
+--name is given, else <task>_<timestamp>. MP4 capture is opt-in via
+--drake-frames-dir.
 
 Visualisation: Meshcat at http://127.0.0.1:7000
 
@@ -47,7 +50,6 @@ from sim.env_builder import (
     EE_BODY_NAME,
     compute_prepositioned_arm_q,
 )
-from sim.video_recorder import ExperimentRecorder
 from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
 from control.task_costs import QuadraticManipulationCost
@@ -174,15 +176,6 @@ def main():
         help="Task to run (default: pushing)",
     )
     parser.add_argument(
-        "--save-video",
-        metavar="OUTPUT.mp4",
-        nargs="?",
-        const="AUTO",
-        default="AUTO",
-        help="Save mp4 of sim. With no arg or absent, auto-names "
-             "results/<task>_<timestamp>.mp4. Use --no-record to disable.",
-    )
-    parser.add_argument(
         "--reset-every",
         metavar="N",
         type=int,
@@ -201,10 +194,24 @@ def main():
                              "auto-names results/<task>_<timestamp>.html. "
                              "Use --no-record to disable.")
     parser.add_argument("--no-record", action="store_true",
-                        help="Disable both video and html recording. "
-                             "Speeds up smoke tests.")
+                        help="Disable HTML recording. Speeds up smoke tests.")
+    parser.add_argument("--drake-frames-dir", type=str, default=None,
+                        metavar="DIR",
+                        help="OOM-safe Drake VTK frame capture: write one PNG per "
+                             "control step to DIR (real 3D Drake scene render). "
+                             "Encode to MP4 after the sim with ffmpeg.")
+    parser.add_argument("--drake-frames-stride", type=int, default=3,
+                        metavar="N",
+                        help="Capture one Drake VTK frame every N control steps "
+                             "(default 3 -> 100Hz/3 ~= 33 fps).")
     parser.add_argument("--max-time", type=float, default=None,
                         help="Override simulation duration in seconds (default: 8.0).")
+    parser.add_argument("--early-exit-goal-d", type=float, default=None,
+                        metavar="METRES",
+                        help="Goal-reached early-exit threshold: break sim loop "
+                             "when goal_dist <= this value (typical 0.05 m). "
+                             "When omitted, the loop runs to --max-time. Pre-threshold "
+                             "behavior is unchanged — only the loop terminates earlier.")
     parser.add_argument("--math-diag", action="store_true",
                         help="Print math-level solver diagnostics ([MATH.*] tags). "
                              "Zero overhead when off.")
@@ -221,10 +228,9 @@ def main():
                              "state machine for sequential contact on correct cube face).")
     parser.add_argument("--name", type=str, default=None, metavar="BASENAME",
                         help="Shared basename (no extension) for all run outputs in "
-                             "results/: <BASENAME>.txt, <BASENAME>.mp4, <BASENAME>.html. "
+                             "results/: <BASENAME>.txt and <BASENAME>.html. "
                              "When omitted, falls back to <task>_<timestamp>. "
-                             "Explicit --save-video PATH / --video-path PATH still "
-                             "override their respective files.")
+                             "Explicit --video-path PATH still overrides its file.")
     parser.add_argument("--sampling-c3", type=str, nargs="?",
                         const="config/sampling_c3_params.yaml", default=None,
                         metavar="PATH.yaml",
@@ -297,18 +303,11 @@ def main():
 
     # Resolve recording paths.  --no-record wins; otherwise AUTO sentinels
     # produce shared-stem filenames, "" maps to legacy default-named files,
-    # and any other string is taken as an explicit path.
+    # and any other string is taken as an explicit path.  MP4 capture is
+    # opt-in via --drake-frames-dir; this block governs Meshcat HTML only.
     if args.no_record:
-        video_path = None
         html_path  = None
     else:
-        if args.save_video == "AUTO":
-            video_path = f"results/{stem}.mp4"
-        elif args.save_video == "":
-            video_path = f"results/{task_name}.mp4"
-        else:
-            video_path = args.save_video
-
         if args.video_path == "AUTO":
             html_path = f"results/{stem}.html"
         elif args.video_path == "":
@@ -322,8 +321,6 @@ def main():
     print(f"[C3] Log: {_log_path}")
 
     print(f"[C3] Task: {task_name}")
-    if video_path:
-        print(f"[C3] Video output: {video_path}")
     if html_path:
         print(f"[C3] HTML replay output: {html_path}")
 
@@ -372,8 +369,24 @@ def main():
     # Build Drake environment
     # ------------------------------------------------------------------
     print("[C3] Building Drake environment ...")
+    _add_cam = args.drake_frames_dir is not None
     diagram, plant, panda_model, _, meshcat, plant_ad, context_ad = \
-        build_environment(task_cfg)
+        build_environment(task_cfg, add_camera=_add_cam)
+
+    drake_cam = None
+    drake_frames_dir = None
+    mode_timeline_fp = None
+    if _add_cam:
+        drake_frames_dir = Path(args.drake_frames_dir)
+        drake_frames_dir.mkdir(parents=True, exist_ok=True)
+        drake_cam = diagram.GetSubsystemByName("drake_render_camera")
+        # mode_timeline.csv lives next to the frames so the post-sim
+        # paint_mode_text.py step can frame-sync without re-parsing run.log.
+        mode_timeline_fp = open(
+            drake_frames_dir / "mode_timeline.csv", "w", buffering=1)
+        mode_timeline_fp.write("step,sim_t,mode,switch\n")
+        print(f"[C3] Drake VTK frames -> {drake_frames_dir}  "
+              f"(stride={args.drake_frames_stride})")
 
     simulator = ad.Simulator(diagram)
     context   = simulator.get_mutable_context()
@@ -426,6 +439,7 @@ def main():
     # ------------------------------------------------------------------
     formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body,
                                plant_ad=plant_ad, context_ad=context_ad)
+
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
     # R^7 path remains the default unless --ee-space is passed.
     # Supported on BOTH solvers — c3plus (componentwise projection) and c3
@@ -530,20 +544,6 @@ def main():
         meshcat.StartRecording()
 
     # ------------------------------------------------------------------
-    # Optional video recorder
-    # ------------------------------------------------------------------
-    recorder: ExperimentRecorder | None = None
-    if video_path:
-        recorder = ExperimentRecorder(
-            output_path=video_path,
-            fps=30,
-            task_name=task_name,
-            goal_xy=target_xy.tolist(),
-            obj_shape=task_cfg["object_type"],
-            obj_size=_obj_size_from_cfg(task_cfg),
-        )
-
-    # ------------------------------------------------------------------
     # Joint limit constants for arm safety check
     # ------------------------------------------------------------------
     _Q_LO = np.array([-2.897, -1.763, -2.897, -3.072, -2.897, -0.0175, -2.897])
@@ -630,9 +630,26 @@ def main():
                 f"goal_dist={dist:.3f} m"
             )
 
-        if recorder is not None and step % _record_every == 0:
-            obj_xy = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
-            recorder.record(sim_time, ee_pos[:2], obj_xy)
+        # Drake VTK frame capture: one PNG per stride ticks (streamed to disk
+        # so RAM stays flat — OOM-safe path for 16s runs).  mode_timeline.csv
+        # gets one row per captured frame for paint_mode_text.py to consume.
+        if drake_cam is not None and step % args.drake_frames_stride == 0:
+            _cam_ctx = drake_cam.GetMyContextFromRoot(context)
+            _img = drake_cam.color_image_output_port().Eval(_cam_ctx)
+            _arr = np.asarray(_img.data, dtype=np.uint8)  # (H, W, 4) RGBA
+            try:
+                from PIL import Image as _PILImage
+                _PILImage.fromarray(_arr, mode="RGBA").save(
+                    drake_frames_dir / f"frame_{step:06d}.png", optimize=False)
+            except ImportError:
+                import imageio.v2 as _imageio
+                _imageio.imwrite(
+                    drake_frames_dir / f"frame_{step:06d}.png", _arr)
+            _mode = getattr(mpc, "last_mode", "n/a")
+            _switch = getattr(mpc, "last_switch_reason", None)
+            _switch_name = _switch.name if _switch is not None else ""
+            mode_timeline_fp.write(
+                f"{step},{sim_time:.4f},{_mode},{_switch_name}\n")
 
         sim_time += dt_ctrl
         step     += 1
@@ -697,6 +714,19 @@ def main():
         except Exception as _e:
             print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
 
+        # Goal-reached early-exit (opt-in via --early-exit-goal-d).  Checked
+        # after the [DRAKE-CONTACT] block so all per-tick logging/CSVs for
+        # this final tick still emit verbatim.  Pre-threshold behavior is
+        # unchanged — only the loop terminates earlier.
+        if args.early_exit_goal_d is not None:
+            _ex_obj_xy = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
+            _ex_gd = float(np.linalg.norm(_ex_obj_xy - target_xy))
+            if _ex_gd <= args.early_exit_goal_d:
+                print(f"[EARLY-EXIT] step={step} t={sim_time:.3f}s "
+                      f"goal_d={_ex_gd:.4f}m <= threshold={args.early_exit_goal_d:.4f}m "
+                      f"-> breaking sim loop")
+                break
+
     print("[C3] Simulation complete.")
     if isinstance(mpc, SamplingC3MPC):
         mpc.print_perf_summary()
@@ -726,8 +756,9 @@ def main():
             f.write(html)
         print(f"[VIDEO] Saved replay to {html_path}")
 
-    if recorder is not None:
-        recorder.save()
+    if mode_timeline_fp is not None:
+        mode_timeline_fp.close()
+        print(f"[VIDEO] mode_timeline -> {drake_frames_dir / 'mode_timeline.csv'}")
 
 
 if __name__ == "__main__":

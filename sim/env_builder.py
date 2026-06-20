@@ -108,7 +108,13 @@ def _sphere_sdf(cfg: dict) -> str:
 # Main builder
 # ---------------------------------------------------------------------------
 
-def build_environment(task_cfg: dict, time_step: float = 0.001):
+def build_environment(task_cfg: dict, time_step: float = 0.001,
+                      *, add_camera: bool = False,
+                      camera_xyz=(-0.10, -0.05, 1.05),
+                      camera_width: int = 1280,
+                      camera_height: int = 720,
+                      camera_fov_y_deg: float = 55.0,
+                      goal_ghost_rgba=(0.10, 0.90, 0.10, 0.45)):
     """
     Build a Drake diagram for a Franka Panda arm + table + task object.
 
@@ -134,6 +140,7 @@ def build_environment(task_cfg: dict, time_step: float = 0.001):
     """
     builder = ad.DiagramBuilder()
     plant, scene_graph = ad.AddMultibodyPlantSceneGraph(builder, time_step=time_step)
+
     parser = ad.Parser(plant)
 
     # ------------------------------------------------------------------
@@ -213,6 +220,25 @@ def build_environment(task_cfg: dict, time_step: float = 0.001):
 
     object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
 
+    # Goal ghost (illustration-only translucent box at goal pose).  Anchored
+    # to world_body so it shows in the VTK render alongside the opaque box.
+    # Only registered when add_camera=True; non-render runs keep the scene clean.
+    if add_camera:
+        _goal_xy = task_cfg.get("goal_xy", [0.3, 0.0])
+        _init_z  = task_cfg["init_xyz"][2]
+        if task_cfg["object_type"] == "box":
+            _sx, _sy, _sz = task_cfg["size"]
+            _ghost_shape = ad.Box(_sx, _sy, _sz)
+        else:
+            _ghost_shape = ad.Sphere(task_cfg["radius"])
+        plant.RegisterVisualGeometry(
+            plant.world_body(),
+            ad.RigidTransform([float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)]),
+            _ghost_shape,
+            "goal_ghost",
+            list(goal_ghost_rgba),
+        )
+
     plant.Finalize()
 
     # ------------------------------------------------------------------
@@ -220,6 +246,38 @@ def build_environment(task_cfg: dict, time_step: float = 0.001):
     # ------------------------------------------------------------------
     meshcat = ad.StartMeshcat()
     ad.MeshcatVisualizer.AddToBuilder(builder, scene_graph, meshcat)
+
+    # OOM-safe Drake VTK render camera (top-down).  Frames pulled per-tick
+    # in main.py and written to disk one-at-a-time -> ffmpeg encode offline.
+    # Real Drake 3D scene (mesh-level) — distinct from any matplotlib
+    # 2D render path; renders scene_graph, so /goal_ghost (registered above)
+    # appears in every captured PNG.
+    if add_camera:
+        from pydrake.geometry import (
+            MakeRenderEngineVtk, RenderEngineVtkParams,
+            ClippingRange, DepthRange,
+            RenderCameraCore, ColorRenderCamera, DepthRenderCamera,
+        )
+        from pydrake.systems.sensors import CameraInfo
+        scene_graph.AddRenderer("drake_render_vtk",
+                                MakeRenderEngineVtk(RenderEngineVtkParams()))
+        intrinsics = CameraInfo(width=camera_width, height=camera_height,
+                                fov_y=np.radians(camera_fov_y_deg))
+        core = RenderCameraCore("drake_render_vtk", intrinsics,
+                                ClippingRange(0.05, 5.0), ad.RigidTransform())
+        color_cam = ColorRenderCamera(core, show_window=False)
+        depth_cam = DepthRenderCamera(core, DepthRange(0.1, 5.0))
+        # Top-down: camera at camera_xyz, looking along world -Z.
+        # Rotation: 180 deg about X — world +X -> image right, world +Y -> image up.
+        X_PB = ad.RigidTransform(ad.RotationMatrix.MakeXRotation(np.pi),
+                                 list(camera_xyz))
+        rgbd = builder.AddSystem(
+            ad.RgbdSensor(parent_id=scene_graph.world_frame_id(),
+                          X_PB=X_PB,
+                          color_camera=color_cam, depth_camera=depth_cam))
+        rgbd.set_name("drake_render_camera")
+        builder.Connect(scene_graph.get_query_output_port(),
+                        rgbd.query_object_input_port())
 
     diagram = builder.Build()
 
