@@ -44,8 +44,8 @@ from control.admm_solver import C3Solver
 from control.task_costs import QuadraticManipulationCost
 from control.ci_mpc_c3 import C3MPC
 
-from control.sampling_c3 import wrapper as wmod
-from control.sampling_c3.wrapper import SamplingC3MPC
+from control.sampling_c3 import sampling_based_c3_controller as wmod
+from control.sampling_c3.sampling_based_c3_controller import SamplingC3MPC
 from control.sampling_c3.params import (
     SamplingC3Params, RepositionParams, RepositioningTrajectoryType,
     SamplingStrategy,

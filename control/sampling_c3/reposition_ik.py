@@ -3,7 +3,7 @@ Reposition-mode planner using Drake's ``InverseKinematics`` — sibling to
 ``PiecewiseLinearTracker`` (in reposition.py).
 
 Selected by ``RepositionParams.traj_type == RepositioningTrajectoryType.kIK``.
-The wrapper (sampling_c3.wrapper.SamplingC3MPC) instantiates this when the
+The dispatcher (sampling_c3.sampling_based_c3_controller.SamplingC3MPC) instantiates this when the
 YAML config requests it; the contact-rich (C3) path is unchanged.
 
 Per control loop (see ``RepositionIKTracker.compute_torque``):
