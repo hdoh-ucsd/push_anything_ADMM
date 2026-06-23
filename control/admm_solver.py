@@ -312,6 +312,8 @@ class C3Solver:
               F:       np.ndarray | None = None,
               H:       np.ndarray | None = None,
               c_lcs:   np.ndarray | None = None,
+              u_lower: np.ndarray | None = None,
+              u_upper: np.ndarray | None = None,
               ) -> tuple[np.ndarray, np.ndarray]:
         """
         Solve the C3 full-horizon trajectory optimisation.
@@ -353,6 +355,7 @@ class C3Solver:
                 Q=Q, R=R, QN=QN, x_ref=x_ref,
                 N=N, admm_iter=admm_iter, torque_limit=torque_limit,
                 phi=phi,
+                u_lower=u_lower, u_upper=u_upper,
             )
 
         # ===== C3 (Phase 2 — paper-exact LCP projection) =====
@@ -815,6 +818,8 @@ class C3Solver:
                       admm_iter: int = 10,
                       torque_limit: float = 30.0,
                       phi:    np.ndarray | None = None,
+                      u_lower: np.ndarray | None = None,
+                      u_upper: np.ndarray | None = None,
                       ) -> tuple[np.ndarray, np.ndarray]:
         """
         C3+ ADMM solve (Bui 2026 ICRA §IV-B.2).                      ← C3+ NEW
@@ -961,13 +966,20 @@ class C3Solver:
                         z_var[i*TOT + SL : i*TOT + SL + n_lambda],
                     )
 
-            # Torque bounds per step
+            # Torque bounds per step (per-axis vectors when supplied;
+            # default-inert scalar torque_limit path when u_lower/u_upper None).
+            _u_lo = (np.full(n_u, -torque_limit)
+                     if u_lower is None else np.asarray(u_lower, dtype=float))
+            _u_hi = (np.full(n_u,  torque_limit)
+                     if u_upper is None else np.asarray(u_upper, dtype=float))
+            assert _u_lo.shape == (n_u,) and _u_hi.shape == (n_u,), (
+                f"u_lower/u_upper must be shape ({n_u},); got "
+                f"{_u_lo.shape}/{_u_hi.shape}"
+            )
             for i in range(N):
                 ui = i * TOT + SU
                 prog.AddBoundingBoxConstraint(
-                    np.full(n_u, -torque_limit),
-                    np.full(n_u,  torque_limit),
-                    z_var[ui : ui + n_u],
+                    _u_lo, _u_hi, z_var[ui : ui + n_u],
                 )
 
             cost_bd = prog.AddQuadraticCost(

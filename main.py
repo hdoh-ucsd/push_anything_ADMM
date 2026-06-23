@@ -38,6 +38,7 @@ MPC parameters:
     rho        = 100   ADMM penalty (initial; adaptive every 10 iters)
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 import yaml
@@ -593,8 +594,31 @@ def main():
         # Negated: Drake returns generalized gravity force (the force gravity
         # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
         tau_g = -plant.CalcGravityGeneralizedForces(plant_ctx)
-        u_opt = mpc.compute_control(current_q, current_v, plant_ctx, target_xy,
-                                    target_yaw=target_yaw)
+        # === Stage 2: lookahead sub-goal (env-gated PUSHA_LOOKAHEAD_STEP) ===
+        # Reference: dairlib_sampling_c3 goal_generator.cc:401-407 +
+        # anything/parameters/goal_params.yaml:19 (lookahead_step_size: 0.15).
+        # Plans toward a REACHABLE 15cm sub-goal each tick rather than the
+        # distant final goal. When PUSHA_LOOKAHEAD_STEP is unset / 0, this is
+        # a no-op (passes target_xy unchanged — preserves current behavior).
+        _lookahead = float(os.environ.get("PUSHA_LOOKAHEAD_STEP", "0") or "0")
+        if _lookahead > 0.0:
+            _obj_xy_now = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
+            _delta_vec  = target_xy - _obj_xy_now
+            _dist       = float(np.linalg.norm(_delta_vec))
+            if _dist > 1e-9:
+                _step   = min(_lookahead, _dist)
+                _effective_target_xy = _obj_xy_now + (_delta_vec / _dist) * _step
+            else:
+                _effective_target_xy = target_xy
+            if step % 50 == 0:
+                print(f"[LOOKAHEAD] step={step} obj=({_obj_xy_now[0]:+.3f},{_obj_xy_now[1]:+.3f}) "
+                      f"sub_goal=({_effective_target_xy[0]:+.3f},{_effective_target_xy[1]:+.3f}) "
+                      f"step_size={_step:.3f}m dist_remaining={_dist:.3f}m", flush=True)
+        else:
+            _effective_target_xy = target_xy
+        u_opt = mpc.compute_control(current_q, current_v, plant_ctx,
+                                    _effective_target_xy, target_yaw=target_yaw)
+        # === end Stage 2 ===
 
         # Update predicted-trajectory markers in Meshcat
         if mpc.last_x_seq is not None:

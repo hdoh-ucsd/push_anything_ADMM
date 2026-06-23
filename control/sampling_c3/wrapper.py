@@ -447,6 +447,30 @@ class SamplingC3MPC:
           * else use ``nominal_push_force`` so the command does NOT collapse
             to zero on momentary contact loss.
         """
+        # Force-routing prototype (env-gated, default-inert). When
+        # PUSHA_FORCE_ROUTING=u_sol AND the planner is EE-space, return the
+        # planner's solved u[0] directly (with a one-shot direction-confirm
+        # print so we can verify sign on first c3 entry). PUSHA_FORCE_ROUTING
+        # unset or 'off' → falls through to the legacy -g_hat path below
+        # (bit-identical to pre-prototype). 'neg_u_sol' returns -u_seq[0]
+        # for the opposite sign convention.
+        import os as _os
+        _fr = _os.environ.get("PUSHA_FORCE_ROUTING", "off").lower()
+        if _fr in ("u_sol", "neg_u_sol"):
+            _use_ee = bool(getattr(self.base_mpc, "use_ee_space", False))
+            _u_seq  = getattr(self.base_mpc, "_last_u_seq", None)
+            if _use_ee and _u_seq is not None and hasattr(_u_seq, "shape") \
+                    and _u_seq.ndim == 2 and _u_seq.shape[1] == 3:
+                u0 = np.asarray(_u_seq[0], dtype=float).reshape(3)
+                if _fr == "neg_u_sol":
+                    u0 = -u0
+                if not getattr(self, "_force_route_logged", False):
+                    print(f"[FORCE-ROUTE] active env={_fr} u_seq[0]={u0} "
+                          f"|u_seq[0]|={float(np.linalg.norm(u0)):.3f}N",
+                          flush=True)
+                    self._force_route_logged = True
+                return u0
+
         recoil_dir = -np.asarray(g_hat_3d, dtype=float).reshape(3)
         n = float(np.linalg.norm(recoil_dir))
         if n < 1e-9:
@@ -2026,6 +2050,28 @@ class SamplingC3MPC:
             # horizon mirror is unavailable (cold start or no contacts).
             _lh_n = getattr(self.base_mpc, "last_lambda_n_horizon", None)
             _lh_t = getattr(self.base_mpc, "last_lambda_t_horizon", None)
+            # Read-only diagnostic (env-gated, default off): on first 50 c3
+            # ticks AND every 20th c3 tick after, print the full horizon-λ
+            # prediction. Used to diagnose whether the planner PREDICTS
+            # sustained contact at AT-CoM or only tap-retreat.
+            import os as _os
+            if _os.environ.get("PUSHA_HORIZON_LAM_DUMP", "0") == "1":
+                _hl_step = getattr(self, "_hl_c3_tick", 0) + 1
+                self._hl_c3_tick = _hl_step
+                if _hl_step <= 50 or _hl_step % 20 == 0:
+                    if _lh_n is not None and getattr(_lh_n, "shape", (0,))[0] > 0:
+                        _info = getattr(self.base_mpc.formulator,
+                                        "_last_contact_info", [])
+                        _tags = [i.get("tag", "?") for i in _info] if _info else []
+                        print(f"[HORIZON-LAM] c3_tick={_hl_step} step={self._step} "
+                              f"shape={_lh_n.shape} tags={_tags}", flush=True)
+                        for _kk in range(_lh_n.shape[0]):
+                            _row = ",".join(f"{float(v):.3f}" for v in _lh_n[_kk])
+                            print(f"[HORIZON-LAM]   k={_kk}: lam_n=[{_row}]",
+                                  flush=True)
+                    else:
+                        print(f"[HORIZON-LAM] c3_tick={_hl_step} step={self._step} "
+                              f"horizon-λ unavailable", flush=True)
             if _lh_n is not None and getattr(_lh_n, "shape", (0,))[0] > 0:
                 _k = min(int(round(elapsed / self._dt)), _lh_n.shape[0] - 1)
                 _lam_n = _lh_n[_k]

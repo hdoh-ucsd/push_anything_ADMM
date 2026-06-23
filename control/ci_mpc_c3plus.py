@@ -27,6 +27,7 @@ by the QP and friction is unenforced in η. See
 milestones/4_c3plus_math/MATH_C3PLUS.md §1.2 for the closed-form
 derivation and §5 for the implications on box motion.
 """
+import os
 import numpy as np
 
 from control.ci_mpc_c3 import log_math_cost, log_force_diag_once
@@ -297,6 +298,28 @@ class C3PlusMPC:
         else:
             x0 = np.concatenate([current_q, current_v])
 
+        # Stage 5 per-axis u bounds (env-gated, default-inert). When the
+        # EE-space planner is active and the env vars are set, override the
+        # symmetric scalar torque_limit with per-axis bounds:
+        #   u = [Fx, Fy, Fz];  Fx,Fy ∈ ±PUSHA_STAGE5_U_HORIZONTAL;
+        #                      Fz   ∈ ±PUSHA_STAGE5_U_VERTICAL.
+        # When EITHER env var is unset the scalar torque_limit path is used
+        # unchanged (bit-identical to pre-Stage-5).
+        _u_lo = None
+        _u_hi = None
+        if self.use_ee_space and self.solver.n_u == 3:
+            _uh_s = os.environ.get("PUSHA_STAGE5_U_HORIZONTAL", "")
+            _uv_s = os.environ.get("PUSHA_STAGE5_U_VERTICAL", "")
+            if _uh_s and _uv_s:
+                try:
+                    _uh = float(_uh_s)
+                    _uv = float(_uv_s)
+                    _u_lo = np.array([-_uh, -_uh, -_uv])
+                    _u_hi = np.array([+_uh, +_uh, +_uv])
+                except ValueError:
+                    _u_lo = None
+                    _u_hi = None
+
         # 4. Full-horizon C3+ ADMM solve — forwards slack expression (E, F, H, c)
         u_seq, x_seq = self.solver.solve(
             x0, A, B_ctrl, D, d, J_n, J_t, mu,
@@ -306,6 +329,7 @@ class C3PlusMPC:
             torque_limit=self.torque_limit,
             phi=phi,
             E=E_lcs, F=F_lcs, H=H_lcs, c_lcs=c_lcs,
+            u_lower=_u_lo, u_upper=_u_hi,
         )
 
         # 5. Store predicted trajectory + u[0] for next-step linearization
