@@ -39,6 +39,7 @@ from control.osc import OperationalSpaceController
 from control.osc.dynamics_helpers import ee_jacobian_translational
 from control.sampling_c3.reposition import PiecewiseLinearTracker
 from control.sampling_c3.reposition_ik import RepositionIKTracker
+from control.sampling_c3.reposition_trajectory import RepositionTrajectory
 from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
 from control.sampling_c3.sampling import generate_samples
 from sim.env_builder import PUSHER_RADIUS
@@ -210,6 +211,19 @@ class SamplingC3MPC:
             use_force_tracking = bool(getattr(params, "use_force_tracking", True)),
             W_force      = float(getattr(params, "W_force", 100.0)),
         )
+
+        # Stage A — Reposition PWL trajectory port (alignment plan §3).
+        # Default-None until first free-mode entry. Rebuilt on (a) target
+        # change > 5 mm, or (b) c3 → free transition (cleared at boundary).
+        # Sampled at control rate in the free-mode OSC branch.
+        self._use_pwl_traj: bool = bool(
+            getattr(params, "use_reposition_pwl_trajectory", False))
+        self._pwl_traj: Optional[RepositionTrajectory] = None
+        self._pwl_traj_built_for_target: Optional[np.ndarray] = None
+        self._pwl_traj_last_build_step: int = -1
+        if self._use_pwl_traj:
+            print("[STAGE-A-PWL] dispatcher: "
+                  "use_reposition_pwl_trajectory=True", flush=True)
 
         # Mode state
         self.is_doing_c3 = start_in_c3_mode
@@ -1034,6 +1048,20 @@ class SamplingC3MPC:
         # F-cheap diagnostic with threshold=1.0 confirmed the chatter
         # disappears when Path B is disabled.
         finished_repos = self._last_repos_finished
+        # Stage A — when PWL trajectory is active, derive finished_repos
+        # from the trajectory's is_finished (BOTH t ≥ t_end AND EE within
+        # 5 mm of p_target) instead of the legacy tracker's diag.
+        if self._use_pwl_traj and self._pwl_traj is not None:
+            _sim_t_fin = float(self._step) * float(self._dt_ctrl)
+            try:
+                _ee_now_fin = self.plant.CalcPointsPositions(
+                    plant_ctx, self.ee_frame, np.zeros(3),
+                    self.plant.world_frame(),
+                ).flatten()
+            except Exception:
+                _ee_now_fin = np.zeros(3)
+            finished_repos = self._pwl_traj.is_finished(
+                _sim_t_fin, _ee_now_fin, tol=0.005)
 
         # Contact-proximity entry gate: don't fire kToC3ReachedReposTarget
         # just because the IK arrived at the setback target — require the
@@ -2428,32 +2456,105 @@ class SamplingC3MPC:
             print(f"[OSC-FORCE] step={self._step} mode=c3 "
                   f"lam_des={_ld_mag:.3f} lam_ext={_le_mag:.3f}", flush=True)
         else:
-            # Free mode: follow the IK tracker's piecewise-linear waypoint
-            # path (lift → traverse → descend) instead of the straight line
-            # to the perpendicular-contact target. The straight line plows
-            # through the box in East/South. free_diag['p_des'] is the FK
-            # of IK knot 0 — the next waypoint the tracker is aiming for.
-            _p_des_wp = free_diag.get("p_des") if free_diag is not None else None
-            if _p_des_wp is not None:
-                _p_ee_des = _p_des_wp
-            elif self._current_repos_target is not None:
-                _p_ee_des = self._current_repos_target
+            # Free-mode position target.
+            #
+            # Stage A — Reposition mechanism port (env-flag
+            # PUSHA_REPOSITION_PWL=1, params.use_reposition_pwl_trajectory).
+            # When ON: build/refresh a RepositionTrajectory at planner
+            # cadence (or on target change > 5 mm), eval at current sim_t
+            # to get (p_des, v_des), feed to OSC. The legacy per-tick
+            # setpoint march + per-knot IK + joint-PD path is bypassed.
+            # Force=0 during reposition (Stage C is separate).
+            #
+            # When OFF: existing free_diag['p_des'] read from legacy
+            # tracker (RepositionIKTracker / PiecewiseLinearTracker).
+            if self._use_pwl_traj:
+                # Clear stale trajectory across c3→free transitions so the
+                # rebuild below triggers fresh with the new p_start (rather
+                # than inheriting a trajectory whose p_start was the
+                # PREVIOUS free episode's start).
+                if self._prev_mode == "c3":
+                    self._pwl_traj = None
+                    self._pwl_traj_built_for_target = None
+                # Rebuild triggers (anti-churn — Refinement 3):
+                #   (a) no trajectory yet (first free entry after a c3→free
+                #       transition reset, OR sim start), OR
+                #   (b) target moved > 5 mm vs build-time target.
+                # NOTE: trajectory.is_finished is NOT a rebuild trigger.
+                # Past t_end, RepositionTrajectory.eval returns
+                # (p_target, 0, True) which holds the target — rebuilding
+                # there would be the per-tick march in disguise.
+                _sim_t = float(self._step) * float(self._dt_ctrl)
+                _p_target = (
+                    self._current_repos_target
+                    if self._current_repos_target is not None
+                    else ee_pos_now
+                )
+                _p_target_arr = np.asarray(_p_target, dtype=float).reshape(3)
+                _need_rebuild = (
+                    self._pwl_traj is None
+                    or self._pwl_traj_built_for_target is None
+                    or float(np.linalg.norm(
+                        _p_target_arr
+                        - self._pwl_traj_built_for_target)) > 5e-3
+                )
+                if _need_rebuild:
+                    self._pwl_traj = RepositionTrajectory(
+                        p_start=ee_pos_now,
+                        p_target=_p_target_arr,
+                        z_safe=float(
+                            self.params.reposition_params.pwl_waypoint_height),
+                        speed=float(self.params.reposition_params.speed),
+                        t_start=_sim_t,
+                        straight_line_thresh=float(self.params
+                            .reposition_params
+                            .use_straight_line_traj_under_piecewise_linear),
+                    )
+                    self._pwl_traj_built_for_target = _p_target_arr.copy()
+                    self._pwl_traj_last_build_step = int(self._step)
+                    print(
+                        f"[STAGE-A-PWL] step={self._step} "
+                        f"sim_t={_sim_t:.3f} build "
+                        f"p_start=({ee_pos_now[0]:+.4f},"
+                        f"{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}) "
+                        f"p_target=({_p_target_arr[0]:+.4f},"
+                        f"{_p_target_arr[1]:+.4f},{_p_target_arr[2]:+.4f}) "
+                        f"K={self._pwl_traj.knot_positions.shape[1]} "
+                        f"t_end={self._pwl_traj.t_end:.3f}",
+                        flush=True,
+                    )
+                _p_des, _v_des, _done = self._pwl_traj.eval(_sim_t)
+                _p_ee_des = _p_des
+                _v_ee_des = _v_des
+                u_imp, imp_diag = self.executor.compute_torque(
+                    current_q, current_v, plant_ctx,
+                    p_ee_desired = _p_ee_des,
+                    v_ee_desired = _v_ee_des,
+                    lambda_n     = None,
+                    lambda_t     = None,
+                    J_n          = None,
+                    J_t          = None,
+                    lambda_des   = None,
+                )
             else:
-                _p_ee_des = ee_pos_now
-            # Free branch: no planner x_seq, so v_des is always None.
-            # The IK tracker drives p_ee_des through a lift→traverse→
-            # descend waypoint path; injecting a finite-difference
-            # velocity from those waypoints would reintroduce the
-            # source-change aliasing the structural fix retires.
-            u_imp, imp_diag = self.executor.compute_torque(
-                current_q, current_v, plant_ctx,
-                p_ee_desired = _p_ee_des,
-                v_ee_desired = None,
-                lambda_n     = None,
-                lambda_t     = None,
-                J_n          = None,
-                J_t          = None,
-            )
+                # Legacy free-mode path (unchanged).
+                _p_des_wp = (free_diag.get("p_des")
+                             if free_diag is not None else None)
+                if _p_des_wp is not None:
+                    _p_ee_des = _p_des_wp
+                elif self._current_repos_target is not None:
+                    _p_ee_des = self._current_repos_target
+                else:
+                    _p_ee_des = ee_pos_now
+                u_imp, imp_diag = self.executor.compute_torque(
+                    current_q, current_v, plant_ctx,
+                    p_ee_desired = _p_ee_des,
+                    v_ee_desired = None,
+                    lambda_n     = None,
+                    lambda_t     = None,
+                    J_n          = None,
+                    J_t          = None,
+                )
         u_opt = u_imp
 
         # --- λ_planned per-step trace ---------------------------------

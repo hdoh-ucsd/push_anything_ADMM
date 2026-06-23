@@ -573,6 +573,16 @@ class SamplingC3Params:
     # threshold during marginal contact predictions.
     min_push_force: float = 2.0
 
+    # ------------ Stage A — Reposition PWL trajectory port ---------------
+    # When True, the dispatcher bypasses the legacy per-tick setpoint
+    # march + per-knot IK + joint-PD path (RepositionIKTracker /
+    # PiecewiseLinearTracker) and instead builds a full N-knot Cartesian
+    # PWL trajectory (RepositionTrajectory) at planner cadence, feeding
+    # (p_des, v_des) to the OSC at each control tick. Default False →
+    # legacy path. Read from env var PUSHA_REPOSITION_PWL=1 in main.py
+    # at controller construction. See alignment plan §3 Stage A.
+    use_reposition_pwl_trajectory: bool = False
+
     # ------------ Contact-proximity entry-gate knobs ----------------------
     # When True, the kToC3ReachedReposTarget trigger requires both
     # IK-finished AND ee-to-box-center ≤ contact_entry_threshold. Without
@@ -828,6 +838,8 @@ class SamplingC3Params:
             W_force              = float(raw.get("W_force", 100.0)),
             nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
             min_push_force       = float(raw.get("min_push_force", 2.0)),
+            use_reposition_pwl_trajectory = bool(raw.get(
+                "use_reposition_pwl_trajectory", False)),
             use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),

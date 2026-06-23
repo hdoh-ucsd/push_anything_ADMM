@@ -511,6 +511,20 @@ def main():
         # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
         # under its own cost differential. Forcing the initial mode would
         # mask whether the pose actually does what we want.
+        # Stage A — Reposition PWL trajectory port (alignment plan §3).
+        # Env var PUSHA_REPOSITION_PWL=1 flips the dispatcher to the new
+        # full-N-knot Cartesian PWL trajectory path (fed to existing OSC
+        # position-tracking). Default OFF → legacy per-tick march path.
+        _env_pwl = os.environ.get("PUSHA_REPOSITION_PWL", None)
+        if _env_pwl == "1":
+            sc3_params.use_reposition_pwl_trajectory = True
+            print("[STAGE-A-PWL] PUSHA_REPOSITION_PWL=1 → using "
+                  "RepositionTrajectory + OSC position-tracking "
+                  "(Stage A path).", flush=True)
+        elif _env_pwl == "0":
+            sc3_params.use_reposition_pwl_trajectory = False
+            print("[STAGE-A-PWL] PUSHA_REPOSITION_PWL=0 → legacy "
+                  "per-tick reposition path", flush=True)
         _rng = np.random.default_rng(args.seed) if args.seed is not None else None
         if args.seed is not None:
             print(f"[OVERRIDE] seed={args.seed} (rng=np.random.default_rng)")
