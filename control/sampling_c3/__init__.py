@@ -9,7 +9,7 @@ from control.sampling_c3.params import (
     SamplingParams,
     SamplingStrategy,
 )
-from control.sampling_c3.wrapper import SamplingC3MPC
+from control.sampling_c3.sampling_based_c3_controller import SamplingC3MPC
 
 __all__ = [
     "ProgressMetric",
