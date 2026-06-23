@@ -777,7 +777,23 @@ class QuadraticManipulationCost:
 
         # --- R: torque cost is now an EE-force cost. Same scalar weight,
         #     applied to R^3 input. ---
-        R = self.w_torque * np.eye(n_u)
+        # Stage 5 per-axis R override (env-gated, default-inert). When
+        # PUSHA_STAGE5_R_VECTOR is set as "rx,ry,rz" (e.g., "0.01,0.01,1"),
+        # use np.diag([rx,ry,rz]); else scalar w_torque*I (bit-identical to
+        # pre-Stage-5).
+        import os as _os
+        _r_s = _os.environ.get("PUSHA_STAGE5_R_VECTOR", "")
+        if _r_s and n_u == 3:
+            try:
+                _rv = [float(x) for x in _r_s.split(",")]
+                if len(_rv) == 3:
+                    R = np.diag(_rv)
+                else:
+                    R = self.w_torque * np.eye(n_u)
+            except ValueError:
+                R = self.w_torque * np.eye(n_u)
+        else:
+            R = self.w_torque * np.eye(n_u)
 
         QN = self.w_terminal * Q
         return Q, R, QN, x_ref

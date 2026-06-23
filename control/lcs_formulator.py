@@ -54,9 +54,34 @@ class LCSFormulator:
 
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
-                 box_ground_drag: float = 10.0):
+                 box_ground_drag: float = 10.0,
+                 lcs_explicit_box_ground_contacts: int = 0):
         self.plant = plant
         self.mu    = float(mu)
+        # Stage 1 12-contact LCS knob. When > 0, extract_lcs_contacts
+        # synthesizes N explicit box-vertex ↔ ground contact rows (in
+        # addition to Drake's EE-BOX admits; Drake's auto-admitted BOX-GND
+        # pair is DE-DUPLICATED to avoid double-counting). Reference's
+        # resolve_contacts_to_lists[2] is 12 for non-cube objects; for our
+        # cube the natural choices are 4 (bottom corners only), 8 (all
+        # vertices), or 12 (8 vertices + 4 bottom-face centers). Default 0
+        # preserves the current Drake-driven behavior exactly. Env-var
+        # override LCS_EXPLICIT_BOX_GND takes precedence so the smoke probe
+        # can flip the knob without main.py edits.
+        _env_synth = os.environ.get("LCS_EXPLICIT_BOX_GND", "")
+        if _env_synth:
+            try:
+                self.lcs_explicit_box_ground_contacts = int(_env_synth)
+            except ValueError:
+                self.lcs_explicit_box_ground_contacts = int(lcs_explicit_box_ground_contacts)
+        else:
+            self.lcs_explicit_box_ground_contacts = int(lcs_explicit_box_ground_contacts)
+        # Lazy-initialized box half-extents (queried from geometry inspector
+        # on the first synthesis call; needs a context, not available here).
+        self._box_half_extents: "Optional[np.ndarray]" = None
+        # Hard-coded for the probe: world-frame ground plane z (matches
+        # env_builder.py table-top). Synthesis computes phi = vertex_z - GROUND_Z.
+        self._ground_z = 0.0
         # Effective viscous damping coefficient applied to the manipuland's
         # translational velocity in the LCS-prediction A matrix. Approximates
         # box-ground Coulomb drag, which the LCS complementarity machinery
@@ -232,6 +257,136 @@ class LCSFormulator:
         return M, Cv, tau_g, B, J_f, f_eval
 
     # ------------------------------------------------------------------
+    def _maybe_init_box_half_extents(self, query_obj):
+        """Lazy-init self._box_half_extents from the manipuland's collision
+        geometry. Fires once on the first synthesis call. Returns the
+        cached (3,) np.ndarray on subsequent calls."""
+        if self._box_half_extents is not None:
+            return self._box_half_extents
+        inspector = query_obj.inspector()
+        for gid in self._manipuland_geom_ids:
+            shape = inspector.GetShape(gid)
+            if isinstance(shape, ad.Box):
+                # Drake Box.size() returns (3,) full edge lengths.
+                self._box_half_extents = np.asarray(shape.size()) / 2.0
+                return self._box_half_extents
+        # Fallback for non-Box manipulands (sphere etc.): no synthesis possible.
+        self._box_half_extents = np.zeros(3)
+        return self._box_half_extents
+
+    def _box_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
+        """Return (3, n_synth) array of body-frame contact points to enumerate
+        for box-ground synthesis. Choices:
+          4  → 4 bottom corners only       (minimal four-point support)
+          8  → all 8 cube vertices         (corners; top set inactive at rest)
+          12 → 8 vertices + 4 bottom-face edge midpoints
+        """
+        hx, hy, hz = self._box_half_extents
+        if n_synth == 4:
+            pts = np.array([[+hx, +hy, -hz],
+                            [+hx, -hy, -hz],
+                            [-hx, +hy, -hz],
+                            [-hx, -hy, -hz]]).T
+        elif n_synth == 8:
+            pts = np.array([[sx, sy, sz]
+                            for sx in (+hx, -hx)
+                            for sy in (+hy, -hy)
+                            for sz in (+hz, -hz)]).T
+        elif n_synth == 12:
+            # 8 corners + 4 bottom-face edge midpoints
+            corners = [[sx, sy, sz]
+                       for sx in (+hx, -hx)
+                       for sy in (+hy, -hy)
+                       for sz in (+hz, -hz)]
+            edge_mids = [[+hx,   0.0, -hz],
+                         [-hx,   0.0, -hz],
+                         [  0.0, +hy, -hz],
+                         [  0.0, -hy, -hz]]
+            pts = np.array(corners + edge_mids).T
+        else:
+            raise ValueError(
+                f"lcs_explicit_box_ground_contacts must be 0, 4, 8, or 12 "
+                f"(got {n_synth})"
+            )
+        return pts
+
+    def _synthesize_box_ground_contacts(self, context, query_obj):
+        """Synthesize N box-vertex ↔ ground contact rows for Stage 1's
+        12-contact LCS. Returns four parallel lists, in the same format
+        as the Drake-admitted contacts:
+
+          phis_synth      : list[float]       signed distances φ
+          J_n_rows_synth  : list[(n_v,)]      normal-Jacobian rows
+          J_t_rows_synth  : list[(n_v,)]      tangent-Jacobian rows (4 per contact)
+          ci_synth        : list[dict]        contact-info dicts
+
+        On no-op (knob=0 or non-box manipuland), returns four empty lists.
+        """
+        if self.lcs_explicit_box_ground_contacts == 0 or self._obj_body is None:
+            return [], [], [], []
+
+        half_extents = self._maybe_init_box_half_extents(query_obj)
+        if not np.all(half_extents > 0):
+            # Manipuland is not a Box (sphere etc.); cannot enumerate vertices.
+            return [], [], [], []
+
+        n_synth = self.lcs_explicit_box_ground_contacts
+        verts_body = self._box_vertex_set_body_frame(n_synth)   # (3, n_synth)
+
+        box_frame    = self._obj_body.body_frame()
+        W            = self.plant.world_frame()
+        nhat_ground  = np.array([0.0, 0.0, 1.0])    # ground normal: force on box +z
+
+        phis_s:     list = []
+        J_n_rows_s: list = []
+        J_t_rows_s: list = []
+        ci_s:       list = []
+
+        for i in range(n_synth):
+            pt_body = verts_body[:, i:i+1]   # (3, 1) — Drake API takes column vec
+            # World position of this vertex
+            pt_world = self.plant.CalcPointsPositions(
+                context, box_frame, pt_body, W,
+            ).flatten()
+            phi_i = float(pt_world[2] - self._ground_z)
+            phis_s.append(phi_i)
+
+            # Translational Jacobian at this body-frame point (3, n_v).
+            # Ground is welded (world_body); relative Jacobian == box Jacobian.
+            J_box = self.plant.CalcJacobianTranslationalVelocity(
+                context, ad.JacobianWrtVariable.kV,
+                box_frame, pt_body, W, W,
+            )  # (3, n_v)
+
+            # Normal Jacobian row: nhat-projected (force on box upward).
+            J_n_rows_s.append(nhat_ground @ J_box)
+
+            # Tangent Jacobians: 4-edge polyhedral pyramid in xy plane,
+            # matching the structure used for Drake-admitted pairs (line 393).
+            for t_dir in (np.array([1.0, 0.0, 0.0]),
+                          np.array([-1.0, 0.0, 0.0]),
+                          np.array([0.0, 1.0, 0.0]),
+                          np.array([0.0, -1.0, 0.0])):
+                J_t_rows_s.append(t_dir @ J_box)
+
+            # Contact-info dict in the same shape as Drake's (line 354-363).
+            # Tagged "BOX-VERT-i" so the diagnostic distinguishes them from
+            # Drake's "EE-BOX" / "BOX-GND".
+            ci_s.append({
+                "body_A":       self._obj_body.name(),
+                "body_B":       "ground (world_body)",
+                "a_is_box":     True,
+                "tag":          f"BOX-VERT-{i}",
+                "nhat_BA_W":    nhat_ground.copy(),
+                "nhat_onto_box": nhat_ground.copy(),
+                "p_ACa":        verts_body[:, i].copy(),
+                "p_BCb":        np.array([pt_world[0], pt_world[1], self._ground_z]),
+                "distance":     phi_i,
+            })
+
+        return phis_s, J_n_rows_s, J_t_rows_s, ci_s
+
+    # ------------------------------------------------------------------
     def extract_lcs_contacts(self, context,
                              # 0.002 m is the validated Pareto-optimal value.
                              # An ablation at 0.040 m (results/thresh40_west_*)
@@ -281,6 +436,11 @@ class LCSFormulator:
         # All other pairs (arm self-collision, arm-table, arm-base) stay
         # excluded.
         if self._manipuland_geom_ids and self._ee_geom_ids:
+            # When Stage 1 synthesis is active (knob > 0), suppress Drake's
+            # auto-admitted BOX-GND pair: the synthesized box-vertex contacts
+            # replace it (otherwise the single BOX-GND pair would be double-
+            # counted alongside the 4/8/12 synthesized rows).
+            _synth_active = self.lcs_explicit_box_ground_contacts > 0
             def _admit(sdp):
                 ee_box = ((sdp.id_A in self._manipuland_geom_ids and
                            sdp.id_B in self._ee_geom_ids)
@@ -290,6 +450,8 @@ class LCSFormulator:
                                sdp.id_B in self._ground_geom_ids)
                            or (sdp.id_B in self._manipuland_geom_ids and
                                sdp.id_A in self._ground_geom_ids))
+                if _synth_active and box_ground:
+                    return False    # de-dup: synthesis owns this contact
                 return ee_box or box_ground
             sd_pairs = [sdp for sdp in sd_pairs if _admit(sdp)]
 
@@ -392,6 +554,27 @@ class LCSFormulator:
 
             for d in (t1, -t1, t2, -t2):
                 J_t_rows.append(d @ J_rel)  # (n_v,)
+
+        # === Stage 1 12-contact LCS: append synthesized box-vertex ↔ ground ===
+        # When self.lcs_explicit_box_ground_contacts > 0, append explicit box-
+        # vertex contact rows after the Drake-admitted ones. Drake's BOX-GND
+        # pair was already de-duplicated above (admit filter line 451-452).
+        # The synthesized rows share the polyhedral-pyramid layout (4 tangent
+        # dirs per contact) so downstream n_t = 4·n_c arithmetic in
+        # linearize_discrete (line ~742) holds without modification.
+        if self.lcs_explicit_box_ground_contacts > 0:
+            (phis_s, J_n_rows_s,
+             J_t_rows_s, ci_s) = self._synthesize_box_ground_contacts(
+                context, query_obj,
+            )
+            phis.extend(phis_s)
+            J_n_rows.extend(J_n_rows_s)
+            J_t_rows.extend(J_t_rows_s)
+            self._last_contact_info.extend(ci_s)
+            for ci in ci_s:
+                self._last_nhats.append(ci["nhat_onto_box"])
+            # ee_box_contacts list is for the rotation-bonus scorer (EE-BOX
+            # pairs only) — synthesized BOX-VERT contacts do not contribute.
 
         # === [LCS-FILTER-AUDIT] one-shot diagnostic ============================
         # Fires once, at the first extract_lcs_contacts call after the
