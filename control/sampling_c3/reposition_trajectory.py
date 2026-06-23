@@ -1,0 +1,139 @@
+"""Cartesian PWL reposition trajectory — Stage A port of the reference's
+Reposition(...) + LcmTrajectoryReceiver mechanism.
+
+Pure-numpy. Builds a 3-leg (lift / traverse / descend) Cartesian PWL
+trajectory between two world-frame points, parameterized by absolute
+sim time. Replaces the per-tick setpoint march + per-knot IK + joint-PD
+path in the legacy free-mode trackers. Fed to the existing
+OperationalSpaceController via (p_des, v_des) = eval(sim_t) at each
+control tick.
+
+Spec: docs/superpowers/plans/2026-06-23-alignment-phase-plan.md §3
+Stage A. The reference dairlib code is reposition.cc (Reposition(...))
++ sampling_based_c3_controller.cc:1839-1928 (UpdateRepositioningExecution-
+Trajectory) + franka_osc_controller.cc:101-103, 149-158
+(LcmTrajectoryReceiver + TransTaskSpaceTrackingData).
+"""
+from __future__ import annotations
+
+import numpy as np
+
+
+class RepositionTrajectory:
+    """3-leg Cartesian PWL trajectory parameterized by sim time.
+
+    Knots (typical):
+        knot 0 = p_start
+        knot 1 = (p_start.xy, z_safe)     [lift-end]
+        knot 2 = (p_target.xy, z_safe)    [traverse-end]
+        knot 3 = p_target                 [descend-end]
+
+    Zero-length legs are pruned (no NaN velocity). If
+    ``||p_start - p_target|| < straight_line_thresh``, the trajectory
+    collapses to a single leg p_start → p_target (no z_safe transit).
+
+    Knot times are computed from cumulative Euclidean leg lengths
+    divided by ``speed`` (constant speed per leg).
+
+    ``eval(sim_t)`` returns ``(p_des, v_des, done)``:
+        - p_des: linearly interpolated position on the active leg.
+        - v_des: constant per leg, = (knot[i+1] - knot[i]) / (t[i+1] - t[i]).
+                 Zero when sim_t >= final knot time.
+        - done: True iff sim_t >= final knot time.
+
+    ``is_finished(sim_t, ee_now, tol)`` is the reference's
+    ``finished_reposition_flag`` analog: BOTH the trajectory time has
+    elapsed AND the EE is physically within ``tol`` of p_target.
+    """
+
+    def __init__(self,
+                 p_start: np.ndarray,
+                 p_target: np.ndarray,
+                 z_safe: float,
+                 speed: float,
+                 t_start: float,
+                 straight_line_thresh: float = 0.008):
+        p_start  = np.asarray(p_start,  dtype=float).reshape(3)
+        p_target = np.asarray(p_target, dtype=float).reshape(3)
+        if speed <= 0.0:
+            raise ValueError(f"speed must be positive, got {speed}")
+
+        self.p_start  = p_start.copy()
+        self.p_target = p_target.copy()
+        self.z_safe   = float(z_safe)
+        self.speed    = float(speed)
+        self.t_start  = float(t_start)
+
+        direct = float(np.linalg.norm(p_target - p_start))
+        if direct < float(straight_line_thresh):
+            # Sub-cm hop: direct line, no z_safe transit.
+            self.knot_positions = np.stack([p_start, p_target], axis=1)  # (3, 2)
+        else:
+            lift_end     = np.array([p_start[0],  p_start[1],  z_safe])
+            traverse_end = np.array([p_target[0], p_target[1], z_safe])
+            # Build knots, pruning zero-length legs.
+            knots = [p_start.copy()]
+            if abs(p_start[2] - z_safe) > 1e-3:
+                knots.append(lift_end)
+            if not np.allclose(traverse_end[:2], knots[-1][:2], atol=1e-9):
+                knots.append(traverse_end)
+            if abs(p_target[2] - z_safe) > 1e-3:
+                knots.append(p_target.copy())
+            else:
+                # Target z == z_safe: last knot IS the target (no descend).
+                knots[-1] = p_target.copy()
+            self.knot_positions = np.stack(knots, axis=1)  # (3, K)
+
+        # Knot times = t_start + cumulative leg-length / speed.
+        seg_lengths = np.linalg.norm(
+            np.diff(self.knot_positions, axis=1), axis=0
+        )                                              # (K-1,)
+        seg_durations = seg_lengths / self.speed       # (K-1,)
+        cum = np.concatenate([[0.0], np.cumsum(seg_durations)])  # (K,)
+        self.knot_times = self.t_start + cum
+
+    @property
+    def t_end(self) -> float:
+        return float(self.knot_times[-1])
+
+    def eval(self, sim_t: float) -> tuple[np.ndarray, np.ndarray, bool]:
+        """Returns ``(p_des, v_des, done)``."""
+        t = float(sim_t)
+        if t <= self.t_start:
+            # Before start: hold start position, command initial leg velocity.
+            p = self.knot_positions[:, 0].copy()
+            if self.knot_positions.shape[1] >= 2:
+                seg_dt = self.knot_times[1] - self.knot_times[0]
+                v = (self.knot_positions[:, 1]
+                     - self.knot_positions[:, 0]) / seg_dt
+            else:
+                v = np.zeros(3)
+            return p, v, False
+
+        if t >= self.t_end:
+            # Past end: hold target, zero velocity, done.
+            return self.knot_positions[:, -1].copy(), np.zeros(3), True
+
+        # Interior: find segment [i, i+1] s.t. t in [t_i, t_{i+1}).
+        i = int(np.searchsorted(self.knot_times, t, side="right")) - 1
+        i = max(0, min(i, self.knot_positions.shape[1] - 2))
+        t_i  = self.knot_times[i]
+        t_ip = self.knot_times[i + 1]
+        p_i  = self.knot_positions[:, i]
+        p_ip = self.knot_positions[:, i + 1]
+        alpha = (t - t_i) / max(t_ip - t_i, 1e-12)
+        p = p_i + alpha * (p_ip - p_i)
+        v = (p_ip - p_i) / max(t_ip - t_i, 1e-12)
+        return p, v, False
+
+    def is_finished(self, sim_t: float, ee_now: np.ndarray,
+                    tol: float = 0.005) -> bool:
+        """Reference-style finished_reposition_flag analog.
+
+        True iff trajectory time has elapsed AND EE is within ``tol``
+        of p_target.
+        """
+        if sim_t < self.t_end:
+            return False
+        return float(np.linalg.norm(np.asarray(ee_now).reshape(3)
+                                    - self.p_target)) <= float(tol)
