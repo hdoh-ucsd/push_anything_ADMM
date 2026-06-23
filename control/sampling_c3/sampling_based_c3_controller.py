@@ -1966,6 +1966,7 @@ class SamplingC3MPC:
             best_src        = best_src,
             best_other_cost = best_other_cost,
             met             = met,
+            finished_repos  = finished_repos,
             # t_step_start is injected by compute_control (per OSC tick,
             # not per planner-solve tick).
         )
@@ -1999,6 +2000,7 @@ class SamplingC3MPC:
         k_star          = plan_ctx["k_star"]
         best_src        = plan_ctx["best_src"]
         best_other_cost = plan_ctx["best_other_cost"]
+        finished_repos  = plan_ctx.get("finished_repos", False)
         met             = plan_ctx["met"]
         t_step_start    = plan_ctx["t_step_start"]
 
@@ -2604,6 +2606,45 @@ class SamplingC3MPC:
                   f"ratio={_ratio_ge:.4f} "
                   f"ee_to_optimal={_ee_to_optimal:.4f}m "
                   f"phi={_phi_ge:.4f}m")
+            # [STAGE-A-TRACE] purpose-built per-tick trace for the Stage A
+            # bar parser (alignment plan §3 Stage A). One line per control
+            # tick carrying all parser inputs:
+            #   phi             — Drake signed-distance EE→box surface (m).
+            #                     nan when no EE-BOX pair within 0.50 m
+            #                     (typical of free mode away from contact).
+            #   box_xy          — for goal_motion (informational, A→E
+            #                     cumulative).
+            #   lam_n_ee_box    — admitted EE-BOX normal force (nan in
+            #                     free mode).
+            #   qy, qz          — box-quaternion components (orientation
+            #                     guard).
+            #   finished_repos  — entry-gate candidate accounting.
+            # Reads only — no behavior change.
+            _lam_n_ee_box_trace = float("nan")
+            if mode == "c3":
+                _ci_tr = getattr(
+                    self.base_mpc.formulator, "_last_contact_info", None)
+                if (_ci_tr is not None and _lam_n is not None
+                        and hasattr(_lam_n, "__len__") and len(_lam_n) > 0):
+                    for _i_tr, _info_tr in enumerate(_ci_tr):
+                        if (isinstance(_info_tr, dict)
+                                and _info_tr.get("tag") == "EE-BOX"):
+                            if len(_lam_n) > _i_tr:
+                                _lam_n_ee_box_trace = float(_lam_n[_i_tr])
+                            break
+            print(
+                f"[STAGE-A-TRACE] step={self._step} "
+                f"sim_t={self._step * self._dt_ctrl:.3f} "
+                f"mode={mode} "
+                f"phi={_phi_ge:.5f} "
+                f"box_xy={float(current_q[self._obj_x_idx]):+.5f},"
+                f"{float(current_q[self._obj_y_idx]):+.5f} "
+                f"lam_n_ee_box={_lam_n_ee_box_trace:.4f} "
+                f"qy={float(current_q[self._obj_qy]):+.5f} "
+                f"qz={float(current_q[self._obj_qz]):+.5f} "
+                f"finished_repos={int(bool(finished_repos))}",
+                flush=True,
+            )
             if self._step % 20 == 0:
                 self._print_table_diag(self._step, samples, labels, results, k_star)
 
