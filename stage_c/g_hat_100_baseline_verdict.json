@@ -1,0 +1,61 @@
+{
+  "cell_name": "g_hat_baseline",
+  "n_seeds": 2,
+  "n_pass_gap_closed": 0,
+  "cell_pass_gap_closed": false,
+  "seed_pass_gap_closed": {
+    "0": false,
+    "4": false
+  },
+  "seed_results": {
+    "0": {
+      "c3_ticks": 117,
+      "sustained_contact": 0.008547008547008548,
+      "admit_active": 0.008547008547008548,
+      "n_admit_count": 1,
+      "var_u_z": 0.0,
+      "max_abs_u_z": 0.0,
+      "no_phantom": true,
+      "n_phantom": 0,
+      "pass_V1": false,
+      "pass_V2": false,
+      "pass_V3": false,
+      "pass_V4": true,
+      "gap_closed": false,
+      "D1_eq_true_c3": 0,
+      "D1_eq_total_c3": 0,
+      "pass_D1": false,
+      "max_abs_qy": 0.00139,
+      "max_abs_qz": 0.03791,
+      "box_motion_m": 0.00066,
+      "motion_refutes_brush_shove": false
+    },
+    "4": {
+      "c3_ticks": 178,
+      "sustained_contact": 0.016853932584269662,
+      "admit_active": 0.016853932584269662,
+      "n_admit_count": 3,
+      "var_u_z": 0.0,
+      "max_abs_u_z": 0.0,
+      "no_phantom": true,
+      "n_phantom": 0,
+      "pass_V1": false,
+      "pass_V2": false,
+      "pass_V3": false,
+      "pass_V4": true,
+      "gap_closed": false,
+      "D1_eq_true_c3": 0,
+      "D1_eq_total_c3": 0,
+      "pass_D1": false,
+      "max_abs_qy": 0.00012,
+      "max_abs_qz": 0.00026,
+      "box_motion_m": 0.0,
+      "motion_refutes_brush_shove": false
+    }
+  },
+  "motion_diagnostic": {
+    "n_seeds_motion_refutes_brush_shove": 0,
+    "n_seeds": 2,
+    "interpretation": "brush-shove CONFIRMED \u2014 motion < 5mm on at least one seed; EXPECTED reading at gap-closed (NOT a Stage C failure)"
+  }
+}
