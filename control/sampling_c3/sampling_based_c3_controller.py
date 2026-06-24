@@ -2504,7 +2504,7 @@ class SamplingC3MPC:
                         p_target=_p_target_arr,
                         z_safe=float(
                             self.params.reposition_params.pwl_waypoint_height),
-                        speed=float(self.params.reposition_params.speed),
+                        speed=float(self.params.reposition_params.pwl_speed),
                         t_start=_sim_t,
                         straight_line_thresh=float(self.params
                             .reposition_params
