@@ -2132,6 +2132,55 @@ class SamplingC3MPC:
                       f"u_z={_u_seq0[2]:+.4f} eq={_eq}",
                       flush=True)
 
+            # Stage C post-FAIL localization probe — [SETPOINT] trace.
+            # Splits the Phase 1 FAIL bottleneck across the upstream-vs-executor
+            # fork: does the planner *predict* contact (x_seq EE-to-box closing
+            # below 2 mm anywhere in the horizon) and ship a contact-seeking
+            # p_ee_des to the OSC, or does it park p_ee_des in the [2,5 mm)
+            # hover band and leave the OSC tracking a hovering setpoint?
+            # Gated by PUSHA_SETPOINT_TRACE=1 (default-OFF). EE-space-only.
+            if (_os_fr.environ.get("PUSHA_SETPOINT_TRACE", "0") == "1"
+                    and _use_ee_space and _x_seq is not None and len(_x_seq) >= 2):
+                _box_now = np.array([
+                    current_q[self._obj_x_idx],
+                    current_q[self._obj_y_idx],
+                    current_q[self._obj_z_idx],
+                ])
+                _half = 0.05   # box half-extent (config/tasks.yaml pushing cube)
+                _sr   = 0.025  # pusher sphere radius
+
+                def _sphere_to_box_phi(ee_p, box_p):
+                    # Axis-aligned approximation (box rotation neglected for the
+                    # probe; box yaw stays small over 1 horizon × 0.05 s).
+                    d = np.abs(ee_p - box_p) - _half
+                    outside = float(np.linalg.norm(np.maximum(d, 0.0)))
+                    inside  = float(min(0.0, np.max(d)))
+                    return outside + inside - _sr
+
+                _phi_pred_horizon = []
+                for _k in range(1, _x_seq.shape[0]):
+                    _ee_k  = np.asarray(_x_seq[_k][7:10], dtype=float)
+                    _box_k = np.asarray(_x_seq[_k][4:7],  dtype=float)
+                    _phi_pred_horizon.append(_sphere_to_box_phi(_ee_k, _box_k))
+                _phi_pred1   = _phi_pred_horizon[0]
+                _phi_pred_mn = float(min(_phi_pred_horizon))
+                _kmin        = int(_phi_pred_horizon.index(_phi_pred_mn)) + 1
+                _phi_pred_mx = float(max(_phi_pred_horizon))
+                _phi_act     = _sphere_to_box_phi(ee_pos_now, _box_now)
+                _setpoint_sd = _sphere_to_box_phi(_p_ee_des, _box_now)
+                _N           = int(_x_seq.shape[0] - 1)
+                print(
+                    f"[SETPOINT] tick={self._step} N={_N} "
+                    f"p_ee_des=[{_p_ee_des[0]:+.4f},{_p_ee_des[1]:+.4f},{_p_ee_des[2]:+.4f}] "
+                    f"box_now=[{_box_now[0]:+.4f},{_box_now[1]:+.4f},{_box_now[2]:+.4f}] "
+                    f"setpoint_sd={_setpoint_sd:+.5f} "
+                    f"phi_act={_phi_act:+.5f} "
+                    f"phi_pred1={_phi_pred1:+.5f} "
+                    f"phi_pred_min={_phi_pred_mn:+.5f}@k={_kmin} "
+                    f"phi_pred_max={_phi_pred_mx:+.5f}",
+                    flush=True,
+                )
+
             # Lever 3: c3 approach-closing override. When LCS admits no
             # EE-BOX pair, the planner sees no contact and parks the EE in
             # place — but the typical arrival sphere-to-box gap is ~6 mm
