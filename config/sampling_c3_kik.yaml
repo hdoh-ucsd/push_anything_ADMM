@@ -252,6 +252,15 @@ reposition_params:
   # p_guide[:, -1] clamped short of p_target and finished_repos rarely fired.
   pwl_waypoint_height: 0.15    # m
 
+  # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
+  # (Stage A, PUSHA_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
+  # (dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml).
+  # Kept separate from `speed` above: that one is the legacy IK tracker's
+  # planning-lookahead stride; this one is the PWL's per-leg linear velocity.
+  # Aligning to the reference eliminates the free-mode brush observed at
+  # speed=0.40 (vz≈0.44 m/s past phi=6mm → Drake compliant contact yawed box).
+  pwl_speed: 0.18    # m/s
+
   # (other traj-type knobs left at defaults; ignored when traj_type=kPiecewiseLinear)
   use_straight_line_traj_under_spline: 0.12
   use_straight_line_traj_within_angle: 0.30

@@ -325,6 +325,11 @@ class RepositionParams:
 
     # Piecewise-linear-specific (the only type we currently implement)
     pwl_waypoint_height:                           float = 0.15  # safe-height m (25 mm above 0.10 box top + 0.025 pusher; reclaims horizon budget — see kik.yaml)
+    # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
+    # (Stage A). Separate from `.speed` (which the legacy IK tracker
+    # consumes as a planning-lookahead stride). Reference push_t value
+    # is 0.18 m/s (examples/sampling_c3/push_t/parameters/reposition_params.yaml).
+    pwl_speed:                                     float = 0.18  # m/s
 
     # Joint-PD control law for tracking the per-step waypoint.
     # Defaults are calibrated to the operating regime measured in step 8;

@@ -100,3 +100,35 @@ def test_finished_predicate_requires_both_time_and_ee_near_target():
                             tol=0.005)
     assert not traj.is_finished(t_end - 1.0, np.array([0.20, 0.0, 0.03]),
                                 tol=0.005)
+
+
+def test_kik_yaml_pwl_speed_matches_reference_push_t():
+    """Stage A descent-leg alignment lock: kik.yaml's pwl_speed must equal
+    the reference push_t value (0.18 m/s).
+
+    Reference: dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml.
+    Regression target: at speed=0.40 the PWL descent ran at vz≈0.44 m/s past
+    phi=6mm and Drake compliant contact yawed the box (|qz| 8× baseline on
+    seed 0). Aligning to the reference's per-leg-constant 0.18 m/s by
+    construction is the fix.
+    """
+    from control.sampling_c3.params import SamplingC3Params
+    params = SamplingC3Params.from_yaml("config/sampling_c3_kik.yaml")
+    assert params.reposition_params.pwl_speed == pytest.approx(0.18), (
+        f"pwl_speed diverged from reference push_t value 0.18: "
+        f"got {params.reposition_params.pwl_speed}"
+    )
+    # Sanity: descent leg from z=0.15 (pwl_waypoint_height) to z=0.03 at
+    # 0.18 m/s → 0.667 s = 67 ticks at dt=0.01 (vs the buggy 30 ticks @ 0.40).
+    z_safe = float(params.reposition_params.pwl_waypoint_height)
+    pwl_speed = float(params.reposition_params.pwl_speed)
+    traj = RepositionTrajectory(
+        p_start=np.array([0.0, 0.0, z_safe]),
+        p_target=np.array([0.0, 0.0, 0.03]),
+        z_safe=z_safe, speed=pwl_speed, t_start=0.0,
+    )
+    _, v_des, _ = traj.eval(0.05)  # interior of the descent leg
+    assert np.linalg.norm(v_des) == pytest.approx(pwl_speed, rel=1e-6), (
+        f"descent v_des magnitude diverged from configured pwl_speed: "
+        f"|v_des|={np.linalg.norm(v_des)} pwl_speed={pwl_speed}"
+    )
