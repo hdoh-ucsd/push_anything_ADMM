@@ -2116,6 +2116,22 @@ class SamplingC3MPC:
             _Jt    = self.base_mpc.formulator._last_J_t
             _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
 
+            import os as _os_fr
+            if _os_fr.environ.get("PUSHA_FORCE_ROUTE_TRACE", "0") == "1":
+                _fr_env = _os_fr.environ.get("PUSHA_FORCE_ROUTING", "off").lower()
+                _u0 = getattr(self.base_mpc, "_last_u_seq", None)
+                if _u0 is not None and hasattr(_u0, "shape") and _u0.ndim == 2 and _u0.shape[1] == 3:
+                    _u_seq0 = np.asarray(_u0[0], dtype=float).reshape(3)
+                else:
+                    _u_seq0 = np.zeros(3)
+                _ld = np.asarray(_lam_des, dtype=float).reshape(3)
+                _eq = bool(np.allclose(_ld, _u_seq0, atol=1e-9))
+                print(f"[FORCE-ROUTE] tick={self._step} env={_fr_env} "
+                      f"lambda_des=[{_ld[0]:+.4f},{_ld[1]:+.4f},{_ld[2]:+.4f}] "
+                      f"u_seq0=[{_u_seq0[0]:+.4f},{_u_seq0[1]:+.4f},{_u_seq0[2]:+.4f}] "
+                      f"u_z={_u_seq0[2]:+.4f} eq={_eq}",
+                      flush=True)
+
             # Lever 3: c3 approach-closing override. When LCS admits no
             # EE-BOX pair, the planner sees no contact and parks the EE in
             # place — but the typical arrival sphere-to-box gap is ~6 mm
