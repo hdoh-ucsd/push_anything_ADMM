@@ -1,0 +1,205 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+INFO:drake:Meshcat listening for connections at http://localhost:7003
+INFO:drake:Meshcat listening for connections at http://localhost:7004
+INFO:drake:Meshcat listening for connections at http://localhost:7005
+INFO:drake:Meshcat listening for connections at http://localhost:7006
+========================================================================
+STAGE C  Δt × drag  2×2 FACTORIAL  (offline, count=4)
+========================================================================
+  state: box rest (0,0,0.05), EE east face pen 0.10mm, EE vel (-0.05,0,0), u=0
+  Δt cells: {0.05, 0.005}    drag cells: {10, 0}
+  Δt=0.005 cells: 10 sub-steps, FAITHFUL re-extraction each step
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+
+  Drake ground truth (single 0.05-s step):
+    Δ box xyz = (-1.684, +0.165, -0.495) mm
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=643>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  CELL A_dt050_d10  Δt=0.05 drag=10.0  (single-step)
+    Δ box xyz = (-0.451, +0.012, -0.000) mm
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1013>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  CELL B_dt050_d00  Δt=0.05 drag=0.0  (single-step)
+    Δ box xyz = (-0.451, +0.012, -0.000) mm
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1383>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  CELL C_dt005_d10  Δt=0.005 drag=10.0  (10×sub-step RE-EXTRACTED)
+    Δ box xyz (cumulative) = (-1.135, +0.007, -0.000) mm
+    λ first sub-step: max=2.3419, nnz=14
+    λ last  sub-step: max=0.6870, nnz=14
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1753>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  CELL D_dt005_d00  Δt=0.005 drag=0.0  (10×sub-step RE-EXTRACTED)
+    Δ box xyz (cumulative) = (-1.178, +0.007, -0.000) mm
+    λ first sub-step: max=2.3419, nnz=14
+    λ last  sub-step: max=0.6870, nnz=14
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2123>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  REF  Cf_fixed_d10  Δt=0.005 drag=10.0  (10× FIXED-LCS)
+    Δ box xyz (cumulative) = (-1.166, +0.007, -0.000) mm
+  setup: EE pos [ 0.07499681 -0.00010441  0.05009853] Δ 0.173 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2493>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  REF  Df_fixed_d00  Δt=0.005 drag=0.0  (10× FIXED-LCS)
+    Δ box xyz (cumulative) = (-1.211, +0.008, -0.000) mm
+
+========================================================================
+SUMMARY — 4-cell factorial + 2 fixed-LCS reference cells
+========================================================================
+  Drake (ground truth)                : (-1.684, +0.165, -0.495) mm
+
+  A  Δt=0.05  drag=10   (single)        : (-0.451, +0.012, -0.000) mm     factor (|Drake/LCS_x|): 3.73×
+  B  Δt=0.05  drag= 0   (single)        : (-0.451, +0.012, -0.000) mm     factor (|Drake/LCS_x|): 3.73×
+  C  Δt=0.005 drag=10   (RE-EXTRACT)    : (-1.135, +0.007, -0.000) mm     factor (|Drake/LCS_x|): 1.48×
+  D  Δt=0.005 drag= 0   (RE-EXTRACT)    : (-1.178, +0.007, -0.000) mm     factor (|Drake/LCS_x|): 1.43×
+  Cf Δt=0.005 drag=10   (FIXED-LCS ref) : (-1.166, +0.007, -0.000) mm     factor (|Drake/LCS_x|): 1.44×
+  Df Δt=0.005 drag= 0   (FIXED-LCS ref) : (-1.211, +0.008, -0.000) mm     factor (|Drake/LCS_x|): 1.39×
+
+========================================================================
+MAIN EFFECTS + INTERACTION
+========================================================================
+  Δt main effect (avg Δt=0.005 - avg Δt=0.05) on box_x: -0.7057 mm
+  drag main effect (avg drag=10 - avg drag=0) on box_x: +0.0217 mm
+  Δt × drag interaction:                                  +0.0434 mm
+
+  Re-extract vs Fixed-LCS difference (drag=10): +0.0312 mm
+  Re-extract vs Fixed-LCS difference (drag=0):  +0.0323 mm
+
+VERTICAL SANITY (Δz, all cells should be near 0 with count=4)
+  A  Δt=0.05  drag=10   (single)        : Δz = -0.0000 mm
+  B  Δt=0.05  drag= 0   (single)        : Δz = -0.0000 mm
+  C  Δt=0.005 drag=10   (RE-EXTRACT)    : Δz = -0.0000 mm
+  D  Δt=0.005 drag= 0   (RE-EXTRACT)    : Δz = -0.0000 mm
+  Cf Δt=0.005 drag=10   (FIXED-LCS ref) : Δz = -0.0000 mm
+  Df Δt=0.005 drag= 0   (FIXED-LCS ref) : Δz = -0.0000 mm
+
+========================================================================
+OUTCOME ROUTING (Δt main effect)
+========================================================================
+  Best (smallest) under-prediction factor at Δt=0.005: 1.43×  (was 3.73×)
+  ► OUTCOME: Δt-IS-IT (WHOLE)
+
+  Drag interaction at Δt=0.005 (C - D) on box_x: +0.0434 mm
+  Drag interaction at Δt=0.05  (A - B) on box_x: +0.0000 mm
+  ► DRAG-MATTERS-MOVING — drag-on/off cells diverge at Δt=0.005 (v_box≠0): 0.0434 mm
