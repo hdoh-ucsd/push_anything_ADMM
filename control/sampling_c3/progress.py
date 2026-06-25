@@ -80,8 +80,15 @@ class ProgressTracker:
     # floating-point jitter from preventing met_progress from latching on
     _IMPROVEMENT_EPS = 1e-9
 
-    def __init__(self, params: ProgressParams):
+    def __init__(self, params: ProgressParams, dt_ctrl: float = 0.01):
+        """2026-06-25 reconciliation: dt_ctrl is now passed so the
+        sim-time `*_s` fields on params can be converted to integer-tick
+        thresholds at read time. At 100 Hz the conversion is byte-equivalent
+        to the prior int-tick fields (e.g. 0.60 s / 0.01 s = 60 ticks).
+        At 1 kHz the thresholds become 600 ticks, preserving the wall-time
+        interval."""
         self.params = params
+        self._dt_ctrl = float(dt_ctrl)
 
         # rolling history (most recent at the end)
         self._c3_cost_history:     list[float] = []
@@ -117,9 +124,12 @@ class ProgressTracker:
         self._rot_error_history.append(m.rot_error)
 
         # Cap history length at the larger of the two relevant windows
-        cap = max(self.params.num_control_loops_to_wait,
-                  self.params.num_control_loops_to_wait_position,
-                  self.params.progress_enforced_over_n_loops) + 1
+        # (2026-06-25 reconciliation: read from _s fields, convert to ticks)
+        cap = max(
+            int(round(self.params.num_control_loops_to_wait_s / self._dt_ctrl)),
+            int(round(self.params.num_control_loops_to_wait_position_s / self._dt_ctrl)),
+            int(round(self.params.progress_enforced_over_duration_s / self._dt_ctrl)),
+        ) + 1
         for hist in (self._c3_cost_history,
                      self._config_cost_history,
                      self._pos_error_history,
@@ -164,8 +174,10 @@ class ProgressTracker:
         if self._n_updates == 0:
             return True   # nothing to time-out yet
 
-        wait = (self.params.num_control_loops_to_wait_position
-                if near_goal else self.params.num_control_loops_to_wait)
+        # 2026-06-25 reconciliation: read _s fields, convert to int ticks.
+        wait_s = (self.params.num_control_loops_to_wait_position_s
+                  if near_goal else self.params.num_control_loops_to_wait_s)
+        wait = int(round(wait_s / self._dt_ctrl))
 
         m = self.params.track_c3_progress_via
 
@@ -187,7 +199,8 @@ class ProgressTracker:
 
         if m == ProgressMetric.kConfigCostDrop:
             # over the last N loops, cost must have dropped by ≥ required
-            n = self.params.progress_enforced_over_n_loops
+            # 2026-06-25 reconciliation: read _s field, convert to int ticks
+            n = int(round(self.params.progress_enforced_over_duration_s / self._dt_ctrl))
             if len(self._config_cost_history) < n + 1:
                 return True   # not enough history yet — give the benefit of the doubt
             window = self._config_cost_history[-(n + 1):]

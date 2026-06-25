@@ -112,6 +112,26 @@ def _coerce_enum(enum_cls, raw):
     raise ValueError(f"Cannot coerce {raw!r} to {enum_cls.__name__}")
 
 
+def _resolve_legacy_int_to_seconds(raw: dict, old_key: str, new_key_prefix: str,
+                                   default_ticks: int) -> float:
+    """2026-06-25 reconciliation back-compat helper.
+
+    If `<new_key_prefix>_s` is present, use it. Else if `<old_key>` is
+    present (the OLD int-tick form), convert ticks × 0.01 and print a
+    [YAML-COMPAT] log line. Else fall back to default_ticks × 0.01.
+    """
+    new_key = f"{new_key_prefix}_s"
+    if new_key in raw:
+        return float(raw[new_key])
+    if old_key in raw:
+        old = int(raw[old_key])
+        new_val = float(old) * 0.01
+        print(f"[YAML-COMPAT] {old_key}={old} (ticks @ 100 Hz) "
+              f"→ {new_key}={new_val:.4f} s", flush=True)
+        return new_val
+    return float(default_ticks) * 0.01
+
+
 def _filter_kwargs(cls, raw: dict) -> dict:
     """Drop unknown YAML keys instead of crashing — print a warning per key.
 
@@ -146,9 +166,14 @@ class ProgressParams:
     # Which progress metric drives the timeout decision
     track_c3_progress_via:               ProgressMetric = ProgressMetric.kPosOrRotCost
 
-    # Timeout (in control loops) for the timeout-based progress check
-    num_control_loops_to_wait:           int   = 60
-    num_control_loops_to_wait_position:  int   = 30
+    # Timeout (in seconds, sim-time) for the timeout-based progress check.
+    # 2026-06-25 tick→sim-t reconciliation: source-of-truth now in seconds.
+    # Defaults preserve the port's 100 Hz sim-time values (60/30 ticks ×
+    # 10 ms = 600 ms / 300 ms). Reference (anything/c3plus_progress.yaml:40,41)
+    # uses 5 ticks @ 1 kHz = 5 ms / 5 ms — a 120×/60× sim-time gap that is
+    # an OPEN alignment question, not closed by this reconciliation.
+    num_control_loops_to_wait_s:         float = 0.60
+    num_control_loops_to_wait_position_s: float = 0.30
 
     # Absolute-regression early-exit threshold (metres). When the current
     # pos_error minus the best pos_error since reset() exceeds this, the
@@ -160,9 +185,13 @@ class ProgressParams:
     # against working-seed wobble. Set <= 0 to disable.
     pos_regression_threshold:            float = 0.030
 
-    # kConfigCostDrop variant: required object-config cost drop over N loops
+    # kConfigCostDrop variant: required object-config cost drop over a
+    # sim-time window. 2026-06-25 reconciliation: source-of-truth in
+    # seconds. Default preserves 100 Hz value (30 ticks × 10 ms = 300 ms).
+    # Reference (anything/c3plus_progress.yaml:45) = 16 ticks @ 1 kHz = 16 ms
+    # (19× sim-time gap — OPEN alignment question).
     progress_enforced_cost_drop:         float = 0.0
-    progress_enforced_over_n_loops:      int   = 30
+    progress_enforced_over_duration_s:   float = 0.30
 
     # Distance below which we use the _position hysteresis variant
     cost_switching_threshold_distance:   float = 0.05
@@ -204,6 +233,19 @@ class ProgressParams:
 
     @classmethod
     def from_dict(cls, raw: dict) -> "ProgressParams":
+        # 2026-06-25 reconciliation: back-compat shims for the three tick-int
+        # fields that became sim-time floats. Old YAMLs auto-convert at load.
+        for old_key, new_key in (
+            ("num_control_loops_to_wait",          "num_control_loops_to_wait_s"),
+            ("num_control_loops_to_wait_position", "num_control_loops_to_wait_position_s"),
+            ("progress_enforced_over_n_loops",     "progress_enforced_over_duration_s"),
+        ):
+            if old_key in raw and new_key not in raw:
+                old = int(raw[old_key])
+                raw[new_key] = float(old) * 0.01
+                print(f"[YAML-COMPAT] {old_key}={old} (ticks @ 100 Hz) "
+                      f"→ {new_key}={raw[new_key]:.4f} s", flush=True)
+                del raw[old_key]
         kw = _filter_kwargs(cls, raw)
         if "track_c3_progress_via" in kw:
             kw["track_c3_progress_via"] = _coerce_enum(
@@ -288,10 +330,24 @@ class SamplingParams:
     # convergence time to a target on the sampling ring. Buffer also
     # refreshes on arrival (finished_repos fires) and on mode transitions
     # that change n_strategy.
-    sample_buffer_lifetime:              int   = 30
+    # 2026-06-25 reconciliation: source-of-truth in seconds. Default
+    # preserves 100 Hz value (30 ticks × 10 ms = 300 ms). RATE-INDEPENDENT
+    # only; NOT reconciled to a reference (no reference analog: reference
+    # uses event-driven LCM output ports for sample buffer).
+    sample_buffer_lifetime_s:            float = 0.30
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingParams":
+        # Back-compat shim: old YAML used `sample_buffer_lifetime` (int ticks).
+        # Convert to `_s` (sim-time) so old YAMLs still load at 100 Hz semantics.
+        if ("sample_buffer_lifetime" in raw
+                and "sample_buffer_lifetime_s" not in raw):
+            old = int(raw["sample_buffer_lifetime"])
+            raw["sample_buffer_lifetime_s"] = float(old) * 0.01
+            print(f"[YAML-COMPAT] sample_buffer_lifetime={old} (ticks @ 100 Hz) "
+                  f"→ sample_buffer_lifetime_s={raw['sample_buffer_lifetime_s']:.4f} s",
+                  flush=True)
+            del raw["sample_buffer_lifetime"]
         kw = _filter_kwargs(cls, raw)
         if "sampling_strategy" in kw:
             kw["sampling_strategy"] = _coerce_enum(
@@ -690,8 +746,12 @@ class SamplingC3Params:
     # hard cap on grace — if the override fires for that many ticks
     # without LCS admitting a pair, the EE is structurally unable to
     # reach contact and we bail.
-    contact_loss_threshold_default: int = 5
-    contact_loss_threshold_with_override: int = 12
+    # 2026-06-25 reconciliation: source-of-truth in seconds. Defaults
+    # preserve 100 Hz values (5/12 ticks × 10 ms = 50/120 ms). NO reference
+    # analog (reference has no contact-loss disengage counter). Port-only
+    # candidate band-aid; alignment-status-OPEN.
+    contact_loss_threshold_default_s: float = 0.05
+    contact_loss_threshold_with_override_s: float = 0.12
     # LTD PHASE A traverse needs ~80-110 ticks at realized lateral rate
     # (~0.8 mm/tick observed) to cover the box_half + clearance ~ 75 mm
     # to W_side. With the `_with_override` value of 12 ticks, the gate
@@ -702,7 +762,7 @@ class SamplingC3Params:
     # also acts as a stuck-watchdog: if PHASE A can't form contact by
     # this many ticks, the system gives up and the dispatcher routes to
     # free mode. 120 ≈ 1.5× the expected 80 ticks.
-    contact_loss_threshold_phaseA_ltd: int = 120
+    contact_loss_threshold_phaseA_ltd_s: float = 1.20   # was 120 ticks @ 100 Hz
     # PHASE B (descend beside the face from z_safe down to face-centroid z)
     # needs ~215 ticks at the realized ~0.84 mm/tick rate to cover
     # ~150 mm of vertical travel. Per the PHASE-B lateral-clearance probe
@@ -712,7 +772,7 @@ class SamplingC3Params:
     # apply: EE is laterally outside the box footprint, so a free-mode
     # interlude would fall east of the box, not onto its top. Extend the
     # threshold with the same 1.5× watchdog margin as PHASE A.
-    contact_loss_threshold_phaseB_ltd: int = 300
+    contact_loss_threshold_phaseB_ltd_s: float = 3.00   # was 300 ticks @ 100 Hz
 
     # ------------ PHASE C progress-gated exit (Layer 2.5/2.6) -------------
     # Once the EE is in PHASE C (pushing into the face), the contact-loss
@@ -732,8 +792,8 @@ class SamplingC3Params:
     #     count as progress. Default 0.0002 m = 0.2 mm ≈ 0.1 × LCS
     #     admission threshold (2 mm), so noise-level oscillation
     #     does not register as progress.
-    phaseC_stall_threshold: int = 30
-    phaseC_hard_cap: int = 100
+    phaseC_stall_threshold_s: float = 0.30   # was 30 ticks @ 100 Hz
+    phaseC_hard_cap_s: float = 1.00          # was 100 ticks @ 100 Hz
     phaseC_progress_eps: float = 0.0002
 
     # ------------ Velocity feedforward to OSC (bounded re-enable) ---------
@@ -852,12 +912,19 @@ class SamplingC3Params:
             entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
             use_commit_face_gate           = bool(raw.get("use_commit_face_gate", True)),
             commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.3)),
-            contact_loss_threshold_default       = int(raw.get("contact_loss_threshold_default", 5)),
-            contact_loss_threshold_with_override = int(raw.get("contact_loss_threshold_with_override", 12)),
-            contact_loss_threshold_phaseA_ltd    = int(raw.get("contact_loss_threshold_phaseA_ltd", 120)),
-            contact_loss_threshold_phaseB_ltd    = int(raw.get("contact_loss_threshold_phaseB_ltd", 300)),
-            phaseC_stall_threshold = int(raw.get("phaseC_stall_threshold", 30)),
-            phaseC_hard_cap        = int(raw.get("phaseC_hard_cap", 100)),
+            # 2026-06-25 reconciliation: tick-int → sim-time-float with
+            # auto-conversion from old YAMLs. If the OLD int form is present
+            # and the new _s float form is not, convert old × 0.01 (the
+            # 100 Hz sim-time-equivalent) and print a [YAML-COMPAT] line.
+            **{f"{new}_s": _resolve_legacy_int_to_seconds(raw, old, new, default_ticks)
+               for old, new, default_ticks in (
+                   ("contact_loss_threshold_default",       "contact_loss_threshold_default",       5),
+                   ("contact_loss_threshold_with_override", "contact_loss_threshold_with_override", 12),
+                   ("contact_loss_threshold_phaseA_ltd",    "contact_loss_threshold_phaseA_ltd",    120),
+                   ("contact_loss_threshold_phaseB_ltd",    "contact_loss_threshold_phaseB_ltd",    300),
+                   ("phaseC_stall_threshold",               "phaseC_stall_threshold",               30),
+                   ("phaseC_hard_cap",                      "phaseC_hard_cap",                      100),
+               )},
             phaseC_progress_eps    = float(raw.get("phaseC_progress_eps", 0.0002)),
             use_velocity_feedforward    = bool(raw.get("use_velocity_feedforward", False)),
             velocity_feedforward_alpha  = float(raw.get("velocity_feedforward_alpha", 0.5)),
