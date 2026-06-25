@@ -2181,6 +2181,90 @@ class SamplingC3MPC:
                     flush=True,
                 )
 
+            # Stage C probe B [CONSISTENCY] — ALIGNMENT-vs-RESEARCH phase
+            # detector. Reads (1) u_sol direction vs toward-box & toward-goal,
+            # (2) predicted EE step k=0→1 vs u_sol direction (coherence: does
+            # the planner's solved force CAUSE the predicted EE motion?),
+            # (3) predicted box-CoM displacement over the full horizon vs
+            # goal direction (coherence: does the predicted box TRANSLATE
+            # under u_sol?), (4) ADMM terminal state (pr, dr, iters/max,
+            # converged?). Gated by PUSHA_CONSISTENCY_TRACE=1; default-OFF;
+            # EE-space-only.
+            if (_os_fr.environ.get("PUSHA_CONSISTENCY_TRACE", "0") == "1"
+                    and _use_ee_space and _x_seq is not None
+                    and len(_x_seq) >= 2):
+                _u_seq_full = getattr(self.base_mpc, "_last_u_seq", None)
+                if (_u_seq_full is not None and hasattr(_u_seq_full, "shape")
+                        and _u_seq_full.ndim == 2 and _u_seq_full.shape[1] == 3):
+                    _u0 = np.asarray(_u_seq_full[0], dtype=float).reshape(3)
+                else:
+                    _u0 = np.zeros(3)
+                _u_mag = float(np.linalg.norm(_u0))
+                _u_dir = (_u0 / _u_mag) if _u_mag > 1e-9 else np.zeros(3)
+
+                # Toward-box (3D) and toward-goal (XY) direction unit vectors.
+                _ee_now_v = np.asarray(ee_pos_now, dtype=float).reshape(3)
+                _box_now_v = np.array([
+                    current_q[self._obj_x_idx],
+                    current_q[self._obj_y_idx],
+                    current_q[self._obj_z_idx],
+                ], dtype=float)
+                _to_box = _box_now_v - _ee_now_v
+                _to_box_norm = float(np.linalg.norm(_to_box))
+                _to_box_dir = (_to_box / _to_box_norm) if _to_box_norm > 1e-9 else np.zeros(3)
+                _goal_dir_xy = -np.asarray(g_hat_3d, dtype=float).reshape(3)[:2]
+                _goal_dir_norm = float(np.linalg.norm(_goal_dir_xy))
+                _goal_dir_xy = (_goal_dir_xy / _goal_dir_norm) if _goal_dir_norm > 1e-9 else np.zeros(2)
+                _u_dot_box  = float(np.dot(_u_dir, _to_box_dir))
+                _u_dot_goal = float(np.dot(_u_dir[:2], _goal_dir_xy))
+
+                # Predicted EE step k=0→1 in world frame.
+                _ee_pred_0 = np.asarray(_x_seq[0][7:10], dtype=float)
+                _ee_pred_1 = np.asarray(_x_seq[1][7:10], dtype=float)
+                _ee_step_1 = _ee_pred_1 - _ee_pred_0
+                _ee_step_1_mag = float(np.linalg.norm(_ee_step_1))
+                if _ee_step_1_mag > 1e-9:
+                    _ee_step1_dot_box = float(np.dot(_ee_step_1 / _ee_step_1_mag,
+                                                     _to_box_dir))
+                    # Does the predicted EE step align with the solved u_sol?
+                    _ee_step1_dot_u  = float(np.dot(_ee_step_1 / _ee_step_1_mag,
+                                                     _u_dir))
+                else:
+                    _ee_step1_dot_box = 0.0
+                    _ee_step1_dot_u  = 0.0
+
+                # Predicted box-CoM net displacement over the full horizon.
+                _box_pred_0   = np.asarray(_x_seq[0][4:7], dtype=float)
+                _box_pred_end = np.asarray(_x_seq[-1][4:7], dtype=float)
+                _box_total    = _box_pred_end - _box_pred_0
+                _box_total_xy_mag = float(np.linalg.norm(_box_total[:2]))
+                if _box_total_xy_mag > 1e-9:
+                    _box_dot_goal = float(np.dot(_box_total[:2] / _box_total_xy_mag,
+                                                  _goal_dir_xy))
+                else:
+                    _box_dot_goal = 0.0
+
+                # ADMM terminal state (forwarded by ci_mpc_c3plus.py).
+                _pr     = float(getattr(self.base_mpc, "last_pr_final",  float("nan")))
+                _dr     = float(getattr(self.base_mpc, "last_dr_final",  float("nan")))
+                _it_used= int(  getattr(self.base_mpc, "last_iters_used", 0))
+                _tol    = float(getattr(self.base_mpc, "last_tol",       1e-3))
+                _conv   = bool( getattr(self.base_mpc, "last_converged", True))
+
+                print(
+                    f"[CONSISTENCY] tick={self._step} "
+                    f"u_mag={_u_mag:.4f} u_dot_box={_u_dot_box:+.3f} u_dot_goal={_u_dot_goal:+.3f} "
+                    f"ee_step1_mag={_ee_step_1_mag*1000:.4f}mm "
+                    f"ee_step1_dot_box={_ee_step1_dot_box:+.3f} "
+                    f"ee_step1_dot_u={_ee_step1_dot_u:+.3f} "
+                    f"box_total_xy={_box_total_xy_mag*1000:.4f}mm "
+                    f"box_dot_goal={_box_dot_goal:+.3f} "
+                    f"admm_pr={_pr:.4f} admm_dr={_dr:.4f} "
+                    f"admm_iters={_it_used}/{self._admm_iter if hasattr(self,'_admm_iter') else 25} "
+                    f"admm_tol={_tol:.0e} converged={_conv}",
+                    flush=True,
+                )
+
             # Lever 3: c3 approach-closing override. When LCS admits no
             # EE-BOX pair, the planner sees no contact and parks the EE in
             # place — but the typical arrival sphere-to-box gap is ~6 mm
