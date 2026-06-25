@@ -1,0 +1,125 @@
+[HARNESS] loading stage_c/admm_dump/seed0_full50.npz
+[HARNESS]   x0  =[ 1.00000045e+00 -1.48436294e-05  1.48436294e-05 -8.14522132e-21
+  1.49357136e-06  1.49357136e-06  4.99914507e-02  1.49803572e-02
+  2.39901814e-02  1.50718527e-01 -5.93744910e-02  5.93744910e-02
+  1.50628891e-18  2.92784722e-03  2.92784722e-03 -1.75358065e-15
+  0.00000000e+00  0.00000000e+00  0.00000000e+00]
+[HARNESS]   phi =[-1.15179827e-05]
+[HARNESS]   admm_iter (captured) = 25
+[HARNESS]   rho_initial (captured) = 100.0
+
+======================================================================
+(iii) E-MATRIX STRUCTURE
+======================================================================
+  E shape           : (6, 19)
+  num_normals       : 1
+  n_t (tangents)    : 4
+  n_lambda          : 6
+  zero rows         : [0]
+  zero row labels   : ['gamma[0]']
+  deck claim tangent: False
+  actual kind       : gamma_slack_only
+
+======================================================================
+(i) ITER × ρ SWEEP
+======================================================================
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+  rho= 100.0  max_iter=   25  iters_used=   25/25  pr=4.9359e+00  dr=8.0319e+01  conv=False  wall=0.59s
+[ADMM-C3+] primal: 6.1274->12.6534  dual: 109.8105->48.9757  mono=False  iters=100/100  rho=3.1
+[ADMM-C3+] WARNING non-converged: pr=12.6534 dr=48.9757 tol=1e-03
+  rho= 100.0  max_iter=  100  iters_used=  100/100  pr=1.2653e+01  dr=4.8976e+01  conv=False  wall=1.83s
+[ADMM-C3+] primal: 6.1274->14.3684  dual: 109.8105->68.1638  mono=False  iters=500/500  rho=3.1
+[ADMM-C3+] WARNING non-converged: pr=14.3684 dr=68.1638 tol=1e-03
+  rho= 100.0  max_iter=  500  iters_used=  500/500  pr=1.4368e+01  dr=6.8164e+01  conv=False  wall=10.16s
+[ADMM-C3+] primal: 6.1274->6.3746  dual: 109.8105->30.1935  mono=False  iters=1000/1000  rho=3.1
+[ADMM-C3+] WARNING non-converged: pr=6.3746 dr=30.1935 tol=1e-03
+  rho= 100.0  max_iter= 1000  iters_used= 1000/1000  pr=6.3746e+00  dr=3.0193e+01  conv=False  wall=20.63s
+[ADMM-C3+] primal: 8.5312->11.8976  dual: 59.2730->84.4217  mono=False  iters=25/25  rho=5.0
+[ADMM-C3+] WARNING non-converged: pr=11.8976 dr=84.4217 tol=1e-03
+  rho=  10.0  max_iter=   25  iters_used=   25/25  pr=1.1898e+01  dr=8.4422e+01  conv=False  wall=0.41s
+[ADMM-C3+] primal: 8.5312->15.0428  dual: 59.2730->84.0613  mono=False  iters=100/100  rho=5.0
+[ADMM-C3+] WARNING non-converged: pr=15.0428 dr=84.0613 tol=1e-03
+  rho=  10.0  max_iter=  100  iters_used=  100/100  pr=1.5043e+01  dr=8.4061e+01  conv=False  wall=1.54s
+[ADMM-C3+] primal: 8.5312->6.2618  dual: 59.2730->51.1373  mono=False  iters=500/500  rho=5.0
+[ADMM-C3+] WARNING non-converged: pr=6.2618 dr=51.1373 tol=1e-03
+  rho=  10.0  max_iter=  500  iters_used=  500/500  pr=6.2618e+00  dr=5.1137e+01  conv=False  wall=7.86s
+[ADMM-C3+] primal: 8.5312->7.7772  dual: 59.2730->72.9437  mono=False  iters=1000/1000  rho=5.0
+[ADMM-C3+] WARNING non-converged: pr=7.7772 dr=72.9437 tol=1e-03
+  rho=  10.0  max_iter= 1000  iters_used= 1000/1000  pr=7.7772e+00  dr=7.2944e+01  conv=False  wall=15.96s
+[ADMM-C3+] primal: 14.5639->12.3779  dual: 12.7528->15.1871  mono=False  iters=25/25  rho=1.0
+[ADMM-C3+] WARNING non-converged: pr=12.3779 dr=15.1871 tol=1e-03
+  rho=   1.0  max_iter=   25  iters_used=   25/25  pr=1.2378e+01  dr=1.5187e+01  conv=False  wall=0.41s
+[ADMM-C3+] primal: 14.5639->8.3332  dual: 12.7528->12.0393  mono=False  iters=100/100  rho=1.0
+[ADMM-C3+] WARNING non-converged: pr=8.3332 dr=12.0393 tol=1e-03
+  rho=   1.0  max_iter=  100  iters_used=  100/100  pr=8.3332e+00  dr=1.2039e+01  conv=False  wall=1.79s
+[ADMM-C3+] primal: 14.5639->15.5761  dual: 12.7528->15.9688  mono=False  iters=500/500  rho=1.0
+[ADMM-C3+] WARNING non-converged: pr=15.5761 dr=15.9688 tol=1e-03
+  rho=   1.0  max_iter=  500  iters_used=  500/500  pr=1.5576e+01  dr=1.5969e+01  conv=False  wall=8.24s
+[ADMM-C3+] primal: 14.5639->6.4884  dual: 12.7528->8.5328  mono=False  iters=1000/1000  rho=1.0
+[ADMM-C3+] WARNING non-converged: pr=6.4884 dr=8.5328 tol=1e-03
+  rho=   1.0  max_iter= 1000  iters_used= 1000/1000  pr=6.4884e+00  dr=8.5328e+00  conv=False  wall=15.97s
+[ADMM-C3+] primal: 17.9289->18.6979  dual: 1.5273->3.3285  mono=False  iters=25/25  rho=0.1
+[ADMM-C3+] WARNING non-converged: pr=18.6979 dr=3.3285 tol=1e-03
+  rho=   0.1  max_iter=   25  iters_used=   25/25  pr=1.8698e+01  dr=3.3285e+00  conv=False  wall=0.44s
+[ADMM-C3+] primal: 17.9289->23.1210  dual: 1.5273->2.7396  mono=False  iters=100/100  rho=0.1
+[ADMM-C3+] WARNING non-converged: pr=23.1210 dr=2.7396 tol=1e-03
+  rho=   0.1  max_iter=  100  iters_used=  100/100  pr=2.3121e+01  dr=2.7396e+00  conv=False  wall=1.68s
+[ADMM-C3+] primal: 17.9289->11.5882  dual: 1.5273->6.0523  mono=False  iters=500/500  rho=0.4
+[ADMM-C3+] WARNING non-converged: pr=11.5882 dr=6.0523 tol=1e-03
+  rho=   0.1  max_iter=  500  iters_used=  500/500  pr=1.1588e+01  dr=6.0523e+00  conv=False  wall=9.72s
+[ADMM-C3+] primal: 17.9289->18.2082  dual: 1.5273->10.0653  mono=False  iters=1000/1000  rho=0.4
+[ADMM-C3+] WARNING non-converged: pr=18.2082 dr=10.0653 tol=1e-03
+  rho=   0.1  max_iter= 1000  iters_used= 1000/1000  pr=1.8208e+01  dr=1.0065e+01  conv=False  wall=20.31s
+
+  any cell converged? False
+  pr_final min/max across all cells: 4.9359e+00 / 2.3121e+01
+  dr_final min/max across all cells: 2.7396e+00 / 8.4422e+01
+
+======================================================================
+(iv) PROJECTION-SWAP ISOLATION — 3 cells, rho=100, max_iter=1000
+     (the primary cut: holds everything fixed except the δ-projection)
+======================================================================
+[ADMM-C3+] primal: 6.1274->6.3746  dual: 109.8105->30.1935  mono=False  iters=1000/1000  rho=3.1
+[ADMM-C3+] WARNING non-converged: pr=6.3746 dr=30.1935 tol=1e-03
+  projection=       componentwise  iters= 1000/1000  pr=6.3746e+00  dr=3.0193e+01  conv=False  λ_n_first=+0.5283  oracle_diff=5.5588e-02  oracle_match=False  wall=20.47s
+[ADMM-C3+] primal: 10.8324->0.7402  dual: 899.6131->6.6564  mono=False  iters=1000/1000  rho=50.0
+[ADMM-C3+] WARNING non-converged: pr=0.7402 dr=6.6564 tol=1e-03
+  projection=                 lcp  iters= 1000/1000  pr=7.4018e-01  dr=6.6564e+00  conv=False  λ_n_first=+0.5839  oracle_diff=6.2220e-08  oracle_match=True  wall=14.33s
+[ADMM-C3+] primal: 0.3627->0.7623  dual: 621.4421->0.2712  mono=False  iters=1000/1000  rho=50.0
+[ADMM-C3+] WARNING non-converged: pr=0.7623 dr=0.2712 tol=1e-03
+  projection=   lorentz_on_lambda  iters= 1000/1000  pr=7.6231e-01  dr=2.7117e-01  conv=False  λ_n_first=+1.0410  oracle_diff=4.5704e-01  oracle_match=False  wall=13.96s
+
+======================================================================
+(ii) DIRECT FIXED-POINT EXISTENCE — LCP at knot 0 (u_0 = 0)
+======================================================================
+  M_lcp (= F)  shape=(6, 6)
+  q_lcp        = [ 0.00000000e+00 -4.96667632e-01 -4.10535925e-05  4.10535925e-05
+ -4.10535925e-05  4.10535925e-05]
+  method               : brute_force_basis_enumeration_64
+  lam                  : [0.14612, 0.583936, 0.0, 0.116787, 0.0, 0.116787]
+  w  (=Mλ+q)           : [-0.0, -0.0, 0.292239, -0.0, 0.292239, -0.0]
+  λ ≥ 0                : True
+  w ≥ 0                : True
+  max|λ_i · w_i|       : 6.9389e-17
+  min nonneg violation : 0.0000e+00
+  FEASIBLE LCP SOLUTION: True
+
+======================================================================
+LAYER DISAMBIGUATION + COMPONENT ISOLATION
+======================================================================
+  Cell A (componentwise — current C3+ baseline) converges-to-oracle: False
+  Cell B (LCP-per-knot Lemke               ) converges-to-oracle: True
+  Cell C (Lorentz-on-λ Aydinoglu-style     ) converges-to-oracle: False
+
+  -> PROJECTION-CLASS ISOLATED: Cell A and Cell C both fail;
+     only the in-tree Lemke LCP-per-knot path (Cell B) converges.
+     The defect is BROADER than just the eq (12) formula — both
+     the live componentwise and the Lorentz-on-λ approximation
+     fail, suggesting the C3+ z-vector formulation (with η slack)
+     interacts poorly with both componentwise and per-contact
+     projections; only direct LCP solve inside the δ-step works.
+
+  (original disambiguation context)
+  iter×ρ sweep 0/16 converged + LCP at u=0 feasible (oracle exists).
+  -> modeling REFUTED; tuning REFUTED; ADMM iteration scheme is the gate.

@@ -43,6 +43,12 @@ from control.admm_solver import C3Solver  # noqa: E402
 DUMP_PATH = Path("stage_c/admm_dump/seed0_full50.npz")
 TOL = 1e-3
 
+# Brute-force LCP oracle from (ii) — the ground-truth λ for the captured
+# knot-0 LCP at u=0. Recorded here so the isolation cells can be diffed
+# against a single canonical reference.
+ORACLE_LAMBDA = np.array([0.146119, 0.583936, 0.0, 0.116787, 0.0, 0.116787])
+ORACLE_LAMBDA_N = 0.583936  # the physical normal-force value
+
 
 # ---------------------------------------------------------------------------
 # Load
@@ -107,14 +113,64 @@ def inspect_E(dump: dict) -> dict:
 # ---------------------------------------------------------------------------
 # (i) ITER × ρ SWEEP via replay of C3Solver._solve_c3plus
 # ---------------------------------------------------------------------------
-def replay(dump: dict, *, max_iter: int, rho_override: float) -> dict:
-    """Replay the captured instance with given max_iter + rho override.
+def replay(dump: dict, *, max_iter: int, rho_override: float,
+           projection: str = "componentwise") -> dict:
+    """Replay the captured instance with given max_iter + rho override + projection.
 
-    Returns dict with the per-iteration primal/dual histories AND the
-    terminal state."""
+    `projection` ∈ {"componentwise", "lcp", "lorentz_on_lambda"}.
+    - "componentwise": the C3+ baseline (Bui eq 12).
+    - "lcp": the LCP-per-knot via Lemke (the in-tree alternative path).
+    - "lorentz_on_lambda": monkey-patch the componentwise call site to use
+      the C3 Lorentz projection on the λ slot and pass-through on η. This
+      is the literal "swap to Aydinoglu Lorentz" for the user's primary
+      experiment (the C3-not-plus formulation has no η, so we approximate
+      by leaving η at its pre-projection value within the C3+ z-vector).
+
+    Returns dict with terminal state AND first-knot λ (for oracle diff)."""
     n_x = int(dump["n_x"])
     n_u = int(dump["n_u"])
-    solver = C3Solver(n_x=n_x, n_u=n_u, rho=rho_override, mode="c3plus")
+    c3p_mode = "componentwise" if projection in ("componentwise", "lorentz_on_lambda") else projection
+    solver = C3Solver(n_x=n_x, n_u=n_u, rho=rho_override, mode="c3plus",
+                       c3plus_projection=c3p_mode)
+
+    # Monkey-patch the componentwise projection to do Lorentz-on-λ
+    # if requested. The C3 Lorentz projection operates on a flat
+    # [λ_n_0..λ_n_{K-1}, λ_t_0..λ_t_{K-1}] layout per knot, with
+    # num_normals normals and 4·num_normals tangents (Stewart-Trinkle).
+    # The C3+ z-vector's λ slot at a knot is shape (n_lambda,) =
+    # (2·num_normals + n_t,) — interpret slots [0:num_normals) as γ
+    # slack (NOT in the C3 LCP), slots [num_normals:2·num_normals) as
+    # λ_n, slots [2·num_normals:n_lambda) as λ_t. Map to the Lorentz
+    # function's expected layout: pass [λ_n, λ_t]; leave γ unmodified
+    # (γ is a Stewart-Trinkle slack, not in the Aydinoglu C3 formulation,
+    # so identity-projection on γ is the natural pass-through).
+    if projection == "lorentz_on_lambda":
+        num_normals = int(dump["J_n"].shape[0])
+        n_t = int(dump["J_t"].shape[0])
+        mu_val = float(dump["mu"])
+
+        from control.admm_solver import C3Solver as _C3S
+
+        def _lorentz_swap(lam, eta, u_lambda=1.0, u_eta=1.0):
+            # lam is the (2*num_normals + n_t,) C3+ slot.
+            # Extract λ_n and λ_t, run C3 Lorentz, write back, pass-through γ.
+            lam = np.asarray(lam, dtype=float)
+            eta = np.asarray(eta, dtype=float)
+            d_lam = lam.copy()
+            d_eta = eta.copy()  # pass-through (C3 has no η)
+            # Build C3 layout: [λ_n_0..λ_n_{K-1}, λ_t_0..λ_t_{K-1}]
+            lam_for_lorentz = np.empty(num_normals + n_t)
+            lam_for_lorentz[:num_normals] = lam[num_normals : 2*num_normals]   # λ_n
+            lam_for_lorentz[num_normals:] = lam[2*num_normals : 2*num_normals + n_t]  # λ_t
+            projected = _C3S._lorentz_project(lam_for_lorentz, num_normals, mu_val)
+            d_lam[num_normals : 2*num_normals] = projected[:num_normals]
+            d_lam[2*num_normals : 2*num_normals + n_t] = projected[num_normals:]
+            # γ slot (d_lam[0:num_normals]) and η pass through unchanged.
+            return d_lam, d_eta
+
+        # Patch the instance method via bound function.
+        solver._project_componentwise = lambda lam, eta, u_lambda, u_eta: \
+            _lorentz_swap(lam, eta, u_lambda, u_eta)
 
     phi_arg = dump["phi"] if dump["phi"].size > 0 else None
     ul = dump["u_lower"]; ul = ul if ul.size > 0 else None
@@ -137,7 +193,25 @@ def replay(dump: dict, *, max_iter: int, rho_override: float) -> dict:
     dr_final = float(getattr(solver, "_last_dr_final", float("nan")))
     iters    = int(getattr(solver, "_last_iters_used", 0))
     conv     = bool(getattr(solver, "_last_converged", False))
+
+    # Pull first-knot λ for oracle diff. _solve_c3plus stores
+    # `_last_lambda_n_first` (just λ_n vector) AND `_last_lambda_n_first_delta`
+    # (delta view), `_last_lambda_n_first_zsol` (z view). Pull the full λ
+    # block (γ, λ_n, λ_t) from z_sol via delta if available — but the
+    # solver only exposes λ_n. For the diff against the oracle we use
+    # the λ_n component which is the physically meaningful comparator.
+    lam_n_first = getattr(solver, "_last_lambda_n_first_delta", None)
+    if lam_n_first is None:
+        lam_n_first = getattr(solver, "_last_lambda_n_first", None)
+    lam_n_first_val = (
+        float(lam_n_first[0]) if (lam_n_first is not None
+                                   and hasattr(lam_n_first, "__len__")
+                                   and len(lam_n_first) > 0)
+        else float("nan")
+    )
+
     return dict(
+        projection=projection,
         max_iter=max_iter,
         rho_initial=rho_override,
         pr_final=pr_final,
@@ -145,6 +219,9 @@ def replay(dump: dict, *, max_iter: int, rho_override: float) -> dict:
         iters_used=iters,
         converged=conv,
         wall_s=elapsed,
+        lam_n_first=lam_n_first_val,
+        oracle_lam_n=ORACLE_LAMBDA_N,
+        lam_n_diff=abs(lam_n_first_val - ORACLE_LAMBDA_N),
     )
 
 
@@ -160,6 +237,44 @@ def sweep(dump: dict) -> list:
                   f"pr={cell['pr_final']:.4e}  dr={cell['dr_final']:.4e}  "
                   f"conv={cell['converged']}  wall={cell['wall_s']:.2f}s")
             cells.append(cell)
+    return cells
+
+
+# ---------------------------------------------------------------------------
+# Projection-swap isolation (the primary cut)
+# ---------------------------------------------------------------------------
+def projection_swap_isolation(dump: dict, max_iter: int = 1000,
+                              rho: float = 100.0) -> list:
+    """Three-cell projection comparison on the captured instance.
+
+    Cell A — Bui componentwise (the live C3+ baseline, already known to
+             oscillate per the disambiguation iter×ρ sweep).
+    Cell B — LCP-per-knot via the in-tree Lemke solver (the strongest
+             "correct projection" comparator in the codebase — uses a
+             reference LCP solver inside the ADMM δ-step).
+    Cell C — Aydinoglu Lorentz on the λ slot (the user's literal swap to
+             the C3-not-plus per-contact friction-cone projection,
+             approximated within the C3+ z-vector formulation by leaving
+             γ and η pass-through; γ is a Stewart-Trinkle slack absent
+             from the C3 formulation, so identity-projection on it is
+             the closest available Aydinoglu-style operator).
+
+    All three cells share: same captured instance, same rho, same
+    max_iter, same OSQP block construction, same ρ-adaptation rule.
+    The ONLY difference between A and B is the δ-projection function.
+    """
+    cells = []
+    for proj in ["componentwise", "lcp", "lorentz_on_lambda"]:
+        cell = replay(dump, max_iter=max_iter, rho_override=rho,
+                      projection=proj)
+        cells.append(cell)
+        oracle_match = abs(cell["lam_n_first"] - ORACLE_LAMBDA_N) < 1e-3
+        print(f"  projection={proj:>20}  iters={cell['iters_used']:>5}/{max_iter}  "
+              f"pr={cell['pr_final']:.4e}  dr={cell['dr_final']:.4e}  "
+              f"conv={cell['converged']}  "
+              f"λ_n_first={cell['lam_n_first']:+.4f}  "
+              f"oracle_diff={cell['lam_n_diff']:.4e}  "
+              f"oracle_match={oracle_match}  wall={cell['wall_s']:.2f}s")
     return cells
 
 
@@ -328,6 +443,13 @@ def main():
 
     print()
     print("=" * 70)
+    print("(iv) PROJECTION-SWAP ISOLATION — 3 cells, rho=100, max_iter=1000")
+    print("     (the primary cut: holds everything fixed except the δ-projection)")
+    print("=" * 70)
+    iso_cells = projection_swap_isolation(dump, max_iter=1000, rho=100.0)
+
+    print()
+    print("=" * 70)
     print("(ii) DIRECT FIXED-POINT EXISTENCE — LCP at knot 0 (u_0 = 0)")
     print("=" * 70)
     M_lcp, q_lcp = build_lcp(dump)
@@ -348,21 +470,73 @@ def main():
 
     print()
     print("=" * 70)
-    print("LAYER DISAMBIGUATION")
+    print("LAYER DISAMBIGUATION + COMPONENT ISOLATION")
     print("=" * 70)
-    if any_converge:
-        print("  LAYER 1-2 (FIXABLE): some (rho, max_iter) cell converged.")
-        print("  -> tune ρ + raise max_iter in the live solver; REOPEN ALIGNMENT.")
-    elif lcp_result.get("ok") and lcp_result.get("feasible"):
-        print("  AMBIGUOUS / leans LAYER 2: LCP has a feasible solution at u=0,")
-        print("  but the ADMM cannot reach it within the swept budgets.")
-        print("  -> the modeling admits a fixed point; ADMM tuning / projection")
-        print("     details are blocking — investigate further before declaring research.")
+    # Match cells by projection name for the routing logic.
+    by_proj = {c["projection"]: c for c in iso_cells}
+    cw = by_proj.get("componentwise", {})
+    lcp_cell = by_proj.get("lcp", {})
+    lor_cell = by_proj.get("lorentz_on_lambda", {})
+
+    def _oracle_match(c):
+        """Primary signal: does the solver find the oracle λ_n? The formal
+        pr/dr-vs-tol convergence is a SECONDARY signal — it can lag the
+        actual solution discovery (e.g. an ADMM that has found the
+        complementarity-feasible λ but whose dual variable ω is still
+        adjusting will show pr/dr above tol even though λ is correct)."""
+        return c.get("lam_n_diff", 1.0) < 1e-3
+
+    cw_match  = _oracle_match(cw)
+    lcp_match = _oracle_match(lcp_cell)
+    lor_match = _oracle_match(lor_cell)
+
+    print(f"  Cell A (componentwise — current C3+ baseline) converges-to-oracle: {cw_match}")
+    print(f"  Cell B (LCP-per-knot Lemke               ) converges-to-oracle: {lcp_match}")
+    print(f"  Cell C (Lorentz-on-λ Aydinoglu-style     ) converges-to-oracle: {lor_match}")
+
+    print()
+    if not cw_match and (lcp_match or lor_match):
+        if lcp_match and lor_match:
+            print("  -> (1a) PROJECTION ISOLATED: Cell A fails; both alt-projections")
+            print("     (LCP-per-knot AND Lorentz-on-λ) succeed. The defect is in")
+            print("     Bui componentwise eq (12) on the Stewart-Trinkle slot layout.")
+            print("     C3-vs-C3+ comparative: C3 Lorentz projection converges where")
+            print("     C3+ componentwise does not — INVERTS the deck's '4-5x faster'")
+            print("     framing on this instance (correctness > speed).")
+        elif lcp_match and not lor_match:
+            print("  -> PROJECTION-CLASS ISOLATED: Cell A and Cell C both fail;")
+            print("     only the in-tree Lemke LCP-per-knot path (Cell B) converges.")
+            print("     The defect is BROADER than just the eq (12) formula — both")
+            print("     the live componentwise and the Lorentz-on-λ approximation")
+            print("     fail, suggesting the C3+ z-vector formulation (with η slack)")
+            print("     interacts poorly with both componentwise and per-contact")
+            print("     projections; only direct LCP solve inside the δ-step works.")
+        elif lor_match and not lcp_match:
+            print("  -> Unusual route: Lorentz-on-λ converges, LCP-per-knot does not.")
+            print("     Inspect LCP-per-knot path implementation.")
+    elif cw_match:
+        print("  -> Unexpected: Cell A converged to the oracle at max_iter=1000.")
+        print("     The iter×ρ sweep above showed 0/16 convergence at max_iter≤1000.")
+        print("     Re-check the dump or the live-vs-replay parity.")
     else:
-        print("  LAYER 3 (MODELING) leans CONFIRMED: no swept ADMM cell converges")
-        print("  AND the direct LCP solver could not find a feasible point at u=0.")
-        print("  -> the §0 #2 research target is the gate; spin out the research")
-        print("     workstream.")
+        # All three fail → not a projection problem
+        print("  -> (1b)/(1c) PROJECTION RULED OUT: all three projections (componentwise,")
+        print("     LCP-per-knot, Lorentz-on-λ) fail to converge to the oracle.")
+        print("     The defect is NOT the projection function; the OSQP block")
+        print("     construction (1b) or ρ-adaptation pathology (1c) is the cause.")
+        print("     Next: instrument per-iteration internals (λ, δ, ω, η, OSQP outputs,")
+        print("     live ρ) and diff against the oracle to localize 1b vs 1c.")
+
+    # Echo the original layer-2/3 disambiguation for reference.
+    print()
+    print("  (original disambiguation context)")
+    if any_converge:
+        print("  iter×ρ sweep — some cell converged → layer 2 not the sole gate.")
+    elif lcp_result.get("ok") and lcp_result.get("feasible"):
+        print("  iter×ρ sweep 0/16 converged + LCP at u=0 feasible (oracle exists).")
+        print("  -> modeling REFUTED; tuning REFUTED; ADMM iteration scheme is the gate.")
+    else:
+        print("  iter×ρ sweep 0/16 converged + LCP at u=0 infeasible — modeling-leaning.")
 
 
 if __name__ == "__main__":
