@@ -139,7 +139,8 @@ class SamplingC3MPC:
             base_admm_iter=self._admm_iter,
             params=params,
         )
-        self.progress = ProgressTracker(params.progress_params)
+        self.progress = ProgressTracker(params.progress_params,
+                                        dt_ctrl=self._dt_ctrl)
         self.buffer   = SampleBuffer(
             capacity      = params.sampling_params.N_sample_buffer,
             pos_threshold = params.sampling_params.pos_error_sample_retention,
@@ -381,7 +382,11 @@ class SamplingC3MPC:
         the broken behavior we want to keep available for ablation).
         """
         sp = self.params.sampling_params
-        lifetime = int(getattr(sp, "sample_buffer_lifetime", 0))
+        # 2026-06-25 reconciliation: sim-time _s field → integer ticks.
+        # At 100 Hz lifetime_s=0.30 → lifetime=30 (byte-equivalent prior int).
+        # At 1 kHz lifetime_s=0.30 → lifetime=300 (300 ms wall time, same).
+        _lifetime_s = float(getattr(sp, "sample_buffer_lifetime_s", 0.0))
+        lifetime = int(round(_lifetime_s / self._dt_ctrl))
 
         # Ablation path: lifetime <= 0 → re-sample every loop.
         if lifetime <= 0:
@@ -428,7 +433,11 @@ class SamplingC3MPC:
         fires (EE reached the pursued repos target) so we don't keep
         proposing the already-reached target as a strategy sample."""
         sp = self.params.sampling_params
-        lifetime = int(getattr(sp, "sample_buffer_lifetime", 0))
+        # 2026-06-25 reconciliation: sim-time _s field → integer ticks.
+        # At 100 Hz lifetime_s=0.30 → lifetime=30 (byte-equivalent prior int).
+        # At 1 kHz lifetime_s=0.30 → lifetime=300 (300 ms wall time, same).
+        _lifetime_s = float(getattr(sp, "sample_buffer_lifetime_s", 0.0))
+        lifetime = int(round(_lifetime_s / self._dt_ctrl))
         if lifetime <= 0:
             return
         # Sentinel-trigger the refresh path: clearing the buffer is enough,
@@ -1265,25 +1274,24 @@ class SamplingC3MPC:
         # interlude would fall east of the box, not onto its top, so the
         # fall-onto-top objection does not apply here either. Extend with
         # the same watchdog pattern as PHASE A.
+        # 2026-06-25 reconciliation: thresholds live as sim-time _s fields
+        # on params; convert to integer ticks via _dt_ctrl at read time so
+        # the existing integer counter (`_no_ee_box_streak`) comparison
+        # stays unchanged. At 100 Hz the conversion is byte-equivalent to
+        # the prior int values; at 1 kHz the threshold becomes 10× larger
+        # in ticks, preserving the wall-time interval.
+        def _ticks(s_val: float) -> int:
+            return int(round(float(s_val) / self._dt_ctrl))
         if self._approach_override_phase == 'A_lift_trav':
-            disengage_threshold = self.params.contact_loss_threshold_phaseA_ltd
+            disengage_threshold = _ticks(self.params.contact_loss_threshold_phaseA_ltd_s)
         elif self._approach_override_phase == 'B_descend':
-            disengage_threshold = self.params.contact_loss_threshold_phaseB_ltd
+            disengage_threshold = _ticks(self.params.contact_loss_threshold_phaseB_ltd_s)
         elif self._approach_override_phase == 'C_approach':
-            # In PHASE C, the new progress-gated gate below (keyed on
-            # surf_dist convergence) is the authoritative productivity
-            # check. Use phaseC_hard_cap as the contact-loss tick-count
-            # ceiling so the existing tick-count gate doesn't pre-empt
-            # the C gate at 12 ticks (with_override). The C gate's
-            # stall_threshold fires earlier when surf_dist isn't
-            # actually moving; this ceiling only matters if surf_dist
-            # IS moving but never quite admits — a near-impossible
-            # corner case at the configured hard_cap.
-            disengage_threshold = self.params.phaseC_hard_cap
+            disengage_threshold = _ticks(self.params.phaseC_hard_cap_s)
         elif self._approach_override_firing:
-            disengage_threshold = self.params.contact_loss_threshold_with_override
+            disengage_threshold = _ticks(self.params.contact_loss_threshold_with_override_s)
         else:
-            disengage_threshold = self.params.contact_loss_threshold_default
+            disengage_threshold = _ticks(self.params.contact_loss_threshold_default_s)
         if (self._prev_mode == "c3"
                 and mode == "c3"
                 and self._no_ee_box_streak >= disengage_threshold):
@@ -1335,10 +1343,11 @@ class SamplingC3MPC:
         if (self._prev_mode == "c3"
                 and mode == "c3"
                 and self._approach_override_phase == 'C_approach'):
-            _stall_fire = (self._phaseC_stall_streak
-                           >= self.params.phaseC_stall_threshold)
-            _cap_fire = (self._phaseC_active_streak
-                         >= self.params.phaseC_hard_cap)
+            # 2026-06-25 reconciliation: sim-time _s fields → integer ticks.
+            _stall_thr = int(round(self.params.phaseC_stall_threshold_s / self._dt_ctrl))
+            _hard_cap  = int(round(self.params.phaseC_hard_cap_s / self._dt_ctrl))
+            _stall_fire = (self._phaseC_stall_streak >= _stall_thr)
+            _cap_fire = (self._phaseC_active_streak  >= _hard_cap)
             if _stall_fire or _cap_fire:
                 mode = "free"
                 reason = SwitchReason.kToReposUnproductive
@@ -1350,8 +1359,8 @@ class SamplingC3MPC:
                     print(f"[{_tag}] step={self._step} "
                           f"stall_streak={self._phaseC_stall_streak} "
                           f"active_streak={self._phaseC_active_streak} "
-                          f"stall_thr={self.params.phaseC_stall_threshold} "
-                          f"hard_cap={self.params.phaseC_hard_cap} "
+                          f"stall_thr={_stall_thr} "
+                          f"hard_cap={_hard_cap} "
                           f"surf_dist_min={_smin*1000:.2f}mm "
                           f"-> exit to repos", flush=True)
                 self._phaseC_stall_streak = 0
