@@ -1,0 +1,95 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+STAGE C CONTACT-MODEL FALSIFICATION PROBE
+Captured instance: stage_c/admm_dump/seed0_full50.npz
+Planner Δt: 0.05 s
+
+================================================================
+LCS_EXPLICIT_BOX_GND = 4
+================================================================
+  EE pos achieved: [0.01491287 0.02388997 0.15081833]    (target: [0.01498036 0.02399018 0.15071853])
+  |Δ EE pos|: 0.1567 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  formulator.lcs_explicit_box_ground_contacts = 4
+  Re-extracted LCS: n_x=19, n_lambda=24
+  contacts found: 4
+    pair 0: tag=BOX-VERT-0  dist=-1.1517983995595893e-05
+    pair 1: tag=BOX-VERT-1  dist=-8.549258121673398e-06
+    pair 2: tag=BOX-VERT-2  dist=-8.549258121812175e-06
+    pair 3: tag=BOX-VERT-3  dist=-5.58053224788968e-06
+
+  LCP M shape: F = (24, 24)
+  LCP q stats : min=-4.9667e-01 max=4.1054e-05
+  Lemke residual: 1.002e-08
+  Feasibility: λ≥0 True, w≥0 True, max|λw|=2.5062e-09
+
+  λ_n_max (max over normal slots): 0.5006
+  λ nonzero indices: [4, 5, 6, 7, 9, 11, 13, 15, 17, 19, 20, 22]
+
+  LCS-PREDICTED Δ box xyz: (-0.001, -0.001, +0.009) mm
+  LCS-PREDICTED box vz   : +0.00017 m/s
+  Drake-RENDERED Δ box xyz: (-0.000, -0.000, -0.000) mm
+
+  (a) VERTICAL  close? True  (|LCS - Drake| in z = 0.009 mm)
+  (b) HORIZONTAL close? True  (|LCS - Drake| in xy = 0.002 mm)
+
+================================================================
+LCS_EXPLICIT_BOX_GND = 12
+================================================================
+  EE pos achieved: [0.01491287 0.02388997 0.15081833]    (target: [0.01498036 0.02399018 0.15071853])
+  |Δ EE pos|: 0.1567 mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=643>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  formulator.lcs_explicit_box_ground_contacts = 12
+  Re-extracted LCS: n_x=19, n_lambda=72
+  contacts found: 12
+    pair 0: tag=BOX-VERT-0  dist=0.09998848192787109
+    pair 1: tag=BOX-VERT-1  dist=-1.1517983995595893e-05
+    pair 2: tag=BOX-VERT-2  dist=0.09999145065374501
+    pair 3: tag=BOX-VERT-3  dist=-8.549258121673398e-06
+    pair 4: tag=BOX-VERT-4  dist=0.09999145065374487
+    pair 5: tag=BOX-VERT-5  dist=-8.549258121812175e-06
+    pair 6: tag=BOX-VERT-6  dist=0.0999944193796188
+    pair 7: tag=BOX-VERT-7  dist=-5.58053224788968e-06
+    pair 8: tag=BOX-VERT-8  dist=-1.0033621058634645e-05
+    pair 9: tag=BOX-VERT-9  dist=-7.064895184850928e-06
+    pair 10: tag=BOX-VERT-10  dist=-1.0033621058704034e-05
+    pair 11: tag=BOX-VERT-11  dist=-7.064895184781539e-06
+
+  LCP M shape: F = (72, 72)
+  LCP q stats : min=-4.9667e-01 max=1.5153e+00
+  Lemke residual: inf
+  Feasibility: λ≥0 True, w≥0 False, max|λw|=0.0000e+00
+
+  λ_n_max (max over normal slots): 0.0000
+  λ nonzero indices: []
+
+  LCS-PREDICTED Δ box xyz: (+0.146, +0.146, -24.525) mm
+  LCS-PREDICTED box vz   : -0.49050 m/s
+  Drake-RENDERED Δ box xyz: (-0.000, -0.000, -0.000) mm
+
+  (a) VERTICAL  close? False  (|LCS - Drake| in z = 24.525 mm)
+  (b) HORIZONTAL close? True  (|LCS - Drake| in xy = 0.207 mm)
+
+================================================================
+SUMMARY
+================================================================
+
+LCS_EXPLICIT_BOX_GND = 4  →  n_lambda = 24
+  LCS Δ box xyz  : (-0.001, -0.001, +0.009) mm
+  Drake Δ box xyz: (-0.000, -0.000, -0.000) mm
+  vertical close: True
+  horizontal close: True
+
+LCS_EXPLICIT_BOX_GND = 12  →  n_lambda = 72
+  LCS Δ box xyz  : (+0.146, +0.146, -24.525) mm
+  Drake Δ box xyz: (-0.000, -0.000, -0.000) mm
+  vertical close: False
+  horizontal close: True
