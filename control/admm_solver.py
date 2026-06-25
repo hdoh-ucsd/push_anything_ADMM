@@ -844,6 +844,43 @@ class C3Solver:
         n_u = self.n_u
         rho = self.rho
 
+        # Stage C disambiguation probe — one-shot ADMM-instance dump.
+        # Gated by PUSHA_ADMM_DUMP=PATH; on the c3-tick whose `_solve_c3plus`
+        # call number equals PUSHA_ADMM_DUMP_AT (default 50, mid-c3 by the
+        # time the planner is solidly in the predicting-retreat regime),
+        # write all inputs to a .npz at PATH and continue. Subsequent calls
+        # do nothing. The harness `scripts/_stage_c_admm_harness.py` reads
+        # this .npz to (i) replay with iter×ρ sweeps, (ii) call the direct
+        # LCP/MIQP existence check, (iii) inspect E-matrix structure.
+        import os as _os_d
+        _dump_path = _os_d.environ.get("PUSHA_ADMM_DUMP", "")
+        _dump_at   = int(_os_d.environ.get("PUSHA_ADMM_DUMP_AT", "50"))
+        if _dump_path and not getattr(self, "_admm_dump_done", False):
+            self._admm_dump_call = getattr(self, "_admm_dump_call", 0) + 1
+            if self._admm_dump_call == _dump_at:
+                np.savez(
+                    _dump_path,
+                    x0=x0, A=A, B_ctrl=B_ctrl, D=D, d=d,
+                    E=E, F=F, H=H, c_lcs=c_lcs,
+                    J_n=J_n, J_t=J_t,
+                    mu=np.asarray(mu, dtype=float),
+                    Q=Q, R=R, QN=QN, x_ref=x_ref,
+                    N=np.int32(N), admm_iter=np.int32(admm_iter),
+                    torque_limit=np.asarray(torque_limit, dtype=float),
+                    phi=(phi if phi is not None else np.zeros(0)),
+                    u_lower=(u_lower if u_lower is not None else np.zeros(0)),
+                    u_upper=(u_upper if u_upper is not None else np.zeros(0)),
+                    rho_initial=np.asarray(rho, dtype=float),
+                    n_x=np.int32(n_x), n_u=np.int32(n_u),
+                    solver_rho_attr=np.asarray(self.rho, dtype=float),
+                    solver_mode=np.array(["c3plus"], dtype=object),
+                )
+                self._admm_dump_done = True
+                print(f"[ADMM-DUMP] wrote c3-tick {self._admm_dump_call} "
+                      f"to {_dump_path} "
+                      f"(n_x={n_x} n_u={n_u} N={N} n_lambda will be derived)",
+                      flush=True)
+
         num_normals = J_n.shape[0]
         # Phase 2: λ now includes Stewart-Trinkle's friction-cone slack γ
         # so n_lambda = 6·num_normals (= 2·n_c + 4·n_c). The Bui eq. (12)
