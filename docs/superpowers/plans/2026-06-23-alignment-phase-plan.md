@@ -87,12 +87,12 @@ The isolation probe runs in the next block — projection-swap (Aydinoglu per-co
 |---|---|---|---|---|
 | 1 | Dispatch (mode-switch) | **RECONCILED** | `mode_switch.py:95-144` ↔ `sampling_based_c3_controller.cc:1145-1310` | (already at goal) |
 | 2 | LCS admission | **PARTIAL — executor-side SKIP stands; PLANNER-SIDE admission blocked on the ADMM iteration-scheme defect (1a/1b/1c) — NOT on §0 #2 modeling (CORRECTED 2026-06-23; see §0 retraction)** | `lcs_formulator.py:390-456` (2 mm threshold — executor-side contact filter AND planner-side LCS-build path) ↔ `LCSFactory::GetNClosestContactPairs` (N-closest) | Blocked on the isolable C3+ iteration-scheme defect (oscillation around a feasible LCP point), NOT on §0 #2 modeling. Re-opens IFF the isolation probe identifies the bug AND it lands live. Executor-side: no flip — already skip-justified. |
-| 3 | ADMM / C3+ solver | **(CORRECTED 2026-06-23) HELD EXCEPTION STAYS HELD — earlier promotion RETRACTED; the "C3+ iteration-scheme defect (1a/1b/1c)" framing is now RE-TAGGED to the cadence discriminator pending the 1 kHz re-measure** (LCP live verification + §3 Stage C outcome). | `admm_solver.py:_solve_c3plus`, `iter=25`, adaptive-ρ | Live non-convergence at 100 Hz (pr median 4.95 / dr median 83.3 / converged 0/119) IS load-bearing on the no-push, but the projection-bug attribution is **100Hz-PROVISIONAL**. The cadence discriminator (componentwise @ 1 kHz, the reference's actual config) decides whether the projection defect is real and cadence-independent OR a symptom of a starved warm-start at 100 Hz. Sub-hyps (1a) componentwise-projection bug; (1b) OSQP block; (1c) ρ-adaptation may dissolve if cadence is the cause. |
+| 3 | ADMM / C3+ solver | **(UPDATED 2026-06-25) HELD EXCEPTION STAYS HELD; projection-defect attribution UN-PROVISIONALIZED — confirmed cadence-INDEPENDENT at both 100 Hz and 1 kHz via DIAGNOSTIC 1(c) at pre-fix HEAD `580c716`. See §7.6.** | `admm_solver.py:_solve_c3plus`, `iter=25`, adaptive-ρ | Non-convergence is the LOAD-BEARING no-push cause **at both rates** (pr~5 / dr~80 / 0/N converged, EE well-placed at c3 entry, planner predicts 234 mm fictional / box renders 0 mm — SAME pattern at 100 Hz and 1 kHz). The 100Hz-PROVISIONAL caveat from §7.5 is RETIRED. Cadence-discriminator question MOOT for the no-push (no-push is projection, not cadence). Next move: probe the LCP-per-knot convergence gap — leading-but-NOT-PROVEN candidate (offline oracle match 6.22e-8 but live LCP did not formally converge, λ wandered). |
 | 4 | Control input u | PARTIAL — wired but not default; **mechanism probe-confirmed reference-EXACT** (Stage C probe 2026-06-23; see §3 Stage C outcome) | `wrapper._derive_force_command` (`-g_hat`+mag, env-gated `PUSHA_FORCE_ROUTING=u_sol` for u_seq[0]) ↔ `sampling_based_c3_controller.cc:1822-1832` (`force_samples = u_sol[i]`) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** The mechanism is reference-exact; the row-flip gate is gap-closing / Stage E motion-bar. The LCP live-verification at 100 Hz produced 34 mm of real motion but not the gap-closed verdict; whether the projection is the fix OR cadence is the cause remains unresolved. |
 | 5 | Executor (OSC + force-tracking) | PARTIAL — **mechanism probe-confirmed reference-EXACT**; Reading 2 (executor/compliance bottleneck) REFUTED (phi_act < setpoint_sd on 119/119 — executor BEATS its own commanded position by ~15 mm) (Stage C probe 2026-06-23) | `osc/qp_builder.py:73` + `params.W_force=100.0` ↔ `franka_osc_controller.cc:167-170` + `osc_params.W_ee_lambda = I_3` (scalar 1.0; port W_force/W_track ratio 100/100 = reference's 1/1 ratio preserved) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** Same gate as row 4. |
 | 6 | Reposition mechanism | **PARTIAL — wired (descent reference-aligned); residuals deferred to Stage E** | `reposition_trajectory.py` + `sampling_based_c3_controller.py:2502-2528` (gated PWL path; default OFF) ↔ `Reposition(...) + UpdateRepositioningExecutionTrajectory + LcmTrajectoryReceiver` (see Stage A outcome subsection at end of §3 Stage A) | Stage E motion-decomp + force-tracking confirm residuals (NOT this stage) |
 | 7 | Push-point height computation | OPEN | `config/tasks.yaml:22 pushing.sampling_height = 0.03` (hand-coded) ↔ `sampling_params.yaml:64 z_height` auto-generated per object | Stage D passes |
-| 8 | Entry cadence + multi-process | **ACTIVE FRONT — UPDATED 2026-06-25: constant-level tick→sim-time conversion LANDED + 100Hz-BYTE-VERIFIED; ≥1 BEHAVIORAL coupling in the EE-landing chain remains, still blocking 1 kHz c3 engagement (see §7.5)** | (a) tick-vs-sim-time semantics — CONSTANT-LEVEL conversion DONE (15 constants → seconds; SMOKE 1 5/5 PASS, mode_match 1201/1201 byte-equivalent at 100 Hz). BEHAVIORAL coupling REMAINS: the PWL rebuild gate (sampling_based_c3_controller.py:2643) fires per-tick starting at step ~1630 (just before c3 entry at step ~1700) — most likely `_refresh_buffer_on_arrival` → next-target-selection produces a new target every tick once EE is in proximity. (b) RATE + ARCHITECTURE — `main.py:571` + single-process loop ↔ `LcmDrivenLoop` 3-process LCM-coupled. | (a)' constant-level: DONE. (a)" behavioral coupling: trace probe next (the audit's SECOND incompleteness — grep is structurally blind to call-frequency couplings). (b) discriminator + Stage F multi-process — DEFERRED until (a)" lands. Row stays ACTIVE FRONT. |
+| 8 | Entry cadence + multi-process | **(UPDATED 2026-06-25 post-diagnostics — see §7.6) constant-level tick→sim-time conversion STAYS (byte-equivalent at 100 Hz, real alignment work). Storm fix DEFERRED — not on the no-push critical path. Cadence-discriminator MOOT for the no-push (the no-push is projection, cadence-independent).** | (a) tick-vs-sim-time semantics — CONSTANT-LEVEL conversion KEPT (15 constants → seconds, 100Hz-byte-equivalent, separate commits proven). BEHAVIORAL coupling (storm at EE-landing) — pinned mechanism (level-vs-edge refresh at `:1977`), DEFERRED — it is a 1 kHz c3-blocker, but at 100 Hz the 6-tick window self-corrects (DIAGNOSTIC 1(a); storm thrashes target then cycles back). FIX-A+FIX-B(2) bundle REVERTED — see §7.6. (b) RATE + ARCHITECTURE — `main.py:571` + single-process loop ↔ `LcmDrivenLoop` 3-process LCM-coupled. | (a)' constant-level: DONE, RECONCILED-as-rate-independent (NOT no-push, NOT Class B alignment). (a)" storm fix: DEFERRED until 1 kHz or multi-seed work needs it. (b) discriminator + Stage F multi-process — MOOT for no-push; Stage F still independent (multi-process architecture is separate from cadence). Row no longer the critical front; the no-push critical front is row 3. |
 | 9 | Contact-proximity entry-gate | **RETIRED (2026-06-23; 0% firing rate measured across NEW/OLD/baseline seeds; see §3 Stage B outcome)** | `wrapper.py:1038-1147` (no reference equivalent — reference uses EE-z-close clause at `sampling_based_c3_controller.cc:1290-1293` instead) | (already retired) |
 
 **Maintenance:** each row above updates AS PART OF the corresponding stage's definition of done. A stage that passes its bar without flipping the row's status is the stage's bar being wrong, not the status row.
@@ -624,6 +624,120 @@ is LEVEL-triggered — fires every tick while `_last_repos_finished == True` (**
 **FIX-B(2) (unify the finished-criterion):** under the PWL path, compute `_last_repos_finished` from `PWL.is_finished(sim_t, ee_now, tol=0.005)` — the SAME criterion the dispatcher uses at `:1072`. Legacy IK tracker path preserved unchanged. **RECONCILIATION not strictness:** the tracker was wired to a WEAKER (distance-only) criterion than the dispatcher already consumes (time+distance); B2 makes them agree on the criterion the dispatcher was designed around. **B1 (distance-only for both) would be WRONG** — declares arrival while PWL velocity is non-zero. Edits at `:1972`.
 
 **Verification gate (BOTH smokes):** the fix touches LIVE dispatch logic — the 100 Hz byte-equivalence gate applies. SMOKE 1 (100 Hz no-op) must clear 5/5 against `stage_c/seed0_usol_100.log`. SMOKE 2 (1 kHz, short, to ~step 1750) must clear 4/4 AND surface the explicit INTERMEDIATE READ: with the storm gone (FIX-A) and the criteria unified (FIX-B), at step ~1652 sim_t reaches the original t_end → `is_finished` should fire → mode flips to c3. **If `is_finished` does NOT fire even with stable t_end → THIRD coupling; trace remains on HEAD (re-enable `PUSHA_LANDING_TRACE=1`) and we report the ACTUAL mechanism, not infer from null.**
+
+---
+
+### 7.6 — Two diagnostics RESOLVED the fork: EE well-placed; no-push = Probe B at 100 Hz; REVERT ccb71f5; preserve the conversion (2026-06-25)
+
+**The two diagnostics from §7.5's outstanding "what does SMOKE 1's regression mean" question ran and are decisive.** They overturn the prior block's "regression-is-improvement" reading. Per the §7 anti-stale discipline, banked here BEFORE the revert block executes.
+
+#### (1) FORK RESOLVED — EE WELL-PLACED at c3 entry; landing-bug REFUTED at 100 Hz
+
+**DIAGNOSTIC 1(b)** (pre-fix HEAD `580c716` at 100 Hz, seed 0, 2.5 s): at c3 entry (step 173) `ee_now = [+0.0799, -0.0002, +0.0354]` — east face of the box, centered, valid push height; phi = 4.94 mm. The 100 Hz storm thrashed targets for 6 ticks (164-170) then ACCIDENTALLY cycled BACK to the original target `[+0.080, 0, +0.030]` by step 171 — the EE landed correctly. **The EE-MISPOSITIONING hypothesis is REFUTED:** the storm did NOT misposition the EE at 100 Hz (the 6-tick window self-corrects; at 1 kHz the 152-tick window does not, which is why 1 kHz blocked c3). **The 100 Hz no-push is NOT a landing bug.**
+
+#### (2) THE NO-PUSH = PROBE B componentwise non-convergence, CONFIRMED at 100 Hz
+
+**DIAGNOSTIC 1(c)** — with the EE well-placed and c3 engaged, the ADMM does NOT converge:
+- pr_final median **4.94**, dr_final median **80** (tol = 1e-3)
+- `iters 25/25` every solve; `converged = 0 / 31` c3 ticks
+- `u_dot_box = -0.86` (force points away from box — recoil convention)
+- `ee_step1_dot_box = -0.98` (**planner predicts the EE RETREATING**)
+- `box_total_xy` PREDICTED median 234 mm per horizon (fictional) / ACTUAL **0 mm**
+- `lam_n_ee_box = NaN every tick` (LCS never admits the EE-BOX pair)
+- phi closes 4.94 → 2.79 mm over 8 c3 ticks (EE keeps approaching despite retreating setpoint)
+
+**This is the SAME componentwise non-convergence the 1 kHz scope-stop and the LCP-isolation probe both pinned (Probe B).** It manifests at 100 Hz too: EE well-placed, c3 engages, ADMM produces a non-converged solution whose 234 mm predicted box motion is fictional while reality renders 0 mm. **The 100 Hz no-push IS the projection/convergence question.**
+
+#### (3) CONFOUND COLLAPSED — un-provisionalizes the projection finding
+
+This UN-PROVISIONALS the projection-defect attribution that §7.5 marked "100Hz-PROVISIONAL" pending the 1 kHz re-measure: **the no-push is now CONFIRMED to be componentwise non-convergence at BOTH rates, EE well-placed, CADENCE-INDEPENDENT**. The 100Hz-vs-1kHz confound that has distorted the projection question since the LCP-live-verification 34 mm run is **COLLAPSED**: cadence was NEVER the cause of the no-push. The original cadence-discriminator question (does cadence fix convergence) is **MOOT for the no-push** — the no-push is the projection, not cadence.
+
+#### (4) FIX-A is a REGRESSION; the bundle's 28 mm is an ARTIFACT
+
+**DIAGNOSTIC 2** (temp branch from `ccb71f5`, FIX-B reverted, FIX-A only, 100 Hz, 2.5 s): `switches = 0`. **FIX-A ALONE BREAKS c3 engagement at 100 Hz.** With the refresh edge-latched, the FIRST random storm target (`[-0.0316, +0.0800, +0.0300]`, 137 mm away from the box) is FROZEN as the target permanently → the EE travels toward this wrong target → c3 never fires. The pre-fix per-tick storm was an ACCIDENTAL noisy correction (thrashed targets until cycling back to `[+0.080, 0, +0.030]` by luck at step 171); FIX-A removes the storm AND the accidental correction → **WORSE than the buggy baseline at 100 Hz**.
+
+**FIX-B(2) carries the entire 100 Hz behavior change** in the `ccb71f5` bundle — by changing WHEN `_last_repos_finished` latches (dispatcher STATE), not the projection. The bundle's 28 mm at 100 Hz is a **DOWNSTREAM consequence** of FIX-B's state-trajectory change interacting with the NON-CONVERGENT ADMM. **28 mm of real motion from a solver that predicts 234 mm and never converges is NOISE that happened to point the right way on one seed — NOT a working push, NOT a no-push fix.**
+
+#### (5) FAIR CREDIT (both true)
+
+The prior block's read was RIGHT on one narrow point and WRONG on the important one:
+- **RIGHT:** the storm IS a real bug (level-vs-edge refresh trigger at `:1977`), so strict byte-equivalence to the buggy 100 Hz baseline is the wrong gate FOR THE STORM FIX.
+- **WRONG:** the fix does NOT address the no-push (the no-push is Probe B non-convergence, which persists; the 28 mm is artifact).
+
+Both hold simultaneously.
+
+#### (6) DECISION — REVERT ccb71f5; preserve the conversion + findings
+
+**REVERT `ccb71f5` (FIX-A + FIX-B(2)).** Rationale: FIX-A alone regresses (DIAGNOSTIC 2); FIX-B(2) alone was not isolated; the bundle's 28 mm is a non-convergent-ADMM artifact, not a working push. The bundle is not on the no-push critical path.
+
+**PRESERVE:**
+- The tick→sim-time conversion (the 15-constant work; separate commits — proven byte-equivalent at 100 Hz, genuine alignment work that holds independently of the storm fix).
+- The diagnostic FINDINGS (the storm mechanism pin from §7.5; the EE-well-placed read from DIAGNOSTIC 1(b); the Probe-B-at-100 Hz confirmation from DIAGNOSTIC 1(c)).
+- The instrumentation gates (`PUSHA_LANDING_TRACE`, `PUSHA_CONTROL_HZ`, `PUSHA_FORCE_ROUTE_TRACE`, `PUSHA_SETPOINT_TRACE`, `PUSHA_CONSISTENCY_TRACE`, `PUSHA_ADMM_DUMP`) — read-only / default-OFF.
+
+**DEFERRED:** the storm fix (likely FIX-B isolated + tested) — the storm is a 1 kHz c3-blocker, NOT a no-push fix; at 100 Hz it self-corrects; the projection investigation proceeds at seed-0 100 Hz where c3 engages without it. Re-address the storm IF/WHEN 1 kHz or multi-seed work needs it.
+
+#### (7) STRATEGIC RESOLUTION
+
+The cadence-reconciliation sub-arc produced REAL alignment work (the tick→sim-time conversion, byte-equivalent at 100 Hz) but was **NOT on the no-push critical path**. The no-push is — and always was — the projection/convergence question (Probe B componentwise non-convergence), cadence-independent, EE-well-placed.
+
+The leading candidate fix is **LCP-per-knot** (offline harness matched the brute-force oracle to 6.22e-8 / 8 significant digits; live LCP produced 34 mm at 1 kHz seed 0 + partial four-link chain closure). **BUT** the LCP path is NOT yet proven: the live LCP solve ALSO did not formally converge (pr 4.96, λ wandered around the oracle but didn't lock to it). **"LCP is the fix" remains a HYPOTHESIS with a known gap** — offline-correct projection does not lock in the live closed loop. The next investigation interrogates THAT gap.
+
+#### (8) §1 / §7 updates folded in WITH this banking entry
+
+- **§1 row 3 (ADMM solver)**: projection-defect attribution UN-PROVISIONALIZED — confirmed cadence-independent at both rates. Cell text updated above.
+- **§1 row 8 (Entry & cadence)**: conversion STAYS (real alignment work). Storm fix DEFERRED. Cadence-discriminator MOOT for the no-push. Cell text updated above.
+- **§7.5 banking entry**: the SMOKE 1 "regression" framing is superseded by DIAGNOSTIC 1+2 here. The §7.5 "Update 2026-06-25 — MECHANISM PINNED + BUNDLED FIX" subsection's claim that FIX-A+FIX-B(2) addresses the chain is RETIRED — the fix addresses only the cosmetic landing storm at 1 kHz; it does NOT address the no-push at either rate.
+
+#### Anti-stale binding
+
+Any subsequent entry that treats "`ccb71f5` is the EE-landing fix" or "the 28 mm box motion at 100 Hz vindicates the fix" is operating on a stale record — DIAGNOSTIC 1+2 refute both. The current state-of-truth: the no-push is Probe B componentwise non-convergence, cadence-independent; LCP-per-knot is the leading hypothesis but has its own convergence gap (offline-oracle-correct, live-not-locked).
+
+**Next gate (corrected):** the revert block + a probe of the LCP convergence gap (why does the live LCP wander when offline it locks to the oracle?). NOT actioned in this plan-doc edit.
+
+---
+
+### 7.7 — Revert landed + 100 Hz byte-equivalence restored + LCP convergence-gap probe FRAMED (2026-06-25)
+
+**The revert block executed:** commit `5168ddd` surgically restored `control/sampling_c3/sampling_based_c3_controller.py` to its `580c716` state (FIX-A + FIX-B(2) removed; LANDING-TRACE gates + tick→sim-time conversion underneath preserved untouched). The §7.5 + §7.6 doc content stays.
+
+**100 Hz byte-equivalence CONFIRMED restored.** Post-revert smoke (`/tmp/diag_runs/d3_post_revert_100hz.log`) vs `stage_c/seed0_usol_100.log` baseline:
+
+| Bar | Baseline | Candidate (post-revert) | Δ | Pass |
+|---|---|---|---|---|
+| first_c3_step ±2 | 173 | 173 | 0 | ✓ |
+| first_c3_phi ±0.1 mm | 4.940 mm | 4.940 mm | 0.000 mm | ✓ |
+| switches ±2 | 36 | 36 | 0 | ✓ |
+| mode_match_rate ≥95% | — | **1201/1201 = 1.0000** | PERFECT | ✓ |
+| final_obj_xy ±0.5 mm | (0, 0) | (0, 0) | 0.000 mm | ✓ |
+
+**5/5 PASS, mode_match 1201/1201 byte-equivalent.** The revert removed the fix without damaging the conversion. The tick→sim-time conversion sub-arc is in its final landed state.
+
+#### NEXT PROBE — FRAMED (not executed): the LCP convergence-gap question
+
+**Scope as a PROBE that interrogates an open question — NOT an assumed fix.** The leading hypothesis (LCP-per-knot is the no-push fix) has a KNOWN GAP that the probe is designed to interrogate, not paper over.
+
+**The open question:** **why does the live LCP-per-knot solve FIND the oracle λ (`λ_n = 0.5839`, offline match to 8 significant digits — `lam_n_diff = 6.22e-08`) but NOT formally converge in the closed loop (live pr = 4.96, dr = 6.66; λ_n_max wanders around the oracle with median 0.703, max 3.76, never locking precisely)?** Offline machine-precision match did NOT translate to the live closed loop. This is the gap.
+
+**Evidence base (preserved on HEAD):**
+- **Offline harness** `scripts/_stage_c_admm_harness.py` Cell B: LCP-per-knot matched the brute-force oracle to 6.22e-8 on the captured `stage_c/admm_dump/seed0_full50.npz` instance. `pr_final = 0.74` (not below tol=1e-3) but `λ_n_first = 0.5839` (oracle).
+- **Live LCP verification** (`stage_c/lcp_verify/seed0_lcp_full.log`): 1 kHz seed-0 12 s with `--c3plus-projection=lcp` → 34.2 mm box motion (vs 0 mm under componentwise), partial four-link chain closure (φ_pred_min minimum -2.91 mm crossing penetration, V1 sustained-contact 5%→20%), but formal convergence still 0/65 and in-pipeline λ_n_max wandering median 0.703 vs oracle 0.5839 (Δ = 17.4 %, max Δ = 3.76).
+- **Flag exists**: `main.py:248 --c3plus-projection {componentwise, lcp}` default `componentwise`. Promotion deferred.
+
+**Candidate sub-questions (to investigate, not assume):**
+- **(a) Warm-start interaction.** The offline harness solves the captured instance once (no warm-start). The live loop solves at every tick — the prior tick's solution is the warm-start of the next. Does the LCP projection interact badly with a stale warm-start (e.g. the LCP basis at tick N pivots to one fixed point; tick N+1 starts from there and pivots to a different one; oscillation around the oracle)?
+- **(b) Per-tick x₀ variability.** The offline harness uses a fixed captured `x₀` (one knot-0 LCP at a single instance). The live loop has a fresh `x₀` per tick — the LCP `q = E·x₀ + H·u + c` shifts every tick, so the LCP basis the live solver finds is slightly different per tick. Does this per-tick shift drive the in-pipeline λ_n wandering even though the underlying solution is correct?
+- **(c) Primal-dual divergence (Cell B's precision caveat).** Cell B converged in the primal sense (λ_n locked to oracle to 8 sig figs) but not in the dual sense (pr = 0.74 ≫ tol = 1e-3; the dual residual stays above tol while the primal has found the answer). In the live loop, the same divergence is sharper: primal also wanders. Is the ADMM iteration scheme's convergence criterion (pr < tol AND dr < tol) over-strict for the LCP path's correctness signature?
+
+**Substrate decision:** **seed-0 at 100 Hz.** Per DIAGNOSTIC 1, c3 engages at 100 Hz on seed-0 without the storm fix (the 6-tick window self-corrects via accidental target cycle-back). This is the cleanest substrate to interrogate the LCP convergence gap — stripped of the 1 kHz cadence confound AND the storm-fix dependency. Use the existing `[CONSISTENCY]` + `[FORCE-ROUTE]` + `[SETPOINT]` gates (all default-OFF) to capture the live LCP's per-tick λ trajectory, the warm-start state, and the q-shift.
+
+**This is NOT a fix run.** The probe interrogates the gap: under what conditions does the live LCP lock to the oracle vs wander? The answer routes the actual fix: (a) warm-start-conscious LCP wrapper, (b) tol relaxation matching the LCP's primal-correctness signature, (c) a deeper algorithmic redesign. The next block opens this probe; NOT actioned in this plan-doc edit.
+
+#### Anti-stale binding
+
+Any subsequent entry that treats "the LCP path is the confirmed no-push fix" without first interrogating the convergence gap is operating on a stale record — the 34 mm at 1 kHz partial chain closure is suggestive, NOT confirming. The next gate is the probe, NOT a default flip / multi-seed validation / etc.
+
+**Next gate (corrected from §7.6):** the LCP convergence-gap probe at seed-0 100 Hz, scoped as a probe of the offline-vs-live divergence (sub-questions a/b/c). NOT actioned in this plan-doc edit.
 
 ---
 
