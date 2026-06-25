@@ -528,12 +528,32 @@ def main():
         _rng = np.random.default_rng(args.seed) if args.seed is not None else None
         if args.seed is not None:
             print(f"[OVERRIDE] seed={args.seed} (rng=np.random.default_rng)")
+        # Stage C cadence discriminator — PUSHA_CONTROL_HZ env gate.
+        # Default 100 → dt_ctrl=0.01 (baseline); set to 1000 → dt_ctrl=0.001
+        # to measure whether the ADMM converges when the state moves ~10×
+        # less per control tick (reference's actual cadence). Override
+        # sc3_params.dt_osc/dt_mpc BEFORE wrapper construction so the
+        # wrapper's _dt_osc/_dt_mpc fields pick up the new rate. The PWL
+        # reposition is sim-t-parameterized (eval(sim_t)) → naturally lands
+        # the EE the same way at 1 kHz; only the control/ADMM cadence
+        # changes (Stage A reposition isolation guard preserved).
+        import os as _os_cad
+        _ctrl_hz = float(_os_cad.environ.get("PUSHA_CONTROL_HZ", "100"))
+        _dt_ctrl_pass = 1.0 / _ctrl_hz
+        if abs(_ctrl_hz - 100.0) > 1e-9:
+            sc3_params.dt_osc = _dt_ctrl_pass
+            sc3_params.dt_mpc = _dt_ctrl_pass
+            print(f"[ENV]  PUSHA_CONTROL_HZ={_ctrl_hz} → "
+                  f"dt_ctrl={_dt_ctrl_pass:.4f}s, "
+                  f"sc3_params.dt_osc={sc3_params.dt_osc:.4f}s, "
+                  f"sc3_params.dt_mpc={sc3_params.dt_mpc:.4f}s")
         mpc = SamplingC3MPC(
             base_mpc=mpc,
             plant=plant,
             ee_frame=ee_frame,
             obj_body=obj_body,
             params=sc3_params,
+            dt_ctrl=_dt_ctrl_pass,
             log_diag=True,
             start_in_c3_mode=False,
             rng=_rng,
@@ -568,7 +588,11 @@ def main():
     # Main simulation loop
     # ------------------------------------------------------------------
     sim_time      = 0.0
-    dt_ctrl       = 0.01
+    # Stage C cadence discriminator — read PUSHA_CONTROL_HZ AGAIN here for
+    # the simulator loop period. The same gate was applied above (before
+    # the SamplingC3MPC construction) to set sc3_params.dt_osc/dt_mpc.
+    import os as _os_cad2
+    dt_ctrl       = 1.0 / float(_os_cad2.environ.get("PUSHA_CONTROL_HZ", "100"))
     max_time      = args.max_time if args.max_time is not None else 8.0
     step          = 0
     if args.max_time is not None:
