@@ -1968,69 +1968,23 @@ class SamplingC3MPC:
                               flush=True)
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
-                #
-                # 2026-06-25 FIX-B(2) — UNIFY the finished-criterion onto
-                # the dispatcher's time+distance contract used at line
-                # 1072 (PWL.is_finished). The prior code consulted
-                # free_diag['finished'] which the legacy/PWL tracker
-                # populates from a distance-only check (≤5 mm), so the
-                # tracker latched at step 1629 (distance 4.9 mm) while
-                # the dispatcher's PWL.is_finished stayed False (sim_t
-                # 1.629 < pwl_t_end 1.6523) — the two halves disagreed
-                # about arrival and c3 never engaged. Under the PWL path
-                # we MUST use the same TIME+DISTANCE criterion the
-                # dispatcher is designed around (Pinned by the trace
-                # probe; commit 2e57e78). Distance-only B1 is wrong —
-                # would declare "arrived" while the PWL trajectory still
-                # has non-zero velocity.
-                if self._use_pwl_traj and self._pwl_traj is not None:
-                    _ee_now_for_finish = free_diag.get("ee_now")
-                    if _ee_now_for_finish is None:
-                        _ee_now_for_finish = ee_pos_now
-                    _sim_t_for_finish = (
-                        float(self._step) * float(self._dt_ctrl))
-                    self._last_repos_finished = bool(
-                        self._pwl_traj.is_finished(
-                            _sim_t_for_finish,
-                            _ee_now_for_finish,
-                            tol=0.005,
-                        )
-                    )
-                else:
-                    # Legacy IK tracker path (PUSHA_REPOSITION_PWL=0) —
-                    # preserve prior semantics.
-                    self._last_repos_finished = bool(
-                        free_diag.get("finished", False))
-                # On arrival, force the ring-sample buffer to refresh.
-                # Otherwise the now-reached point persists as a strategy
-                # sample and the cost gate keeps re-firing
+                self._last_repos_finished = bool(
+                    free_diag.get("finished", False))
+                # On arrival, force the ring-sample buffer to refresh next
+                # loop. Otherwise the now-reached point persists as a
+                # strategy sample and the cost gate keeps re-firing
                 # kToC3ReachedReposTarget for it.
-                #
-                # 2026-06-25 FIX-A — EDGE-latch the refresh. The prior
-                # code fired _refresh_buffer_on_arrival every tick that
-                # _last_repos_finished == True (level-triggered, 67 fires
-                # / 152 ticks at 1 kHz in the landing window), which
-                # combined with the 1e9 prev_repos cost inflation drove
-                # the argmin to flip to a fresh random strategy sample
-                # each tick → PWL rebuilt → t_end extended → self-
-                # sustaining storm. Edge-trigger via a sentinel so the
-                # refresh fires only ONCE per arrival event. Reset on
-                # False so a subsequent re-arrival re-fires.
-                import os as _os_lt0
                 if self._last_repos_finished:
-                    if not getattr(self, "_arrival_handled", False):
-                        if _os_lt0.environ.get("PUSHA_LANDING_TRACE", "0") == "1":
-                            print(f"[LANDING-REFRESH] step={self._step} "
-                                  f"_refresh_buffer_on_arrival FIRED (edge)",
-                                  flush=True)
-                        self._refresh_buffer_on_arrival()
-                        self._landing_trace_refresh_fired_at = int(self._step)
-                        self._arrival_handled = True
-                else:
-                    # Edge-latch reset: arrival has cleared (e.g. EE
-                    # moved away or new target selected). Allow a future
-                    # refresh on the next False→True transition.
-                    self._arrival_handled = False
+                    # Stage C landing-storm trace: mark the call (the
+                    # leading-hypothesis suspect for the per-tick rebuild
+                    # storm at 1 kHz). Default-OFF.
+                    import os as _os_lt0
+                    if _os_lt0.environ.get("PUSHA_LANDING_TRACE", "0") == "1":
+                        print(f"[LANDING-REFRESH] step={self._step} "
+                              f"_refresh_buffer_on_arrival FIRED",
+                              flush=True)
+                    self._refresh_buffer_on_arrival()
+                    self._landing_trace_refresh_fired_at = int(self._step)
 
                 if self.log_diag:
                     ee_now = free_diag.get("ee_now")
