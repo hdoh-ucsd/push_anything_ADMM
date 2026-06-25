@@ -1,0 +1,51 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+========================================================================
+STAGE C HORIZONTAL CONSISTENCY PROBE — contact state, count=4
+========================================================================
+  Constructed contact state:
+    box position = [0.   0.   0.05]    quat = [1. 0. 0. 0.]
+    EE position  = [0.0749 0.     0.05  ]  (east face, 0.10 mm penetration)
+    EE velocity  = (-0.05, 0, 0) m/s  (westward push)
+    u (EE force) = 0  (no commanded force; momentum drives contact)
+  EE pos achieved: [ 0.07499681 -0.00010441  0.05009853] (target: [0.0749 0.     0.05  ])  Δ 0.173 mm
+  EE vel achieved: [-5.00000000e-02  2.00577402e-18  4.28641023e-18] (target: [-0.05  0.    0.  ])
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+  Re-extracted LCS: n_x=19, n_lambda=30
+  contacts found: 5
+    pair 0: tag=EE-BOX  dist=-3.1928732939986992e-06
+    pair 1: tag=BOX-VERT-0  dist=0.0
+    pair 2: tag=BOX-VERT-1  dist=0.0
+    pair 3: tag=BOX-VERT-2  dist=0.0
+    pair 4: tag=BOX-VERT-3  dist=0.0
+  Lemke residual: 1.970e-08
+  Feasibility: λ≥0 True, w≥0 True, max|λw|=6.7384e-09
+  λ_max = 0.8209
+  λ nonzero indices: [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 14, 18, 22, 26]
+  λ nonzero values : [0.008733434859468703, 0.009305315046304302, 0.008733433286633285, 0.009305313473468885, 0.8208774813791854, 0.29389603012017196, 0.293895080622413, 0.6871048698969383, 0.6871039409613753, 0.0009531336129486021, 0.1175584121354031, 0.11755803234201817, 0.2748419480461095, 0.2748415764776033]
+
+========================================================================
+RESULT — horizontal model-plant consistency at the contact state
+========================================================================
+  Δ box xyz       LCS:   (-0.451, +0.012, -0.000) mm
+                 Drake:  (-1.684, +0.165, -0.495) mm
+
+  Δ box vel       LCS:   (-0.00902, +0.00024, -0.00000) m/s
+                 Drake:  (-0.01280, -0.00214, +0.03038) m/s
+
+  Horizontal |LCS - Drake| in xy : 1.2423 mm
+  Vertical   |LCS - Drake| in z  : 0.4950 mm
+  HORIZONTAL CLOSE : False
+  VERTICAL CLOSE   : True
+
+========================================================================
+ROUTE
+========================================================================
+  → HORIZONTAL-GAP — vertical holds but horizontal does NOT match.
+    Second contact-model gap on the push axis (EE-box dynamics,
+    friction, or count=4 floor interacting with push).
+    Investigate before re-promoting convergence.
