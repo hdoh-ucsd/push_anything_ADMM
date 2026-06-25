@@ -360,6 +360,11 @@ class C3PlusMPC:
         # don't amplify ω-leakage (delta view) or complementarity-leakage
         # (z_sol view). True by default — only set False on actual divergence.
         self.last_converged = bool(getattr(self.solver, "_last_converged", True))
+        # Stage C probe B [CONSISTENCY] — forward ADMM terminal-state fields.
+        self.last_pr_final   = float(getattr(self.solver, "_last_pr_final",  float("nan")))
+        self.last_dr_final   = float(getattr(self.solver, "_last_dr_final",  float("nan")))
+        self.last_iters_used = int(  getattr(self.solver, "_last_iters_used", 0))
+        self.last_tol        = float(getattr(self.solver, "_last_tol",       1e-3))
         # Stash cost-build outputs for the wrapper's [COST-DUMP] diagnostic
         # (purely additive — read only by one-shot logging).
         self._last_Q          = Q

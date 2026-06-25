@@ -1157,6 +1157,13 @@ class C3Solver:
         self._last_converged = bool(
             n_lambda == 0 or (_pr_final < tol and _dr_final < tol)
         )
+        # Stage C probe B [CONSISTENCY] — expose the ADMM terminal state on
+        # self so the dispatcher's per-tick trace can read pr/dr/iters/tol
+        # without re-running the solve or parsing the [ADMM-C3+] log line.
+        self._last_pr_final  = float(_pr_final)
+        self._last_dr_final  = float(_dr_final)
+        self._last_iters_used = int(actual_iters)
+        self._last_tol       = float(tol)
         if not self._last_converged:
             print(f"[ADMM-C3+] WARNING non-converged: "
                   f"pr={_pr_final:.4f} dr={_dr_final:.4f} tol={tol:.0e}")
