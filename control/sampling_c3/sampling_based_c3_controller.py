@@ -1834,6 +1834,22 @@ class SamplingC3MPC:
                 self._current_repos_cost   = c_samples[target_idx]
                 best_src = labels[target_idx]
 
+                # Stage C landing-storm trace — upstream argmin emit.
+                # Default-OFF. Captures whether the per-tick selection is
+                # flipping between cached samples (the leading hypothesis
+                # for the rebuild storm at 1 kHz).
+                import os as _os_lt2
+                if (_os_lt2.environ.get("PUSHA_LANDING_TRACE", "0") == "1"
+                        and self._step >= int(_os_lt2.environ.get(
+                            "PUSHA_LANDING_TRACE_FROM", "1600"))):
+                    _label = labels[target_idx]
+                    _cs_str = ",".join(f"{float(c):.4f}" for c in c_samples)
+                    print(f"[LANDING-SELECT] step={self._step} "
+                          f"target_idx={target_idx} label={_label} "
+                          f"p_repos=[{p_repos[0]:+.4f},{p_repos[1]:+.4f},{p_repos[2]:+.4f}] "
+                          f"labels={labels} c_samples=[{_cs_str}]",
+                          flush=True)
+
                 # Why-replan diagnostics. Compare the won target against the
                 # "held" candidate (the prev_repos slot — k=1 when present).
                 # Selection is pure argmin (wrapper.py:610), so a small margin
@@ -1959,7 +1975,16 @@ class SamplingC3MPC:
                 # strategy sample and the cost gate keeps re-firing
                 # kToC3ReachedReposTarget for it.
                 if self._last_repos_finished:
+                    # Stage C landing-storm trace: mark the call (the
+                    # leading-hypothesis suspect for the per-tick rebuild
+                    # storm at 1 kHz). Default-OFF.
+                    import os as _os_lt0
+                    if _os_lt0.environ.get("PUSHA_LANDING_TRACE", "0") == "1":
+                        print(f"[LANDING-REFRESH] step={self._step} "
+                              f"_refresh_buffer_on_arrival FIRED",
+                              flush=True)
                     self._refresh_buffer_on_arrival()
+                    self._landing_trace_refresh_fired_at = int(self._step)
 
                 if self.log_diag:
                     ee_now = free_diag.get("ee_now")
@@ -2656,6 +2681,56 @@ class SamplingC3MPC:
                         _p_target_arr
                         - self._pwl_traj_built_for_target)) > 5e-3
                 )
+
+                # Stage C landing-storm trace — gated, default-OFF.
+                # Window: step >= PUSHA_LANDING_TRACE_FROM (default 1600 at
+                # 1 kHz; ~step 160 at 100 Hz to capture the same sim-time
+                # window). One consolidated emit per tick at the rebuild
+                # gate carrying the full chain state. The fix is decided
+                # AFTER the read — this block adds NO behavior change.
+                import os as _os_lt
+                _trace_on = _os_lt.environ.get("PUSHA_LANDING_TRACE", "0") == "1"
+                _trace_from = int(_os_lt.environ.get("PUSHA_LANDING_TRACE_FROM", "1600"))
+                if _trace_on and self._step >= _trace_from:
+                    _built = self._pwl_traj_built_for_target
+                    if _built is not None:
+                        _delta_mm = float(np.linalg.norm(
+                            _p_target_arr - _built)) * 1000.0
+                    else:
+                        _delta_mm = float("nan")
+                    _sim_t_now = float(self._step) * float(self._dt_ctrl)
+                    # PWL trajectory finished-flag debug
+                    if self._pwl_traj is not None:
+                        _pwl_t_end = float(self._pwl_traj.t_end)
+                        _pwl_p_tgt = self._pwl_traj.p_target.tolist()
+                        _dist_to_pwl_target_mm = float(np.linalg.norm(
+                            np.asarray(ee_pos_now) - self._pwl_traj.p_target)) * 1000.0
+                        _is_finished = self._pwl_traj.is_finished(
+                            _sim_t_now, ee_pos_now, tol=0.005)
+                    else:
+                        _pwl_t_end = float("nan")
+                        _pwl_p_tgt = None
+                        _dist_to_pwl_target_mm = float("nan")
+                        _is_finished = False
+                    _refresh_at = getattr(self, "_landing_trace_refresh_fired_at", None)
+                    print(
+                        f"[LANDING-TRACE] step={self._step} "
+                        f"sim_t={_sim_t_now:.4f} "
+                        f"mode={mode} "
+                        f"need_rebuild={_need_rebuild} "
+                        f"delta_mm={_delta_mm:.4f} "
+                        f"curr_target=[{_p_target_arr[0]:+.4f},"
+                        f"{_p_target_arr[1]:+.4f},{_p_target_arr[2]:+.4f}] "
+                        f"built_for=[{(_built[0] if _built is not None else 0.0):+.4f},"
+                        f"{(_built[1] if _built is not None else 0.0):+.4f},"
+                        f"{(_built[2] if _built is not None else 0.0):+.4f}] "
+                        f"pwl_t_end={_pwl_t_end:.4f} "
+                        f"dist_ee_to_pwl_target_mm={_dist_to_pwl_target_mm:.4f} "
+                        f"pwl_is_finished={_is_finished} "
+                        f"ee_now=[{ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}] "
+                        f"refresh_last_at={_refresh_at}",
+                        flush=True,
+                    )
                 if _need_rebuild:
                     self._pwl_traj = RepositionTrajectory(
                         p_start=ee_pos_now,
