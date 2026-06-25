@@ -87,7 +87,7 @@ The isolation probe runs in the next block — projection-swap (Aydinoglu per-co
 |---|---|---|---|---|
 | 1 | Dispatch (mode-switch) | **RECONCILED** | `mode_switch.py:95-144` ↔ `sampling_based_c3_controller.cc:1145-1310` | (already at goal) |
 | 2 | LCS admission | **PARTIAL — executor-side SKIP stands; PLANNER-SIDE admission blocked on the ADMM iteration-scheme defect (1a/1b/1c) — NOT on §0 #2 modeling (CORRECTED 2026-06-23; see §0 retraction)** | `lcs_formulator.py:390-456` (2 mm threshold — executor-side contact filter AND planner-side LCS-build path) ↔ `LCSFactory::GetNClosestContactPairs` (N-closest) | Blocked on the isolable C3+ iteration-scheme defect (oscillation around a feasible LCP point), NOT on §0 #2 modeling. Re-opens IFF the isolation probe identifies the bug AND it lands live. Executor-side: no flip — already skip-justified. |
-| 3 | ADMM / C3+ solver | **(UPDATED 2026-06-25) HELD EXCEPTION STAYS HELD; projection-defect attribution UN-PROVISIONALIZED — confirmed cadence-INDEPENDENT at both 100 Hz and 1 kHz via DIAGNOSTIC 1(c) at pre-fix HEAD `580c716`. See §7.6.** | `admm_solver.py:_solve_c3plus`, `iter=25`, adaptive-ρ | Non-convergence is the LOAD-BEARING no-push cause **at both rates** (pr~5 / dr~80 / 0/N converged, EE well-placed at c3 entry, planner predicts 234 mm fictional / box renders 0 mm — SAME pattern at 100 Hz and 1 kHz). The 100Hz-PROVISIONAL caveat from §7.5 is RETIRED. Cadence-discriminator question MOOT for the no-push (no-push is projection, not cadence). Next move: probe the LCP-per-knot convergence gap — leading-but-NOT-PROVEN candidate (offline oracle match 6.22e-8 but live LCP did not formally converge, λ wandered). |
+| 3 | ADMM / C3+ solver | **(UPDATED 2026-06-25 — see §7.9) Leading-candidate-fix SHIFTED again: SOLVER-level convergence is NOT the root. Contact-model alignment (LCS missing box-ground) FIRST. Model-plant consistency test shows the LCS-with-oracle predicts box motion Drake does NOT render (1.7e7× mismatch).** | `admm_solver.py:_solve_c3plus`, `lcs_formulator.py` LCS construction | The non-convergence is real (DIAGNOSTIC 1(c)), but the deeper fact is: the captured LCS has `n_lambda = 6` = 1 EE-BOX contact only, NO box-ground. Solving any LCS-consistent λ, including the brute-force oracle, predicts the box FALLS (LCS lacks the floor). Reference uses contact_model: anitescu + 12 object-ground contacts always; port uses Stewart-Trinkle + LCS_EXPLICIT_BOX_GND OFF by default. Next gate: contact-model alignment, then re-test consistency. Reference-settings precondition is MOOT until LCS matches plant. |
 | 4 | Control input u | PARTIAL — wired but not default; **mechanism probe-confirmed reference-EXACT** (Stage C probe 2026-06-23; see §3 Stage C outcome) | `wrapper._derive_force_command` (`-g_hat`+mag, env-gated `PUSHA_FORCE_ROUTING=u_sol` for u_seq[0]) ↔ `sampling_based_c3_controller.cc:1822-1832` (`force_samples = u_sol[i]`) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** The mechanism is reference-exact; the row-flip gate is gap-closing / Stage E motion-bar. The LCP live-verification at 100 Hz produced 34 mm of real motion but not the gap-closed verdict; whether the projection is the fix OR cadence is the cause remains unresolved. |
 | 5 | Executor (OSC + force-tracking) | PARTIAL — **mechanism probe-confirmed reference-EXACT**; Reading 2 (executor/compliance bottleneck) REFUTED (phi_act < setpoint_sd on 119/119 — executor BEATS its own commanded position by ~15 mm) (Stage C probe 2026-06-23) | `osc/qp_builder.py:73` + `params.W_force=100.0` ↔ `franka_osc_controller.cc:167-170` + `osc_params.W_ee_lambda = I_3` (scalar 1.0; port W_force/W_track ratio 100/100 = reference's 1/1 ratio preserved) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** Same gate as row 4. |
 | 6 | Reposition mechanism | **PARTIAL — wired (descent reference-aligned); residuals deferred to Stage E** | `reposition_trajectory.py` + `sampling_based_c3_controller.py:2502-2528` (gated PWL path; default OFF) ↔ `Reposition(...) + UpdateRepositioningExecutionTrajectory + LcmTrajectoryReceiver` (see Stage A outcome subsection at end of §3 Stage A) | Stage E motion-decomp + force-tracking confirm residuals (NOT this stage) |
@@ -738,6 +738,172 @@ Any subsequent entry that treats "`ccb71f5` is the EE-landing fix" or "the 28 mm
 Any subsequent entry that treats "the LCP path is the confirmed no-push fix" without first interrogating the convergence gap is operating on a stale record — the 34 mm at 1 kHz partial chain closure is suggestive, NOT confirming. The next gate is the probe, NOT a default flip / multi-seed validation / etc.
 
 **Next gate (corrected from §7.6):** the LCP convergence-gap probe at seed-0 100 Hz, scoped as a probe of the offline-vs-live divergence (sub-questions a/b/c). NOT actioned in this plan-doc edit.
+
+---
+
+### 7.8 — Cheap artifact-reread CLOSED the LCP path; reference-componentwise fork is the leading gate (2026-06-25)
+
+**The cheap reread of `stage_c/lcp_verify/seed0_lcp_full.log` + `scripts/_stage_c_admm_harness.py` Cell B was decisive AND plan-changing.** It closes the projection-switch fix path and re-points the route to the banked port-vs-reference componentwise fork. Banked here BEFORE the precondition probe.
+
+#### (1) LCP-per-knot REJECTED as the fix — same fictional-prediction signature as componentwise
+
+**The cheap reread routed to BRANCH 3, not BRANCH 1.**
+
+**(A) PRIMAL WANDER, NOT primal-locks-dual-lags.** The LCP sub-step (Lemke per-knot) still locks to machine precision per-knot (median 7.4e-8 = oracle match), but the ADMM envelope around it does NOT produce a stable λ:
+
+| Signal | Live (1 kHz seed-0) | Cell B (offline) |
+|---|---|---|
+| LCP sub-step residual | median 7.4e-8 | 6.22e-8 (oracle) |
+| ADMM primal_final | median 4.96 | 0.74 |
+| ADMM dual_final | median 21.0 | 6.66 |
+| λ_n_max output (oracle = 0.5839) | median **0.703**, max 4.35 | 0.5839 (oracle) |
+| solves within 5 % of oracle | **2.2 %** (28/1266) | (offline locked) |
+| solves with λ_n > 1.0 (large wander) | **20.3 %** (257/1266) | — |
+
+Cell B's offline primal-locks-dual-lags signature **DID NOT translate to the live closed loop**. The live primal-on-λ wanders dramatically.
+
+**(B) PREDICTION FICTIONAL.** Even when the LCP λ is approximately right, the planner's overall x_seq is non-physical:
+
+| Signal | Live (1 kHz LCP) | Componentwise (Probe B context) |
+|---|---|---|
+| Predicted `box_total_xy` median (per horizon) | **228 mm** | 234 mm |
+| Actual box motion over 12 s | **38 mm** | 0 mm |
+| Planner-extrapolated (228 mm/s × 12 s) | ~2736 mm | — |
+| **actual / planner-extrapolated** | **1.4 %** | 0 % |
+
+**SAME fictional-prediction signature as componentwise.** The 34 mm at 1 kHz was NEVER faithful tracking — it is a **1.4 % rendering of a fictional 228 mm/horizon prediction**. The same shape that defines the no-push at componentwise also defines the no-push at LCP.
+
+**CONCLUSION:** switching projections (LCP-per-knot) is **NOT the fix**. LCP produces the same fictional-prediction signature as componentwise at the live envelope. The over-strict-criterion path (BRANCH 1) is also dead — the primal does not lock AND the prediction is fictional, so there is no primal-correct solution for a relaxed criterion to accept.
+
+#### (2) Warm-start REFUTED by CODE (not inference)
+
+`_solve_c3plus` zeros `delta = omega = delta_prev = np.zeros(total_dim)` at the top of EVERY call (`admm_solver.py:951-953`). The port's ADMM cold-starts the dual/primal variables every MPC tick — NO warm-start carryforward. Sub-question (a) warm-start interaction is **REFUTED by code review** without a new trace. Sub-question (b) per-tick x0 variability stays mechanistically plausible but the cold-start **BOUNDS its impact** (each solve is a FRESH problem with no inheritance from the prior tick's iteration state — so the wandering λ is a consequence of cold-started ADMM not reaching a fixed point in 25 iters for shifting problem structure, NOT stale-warm-start contamination).
+
+#### (3) THE SHARED FICTIONAL-PREDICTION SIGNATURE (deeper hint, banked as HYPOTHESIS)
+
+The fictional-prediction signature (predicted ≫ actual, ~1-1.4 % rendered) is **SHARED** between componentwise (234/0) and LCP (228/38, 1.4 %). This suggests the problem may NOT be in the PROJECTION at all but in the **LCS/dynamics the planner optimizes against**. If the planner predicts 228 mm/horizon that reality renders at 1.4 %, the MODEL the planner optimizes over may be **disconnected from the PLANT it controls**. This is plausibly the `λn_ee_box=NaN` thread (the LCS never admits the EE-BOX pair) surfacing as a prediction/reality gap.
+
+Banked as a HYPOTHESIS, NOT the immediate move — the reference-componentwise fork is the leading gate. But it is the thing to watch if the reference-componentwise fork does not resolve it.
+
+#### (4) ROUTE — the reference-componentwise fork is now the LEADING gate
+
+Both the criterion path (BRANCH 1) and the LCP-switch path are dead. **The fix is NOT switching projections — it is making the port's componentwise WORK like the reference's.** The reference runs the SAME componentwise projection (Bui 2026 eq 12) at `iter=3` and CONVERGES; the port's fails at `iter=25`. The fix surface is the port-vs-reference componentwise SETUP difference: E-matrix construction, ρ schedule, iteration-scheme initialization, OSQP block coefficients.
+
+#### (5) THE PRECONDITION (unbundled — the cheapest first move of the fork)
+
+**BEFORE comparing the port's iter-25 trajectory to the reference's iter-3 trajectory**, the load-bearing precondition is:
+
+> **Does the reference's componentwise converge TO THE ORACLE (`λ_n = 0.5839`) on the captured `seed0_full50.npz` instance, or just to a small formal residual?**
+
+This decides whether the brute-force LCP oracle is the right LIVE target.
+
+- The brute-force LCP oracle is per-instance math (the complementarity-feasible solution for the captured LCS at u=0, found by enumeration of all 64 bases; `max|λ_i · w_i| = 6.94e-17`, complementarity satisfied to machine precision).
+- The reference's componentwise either lands on the same `λ_n = 0.5839` value, or it doesn't — independent of projection family.
+- **If the reference converges to 0.5839** → the oracle is confirmed as the live target, the port genuinely fails to reach a reachable solution, and the trajectory/setup comparison is the next step.
+- **If the reference converges to something else** → the oracle was NOT the right live target and the framing shifts (possibly to the §7.8(3) shared-signature LCS-disconnect hypothesis).
+
+The precondition is **unbundled from (and precedes)** the trajectory comparison.
+
+#### (6) LCP TRACE DROPPED
+
+The live LCP trace for x0 / per-tick wandering characterization (BRANCH 2(b)) is **DROPPED**. BRANCH 3 dominance makes it low-value: characterizing why LCP's λ wanders is characterizing an abandoned path. **LCP is not the fix.**
+
+#### (7) §1 / progress-table updates
+
+- **§1 row 3 (ADMM solver)**: leading-candidate-fix shifts from "LCP-per-knot (leading-but-unproven)" to **"make the port's componentwise CONVERGE like the reference's (eq 12, iter 3) — a SETUP-difference fix"**. LCP is REJECTED. Cell text updated above.
+- **Progress-table ground-truth/gap line (informational; banked here)**: the brute-force LCP oracle EXISTS and the per-knot LCP matches it offline (machine precision), BUT the live LCP envelope renders 1.4 % — LCP is not the fix; the reference-componentwise setup-difference is the path. The next gate is the precondition (does the reference's componentwise hit the oracle on the captured instance).
+
+#### Anti-stale binding
+
+Any subsequent entry that treats "LCP-per-knot is the leading no-push candidate" or "the 34 mm at 1 kHz is partial chain closure" is operating on a stale record — DIAGNOSTIC §7.6 + this §7.8 read close that path. The current state-of-truth: **both componentwise (port-default) and LCP-per-knot produce the same fictional-prediction signature at the live envelope** (~1 % rendered); the fix surface is the port-vs-reference COMPONENTWISE setup-difference, not switching projections; the precondition probe runs first.
+
+**Next gate (corrected from §7.7):** the PRECONDITION probe — does the reference's componentwise converge to `λ_n = 0.5839` on `stage_c/admm_dump/seed0_full50.npz`? This is offline (no sim), per-instance, decides whether the oracle is the live target. The trajectory/setup comparison is the SEPARATE step after. NOT actioned in this plan-doc edit.
+
+---
+
+### 7.9 — Reframe + model-plant consistency probe: MODEL-BROKEN (2026-06-25)
+
+**The reference-settings precondition probe is DEMOTED to contingent-after. The cheaper, more fundamental model-plant consistency test ran first and is decisive: the captured LCS predicts box motion that Drake does NOT render, by a factor of 1.7e7×.** The brute-force oracle is a feasible solution to the WRONG LCS.
+
+#### Reframe — port and reference build DIFFERENT LCS objects
+
+The port's `lcs_formulator.py` and the reference's `c3/multibody/lcs_factory.h` (the latter not on disk in this clone — its source lives in a separate `c3` module the reference repo depends on) construct different LCS objects:
+- **Port:** Stewart-Trinkle reformulation; `n_lambda = 2·num_normals + n_t` (γ slack + λ_n + λ_t). Default ONLY admits pairs within the 2 mm threshold via Drake's `ComputeSignedDistancePairwiseClosestPoints`. `box_ground_drag = 10.0` viscous approximation in the A matrix (lcs_formulator.py:93). The `LCS_EXPLICIT_BOX_GND` env knob (lcs_formulator.py:71) exists to synthesize N explicit box-vertex ↔ ground contact rows but is **DEFAULT OFF**.
+- **Reference:** `contact_model: anitescu` (sampling_c3plus_options.yaml:8), `resolve_contacts_to_lists: [[0, 1, 12, ...]]` (12 object-ground contacts ALWAYS — anything/c3plus parameters:contacts), `scale_lcs: true` (sampling_c3plus_options.yaml:9). Source for the actual LCS construction is in the c3 module not on disk; settings are READABLE.
+
+**The brute-force oracle (λ_n = 0.5839) was computed on the captured port LCS at u=0.** The port LCS at that knot has `n_lambda = 6 = 1·γ + 1·λ_n + 4·λ_t` — exactly ONE contact pair admitted (the EE-BOX pair). **No box-ground contact in the LCS at all.**
+
+#### Why this comes BEFORE the reference-settings precondition
+
+The no-push has TWO candidate levels: (i) SOLVER — the ADMM does not reach the oracle (the demoted reference-settings precondition tests this); (ii) MODEL — the LCS the solver would converge to does not match the plant. **The MODEL level is more fundamental AND cheaper to test, so it comes FIRST**; the reference-settings precondition is DEMOTED to contingent-after (only meaningful IF the LCS matches the plant).
+
+Evidence the MODEL level is live: the fictional-prediction signature is SHARED across projections (componentwise 234/0, LCP 228/1.4 %; §7.8); `λn_ee_box=NaN` (the live LCS never admits the EE-BOX pair at non-penetrating distance; §7.6 DIAGNOSTIC 1(c)).
+
+**KEY ISOLATION:** the live planner's 228 mm-predicted / 1.4 %-rendered CONFLATES solver (non-converged λ) and model (LCS ≠ plant); using the ORACLE λ (the converged/best feasible solution to the LCS) removes the solver confound and isolates the model.
+
+#### THE CONSISTENCY TEST — MODEL-BROKEN, 1.7e7× mismatch
+
+`scripts/_stage_c_model_plant_consistency.py` (committed):
+
+| Signal | LCS-with-oracle prediction | Drake-rendered |
+|---|---|---|
+| Δ box xyz | (-1.313, -1.313, **-17.226**) mm | (-0.000, +0.000, **+0.000**) mm |
+| total \|Δ\| | **17.33 mm** | **0.000 mm** |
+| box z-velocity after | **-0.345 m/s** | +0.000 m/s |
+| z-drop ratio | — | **1.7e7×** |
+
+**The LCS predicts the box FALLS 17 mm in 0.05 s; Drake renders the box STATIONARY.** The brute-force oracle, the gold-standard complementarity-feasible λ for the captured LCS, produces a fictional next-state.
+
+The reason: the captured LCS has `n_lambda = 6` (1 EE-BOX contact only, no box-ground). The `d_const[15]` row carries gravity's impulse (≈ -0.49 m/s/step); λ_n=0.5839 N at the EE-BOX contact contributes +0.146 m/s/step; nothing in the LCS opposes the fall. Drake's compliant contact at the floor holds the box up.
+
+#### STEP 1b — E-matrix tangent-row-zeroed claim REFUTED on the live instance
+
+On the captured E:
+
+| Slot | Row index | Nonzero count |
+|---|---|---|
+| γ slack | 0 | **0 (zero row)** |
+| λ_n | 1 | 5 |
+| λ_t[0] | 2 | 4 |
+| λ_t[1] | 3 | 4 |
+| λ_t[2] | 4 | 4 |
+| λ_t[3] | 5 | 4 |
+
+**Only the γ slack row is zeroed — the standard Stewart-Trinkle slot.** Tangent rows (slots 2-5) are NOT zeroed; tangent friction IS enforced via the LCS complementarity. The deck's framing "E-matrix tangent rows ZEROED (v1, friction unenforced through η)" is **REFUTED on the captured live instance**. The actual LCS structural bug is the MISSING box-ground contact, not zeroed tangent rows.
+
+#### Route: MODEL-BROKEN
+
+| Route | Verdict |
+|---|---|
+| MODEL-OK (LCS-with-oracle matches plant) | **REFUTED** — 1.7e7× mismatch |
+| MODEL-BROKEN (oracle is a solution to the WRONG LCS) | **CONFIRMED** |
+
+The no-push is a MODEL problem. **Making componentwise converge gets you the oracle = a solution to the WRONG LCS = still fictional. The reference-settings path is MOOT until the LCS matches the plant.**
+
+#### Implications for the §1 row 3 / §7.8 banking
+
+- §7.8 "leading-candidate-fix = make componentwise converge like reference's (eq 12, iter 3)" is **DEMOTED**. Converging to the oracle on this LCS does NOT solve the no-push because the oracle itself is fictional.
+- §7.6 "the no-push is Probe B componentwise non-convergence" framing stays correct at the SOLVER LEVEL but is **NOT THE ROOT** — the deeper level is the LCS missing box-ground.
+- The shared-signature hint in §7.8(3) is now **STRONGLY ELEVATED**: componentwise (234/0) and LCP (228/1.4 %) shared the same fictional-prediction signature because they were both solving the SAME wrong LCS.
+
+#### Next gate — contact-model alignment (NOT actioned this block)
+
+The fix is at the **CONTACT-MODEL / LCS-construction level**, not the solver-settings level:
+- Enable `LCS_EXPLICIT_BOX_GND` env knob (lcs_formulator.py:71) — adds explicit box-ground contact rows.
+- Possibly adopt the reference's `contact_model: anitescu` (different reformulation; fewer slack variables than Stewart-Trinkle).
+- Possibly adopt `scale_lcs: true` (preprocessing the LCS matrices before ADMM; details in c3 module not on disk).
+
+Re-test consistency AFTER the LCS-construction alignment: does the LCS-with-(new-)oracle predict what Drake renders?
+
+#### §1 / progress-table updates
+
+- §1 row 3 (ADMM solver) cell text updated: leading-candidate-fix shifted from "make componentwise converge like reference's" to "contact-model alignment FIRST (enable LCS_EXPLICIT_BOX_GND + possibly anitescu); reference-settings precondition is MOOT until LCS matches plant."
+
+#### Anti-stale binding
+
+Any subsequent entry that treats "the brute-force oracle (λ_n = 0.5839) is the live target" or "make componentwise converge" as the path forward is operating on a STALE record. The oracle is a solution to a LCS missing the box-ground contact; converging to it is converging to fiction. The next gate is contact-model alignment, then re-test consistency, then (if consistent) revisit convergence.
+
+**Next gate (corrected from §7.8):** contact-model alignment — enable `LCS_EXPLICIT_BOX_GND` and possibly adopt anitescu; re-extract the LCS on the captured x0; recompute the oracle on that new LCS; re-run the consistency test. NOT actioned in this plan-doc edit.
 
 ---
 

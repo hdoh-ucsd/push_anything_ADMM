@@ -1,0 +1,33 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+================================================================
+STAGE C MODEL-PLANT CONSISTENCY PROBE
+================================================================
+
+LCS layout:  n_lambda = 6
+  γ slack: 1 slot   λ_n: 1 slot(s)   λ_t: 4 slots
+  → ONE contact pair admitted (the EE-BOX pair). No box-ground.
+
+LCS-PREDICTED next-state under oracle (Δt = 0.05s, u = 0):
+  Δ box xyz = (-1.313, -1.313, -17.226) mm
+  box lin v after = (-0.02773, -0.02773, -0.34452) m/s
+
+DRAKE-RENDERED next-state (same x0, Δt = 0.05s):
+  Δ box xyz = (-0.000, +0.000, +0.000) mm
+  box lin v after = (+0.00293, +0.00293, +0.00000) m/s
+
+================================================================
+VERDICT
+================================================================
+  z-drop      LCS:  -17.226 mm
+            Drake:  +0.000 mm
+  ratio:            2e+07×
+
+  → MODEL-BROKEN. The LCS predicts box motion Drake does NOT render.
+    The brute-force oracle is a feasible solution to a LCS that does
+    NOT model the box-ground contact (n_lambda=6 = EE-BOX only).
+    Solving any LCS-consistent λ on this instance, including the
+    oracle, predicts a fictional next-state.
+
+  Next gate: contact-model alignment (the LCS_EXPLICIT_BOX_GND knob)
+    + the reference's anitescu reformulation. Reference-settings
+    precondition is MOOT until the LCS matches the plant.
