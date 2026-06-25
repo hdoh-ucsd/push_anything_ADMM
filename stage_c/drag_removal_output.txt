@@ -1,0 +1,73 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+========================================================================
+STAGE C DRAG-REMOVAL PROBE — is box_ground_drag now redundant?
+========================================================================
+  state: box rest at (0,0,0.05), EE east face penetrating 0.10mm, EE vel (-0.05,0,0), u=0
+  Δt = 0.05s   LCS_EXPLICIT_BOX_GND = 4
+  Test: box_ground_drag = 10.0 (baseline) vs 0.0 (drag-removed)
+  EE pos achieved: [ 0.07499681 -0.00010441  0.05009853]  Δ 0.173 mm
+  EE vel achieved: [-5.00000000e-02  2.00577402e-18  4.28641023e-18]
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+[BASELINE] box_ground_drag = 10.0
+  Re-extracted LCS: n_x=19, n_lambda=30
+  contacts: 5    tags: ['EE-BOX', 'BOX-VERT-0', 'BOX-VERT-1', 'BOX-VERT-2', 'BOX-VERT-3']
+  Lemke residual: 1.970e-08    max|λw|: 6.738e-09    λ_max: 0.8209
+  λ nonzero idx: [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 14, 18, 22, 26]
+  λ nonzero val: ['0.0087', '0.0093', '0.0087', '0.0093', '0.8209', '0.2939', '0.2939', '0.6871', '0.6871', '0.0010', '0.1176', '0.1176', '0.2748', '0.2748']
+  LCS Δ box xyz : (-0.451, +0.012, -0.000) mm
+  LCS Δ box vel : (-0.00902, +0.00024, -0.00000) m/s
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+
+[DRAG-OFF] box_ground_drag = 0.0
+  Re-extracted LCS: n_x=19, n_lambda=30
+  contacts: 5    tags: ['EE-BOX', 'BOX-VERT-0', 'BOX-VERT-1', 'BOX-VERT-2', 'BOX-VERT-3']
+  Lemke residual: 1.970e-08    max|λw|: 6.738e-09    λ_max: 0.8209
+  λ nonzero idx: [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 14, 18, 22, 26]
+  λ nonzero val: ['0.0087', '0.0093', '0.0087', '0.0093', '0.8209', '0.2939', '0.2939', '0.6871', '0.6871', '0.0010', '0.1176', '0.1176', '0.2748', '0.2748']
+  LCS Δ box xyz : (-0.451, +0.012, -0.000) mm
+  LCS Δ box vel : (-0.00902, +0.00024, -0.00000) m/s
+
+========================================================================
+COMPARISON — both LCS results vs Drake
+========================================================================
+  Δ box xyz         BASELINE (drag=10): (-0.451, +0.012, -0.000) mm
+                    DRAG-OFF (drag=0):  (-0.451, +0.012, -0.000) mm
+                    DRAKE:              (-1.684, +0.165, -0.495) mm
+
+  Push-axis (x) under-prediction factor (|Drake/LCS|):
+    BASELINE (drag=10) : 3.73×  (§7.11 reported 3.7×)
+    DRAG-OFF (drag=0)  : 3.73×
+
+  Horizontal |LCS - Drake| xy:
+    BASELINE : 1.2423 mm   (< 1.0 mm bar: False)
+    DRAG-OFF : 1.2423 mm   (< 1.0 mm bar: False)
+  Vertical   |LCS - Drake| z:
+    BASELINE : 0.4950 mm   (< 1.0 mm bar: True)
+    DRAG-OFF : 0.4950 mm   (< 1.0 mm bar: True)
+
+========================================================================
+STRUCTURAL READ — was box_ground_drag a redundant band-aid?
+========================================================================
+  Vertical with drag=0 (count=4 floor alone): HOLDS
+    → drag IS NOT doing real support work
+  Horizontal closes with drag=0: False
+
+========================================================================
+OUTCOME ROUTING (three-outcome pre-registration)
+========================================================================
+  ► DRAG-NOT-IT (OUTCOME-REDHERRING) — factor barely moves (0.5× multiplier was a red herring; drag is NOT the operative term).
+    The gap lives in integration (Δt) or friction (Stewart-Trinkle vs compliant).
+
+  NEXT STEP (separate block): Δt test next; friction audit held as deepest/last
+
+  CONVERGENCE: HELD
+  ANTI-STALE: DRAG-NOT-IT (OUTCOME-REDHERRING); do NOT mark MODEL-FIXED unless DRAG-IS-IT.
