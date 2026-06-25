@@ -92,7 +92,7 @@ The isolation probe runs in the next block — projection-swap (Aydinoglu per-co
 | 5 | Executor (OSC + force-tracking) | PARTIAL — **mechanism probe-confirmed reference-EXACT**; Reading 2 (executor/compliance bottleneck) REFUTED (phi_act < setpoint_sd on 119/119 — executor BEATS its own commanded position by ~15 mm) (Stage C probe 2026-06-23) | `osc/qp_builder.py:73` + `params.W_force=100.0` ↔ `franka_osc_controller.cc:167-170` + `osc_params.W_ee_lambda = I_3` (scalar 1.0; port W_force/W_track ratio 100/100 = reference's 1/1 ratio preserved) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** Same gate as row 4. |
 | 6 | Reposition mechanism | **PARTIAL — wired (descent reference-aligned); residuals deferred to Stage E** | `reposition_trajectory.py` + `sampling_based_c3_controller.py:2502-2528` (gated PWL path; default OFF) ↔ `Reposition(...) + UpdateRepositioningExecutionTrajectory + LcmTrajectoryReceiver` (see Stage A outcome subsection at end of §3 Stage A) | Stage E motion-decomp + force-tracking confirm residuals (NOT this stage) |
 | 7 | Push-point height computation | OPEN | `config/tasks.yaml:22 pushing.sampling_height = 0.03` (hand-coded) ↔ `sampling_params.yaml:64 z_height` auto-generated per object | Stage D passes |
-| 8 | Entry cadence + multi-process | **ACTIVE FRONT — REVISED 2026-06-25: TWO sub-divergences, scoped per Class A/B alignment status (see §7.3 + §7.4)** | (a) tick-vs-sim-time SEMANTICS — Class A constants tick-counted in BOTH port + reference but with port at 100 Hz vs reference at 1 kHz (port dispatcher dwell 600/300/300 ms vs reference 5/5/16 ms — a 100× / 60× / 19× dispatch-TIMING gap, alignment OPEN). Class B port-only counters with NO reference analog (sample_buffer_lifetime, contact-loss disengage family, target-stable-ticks) — RATE-INDEPENDENT conversion only; alignment-OPEN (the real question is whether the port needs this machinery at all). (b) RATE + ARCHITECTURE — `main.py:571 dt_ctrl=0.01` + single-process Python loop ↔ `LcmDrivenLoop @ ~1 kHz` + 3-process LCM-coupled. | (a) tick→sim-time conversion lands rate-independence; **NOT** Class B reconciled, AND Class A dispatch-timing gap PRESERVED at the port's 100 ms-equivalent on this pass (reference 5/5/16 ms values are a separate later alignment decision). (b) cadence discriminator + later Stage F multi-process — DEFERRED until (a)'s rate-independence lands. Row stays ACTIVE FRONT until: (a) the Class A dispatch-timing alignment is decided AND (b) the rate/architecture lands. |
+| 8 | Entry cadence + multi-process | **ACTIVE FRONT — UPDATED 2026-06-25: constant-level tick→sim-time conversion LANDED + 100Hz-BYTE-VERIFIED; ≥1 BEHAVIORAL coupling in the EE-landing chain remains, still blocking 1 kHz c3 engagement (see §7.5)** | (a) tick-vs-sim-time semantics — CONSTANT-LEVEL conversion DONE (15 constants → seconds; SMOKE 1 5/5 PASS, mode_match 1201/1201 byte-equivalent at 100 Hz). BEHAVIORAL coupling REMAINS: the PWL rebuild gate (sampling_based_c3_controller.py:2643) fires per-tick starting at step ~1630 (just before c3 entry at step ~1700) — most likely `_refresh_buffer_on_arrival` → next-target-selection produces a new target every tick once EE is in proximity. (b) RATE + ARCHITECTURE — `main.py:571` + single-process loop ↔ `LcmDrivenLoop` 3-process LCM-coupled. | (a)' constant-level: DONE. (a)" behavioral coupling: trace probe next (the audit's SECOND incompleteness — grep is structurally blind to call-frequency couplings). (b) discriminator + Stage F multi-process — DEFERRED until (a)" lands. Row stays ACTIVE FRONT. |
 | 9 | Contact-proximity entry-gate | **RETIRED (2026-06-23; 0% firing rate measured across NEW/OLD/baseline seeds; see §3 Stage B outcome)** | `wrapper.py:1038-1147` (no reference equivalent — reference uses EE-z-close clause at `sampling_based_c3_controller.cc:1290-1293` instead) | (already retired) |
 
 **Maintenance:** each row above updates AS PART OF the corresponding stage's definition of done. A stage that passes its bar without flipping the row's status is the stage's bar being wrong, not the status row.
@@ -542,6 +542,88 @@ Real dispatch-TIMING divergence, separate from the cost/hysteresis decision logi
 **Banked finding (ii) — Disengage family + tick-aged sample buffer NO reference analog.** B3-B7 contact-loss thresholds, B1 sample_buffer_lifetime, B10 TARGET_STABLE_TICKS — port-only candidate band-aids of the same kind as the retired contact-proximity entry-gate. The conversion makes them rate-independent so the cadence discriminator can run; it does NOT decide whether they should exist. Alignment-status-OPEN.
 
 **Scope of §1 row 8 sub-divergence (a) flip on conversion-pass:** narrows to "tick→sim-time semantics RATE-INDEPENDENT" — explicitly **NOT** "Class B reconciled to reference" AND **NOT** "Class A dispatch-timing reconciled." Both Class A (sim-time interval values) AND Class B (whether the machinery should exist) stay OPEN. Substantive alignment questions are FOLLOW-ON.
+
+---
+
+### 7.5 — Tick→sim-time conversion: SMOKE 1 byte-equivalence PASS, primary scope-stop RESOLVED, audit's SECOND incompleteness (grep is blind to behavioral couplings) (2026-06-25)
+
+**The constant-level tick→sim-time conversion landed and is byte-equivalent at 100 Hz. The primary scope-stop (sample_buffer_lifetime tick-coupling) is resolved at 1 kHz. But SMOKE 2 failed 0/4 — NOT because the conversion failed, but because the audit MISSED a fourth coupling that is BEHAVIORAL (call-frequency) rather than constant-numbered, and grep is structurally blind to that class.** Banked per §7 before the next-block trace probe.
+
+#### (1) SMOKE 1 SUCCESS — the regression gate (byte-equivalent at 100 Hz)
+
+| Pass bar | Baseline | Candidate | Δ | Result |
+|---|---|---|---|---|
+| first_c3_step ±2 | 173 | 173 | **0** | ✓ |
+| first_c3_phi ±0.1 mm | +4.940 mm | +4.940 mm | **0.000 mm** | ✓ |
+| switches ±2 | 36 | 36 | **0** | ✓ |
+| mode_match_rate ≥95% | — | **1201/1201 = 1.0000** | PERFECT tick-by-tick | ✓ |
+| final_obj_xy ±0.5 mm | (0, 0) | (0, 0) | 0.000 mm | ✓ |
+
+The 4 `[YAML-COMPAT]` shims fired (legacy int fields auto-converted to `_s` seconds).
+
+*NOTE on baseline correction:* initial SMOKE-1 attempt failed against `stage_a_speed018/seed0/run.log` because THAT baseline lacked `PUSHA_FORCE_ROUTING=u_sol` — WRONG baseline; corrected to `stage_c/seed0_usol_100.log` (the Phase-1 same-config pre-conversion run), against which it is perfect. The multi-file conversion (`params.py`, `progress.py`, `sampling_based_c3_controller.py` + the comparator + the YAML unit test, 6/6 pass) is **SOUND and REVERSIBLE**.
+
+#### (2) PRIMARY SCOPE-STOP RESOLVED
+
+The `sample_buffer_lifetime` tick-coupling that blocked the first 1 kHz attempt is **FIXED**: at 1 kHz the PWL now builds at steps 1 / 301 / 601 = 300 ms wall-time, identical to 30 ticks / 300 ms at 100 Hz. The 30-tick churn that prevented c3 entry is **gone**. The sim-time conversion did its job for the constant it targeted.
+
+#### (3) SMOKE 2 FAILED 0/4 — a NEW, FOURTH tick-coupling (NOT one of the 15 converted)
+
+SMOKE 2 (1 kHz reconciliation) failed 0/4, but NOT because the conversion failed — because a **FOURTH** tick-coupling surfaces near EE landing. Starting at step ~1630 (sim_t 1.63 s, just before the expected c3 entry at step ~1700), the PWL rebuild gate (`sampling_based_c3_controller.py:2643`, target-moved-5mm) fires PER-TICK (1630, 1631, 1632, 1633, ...), so `finished_repos` never latches and c3 never engages.
+
+**Most likely mechanism:** `_refresh_buffer_on_arrival` (line 427) → next-target selection produces a NEW target every tick once the EE is in proximity, tripping the 5 mm rebuild gate. To be PINNED by the next-block trace probe; not yet confirmed.
+
+#### (4) THE AUDIT'S SECOND INCOMPLETENESS (methodological finding)
+
+The cadence audit enumerated **15 tick-counted CONSTANTS** but MISSED this coupling — because it is NOT a constant (there is no integer field to grep), it is a **BEHAVIORAL / call-frequency coupling** (a refresh call firing per-tick under a proximity condition). **Grep-based enumeration is STRUCTURALLY BLIND to this class.** A runtime trace caught it instantly.
+
+**METHODOLOGICAL CORRECTION (binding on future cadence-coupling enumeration):** cadence-coupling enumeration must use **RUNTIME TRACE, not grep**, for behavioral/call-frequency couplings. The constant-grep finds integer-field couplings (15 in Class A/B/C); it cannot see call-frequency couplings (≥1 found by trace). This is the audit's **SECOND incompleteness** — the first was "3 known constants → 15 enumerated by grep"; the second is "0 behavioral couplings found by grep, ≥1 found by trace."
+
+#### (5) RECONCILIATION STATUS
+
+The tick→sim-time SEMANTICS conversion (the 15 constants) is **DONE and 100Hz-byte-verified**. **§1 row 8 sub-divergence (a) does NOT flip RECONCILED yet** — the 1 kHz reposition-isolation guard is STILL UNMET (the secondary per-tick rebuild storm blocks c3 at 1 kHz). Sub-(a) stays **IN PROGRESS**: *"constant-level tick→sim-time conversion landed + 100Hz-verified; ≥1 behavioral coupling in the EE-landing chain remains, blocking 1 kHz c3 engagement."* The cadence discriminator stays gated behind the full reconciliation.
+
+#### (6) CONVERGENCE SHAPE (the positive read)
+
+Each 1 kHz attempt fails **LATER**: the first failed at ~30 ms (sample buffer; commit `308f188`), this one reaches step ~1630 — **JUST before the expected c3 entry at ~1700** — before the next coupling bites. Failing later = each fix is real, the remaining surface is shrinking and **LOCALIZED** to the EE-landing approach chain (refresh-on-arrival → next-target → rebuild gate). This is one chain revealing its couplings in sequence as the EE nears contact, **not** whack-a-mole across the system — a tractable shape.
+
+#### (7) §7.4 confirm + NEW finding + DEFERRED constant
+
+**Confirmed banked in §7.4 (still standing):**
+- A3 LOCATED on the reference (`progress_params_c3plus.yaml:45 = 16` ticks @ 1 kHz = 16 ms; port preserves 300 ms = 19× sim-time gap, alignment OPEN).
+- A1/A2/A3 dispatch-timing gaps (100×/60×/19×, alignment OPEN, separate question).
+- Disengage family + tick-aged sample buffer NO reference analog (Class B alignment-status-OPEN).
+
+**NEW (this run):** the per-tick PWL rebuild storm at EE-landing approach (the BEHAVIORAL coupling the audit missed) — banked; mechanism to be pinned by the next-block trace probe.
+
+**DEFERRED (recorded so it is not lost):** B10/B11 `TARGET_STABLE_TICKS` in the legacy IK tracker (`reposition_ik.py:709`) — bypassed by `PUSHA_REPOSITION_PWL=1`, so does NOT bite under the current Stage A flag-ON regime. Will need conversion if the legacy path is ever re-enabled.
+
+#### Anti-stale binding
+
+Any subsequent entry that treats "the tick-vs-sim-time semantics sub-divergence is RECONCILED" without first landing the behavioral-coupling fix is operating on a stale record. The next gate is **the trace probe to pin the behavioral coupling** in the `_refresh_buffer_on_arrival` → next-target → rebuild chain. After the behavioral coupling is identified and fixed AND SMOKE 2 passes at 1 kHz, sub-divergence (a) can flip RECONCILED and the cadence discriminator runs.
+
+**Next gate (corrected from §7.4):** the trace probe to pin the behavioral tick-coupling, then a focused fix commit, then re-run SMOKE 2. NOT actioned in this plan-doc edit.
+
+#### Update 2026-06-25 — MECHANISM PINNED + BUNDLED FIX (FIX-A + FIX-B(2))
+
+The runtime trace pinned **TWO independent couplings** in the EE-landing chain (trace artifacts on commits `580c716` + `2e57e78`). Both are addressed in a single small commit landing WITH this banking note.
+
+**COUPLING 1 — THE STORM (items 1-7; level-trigger bug):** the refresh at `sampling_based_c3_controller.py:1977`
+```python
+if self._last_repos_finished:
+    self._refresh_buffer_on_arrival()
+```
+is LEVEL-triggered — fires every tick while `_last_repos_finished == True` (**67 fires / 152 ticks in the window**). Combined with `finished_reposition_cost = 1e9` inflating `prev_repos`'s cost, the argmin is FORCED to pick a fresh random strategy sample each tick (137-167 mm away from the previous target) → PWL rebuilds → `t_end` extends (`1.6523 → 3.7020 → ...`) → self-sustaining.
+
+**COUPLING 2 — THE DEADLOCK (item 9, INDEPENDENT; finished-semantics divergence):** `_last_repos_finished` (set at `:1972`, DISTANCE-ONLY, the tracker) and `PWL.is_finished()` (consumed at `:1072`, TIME+DISTANCE, the dispatcher) DIVERGE. At step 1629 the tracker says "arrived" (4.9 mm < 5 mm); the dispatcher says "not arrived" (sim_t 1.629 < t_end 1.652). The two halves of the dispatch chain disagree about whether the reposition finished, so **no mode flip to c3 even with the storm gone**.
+
+**Why both fix together:** fixing only COUPLING 1 stops the storm but does NOT engage c3 (COUPLING 2 blocks the mode flip independently). The trace enumeration surfaced this second head BEFORE the fix, avoiding fix-the-storm → re-discover-the-deadlock.
+
+**FIX-A (edge-latch the refresh):** add a `_arrival_handled` sentinel; fire on False→True transition only; reset on False so a re-arrival re-fires. Edits at `:1977`.
+
+**FIX-B(2) (unify the finished-criterion):** under the PWL path, compute `_last_repos_finished` from `PWL.is_finished(sim_t, ee_now, tol=0.005)` — the SAME criterion the dispatcher uses at `:1072`. Legacy IK tracker path preserved unchanged. **RECONCILIATION not strictness:** the tracker was wired to a WEAKER (distance-only) criterion than the dispatcher already consumes (time+distance); B2 makes them agree on the criterion the dispatcher was designed around. **B1 (distance-only for both) would be WRONG** — declares arrival while PWL velocity is non-zero. Edits at `:1972`.
+
+**Verification gate (BOTH smokes):** the fix touches LIVE dispatch logic — the 100 Hz byte-equivalence gate applies. SMOKE 1 (100 Hz no-op) must clear 5/5 against `stage_c/seed0_usol_100.log`. SMOKE 2 (1 kHz, short, to ~step 1750) must clear 4/4 AND surface the explicit INTERMEDIATE READ: with the storm gone (FIX-A) and the criteria unified (FIX-B), at step ~1652 sim_t reaches the original t_end → `is_finished` should fire → mode flips to c3. **If `is_finished` does NOT fire even with stable t_end → THIRD coupling; trace remains on HEAD (re-enable `PUSHA_LANDING_TRACE=1`) and we report the ACTUAL mechanism, not infer from null.**
 
 ---
 
