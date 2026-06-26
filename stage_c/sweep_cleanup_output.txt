@@ -1,0 +1,427 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+INFO:drake:Meshcat listening for connections at http://localhost:7003
+INFO:drake:Meshcat listening for connections at http://localhost:7004
+INFO:drake:Meshcat listening for connections at http://localhost:7005
+INFO:drake:Meshcat listening for connections at http://localhost:7006
+INFO:drake:Meshcat listening for connections at http://localhost:7007
+================================================================================
+STAGE C  §7.16 SWEEP CLEANUP  (robust sub-step IK + partial-INVALIDATES)
+================================================================================
+  μ = 0.4, Δt_sub = 0.005s × 10 = 0.05s, Drake 1ms substeps
+  Sweep EE_PEN_M ∈ [0.1, 0.2, 0.3, 0.5, 0.7, 1.0] mm
+  Robust sub-step IK: 5 seeds per sub-step (warm/posture/perturbed)
+  Discipline: PARTIAL trajectories EXCLUDED from crossing determination
+
+────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.10 mm
+────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm static=0 dynamic=0)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS    Δbox_x  =   -1.2072 mm  (n_substeps_completed=10/10, fail_step=-1, status=CLEAN)
+  Drake  Δbox_x  =   -2.0331 mm
+  factor (computed) = 1.684×  — CLEAN, enters crossing
+  seeds used per sub-step: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.20 mm
+────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm static=0 dynamic=0)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS    Δbox_x  =   -1.3670 mm  (n_substeps_completed=10/10, fail_step=-1, status=CLEAN)
+  Drake  Δbox_x  =   -2.0144 mm
+  factor (computed) = 1.474×  — CLEAN, enters crossing
+  seeds used per sub-step: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.30 mm
+────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm static=0 dynamic=0)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+INFO:drake:Meshcat listening for connections at http://localhost:7008
+INFO:drake:Meshcat listening for connections at http://localhost:7009
+INFO:drake:Meshcat listening for connections at http://localhost:7010
+INFO:drake:Meshcat listening for connections at http://localhost:7011
+INFO:drake:Meshcat listening for connections at http://localhost:7012
+INFO:drake:Meshcat listening for connections at http://localhost:7013
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2553>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS    Δbox_x  =   -1.5051 mm  (n_substeps_completed=10/10, fail_step=-1, status=CLEAN)
+  Drake  Δbox_x  =   -1.8729 mm
+  factor (computed) = 1.244×  — CLEAN, enters crossing
+  seeds used per sub-step: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.50 mm
+────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm static=0 dynamic=0)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=3718>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS    Δbox_x  =   -2.0948 mm  (n_substeps_completed=10/10, fail_step=-1, status=CLEAN)
+  Drake  Δbox_x  =   -2.3288 mm
+  factor (computed) = 1.112×  — CLEAN, enters crossing
+  seeds used per sub-step: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.70 mm
+────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm static=0 dynamic=0)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+INFO:drake:Meshcat listening for connections at http://localhost:7014
+INFO:drake:Meshcat listening for connections at http://localhost:7015
+INFO:drake:Meshcat listening for connections at http://localhost:7016
+INFO:drake:Meshcat listening for connections at http://localhost:7017
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=4883>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS    Δbox_x  =   -3.5244 mm  (n_substeps_completed=10/10, fail_step=-1, status=CLEAN)
+  Drake  Δbox_x  =   -2.3029 mm
+  factor (computed) = 0.653×  — CLEAN, enters crossing
+  seeds used per sub-step: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 1.00 mm
+────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm static=0 dynamic=0)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=6048>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS    Δbox_x  =   -5.7311 mm  (n_substeps_completed=10/10, fail_step=-1, status=CLEAN)
+  Drake  Δbox_x  =   -2.2388 mm
+  factor (computed) = 0.391×  — CLEAN, enters crossing
+  seeds used per sub-step: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+================================================================================
+SUMMARY  (per-depth: factor + n_substeps + fail_step + status)
+================================================================================
+    EE_PEN     status   n_sub  fail_step      Drake Δx        LCS Δx    factor
+    0.10mm      CLEAN      10/10         -1     -2.0331mm     -1.2072mm    1.684×
+    0.20mm      CLEAN      10/10         -1     -2.0144mm     -1.3670mm    1.474×
+    0.30mm      CLEAN      10/10         -1     -1.8729mm     -1.5051mm    1.244×
+    0.50mm      CLEAN      10/10         -1     -2.3288mm     -2.0948mm    1.112×
+    0.70mm      CLEAN      10/10         -1     -2.3029mm     -3.5244mm    0.653×
+    1.00mm      CLEAN      10/10         -1     -2.2388mm     -5.7311mm    0.391×
+
+  CLEAN full-trajectory depths    : 6/6
+  PARTIAL trajectory depths       : 0 (EXCLUDED)
+  GATE FAIL depths                : 0
+
+================================================================================
+CROSSING DETERMINATION  (only CLEAN rows enter)
+================================================================================
+  CLEAN depths        : [0.1, 0.2, 0.3, 0.5, 0.7, 1.0]
+  CLEAN factors       : ['1.684', '1.474', '1.244', '1.112', '0.653', '0.391']
+  spread              : 1.294
+  monotonic w/ depth? : YES
+  crosses 1×?         : YES at ~0.549 mm
+
+  §7.16 ORIGINAL factors at these depths (for comparison):
+     0.10mm  CLEAN=1.684×  §7.16-original=1.684×  diff=+0.000  status=CLEAN
+     0.20mm  CLEAN=1.474×  §7.16-original=1.474×  diff=-0.000  status=CLEAN
+     0.30mm  CLEAN=1.244×  §7.16-original=1.244×  diff=+0.000  status=CLEAN
+     0.50mm  CLEAN=1.112×  §7.16-original=1.112×  diff=-0.000  status=CLEAN
+     0.70mm  CLEAN=0.653×  §7.16-original=0.653×  diff=+0.000  status=CLEAN
+     1.00mm  CLEAN=0.391×  §7.16-original=0.391×  diff=-0.000  status=CLEAN
+
+================================================================================
+ROUTE
+================================================================================
+  ► ROUTE: CROSSING-SURVIVES
+  The monotonic 1× crossing SURVIVES on clean full-trajectory runs.
+  Crossing at ~0.549 mm.
+  However: PARTIAL trajectories at [] mm were
+  EXCLUDED — the original §7.16 included them silently.
+  NEXT (separate block): cleaned force-level re-characterization +
+  mechanism-name determination. Do NOT auto-restore compliance — the
+  intermittent-contact observation requires a separate probe.
+
+================================================================================
+HOLD: next block (mechanism-name determination / re-characterize / etc) SEPARATE.
+================================================================================
