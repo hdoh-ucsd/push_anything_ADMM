@@ -1394,6 +1394,119 @@ Any subsequent entry that cites §7.11 "27% / 3.73×" or §7.13 "1.43×" as mode
 
 **Next gate (corrected from §7.13):** re-pose probe — construct a contact state where Drake renders **exactly the contact-pair set the LCS models** (pusher↔box + floor only; no panda_link7↔box and no other arm-link↔box pair), then re-measure §7.11/§7.13 quantitatively on the clean setup. The friction audit is reopen-able only AFTER the clean reference is established (else friction-mechanism cannot be cleanly isolated). NOT actioned in this plan-doc edit.
 
+### 7.15 — Re-pose probe (Path A) + HARD GATE: GAP-PERSISTS-LARGE — clean 3.93×/1.70× ≈ contaminated 3.73×/1.43×; arm artifact accounted for ~7% of the gap, NOT the bulk; §7.14's optimistic framing REFUTED; mechanisms SURVIVE; friction audit RE-OPENS (2026-06-25)
+
+**Result: Path A re-pose (IK with box-pin + per-pair arm-link↔box clearance constraints + posture cost) achieved a clean pusher-only setup. HARD GATE PASS — STATIC SignedDistance + DYNAMIC ContactResults both confirm 1 pusher↔box + 1 floor↔box + 0 arm↔box pairs at the re-posed state. CLEAN-STATE READ (apples-to-apples vs §7.13 at EE_PEN_M=0.1 mm): single-step factor 3.93× (was 3.73× contaminated), sub-stepped factor 1.70× (was 1.43× contaminated). The arm artifact accounted for ~7% of the single-step gap (3.73× → 3.93× = 7% *worse* without arm) and ~19% of the sub-stepped gap (1.43× → 1.70× = 19% worse). The §7.11/§7.13 quantitative gaps are REAL model-vs-plant errors, NOT artifacts of contamination. §7.14's optimistic strategic framing ("MODEL-FIXED-REAL may be CLOSER than believed") is REFUTED.** Banked here. Commit `8ed2413` (`scripts/_stage_c_repose_clean.py` + `stage_c/repose_clean_output.txt`).
+
+#### (1) HARD GATE: PASS at seed 0
+
+Path A succeeded. IK with the box pinned (the box's 7 floating-base DOFs were silently free as decision vars and would have been relocated to satisfy clearance — the first attempt did exactly this, putting the box at (-0.5, -0.8, -0.7) m to clear the arm; box-pin fixes it) plus per-pair distance constraints between panda_link4–7 collision geoms and the box collision geom (24 pair constraints, ≥ 5 mm clearance) plus a posture-quadratic cost.
+
+State at the re-posed contact instant:
+
+| Quantity | Value |
+|---|---|
+| q_arm | `[0.981, 0.942, 0.447, -1.614, 0.087, 1.999, 0.785]` |
+| pusher position | `(0.0749, -0.000, 0.0500)` (EE_err = 0.017 mm) |
+| box position | `(0.000, 0.000, 0.050)` (pinned) |
+| d(pusher ↔ box) | **-0.100 mm** (legit penetration matching EE_PEN_M) |
+| d(floor ↔ box)  | **-0.077 mm** (touching/slight penetration) |
+| min d(arm ↔ box) | **+18.913 mm** (panda_link7 closest) |
+| min d(arm ↔ floor) | **+41.797 mm** |
+
+Gate output (both checks):
+
+| Check | pusher↔box | floor↔box | ARM↔box (ARTIFACT) | other |
+|---|---|---|---|---|
+| STATIC (SignedDistance @ t=0, ≤ 10 mm)   | 1 | 1 | **0** | 0 |
+| DYNAMIC (ContactResults @ t=0.005 s)     | 1 | 1 | **0** | 0 |
+
+**Both gates pass with 0 arm↔box pairs.** The contamination is eliminated at this state.
+
+#### (2) CLEAN-STATE READ — the headline finding
+
+Apples-to-apples versus §7.13 at EE_PEN_M = 0.1 mm and Δt × drag at the SAME cells:
+
+| Cell | Δt | drag | extr | Δbox_x (mm) | Δbox_z (mm) | factor (clean) | factor (§7.13 contam) |
+|---|---|---|---|---|---|---|---|
+| Drake ref (1 ms substeps) | 0.05 | — | — | **-2.033** | 0.000 | 1.00× | 1.00× |
+| A | 0.05 | 10 | single | -0.518 | -0.010 | **3.93×** | 3.73× |
+| B | 0.05 | 0  | single | -0.518 | -0.010 | **3.93×** (drag inert ✓) | 3.73× |
+| C | 0.005 | 10 | re-extract | -1.156 | 0.000 | **1.76×** | 1.48× |
+| D | 0.005 | 0  | re-extract | -1.199 | 0.000 | **1.70×** | 1.43× |
+
+**The clean gap is ESSENTIALLY THE SAME as the contaminated gap.** Single-step 3.73× → 3.93× (~7% *wider* without the arm); sub-stepped 1.43× → 1.70× (~19% wider). The arm artifact was real but its quantitative impact is modest.
+
+#### (3) §7.14's STRATEGIC FRAMING is REFUTED
+
+§7.14 (7) Strategic Framing said: *"The clean re-run MAY close the gap to ~1× with NO friction work — the entire §7.11→§7.13 quantitative gap may be the arm artifact. MODEL-FIXED-REAL may be CLOSER than believed, just measured against a contaminated reference."*
+
+**REFUTED.** The clean factor is 3.93× / 1.70× — the same order as the contaminated 3.73× / 1.43×. The arm artifact was real (§7.14 stands) but its quantitative weight was ~7-19%, not the bulk. **The §7.11/§7.13 model-vs-plant gap is REAL contact-model error, not a measurement artifact.** §7.14's optimistic strategic framing is wrong, not the §7.14 audit-setup-broken finding itself — those are separable claims.
+
+§7.14 stands on:
+- the contamination IS real (panda_link7↔box at 37× pusher impulse) — confirmed
+- the §7.11→§7.13 chain DID compare model-vs-(plant+artifact) — confirmed
+- the methodological gate (assert contact-pair COUNT first) is essential
+
+§7.14 falls on:
+- the optimistic prediction "clean re-run MAY close the gap to ~1×" — the clean re-run does NOT close it
+- "the LCS may be modeling the right physics, just measured against a contaminated reference" — REFUTED: the LCS sub-stepped at the clean state predicts only 60% of Drake's motion (1.70× off)
+
+#### (4) The mechanism findings SURVIVE on the clean setup (the deeper good news)
+
+The §7.12 / §7.13 mechanism findings hold quantitatively at the clean state — not just qualitatively as §7.14's survives/doesn't split implied:
+
+| Mechanism | Source | Clean-state confirmation |
+|---|---|---|
+| DRAG-REDHERRING at v_box=0 (§7.12) | LCS-internal A-matrix | Cells A and B byte-identical at v_box=0 (-0.518 mm each); confirmed at clean setup |
+| Contact-burst captures most of the gap (§7.13) | Sub-stepping the LCS | 3.93× → 1.70× closes 57% of the clean gap — same magnitude (~57%) as the contaminated chain |
+| DRAG-MATTERS-MOVING (§7.13) at Δt=0.005 | LCS-internal A-vs-A | Drag at Δt=0.005 contributes -0.043 mm = ~7% of Δt main effect (§7.13: ~6%) |
+| Vertical (count=4) holds | LCS_EXPLICIT_BOX_GND=4 | Δz ≤ 0.010 mm in all four cells |
+
+**The §7.13 narrative (contact-burst dominates Δt main effect; residual a real model-vs-plant error) is now anchored on a clean test setup.**
+
+#### (5) Drake-side cross-check resolution
+
+§7.14 noted: *"Drake actual rendered push is ARM-artifact-dominated with friction nearly cancelling the arm contact (J_pusher -0.021, J_arm -0.788, J_floor_tangent +0.806, net -0.003 N·s)."* The interpretation was that Drake's clean (no-arm) push would be DIFFERENT and the LCS pusher-only model "may be modeling the right physics".
+
+Clean-state resolution: **Drake moves MORE without the arm**, not less. Drake clean Δbox_x = -2.033 mm (vs -1.684 mm contaminated). The arm was net DECELERATING the box (J_arm + J_floor_tangent ≈ 0; pusher could only add -0.021 N·s). Without the arm pressing back, the pusher's clean impulse drives the box further. **The LCS sub-stepped under-predicts both — by 1.43× against the partly-self-canceling contaminated Drake, and by 1.70× against the cleaner Drake.** The §7.14 "LCS modeling the right physics" hypothesis is contradicted: even when Drake's contact set matches the LCS's exactly, the LCS still under-predicts by 70%.
+
+#### (6) EE_PEN_M sweep (preliminary observation)
+
+A prior probe variant ran with `EE_PEN_M = 1 mm` (10× deeper pusher penetration than §7.13) to give the IK headroom before the per-pair clearance constraint was correctly bounded. That variant inverted the read:
+
+| EE_PEN_M | factor A (single) | factor D (sub-stepped) |
+|---|---|---|
+| 0.1 mm (§7.13 setup, apples-to-apples) | 3.93× (under) | 1.70× (under) |
+| 1.0 mm (10× deeper) | 2.01× (under) | **0.48× (OVER-predict!)** |
+
+**This implies a "sweet spot" penetration depth between 0.1 mm and 1 mm where the LCS sub-stepped matches Drake's compliant contact**. The over-correction at 1 mm penetration is consistent with the rigid-vs-compliant story: LCS Stewart-Trinkle is fully rigid, so deeper penetration → much larger λ → over-shoots; Drake compliant contact saturates softer with depth. The headline read uses 0.1 mm (apples-to-apples vs §7.13). The EE_PEN_M sweep is a next-block question, not actioned here.
+
+#### (7) CONVERGENCE STAYS HELD
+
+The clean setup has a real ~1.70× sub-stepped model-vs-plant gap. Re-promoting solver convergence onto the clean LCS would still test the solver against a model that is 70% off on push. **HELD until the residual closes (the model quantitatively right on the push axis at clean state).** This is identical to §7.10/§7.11/§7.12/§7.13/§7.14's HELD reasoning — none of those reads gave the model a clean bill of health.
+
+#### (8) DEFERRALS LIFT — friction audit re-opens, anitescu still parked
+
+- **Friction audit RE-OPENS** — on the clean setup, the §7.13 (9) three-outcome pre-registration becomes meaningful (the residual is now DEFINED, uncontaminated, and quantitatively similar to the §7.13 1.43–1.70 range). FRICTION-CLOSES / FRICTION-PARTIAL-FLOOR / FRICTION-BARELY all become live readings on the clean setup.
+- **Anitescu STAYS PARKED** — re-opens only after FRICTION-BARELY at the clean state.
+- **Re-pose probe** — DONE; HARD GATE PASS; clean setup is the new test substrate.
+
+#### (9) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **GAP-PERSISTS-LARGE on the clean (pusher-only) setup** — single-step factor 3.93× (was 3.73× contaminated), sub-stepped factor 1.70× (was 1.43× contaminated); arm artifact accounted for ~7–19% of the gap, NOT the bulk.
+- **§7.14's optimistic "MODEL-FIXED may be close" framing REFUTED**; the §7.11/§7.13 mechanism findings (drag-redherring at v_box=0; contact-burst; DRAG-MATTERS-MOVING; vertical count=4) all hold quantitatively on the clean setup.
+- **Friction audit re-opens** as the legitimate next gate on the clean setup; anitescu still parked.
+- **EE_PEN_M sweep** flagged: 1 mm gives over-prediction (factor 0.48×), suggesting a sweet spot between 0.1 mm and 1 mm — a next-block question.
+- **Convergence:** HELD.
+
+#### Anti-stale binding
+
+Any subsequent entry that revives §7.14's optimistic framing ("clean re-run will close the gap with no friction work" / "MODEL-FIXED-REAL is close") is operating on a STALE record. The clean re-run at §7.13's apples-to-apples setup CONFIRMS a real, quantitatively similar gap (3.93× / 1.70×). The contamination is real and §7.14's audit-setup-broken finding stands; what does NOT stand is the §7.14 (7) "the entire quantitative gap may be the arm artifact" prediction. Cite §7.15 factors when characterizing the clean-state gap; cite §7.13 factors only as the contaminated baseline (with §7.14's caveat) or for the burst-mechanism quantitative story (which is robust to contamination, ~57% closure in both).
+
+**Next gate (corrected from §7.14):** friction audit on the CLEAN sub-stepped path (Stewart-Trinkle λ_t vs Drake compliant friction) at Δt=0.005 — the §7.13 (9) three-outcome pre-registration now applies on a defined, uncontaminated residual. Parallel/orthogonal next gate: the EE_PEN_M sweep (does an intermediate penetration land closer to 1×? rigid-vs-compliant signature). NOT actioned in this plan-doc edit.
+
 ---
 
 ## 8. Memory pointer
