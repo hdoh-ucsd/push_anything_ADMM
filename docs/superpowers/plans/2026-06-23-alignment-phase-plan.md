@@ -1802,6 +1802,159 @@ Any subsequent entry that proceeds to anitescu scoping or implementation based o
 
 **Next gate (corrected from §7.16-aug):** §7.16 sweep cleanup — re-run the penetration sweep with sub-step IK robustness improvements + correlate fail-counts with reported factors (the deep-depth points must be flagged or re-solved if partial). If the §7.16 monotonic crossing SURVIVES the cleanup, re-do this force-level probe; only on CONFIRMED-COMPLIANCE does anitescu Part B open. NOT actioned in this plan-doc edit.
 
+### 7.17 — augmentation (2026-06-25): cartoon correction + cleanup discipline (partial-IK INVALIDATES its factor, not flags it) + dual question (crossing-survival ≠ mechanism-name) + honest strategic framing
+
+#### (1) CONFIRM §7.17's core (banked; restated as the augment's anchor)
+
+Part A FORCE-DISCONFIRMS: only **1 of 4** force-level signatures matched (LCS λ_n spike-decay shape ✓; LCS peak scaling 2.65× not ~10× ✗ sub-linear; Drake force OSCILLATING / intermittent not soft-spread ✗; Drake peak scaling 0.76× slightly inverse ✗). Two confounds surfaced: (a) §7.16's 1 mm number came from a PARTIAL sub-step run — IK fails at step 4 (`λ_n = [9.2, 0, 0, 0, NaN, NaN, NaN, NaN, NaN, NaN]`); the −5.73 mm / 0.391× came from a 3–4-substep partial trajectory, so the §7.16 monotonic crossing may be partly a partial-sub-stepping artifact at deeper depths; the sweep printed fail counts but did NOT correlate them with factors; (b) Drake's actual dynamics are INTERMITTENT-CONTACT bouncing (zeros at intermediate ticks = contact loss; spikes = re-engagement), not textbook compliant softness. ROUTE FORCE-DISCONFIRMS → Part B (anitescu scoping) PAUSED, not opened. The §7.16-aug "FULLY NAMED" milestone RESCINDED — floor sub-mechanism FIXED (§7.10); contact-axis sub-mechanism DIAGNOSED-WITH-CONFOUNDS, not cleanly named. Friction DEMOTED; convergence HELD; anitescu PAUSED, not parked-pending-friction (awaiting §7.16 cleanup outcome).
+
+#### (2) THE CARTOON CORRECTION — pre-registered signatures must come from system behavior, not textbook idealization
+
+The §7.16-aug (2) pre-registered Drake signature — *"soft-spread depth-stable peak force distributed over the contact's stiffness time-constant"* — was a **CARTOON** of compliant contact, a textbook mental model that does NOT match Drake's actual behavior at this state. Drake here shows **intermittent-contact BOUNCING** (oscillating force, contact loss / re-engagement) — a real dynamical phenomenon driven by the box-mass / contact-stiffness / push-velocity / sub-mm-bounce geometry of the constructed state.
+
+This was a reviewer framing baked into the pre-registered signatures; **superseded.** The lesson generalises: **pre-registered "expected signatures" must come from the actual system's observed behavior, NOT from a textbook idealization.** An idealized expectation can make a real result look like a mismatch (a real soft-spread response convolved with bouncing reads as "doesn't match the cartoon" → false UNEXPECTED-MATCH) or it can let a coincidence look like a match (a partial-LCS run with an impulsive shape happens to match "rigid-impulsive" → false CONFIRMED-COMPLIANCE). Either way, the cartoon biases the read.
+
+Concretely: future pre-registrations must derive expected force/displacement signatures by **running the actual system first on a known case, observing the shape, and only then writing the prediction.** The §7.16-aug pre-registration skipped this and got penalised.
+
+#### (3) THE CLEANUP DISCIPLINE — partial-IK INVALIDATES its factor (stronger than "flag")
+
+The §7.16 cleanup must treat a partial-IK sub-step run as **INVALIDATING** its factor, NOT merely flagging it. The original sweep's error was not that the IK failed — IK failure is a legitimate outcome — it is that **the failure was printed but the resulting factor was reported as if clean** (the −5.73 mm / 0.391× from a 3–4-substep partial trajectory was tabulated alongside the clean factors and entered the monotonic-crossing determination).
+
+This is the **§7.14 lesson one level deeper**: an unchecked precondition (full-trajectory completion) silently corrupting a number. The fix has the same shape as the contact-pair gate: **assert the precondition PER-POINT before the number counts.** A factor from a partial trajectory does NOT enter the crossing determination — **it is EXCLUDED, not annotated.**
+
+Operationally, the cleanup probe must:
+- Per depth, attempt the sub-stepped LCS with multiple seed q_arm warm-starts (try several IK starting postures per sub-step, accept the first that converges).
+- If the sub-stepped trajectory fails to complete all 10 sub-steps **even with retries**, the factor for that depth is **EXCLUDED from the table**, not reported.
+- Correlate the per-depth fail count with the reported factor in the output (every printed row must be marked clean / partial / failed; only `clean` rows enter route determination).
+- The factor table at the end shows only clean depths; the route logic operates only on those.
+
+The §7.14 contact-pair-count gate stopped a model-vs-plant comparison from running on contaminated state. The §7.17 partial-IK gate stops a crossing determination from including partial-trajectory factors.
+
+#### (4) THE DUAL QUESTION — crossing-survival ≠ mechanism-name
+
+The cleanup answers TWO separate questions that **must not be conflated**:
+
+| Question | What it tests | What the cleanup decides |
+|---|---|---|
+| **(i) Does the §7.16 monotonic 1× crossing SURVIVE on clean full-trajectory runs?** | Whether the displacement-level signature itself stands once partial-LCS contributions are excluded. | Empirical re-measurement at clean depths. |
+| **(ii) IF it survives, is "rigid-vs-compliant" still the right MECHANISM NAME, given Drake shows INTERMITTENT CONTACT (bouncing) not smooth compliance?** | Whether the surviving signature can be attributed to the compliance-stiffness axis vs the bouncing-dynamics axis. | A separate force-level / contact-loss probe, not the cleanup itself. |
+
+**Survival of the crossing does NOT automatically restore the compliance diagnosis.** A momentum-driven push that produces genuine contact-loss-and-re-engagement is a DIFFERENT phenomenon than a compliance-stiffness mismatch — even if both can produce the same monotonic crossing of factor 1× across penetration depth (one because deeper penetration → stiffer rigid LCS response; the other because deeper penetration → faster box recoil → different bounce timing → different time-averaged Drake impulse).
+
+**Do NOT let "the crossing survived" re-assert "compliance".** The mechanism name is a SEPARATE determination, **re-opened by the intermittent-contact observation** in §7.17 (3). Even on a fully clean §7.16 sweep with a surviving crossing, the contact-axis sub-mechanism would still be DIAGNOSED-WITH-CONFOUNDS until a separate probe distinguishes compliance from bouncing.
+
+#### (5) STRATEGIC FRAMING — honest
+
+We are further from done than the §7.16-aug "FULLY NAMED" claimed. This is the difference between a real diagnosis and a premature one — the kind of gap the discipline exists to catch.
+
+Anitescu (a turn from being scoped toward a build) is correctly PAUSED, which likely SAVED a substantial wasted effort: porting a compliance reformulation against a diagnosis that had not survived its own force-level check would have produced a working anitescu LCS that still didn't match Drake — and the failure mode (a clean reformulation that doesn't close the gap) would have been hard to attribute (is it a port bug? is it the diagnosis being wrong? is it something else?). Pausing returns the question to the diagnosis layer, where it's tractable.
+
+**The §7.16-aug guardrail (confirm-at-force-level-before-reformulating) paid for itself.** One careful Part A probe vs a full anitescu port built on a partly-artifactual diagnosis. This pattern should be the default for every future "we have a fingerprint → let's port the reference's mechanism" turn.
+
+Convergence stays HELD — the model is still not validated on push, now for a more honest reason (the gap is real; the mechanism is not cleanly named; the displacement-level signature has a partial-run confound at deep depths; the textbook compliant-contact cartoon doesn't describe Drake at this state).
+
+#### (6) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **Part A FORCE-DISCONFIRMS** — 1-of-4 force-level signatures; the §7.16 crossing is partly a partial-IK artifact at deep depths; Drake shows intermittent-contact bouncing, not the soft-spread cartoon.
+- **Milestone "FULLY NAMED" RESCINDED** → DIAGNOSED-WITH-CONFOUNDS.
+- **Anitescu PAUSED** (correctly — not built against a partly-artifactual diagnosis).
+- **NEXT** = §7.16 sweep cleanup with the **partial-IK INVALIDATES its factor** discipline + per-point partial/fail correlation; then the **dual question** (crossing-survival ≠ compliance-name re-assertion).
+- **Convergence:** HELD.
+
+#### Anti-stale binding (augment)
+
+Any subsequent entry that reports a sub-step LCS factor without verifying full-trajectory completion is operating on a STALE record — §7.17-aug requires the partial-IK INVALIDATES discipline at every printed factor. Any entry that, after a §7.16 cleanup with a SURVIVING crossing, jumps directly to "compliance is confirmed, anitescu scoping opens" is also stale — §7.17-aug separates crossing-survival from mechanism-name; the bouncing observation requires a separate determination before the anitescu phase transition re-opens. Any entry that reuses a textbook-idealization "expected signature" without first observing the actual system's behavior is also stale — §7.17-aug (2) records the cartoon correction explicitly.
+
+**Next gate (corrected from §7.17 main body):** §7.16 sweep cleanup, with two specific differences from the original sweep: (a) per-sub-step IK retry with multiple seed warm-starts; partial-trajectory factors are EXCLUDED from the table, not annotated; (b) per-depth `clean / partial / failed` marker on every printed row; only `clean` rows enter the crossing determination. AFTER the cleanup, the dual question — first did the crossing survive (re-measure), second is the mechanism still compliance (a separate intermittent-contact-vs-compliance probe, not the cleanup itself). NOT actioned in this plan-doc edit.
+
+### 7.18 — §7.16 sweep cleanup: CROSSING-SURVIVES — all 6 depths complete 10/10 sub-steps CLEAN under robust IK; factors IDENTICAL to §7.16 (within 1e-4); §7.17 partial-trajectory finding qualitatively true but factor-invariant; mechanism-name still OPEN per the §7.17-aug dual question (2026-06-26)
+
+**Result: with robust per-sub-step IK (5 seeds: warm-start, posture, 3 random perturbations), all 6 §7.16 depths complete 10/10 sub-steps as CLEAN full trajectories — no partial-trajectory exclusions, no gate failures. The reported factors are IDENTICAL to §7.16 to 4 decimal places (max |diff| = 4e-4). The §7.16 monotonic 1× crossing at ~0.549 mm SURVIVES the cleanup.** Per the §7.17-aug DUAL QUESTION discipline, this answers question (i) "does the displacement-level signature survive" — YES — but does NOT answer question (ii) "is the mechanism name still rigid-vs-compliant given Drake shows intermittent contact" — that question stays OPEN, awaiting a separate mechanism-name probe. **§7.17's force-level disconfirmation STILL STANDS.** Anitescu Part B stays PAUSED — survival of the crossing does NOT auto-restore compliance. Banked here. Commit `5037820` (`scripts/_stage_c_sweep_cleanup.py` + `stage_c/sweep_cleanup_output.txt`).
+
+#### (1) The cleanup table
+
+| EE_PEN | status | n_sub_completed | fail_step | Drake Δx (mm) | LCS Δx (mm) | factor (clean) | §7.16-original | diff |
+|---|---|---|---|---|---|---|---|---|
+| 0.10 mm | CLEAN | **10/10** | -1 | -2.0331 | -1.2072 | **1.684×** | 1.684× | +0.000 |
+| 0.20 mm | CLEAN | **10/10** | -1 | -2.0144 | -1.3670 | **1.474×** | 1.474× | -0.000 |
+| 0.30 mm | CLEAN | **10/10** | -1 | -1.8729 | -1.5051 | **1.244×** | 1.244× | +0.000 |
+| 0.50 mm | CLEAN | **10/10** | -1 | -2.3288 | -2.0948 | **1.112×** | 1.112× | -0.000 |
+| 0.70 mm | CLEAN | **10/10** | -1 | -2.3029 | -3.5244 | **0.653×** | 0.653× | +0.000 |
+| 1.00 mm | CLEAN | **10/10** | -1 | -2.2388 | -5.7311 | **0.391×** | 0.391× | -0.000 |
+
+**CLEAN depths: 6/6. PARTIAL depths: 0. GATE FAIL depths: 0. Monotonic. Crosses 1× at ~0.549 mm — identical to §7.16.**
+
+#### (2) §7.17's partial-trajectory finding — qualitatively true but factor-invariant; nuance
+
+§7.17 observed that at EE_PEN_M = 1 mm, its `lcs_force_profile` probe had `λ_n = [9.200, 0.000, 0.000, 0.000, NaN, NaN, NaN, NaN, NaN, NaN]` — IK failed at step 4. The cleanup did NOT reproduce this failure (warm-start IK succeeded for all 10 sub-steps at 1 mm).
+
+The difference: §7.17's force-level probe used only 2 setup seeds for `setup_state_at_depth` (vs the cleanup's 5), so it landed in a slightly different basin of attraction at the initial q_arm. Its sub-step IK then ran into the failure that the cleanup's q_arm (different basin, then warm-started) avoided.
+
+**However: the §7.17 partial-trajectory factor (had it been computed at the truncation point) would have been THE SAME as the clean full-trajectory factor at 1 mm.** Why: in §7.17's partial trajectory, after step 0's big λ_n = 9.2 push, sub-steps 1–3 had λ_n = 0 (no contact admitted), so the LCS just propagated state via `A·x_curr` — free dynamics with no contact force. Whether the trajectory truncated at step 4 (partial) or continued to step 10 (clean), the box's final position was the same because nothing was pushing it. The factor 0.391× emerges from the same physics either way.
+
+**The discipline §7.17-aug articulated stands** — partial-IK INVALIDATES its factor as a rule, because you cannot know a priori that the missing steps would have been zero-contribution. The specific §7.16 1 mm number, on its own evidence, happened to be invariant under this confound. So the §7.17 generalisation ("the §7.16 deep numbers are partly artifactual") was over-stated, but the §7.17-aug discipline ("partial-IK is invalid by precondition, not by outcome") survives.
+
+#### (3) The §7.17 force-level disconfirmation STILL STANDS
+
+This cleanup answers ONE question: does the §7.16 monotonic 1× crossing survive on clean full-trajectory runs? **YES.** This cleanup does NOT touch the §7.17 force-level findings:
+- LCS λ_n profile shape IS impulsive (rigid signature ✓) — §7.17 (1)
+- LCS peak λ_n scaling sub-linear (2.65× for 10× depth, not 10× rigid-linear) — §7.17 (1)
+- Drake force profile OSCILLATING with intermittent contact, NOT soft-spread plateau — §7.17 (3)
+- Drake peak force scaling slightly inverse (0.76× growth) — §7.17 (1)
+
+The mechanism-name question — is the gap rigid-vs-compliant, or intermittent-contact-bouncing, or something else? — remains OPEN.
+
+#### (4) The §7.17-aug DUAL QUESTION — question (i) ANSWERED, question (ii) STILL OPEN
+
+| Question | Status |
+|---|---|
+| (i) Does the §7.16 monotonic crossing SURVIVE on clean full-trajectory runs? | **YES — confirmed at all 6 depths, factors identical to §7.16 to 1e-4** |
+| (ii) IF it survives, is "rigid-vs-compliant" still the right MECHANISM NAME given Drake shows intermittent contact? | **STILL OPEN — requires a separate mechanism-name probe, not this cleanup** |
+
+Per §7.17-aug (4): "Survival of the crossing does NOT automatically restore the compliance diagnosis. Even on a fully clean §7.16 sweep with a surviving crossing, the contact-axis sub-mechanism would still be DIAGNOSED-WITH-CONFOUNDS until a separate probe distinguishes compliance from bouncing." That guidance applies as written.
+
+#### (5) Routing consequences
+
+| Item | Pre-§7.18 | Post-§7.18 |
+|---|---|---|
+| §7.16 displacement-level signature | UNDER SUSPICION (§7.17) | **REVALIDATED — crossing survives cleanup; all factors clean** |
+| §7.17 force-level FORCE-DISCONFIRMS | STANDS | **STILL STANDS — cleanup doesn't address it** |
+| §7.17 "1 mm was partial-LCS artifact" claim | Banked as confound | **NUANCED — partial qualitatively true, factor-invariant; §7.17-aug discipline survives at the principle level** |
+| Anitescu Part B (scoping) | PAUSED (§7.17) | **STILL PAUSED — awaiting mechanism-name determination** |
+| Friction | DEMOTED | STILL DEMOTED |
+| Convergence | HELD | STILL HELD |
+| Milestone "FULLY NAMED" | RESCINDED (§7.17) | **Floor [FIXED] stands; contact-axis [DIAGNOSED-WITH-CONFOUNDS, mechanism-name still OPEN]** |
+
+#### (6) Strategic framing — recalibration
+
+§7.17 swung hard against §7.16 ("MILESTONE RESCINDED; FULLY NAMED gone; partial-LCS artifact"); §7.18 recovers some of that ground (the crossing IS real; the §7.16 factors are clean). The truth is in the middle:
+
+- The §7.16 **displacement-level signature** is real and clean (§7.18).
+- The §7.17 **force-level signatures** still don't cleanly match the pre-registered rigid-vs-compliant cartoon (§7.17 stands).
+- Drake's intermittent-contact bouncing is real (§7.17), and it remains the most important alternative mechanism to compliance for explaining the surviving crossing.
+
+**The conservative reading: the gap is real, monotonic in depth, and crosses 1× at ~0.549 mm — but we still don't know if it's compliance-stiffness mismatch or intermittent-contact bouncing.** Anitescu stays paused; mechanism-name probe is the next gate.
+
+This is also a lesson on probe sensitivity: §7.17's "1 mm = partial" alarm was set off by a 2-seed setup that happened to land in a sub-step-IK-fragile basin; the 5-seed cleanup didn't reproduce the failure. The right takeaway is that **robust IK with multiple seeds is now a standard precondition for any sub-step LCS comparison**, codified in the cleanup script for re-use.
+
+#### (7) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **§7.16 crossing SURVIVES cleanup** — all 6 depths CLEAN under robust IK; factors identical to §7.16 (within 1e-4); monotonic crossing at ~0.549 mm confirmed.
+- **§7.17 force-level FORCE-DISCONFIRMS still STANDS** — the cleanup does not address it.
+- **§7.17 "1 mm was partial artifact" claim NUANCED** — qualitatively true (was partial in §7.17's probe) but factor-invariant; the §7.17-aug discipline ("partial-IK invalidates its factor by precondition") still applies as a rule.
+- **Mechanism-name question OPEN** — survival of crossing does NOT restore compliance per §7.17-aug dual question; intermittent-contact-vs-compliance probe is the next gate.
+- **Anitescu Part B:** STILL PAUSED.
+- **Floor sub-mechanism:** FIXED. **Contact-axis sub-mechanism:** DIAGNOSED-WITH-CONFOUNDS — signature real, mechanism not named.
+- **Convergence:** HELD.
+
+#### Anti-stale binding
+
+Any subsequent entry that cites §7.17 to claim "the §7.16 crossing is partly artifactual" without the §7.18 nuance is operating on a STALE record — §7.18 establishes that §7.16's factors are clean and the crossing survives on full trajectories. Any entry that cites §7.18 to claim "compliance is back as the mechanism name" is also stale — §7.17-aug separates crossing-survival from mechanism-name; §7.18 answers only crossing-survival, not mechanism-name. The §7.17 force-level findings (LCS impulsive shape + sub-linear scaling; Drake intermittent contact; Drake inverse peak scaling) remain on the table as evidence that the displacement-level signature is not cleanly explained by rigid-vs-compliant in the textbook sense.
+
+**Next gate (corrected from §7.17-aug):** mechanism-name probe — characterize Drake's contact-state time series across penetration depths (does the pusher↔box contact disengage and re-engage multiple times in the 50 ms window?); if intermittent contact is the dominant feature, the "compliance vs rigid" framing is incomplete and the dynamics are dominated by impulse-and-recoil. If intermittent contact is NOT dominant (continuous compliant push with smooth force history), compliance regains standing as the mechanism. NOT actioned in this plan-doc edit.
+
 ---
 
 ## 8. Memory pointer
