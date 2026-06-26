@@ -2309,6 +2309,116 @@ ADMM-solver row, **HORIZONTAL/push axis**: A-matrix LCS-vs-Drake propagation pro
 
 Any subsequent entry that cites the probe report's auto-routing *"mechanism REOPENS beyond pure normal compliance"* as a verdict-of-record is operating on a STALE record — §7.23 (3) explicitly corrected that auto-routing as a conflation of *"anitescu may not be the right fix"* (TRUE) with *"the mechanism is beyond compliance"* (FALSE). The verdict-of-record is **COMPLIANCE-CONFIRMED, triple-triangulated**, with anitescu demoted to candidate; not mechanism-reopens. Any entry that cites §7.22 (3)'s *"residual in A·x, not D·λ"* without acknowledging the §7.23 (2) correction is also stale — A·x = 0 in the box-at-rest comparison, so the residual was always in `D · λ`. Any entry that treats anitescu as the presumptive fix is the same staleness mode as §7.21's "3-of-4 ≠ 4-of-4" extended to fix-selection: cone-formulation is not stiffness-mechanism, and the §7.23 (4) re-targeting binds the fix scope to normal-compliance representations. Any entry that uses the §7.16-aug *"gap closes across depths"* validation target without acknowledging the §7.23 (5) shallow-anchor constraint is also stale — the shallow agreement is part of the constraint: a correct fix must NOT degrade the 0.10 mm match while bending the deep regime down to Drake's ~−0.064 m/s flat.
 
+### 7.24 — FIX scoped: rigidity LOCALIZED to c_lcs = φ/dt (:1492) + F_lcs normal-diagonal (:1480-1482); D-hypothesis REFUTED (D maps impulse→velocity, identical in rigid and compliant regimes); Drake's target = normal impulse SATURATES at ≈ 12.8 mN·s (λ_n_sat ≈ 2.56); minimal fix = ONE-LINE soft-LCP (Candidate A, EE-BOX-only) OR ONE-LINE velocity-level target (Candidate C = Anitescu velocity-level NORMAL formulation, reincarnated). TWO corrections: (i) anitescu split — FRICTION-CONE retired (orthogonal to the gap), VELOCITY-NORMAL = Candidate C (the likely full-closure fix, NOT retired); (ii) compliance on EE-BOX index ONLY (softening the BOX-VERT floor contacts would re-break §7.9–§7.12's vertical hold). Candidate A might PASS the 25% validation band on slope-reduction alone — do NOT pre-commit to escalating to C. Convergence HELD (2026-06-26)
+
+This is a **read-and-scope** block; no artifacts on disk. Markdown-only banking; the staged build is the NEXT block.
+
+#### (1) Where the rigid-impulse assumption lives — D-hypothesis REFUTED
+
+The §7.23-routed hypothesis was that the rigid-impulse assumption lives in `D[:, n_c:2n_c]`. **REFUTED.** `D[BOX_V_SLOT, SLN:SLN + n_c] = dt · Minv_JnT_box` (`lcs_formulator.py:1432`) is the standard **impulse-to-velocity-change Jacobian**, **identical in rigid and compliant regimes** — modifying D would be unphysical.
+
+The rigidity lives in **two places** (both `linearize_discrete_ee_space`; R^7 path mirrors at `:1025` and `:1028`):
+
+| where | line | what | character |
+|---|---|---|---|
+| `c_lcs[SLN:SLN+n_c] = phi/dt + …` | `:1492` | constant offset of η_n | rigid Stewart-Trinkle stabilization: *"penetration must vanish in ONE timestep"*; deeper depth → larger penalty velocity → larger λ_n to discharge. No Baumgarte / compliance / regularization. |
+| `F_lcs[SLN:SLN+n_c, SLN:SLN+n_c] = dt·(J_n_box·Minv_JnT_box) + (dt/m_ee)·(J_n_ee·J_n_ee.T)` | `:1480-1482` | LCP self-coupling | pure inertial, **no compliance term** |
+
+**Amplification (λ_n 2.65× → box_v_x 3.87×) enters via the LCP SOLVE**, NOT the D-column: `c_lcs[SLN]` scales linearly with depth, `F_diag` is depth-invariant, λ_n ≈ |φ/dt| / F_diag (the 2.65×); the extra 1.46× (3.87 / 2.65) is **off-diagonal LCP coupling to the BOX-VERT contacts** (Σλ across 5 contact pairs) — not D.
+
+**No existing stiffness / compliance / regularization parameter** (`grep -i 'stiffness|compliance|baumgarte|penalty|smooth|regulariz|hertz'` against `lcs_formulator.py` returns zero matches). Pure rigid Stewart-Trinkle.
+
+**Minimal insertion:** `F_lcs[SLN:SLN + n_c, SLN:SLN + n_c] += k_compliance * np.eye(n_c)` at `:1482` (mirror `:1025` for the R^7 path), OR localized to just the EE-BOX index. Textbook **soft-LCP / regularized normal complementarity** (Anitescu-Potra 1997, Lacoursière 2007): `0 ≤ λ_n ⊥ (η_n_rigid + k·λ_n) ≥ 0` — λ_n bounded by allowing partial penetration to persist.
+
+#### (2) Drake's target — a concrete number + caveat
+
+From §7.23 with `m_box = 0.2 kg` (config/tasks.yaml `pushing`):
+
+| depth | Drake box_v_x(5 ms) | Δv | impulse on box |
+|---|---|---|---|
+| 0.10 mm | −0.054 m/s | 0.054 | **10.8 mN·s** |
+| 0.549 mm | −0.064 m/s | 0.064 | **12.8 mN·s** |
+| 1.00 mm | −0.065 m/s | 0.065 | **13.0 mN·s** |
+
+**Drake's effective normal impulse SATURATES at ≈ 12.8 mN·s** over the 5 ms window for depths ≥ ~0.10 mm — depth-flat to within 2%. LCS-equivalent **λ_n_saturation ≈ 2.56** (LCS impulse = λ_n · dt = λ_n · 0.005).
+
+**Caveat:** a linear soft-LCP with constant k **cannot reproduce Drake's HARD saturation** — it gives SLOPE REDUCTION (LCS 3.87× → ~1.3× at k ≈ 0.04, close to Drake's 1.20× but not flat). The depth-dependent ideal k is ≈ 0.013 at 0.549 mm, ≈ 0.048 at 1.00 mm. True saturation needs either:
+- a **velocity-level target form** `η_n = J_n · v_post − v_n_target` (replacing `phi/dt`), OR
+- a **quadratic-in-λ_n** term (NCP, not LCP).
+
+**Reference cross-check:** dairlib's anitescu has a `spring_stiffness` parameter — the natural compliance hook — but the **reference sets it to 0.0 (DISABLED)** (`reference_logic_tree.md:363`, citing `sampling_c3plus_options.yaml:18`, *"unused for C3+"*). The reference does NOT carry normal compliance via anitescu's `spring_stiffness`. The reference also uses `scale_lcs: true` (yaml:9) — a different mechanism, deserving a separate parallel scope.
+
+#### (3) Anitescu NUANCE — correction to the scope (HALF retired, HALF reincarnated)
+
+The §7.23 verdict-of-record said *"anitescu DEMOTED to candidate"*; the scope concluded *"anitescu ORTHOGONAL / retired."* That is **half right and must be SPLIT:**
+
+| anitescu axis | verdict |
+|---|---|
+| **friction-cone** (polyhedral pyramid → SOCP) | **ORTHOGONAL** to the normal-impulse gap → **RETIRED** from the no-push fix path |
+| **velocity-level NORMAL formulation** (Anitescu-Potra 1997 stabilization in normal channel) | **= Candidate C** (the velocity-level target replacing `phi/dt`) → **REINCARNATED** as the likely full-closure fix |
+
+*"Anitescu retired"* means the friction-cone swap is retired; it does **NOT** mean the Anitescu velocity-level **NORMAL** formulation is irrelevant — that is precisely the Candidate C velocity-level target. The reference cross-check that **matters for Candidate C was NOT done** in this scope: is the reference's normal complementarity **position-level** (φ/dt, like the port) or **velocity-level** (Anitescu-style)? If velocity-level, the reference's depth-stability comes from its velocity-level normal formulation and Candidate C = *"match the reference."* That check belongs in the build block.
+
+#### (4) The candidates + Candidate A might PASS the band (clarification)
+
+| candidate | description | scope | flag-stageable | predicted closure |
+|---|---|---|---|---|
+| **A** Linear soft-LCP | `F_lcs[SLN+ee_box_idx, SLN+ee_box_idx] += k_compliance` (EE-BOX index only) | LOCALIZED (normal channel, EE-BOX index) | yes — env `LCS_NORMAL_COMPLIANCE_K`, default `0.0` | **partial** — bends LCS 3.87× toward Drake 1.20× but not flat |
+| **B** Stiffness-aware D-column | modify `D[box_v_slot, SLN:]` | pervasive (touches kinematic Jacobian) | yes but **DISCOURAGED** | NOT recommended — D is correct in both regimes; modifying it is unphysical |
+| **C** Velocity-level target (= Anitescu velocity-level NORMAL) | replace `c_lcs[SLN]=phi/dt` with `η_n = J_n · v_post − v_target` | LOCALIZED (one line at `c_lcs[SLN]`) | yes | **likely full** — reproduces Drake's saturation directly |
+| **D** `scale_lcs: true` (parallel scope) | normalize LCS matrices (reference does this) | structural | yes | **UNKNOWN** — with skepticism: matrix normalization for conditioning is usually solution-invariant, so it shouldn't introduce compliance; if it does, that is informative |
+
+**Candidate A might PASS the validation band.** *"Not flat"* is STRICTER than the validation BAND: at k ≈ 0.04, 1.00 mm → LCS box_v_x ≈ −0.068 vs Drake −0.065, **INSIDE the 25% band**. **Do NOT pre-commit to escalating to C** — let the validation decide against the BAND, not against perfect flatness. Escalation to C is conditional on A failing the band, not on A being imperfect.
+
+**Candidate D wild-card:** the more likely reference depth-stability source is the velocity-level normal formulation (Candidate C). `scale_lcs: true` is more likely conditioning than compliance — but worth a bounded parallel check.
+
+#### (5) Compliance term on EE-BOX ONLY — correction (vertical-fix preservation)
+
+**The compliance term goes on the EE-BOX normal contact index ONLY** — NOT on the BOX-VERT floor contacts.
+
+The BOX-VERT contacts are exactly what `LCS_EXPLICIT_BOX_GND=4` added to fix the vertical fall (§7.9–§7.12); **softening them re-introduces floor penetration** and risks RE-BREAKING the vertical hold. The scope's *"just the EE-BOX index"* version is the RIGHT one, and **the reason is vertical-fix preservation**. EE-BOX is also the λ_n driver for the no-push diagnostic (its penetration is the swept depth), so EE-BOX-only is both **safe and sufficient-to-test**.
+
+Concrete form for the build:
+```python
+# at lcs_formulator.py:1482 — add immediately after the F_lcs normal-normal assignment
+if ee_box_idx is not None and k_compliance > 0:
+    F_lcs[SLN + ee_box_idx, SLN + ee_box_idx] += k_compliance
+```
+Default `k_compliance = 0.0` (OFF). Flag: env `LCS_NORMAL_COMPLIANCE_K`.
+
+#### (6) Route + validation band
+
+**Route: LOCALIZED-COMPLIANCE-FIX** with anitescu-friction-cone ORTHOGONAL (retired), anitescu-velocity-level-normal = Candidate C (reincarnated). The rigid-impulse assumption is precisely localized (`F_lcs` diagonal + `c_lcs` offset), removable with a **one-line change** (A) or a **one-line replacement** (C), both flag-stageable.
+
+**Offline validation band (pre-registered):** re-run `_stage_c_a_matrix_probe.py` with each candidate at `{0.10, 0.549, 1.00}` mm. Success criteria:
+
+| regime | criterion |
+|---|---|
+| **deep (≥ 0.549 mm)** | LCS box_v_x within **25%** of Drake's −0.064 m/s → |LCS| ∈ [−0.080, −0.048] m/s |
+| **shallow (0.10 mm)** | LCS box_v_x within **5%** of Drake's −0.054 m/s (preserves the shallow anchor) |
+| **per-depth §7.14 gate** | CLEAN at all three depths (pusher = 1, floor = 4, arm = 0) |
+| **vertical-fix preservation** | BOX-VERT floor contacts UNTOUCHED; box stays on floor |
+
+**BEFORE any live change.** The validation band is the hard pass/fail; A escalates to C only if A fails the band.
+
+#### (7) Convergence stays HELD
+
+| axis | state |
+|---|---|
+| floor | **[FIXED]** |
+| contact-axis | **[DIAGNOSED → FIX scoped, localized to F_lcs / c_lcs normal channel, one-line A or C, EE-BOX-only]** |
+| friction | **DEMOTED** |
+| anitescu | **SPLIT — friction-cone RETIRED; velocity-normal = Candidate C** |
+| convergence | **HELD** (until a compliance term is built and validated) |
+
+#### (8) Progress-table note (for next regeneration)
+
+ADMM-solver row, **HORIZONTAL/push axis**: FIX scoped — rigid-impulse assumption localized to `c_lcs = phi/dt` (`:1492`) + `F_lcs` normal-diagonal (`:1480-1482`) in `linearize_discrete_ee_space` (D-hypothesis REFUTED; D is correct in both regimes); Drake's target = normal impulse SATURATES at **≈ 12.8 mN·s** (λ_n_sat ≈ 2.56); minimal fix = one-line soft-LCP (**Candidate A**, `F_lcs += k·I` on EE-BOX-only, default-OFF `LCS_NORMAL_COMPLIANCE_K`) giving slope-reduction, OR one-line velocity-level target (**Candidate C** = Anitescu velocity-level NORMAL formulation) for full saturation; anitescu friction-cone **RETIRED** (orthogonal), anitescu velocity-normal = **Candidate C**; **EE-BOX-only** to preserve §7.9–§7.12's vertical fix; A **might pass the 25% band** on slope-reduction alone — don't pre-commit to C; reference normal-formulation check (position vs velocity level) pending; `scale_lcs` parallel wild-card; convergence HELD.
+
+#### Anti-stale binding (§7.24)
+
+Any subsequent entry that cites §7.23's *"anitescu DEMOTED to candidate"* as authorising the **friction-cone** swap as a fix-direction is operating on a STALE record — §7.24 (3) split anitescu into friction-cone (RETIRED, orthogonal to the gap) vs velocity-level normal (REINCARNATED as Candidate C). Any entry that equates *"anitescu retired"* with *"the Anitescu-Potra velocity-level normal formulation is retired"* has the same staleness mode — it is the friction-cone axis that is retired, not the velocity-level normal axis. Any entry that scopes a compliance term to all normal contacts (including BOX-VERT) without acknowledging §7.24 (5)'s vertical-fix-preservation argument is also stale — softening BOX-VERT re-introduces the §7.9–§7.12 floor-fall failure mode that `LCS_EXPLICIT_BOX_GND=4` was added to fix. Any entry that pre-commits to Candidate C escalation without first running A against the §7.24 (6) band is the §7.21 *"3-of-4 ≠ 4-of-4"* failure mode extended to fix-selection — the validation band is the verdict, not the inspection of perfect flatness. Any reasoning that follows the pattern *"Drake saturates so the LCS must too"* without acknowledging the §7.24 (2) caveat that linear LCP compliance gives slope-reduction NOT hard-saturation is also stale — A is a slope-reduction fix that may pass the band, not a saturation fix.
+
 ---
 
 ## 8. Memory pointer
