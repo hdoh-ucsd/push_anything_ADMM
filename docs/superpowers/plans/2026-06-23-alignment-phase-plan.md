@@ -1955,6 +1955,225 @@ Any subsequent entry that cites §7.17 to claim "the §7.16 crossing is partly a
 
 **Next gate (corrected from §7.17-aug):** mechanism-name probe — characterize Drake's contact-state time series across penetration depths (does the pusher↔box contact disengage and re-engage multiple times in the 50 ms window?); if intermittent contact is the dominant feature, the "compliance vs rigid" framing is incomplete and the dynamics are dominated by impulse-and-recoil. If intermittent contact is NOT dominant (continuous compliant push with smooth force history), compliance regains standing as the mechanism. NOT actioned in this plan-doc edit.
 
+### 7.18 — augmentation (2026-06-26): reviewer-calibration note (the §7.17 alarm was an over-reaction cutting the OTHER way) + the discipline-survives-correction articulation + truth-in-the-middle framing
+
+#### (1) CONFIRM §7.18's core (banked; restated as the augment's anchor)
+
+§7.16 cleanup CROSSING-SURVIVES: **6/6 CLEAN** (0 PARTIAL, 0 GATE-FAIL), both deep points (0.7 mm, 1.0 mm) complete full 10-step trajectories under robust IK, every factor matches §7.16 to 4 decimals, crossing at ~0.549 mm IDENTICAL. The §7.17 partial-IK confound was **OVER-STATED**: §7.17's 2-seed setup hit an IK-fragile basin at 1 mm (failed at sub-step 4); the 5-seed cleanup didn't reproduce it; AND even in §7.17's partial trajectory the factor would have been THE SAME — the post-burst sub-steps had λ_n = 0 (no contact admitted), so the LCS propagated free dynamics (`A·x`) and the box position was INVARIANT under truncation. §7.17's generalisation ("the deep numbers are partly artifactual") was overstated. **BUT the §7.17-aug discipline (INVALIDATE-by-precondition-not-outcome) STILL APPLIES** — you cannot know a priori the missing steps would be zero-contribution (codified in the cleanup script via 5-seed retry + partial-EXCLUDES). Routing: §7.16 displacement-signature REVALIDATED; §7.17 force-level FORCE-DISCONFIRMS STILL STANDS (the cleanup doesn't touch it); mechanism-name STILL OPEN (crossing-survival does NOT auto-restore compliance); anitescu STILL PAUSED; floor [FIXED], contact-axis [DIAGNOSED-WITH-CONFOUNDS — signature real, mechanism not named]; friction DEMOTED; convergence HELD.
+
+#### (2) THE REVIEWER-CALIBRATION NOTE — over-reaction in BOTH directions is the failure mode
+
+The §7.17 partial-IK alarm was a reviewer **OVER-REACTION**: the reviewer read the partial run as undermining the deep factors, and amplified it to *"the §7.16 monotonic crossing may be partly an artifact."* The §7.18 cleanup shows the deep factors were clean (the truncated steps in §7.17 carried zero contact force, so the factor was invariant under truncation).
+
+**This is the THIRD time in this arc a reviewer reading was overturned by the next probe** — but this one cuts the OTHER way:
+
+| Prior reviewer overturn | Direction |
+|---|---|
+| §7.11 / §7.13 "Δt-DOMINANT, MODEL-FIXED close" → §7.14 audit broken | over-TRUST (premature victory lap) |
+| §7.16 "fingerprint, FULLY NAMED, anitescu indicated" → §7.17 force-disconfirms | over-TRUST (premature victory lap) |
+| §7.17 "1 mm = PARTIAL, crossing maybe artifact" → §7.18 cleanup clean | **over-DISTRUST (premature alarm)** |
+
+**The calibration lesson: the failure mode is over-reaction in BOTH directions.** The base rate on "the comfortable reading is correct" applies equally to **comfortable over-corrections** — an alarm can be as premature as a victory lap. Both are forms of reasoning past the evidence; both feel earned in the moment; both get overturned by the next probe.
+
+**The discipline (verify before concluding in EITHER direction) is the same fix for both.** §7.14 added the contact-pair-count gate to prevent over-trust; §7.17-aug added the partial-IK-INVALIDATES rule to prevent silent corruption; the calibration here adds **explicit acknowledgement that alarms also need verification before generalisation**. A partial trajectory in one probe is local evidence about that probe; it is NOT evidence that the §7.16 factor table is corrupted; that generalisation step requires a separate verification (which §7.18 supplied, after the fact).
+
+#### (3) THE DISCIPLINE-SURVIVES-CORRECTION articulation
+
+The §7.17-aug rule — *"partial-IK INVALIDATES its factor by precondition, not outcome"* — survives even though THIS partial turned out factor-invariant. The reasoning is precise:
+
+- A rule "exclude partials UNLESS you've checked they don't matter" is **incoherent**: checking whether the missing steps contribute requires the trajectory completion the partial lacks. You'd be running the full trajectory to decide whether to use the partial — at which point you have the full trajectory and don't need the partial.
+- A rule "exclude all partials, full stop" is the **correct rule** PRECISELY because zero-contribution is unverifiable a priori. The cost of the rule (some partials that would have been correct anyway get excluded) is cheap (re-run with robust IK); the benefit (no silent corruption) is essential.
+
+**The specific alarm was wrong; the discipline attached to it is right; both are true, no contradiction.** This pattern — *generalisable rule survives a specific instance of the rule turning out unnecessary* — is itself worth recording: rules earn their place by what they prevent across the population of cases, not by what they prevent in this case.
+
+The cleanup script's 5-seed retry + partial-EXCLUDES codifies the rule operationally. Re-use is the proof: the next sub-step LCS comparison inherits the discipline by default.
+
+#### (4) STRATEGIC FRAMING — truth in the middle, better-calibrated than two turns ago
+
+Better-calibrated in BOTH directions than two turns ago:
+
+- **The gap is MORE solid than the §7.17 over-reaction implied** — deep factors clean, crossing real, monotonic at 0.549 mm.
+- **The mechanism is LESS settled than the §7.16 over-confidence implied** — still genuinely unknown between compliance-stiffness mismatch (rigid LCS vs compliant Drake softening) and intermittent-contact bouncing (impulse-and-recoil dynamics where Drake's box bounces off the pusher / floor).
+
+The investigation has converged on a **SHARP, well-posed question with a clean instrument to answer it**: at varying penetration depths, does Drake's pusher↔box contact disengage and re-engage multiple times in the 50 ms window, or does it sustain a continuous compliant force? The instrument is the same robust per-depth setup the cleanup uses; the addition is reading Drake's contact-state time series at 1 ms resolution.
+
+This is the kind of question that **either probe-result would be informative**: continuous compliance regains compliance as the mechanism name; intermittent contact rules compliance out and routes to a different mechanism (impulse-and-recoil / discrete event dynamics). No comfortable outcome on either side; the mechanism-name probe is genuinely a discriminator.
+
+Convergence STAYS HELD (still no validated model on push); anitescu STAYS PAUSED (mechanism not named); the arc continues with sharper questions and a calibrated read of where the evidence sits.
+
+#### (5) Progress-table note (for next regeneration)
+
+ADMM-solver row, contact-axis:
+- **§7.16 cleanup CROSSING-SURVIVES** — 6/6 clean, crossing revalidated at 0.549 mm; the §7.17 partial-IK confound was over-stated (truncated steps carried zero contact force, factor invariant); BUT the INVALIDATE-by-precondition discipline stands as a rule.
+- **§7.17 force-level FORCE-DISCONFIRMS STILL STANDS** (the cleanup doesn't address it).
+- **Mechanism-name STILL OPEN** — compliance vs intermittent-contact-bouncing, genuinely unknown.
+- **Anitescu STILL PAUSED**.
+- **NEXT GATE** = mechanism-name probe (Drake pusher↔box contact-state time series across depths — continuous vs intermittent).
+- **Convergence:** HELD.
+
+#### Anti-stale binding (augment)
+
+Any subsequent entry that frames the §7.17 partial-IK alarm as having been "vindicated" by §7.18 is operating on a STALE record — §7.18 shows the §7.17 generalisation was OVER-STATED; the discipline attached to the alarm survives, the specific alarm's prediction (that §7.16 factors were corrupted) does not. Any entry that uses §7.18's rehabilitation of §7.16 to skip a mechanism-name probe is also stale — §7.17-aug's dual question separates crossing-survival from mechanism-name; §7.18 settles only the first. Any reasoning that follows the pattern "the last probe showed Y, so Y is settled" (in EITHER direction) without verification of the generalisation step is the §7.18-aug (2) failure mode: over-reaction without a verification gate.
+
+**Next gate (corrected from §7.18 main body):** mechanism-name probe — at each of the §7.16 depths (clean, full-trajectory), dump Drake's pusher↔box contact state at 1 ms ticks across the 50 ms window and classify each tick as in-contact / out-of-contact; map the contact-time-fraction and the contact-loss-count vs depth. The pre-registered routes (continuous-compliance / intermittent-dominant / mixed) come BEFORE running. NOT actioned in this plan-doc edit.
+
+### 7.19 — Mechanism-name probe (contact-state time series): AMBIGUOUS-leans-DEPTH-DEPENDENT — neither binary route fires; the "disengages" are sub-30-micron grazing at the contact threshold (per the signed-distance co-trace), NOT bouncing; §7.17 force-disconfirms WEAKENS (|F|≈0 mostly on engaged contact); c55ee03's fifth label DEMOTED to interpretation; anitescu STILL PAUSED (2026-06-26)
+
+Artifacts on disk (committed `c55ee03`): script `scripts/_stage_c_contact_state_probe.py`, output `stage_c/contact_state_probe_output.txt`. Method: per §7.16 sweep depth (0.1 / 0.2 / 0.3 / 0.5 / 0.7 / 1.0 mm), set the clean box-pinned state (§7.14 per-depth gate), run Drake `AdvanceTo(0.001 · k)` for k=1..50, classify the pusher↔box pair as PRESENT (in `ContactResults`) / ABSENT each tick; dump signed-distance + |F| co-traces at 5 ms stride. Discriminator is **`ContactResults` presence**, not force value (a force VALUE of zero is ambiguous; presence is not).
+
+#### (1) The result — AMBIGUOUS-leans-DEPTH-DEPENDENT (neither binary route fires)
+
+Per-depth pusher↔box continuity (50 ms window, clean box-pinned, count=4):
+
+| EE_PEN | engaged | engaged % | longest run | disengages | re-engages |
+|---|---|---|---|---|---|
+| 0.10 mm | 44/51 | 86.3% | 13 | **3** | 4 |
+| 0.20 mm | 49/51 | 96.1% | 33 | 1 | 2 |
+| 0.30 mm | 48/51 | 94.1% | 25 | 1 | 2 |
+| 0.50 mm | 46/51 | 90.2% | 30 | 1 | 2 |
+| 0.70 mm | 45/51 | 88.2% | 40 | 2 | 2 |
+| 1.00 mm | 50/51 | 98.0% | 50 | **0** | 1 |
+
+Route classification against the §7.18-aug pre-registration:
+
+- **CONTINUOUS-COMPLIANT REJECTED** — only 1 mm hits 50/51; shallow depths have 1–3 gap events. The strict "engaged the full 50 ms at all depths" criterion is NOT met.
+- **INTERMITTENT-DOMINATES REJECTED** — max 3 disengages per depth, not flicker-dominant; longest contiguous engaged run GROWS 13 → 50 with depth.
+- **DEPTH-DEPENDENT PARTIAL** — 1.0 mm essentially continuous (50/51, 0 disengage) ↔ 0.10 mm most-fragmented (86%, 3 disengage, longest run 13); but middle depths break strict monotonicity (the script reports `monotonic w/ depth: NO, spread 3`).
+- **AMBIGUOUS MATCHED** — the script's own verdict (`stage_c/contact_state_probe_output.txt:119`).
+
+Routed outcome: **AMBIGUOUS, leaning DEPTH-DEPENDENT.**
+
+#### (2) The signed-distance co-trace — the key reinterpretation
+
+The disengage ticks correspond to near-grazing POSITIVE separations of **0.000 – 0.028 mm** — sub-30-micron geometric gaps, NOT bounce-out-and-return excursions. The continuous signed-distance co-trace (dumped alongside the binary contact indicator) converts the binary AMBIGUOUS into actionable substructure: the apparent intermittent disengage events at shallow depths are **borderline-GRAZING recoils at the geometric contact threshold**, NOT impulse-and-recoil bouncing. Deep penetration (≥ 1.0 mm) is continuous-compliant. The **0.549 mm §7.16 crossing sits INSIDE the depth band where 1–2 grazing events occur per 50 ms window** (between 0.3 mm and 0.7 mm in the table).
+
+#### (3) What the route rejects
+
+**INTERMITTENT-DOMINATES rejected** ⇒ the "rigid-vs-compliant is the wrong frame; anitescu not indicated" branch does NOT fire on this evidence — the dynamics are not impulse-and-recoil bouncing.
+
+**Pure CONTINUOUS-COMPLIANT rejected** ⇒ the unconditional "compliance regains standing, anitescu re-promoted" path does NOT fire either — the grazing events at shallow depths are still a mechanism component to account for before re-promoting anitescu.
+
+#### (4) §7.17 force-disconfirms — partial rehabilitation
+
+§7.17 force-disconfirms WEAKENS: most of §7.17's |F|≈0 ticks coincide with **ENGAGED contact** — the |F| co-trace shows the pusher↔box pair PRESENT at ticks reading 0.00 N. They are force-MAGNITUDE variation on MAINTAINED contact, NOT contact loss. The §7.17 "Drake is bouncing / soft-spread is a cartoon" inference partly misattributed force-on-continuous-contact as intermittent-contact. §7.17 force-disconfirms does NOT fully collapse (the sub-linear scaling and impulsive LCS shape findings stand), but a substantial chunk of its |F|≈0 evidence is reinterpreted.
+
+#### (5) Fifth-label demotion (the anti-stale binding fires against the toolchain)
+
+The c55ee03 commit introduced a fifth label **"MOSTLY-CONTINUOUS-WITH-GRAZING"** — an accurate DESCRIPTION but **OUT-OF-PRE-REGISTRATION**. Per the §7.18-aug anti-stale binding, it is banked as an **INTERPRETATION of AMBIGUOUS + DEPTH-DEPENDENT**, NOT as a sui-generis route. The verdict-of-record the next block scopes against is the STRICT pre-registration (**AMBIGUOUS-leans-DEPTH-DEPENDENT**), not the interpretive re-label.
+
+This is the anti-stale binding firing against the toolchain's own tidy phrasing — a probe result that didn't cleanly match a registered route got a new clean-sounding label minted post-hoc; the discipline caught it and demoted it. The c55ee03 script and output remain valid artifacts; the LABEL is demoted in the doc, not removed from the commit (no amend).
+
+#### (6) The per-depth gate — earned its keep again
+
+All six depths pass the §7.14 contact-pair gate (`pusher=1, floor=1, arm=0`). The discriminator is uncontaminated; no arm-link↔box phantom pair at any depth — the §7.14 failure mode is closed at every depth in this probe.
+
+#### (7) State at stop
+
+- **Anitescu Part B STILL PAUSED** — AMBIGUOUS does not authorise re-promotion.
+- **Mechanism-name PARTIALLY NARROWED** — not flicker-bouncing, not strict continuous-compliance; the residual at the 0.549 mm crossing has a **GRAZING-INSTABILITY component superimposed on a mostly-MAINTAINED contact**, leaning depth-dependent.
+- **§7.16 crossing-survives STANDS.**
+- **§7.17 force-disconfirms WEAKENS** (|F|≈0-mostly-on-engaged-contact reinterpretation).
+- **§7.18 STANDS.**
+- Floor [FIXED]; contact-axis [DIAGNOSED-WITH-CONFOUNDS, mechanism-name LEANING **depth-dependent-grazing-on-continuous-base**, still not strictly NAMED].
+- Friction DEMOTED; convergence HELD.
+
+#### (8) Next gate
+
+Per the AMBIGUOUS-route pre-registration (finer time-resolution OR continuous penetration-depth time series): the dt=1 ms binary indicator may UNDER-SAMPLE sub-millisecond grazing dynamics — the gaps may be artifacts of 1 kHz polling against a continuous-but-near-zero-distance signal that briefly grazes φ=0.
+
+**Next probe (NOT actioned in this plan-doc edit):** classify on **continuous φ** (φ ≤ 0 in contact vs φ > 0 separated) at every tick, sub-ms resolution, **DROPPING the binary indicator** (the boolean was thresholding a continuous quantity at exactly its noisy value). Weighted on the **0.2 – 0.5 mm LIVE band** (live runs penetrate ~0.2 – 0.5 mm, sitting in the 1–2-grazing-event band near the crossing). Per-depth §7.14 contact-pair gate retained.
+
+#### (9) Progress-table note (for next regeneration)
+
+ADMM-solver row, contact-axis: **mechanism-name probe AMBIGUOUS-leans-DEPTH-DEPENDENT** — neither binary fires; the "disengages" are sub-30-micron grazing at the contact threshold (per the signed-distance co-trace), not bouncing; deep (≥ 1 mm) continuous-compliant, shallow has 1–2 grazing events, the 0.549 mm crossing sits in the grazing band; §7.17 force-disconfirms WEAKENS (|F|≈0 mostly on engaged contact); the commit's fifth label demoted to interpretation; mechanism PARTIALLY NARROWED (grazing-on-continuous-base, not strictly named); anitescu STILL PAUSED; NEXT = continuous-φ classification at sub-ms resolution, weighted on the live band; convergence HELD.
+
+#### Anti-stale binding (§7.19)
+
+Any subsequent entry that cites c55ee03's "MOSTLY-CONTINUOUS-WITH-GRAZING" label as a verdict-of-record (rather than as a description of the AMBIGUOUS-leans-DEPTH-DEPENDENT route's substructure) is operating on a STALE record — that label was demoted in §7.19 (5) per the §7.18-aug anti-stale binding. Any entry that uses §7.19's partial rehabilitation of §7.17 to re-promote anitescu is also stale — §7.19 explicitly does NOT authorise re-promotion (the grazing-on-continuous-base mechanism is partially narrowed, not strictly named, and the AMBIGUOUS route's next gate is a finer-resolution continuous-φ probe, not an anitescu port). Any reasoning that follows the pattern "the binary contact indicator gave verdict X" without reading the signed-distance co-trace and the §7.14 gate result is the §7.19 (2) failure mode: thresholding a continuous quantity at its noisy value and inheriting the threshold's noise as substantive structure.
+
+### 7.21 — Force-level RE-probe under §7.20-pinned sub-ms Drake sampling: FORCE-DISCONFIRMS (strict, binary 3≠4) but SUBSTANTIALLY WALKED BACK from §7.17 — 3-of-4 signatures now confirm (was 1-of-4); Drake-side fully rehabilitated (depth-stable + contact-MAINTAINED ≥95%); only surviving residual is LCS sub-linear normal-force depth-scaling; anitescu STILL PAUSED; convergence HELD (2026-06-26)
+
+Artifacts on disk (committed this block): script `scripts/_stage_c_force_level_reprobe.py`, output `stage_c/force_level_reprobe_output.txt`. Method: per the §7.20-pinned protocol (Drake `dt=0.00025 s`, **4× finer than §7.17's 1 ms**, 5-seed robust IK retry per knot, 3 depths spanning the §7.16 crossing — UNDER `0.10 mm`, SWEET `0.549 mm`, OVER `1.00 mm`), re-read the four pre-registered Part-A signatures from §7.17. Pre-registration was BINARY: all four match → force-level LOCKED → anitescu Part B opens; otherwise FORCE-DISCONFIRMS, anitescu STAYS PAUSED.
+
+#### (1) The re-probe result (force-level read under §7.20-pinned sampling)
+
+**3-of-4 pre-registered signatures now CONFIRM (was 1-of-4 in §7.17).**
+
+| # | Signature | §7.17 verdict | §7.21 verdict | Quant |
+|---|---|---|---|---|
+| 1 | LCS λ_n impulsive (peak at sub-step 0, decay) | ✓ | ✓ | unchanged — rigid-cartoon shape MATCHES at both depths |
+| 2 | LCS λ_n LINEAR scaling with depth (10× depth ⇒ 10× peak) | ✗ | ✗ | residual unchanged — **2.65×** over 10× depth (both runs) |
+| 3 | Drake force depth-stable on contact | ✗ (0.76×) | ✓ (**1.22×**) | **OVERTURNED** by §7.20-pinned sampling |
+| 4 | Drake contact MAINTAINED (not oscillating) | ✗ (oscillating) | ✓ (**95.0% / 99.5% / 99.5%**) | **OVERTURNED** by §7.20-pinned sampling |
+
+Per-depth detail:
+
+- **UNDER `0.10 mm`** — LCS peak λ_n = **3.47** at sub-step 0, decay to ~0.6 by step 4; Drake on-contact **95.0 %**, peak |F| = **51.5 N** at t = 0.25 ms, sustained ~2–4 N; Δbox_x LCS −1.21 mm vs Drake −2.03 mm → factor **0.594× UNDER**.
+- **SWEET `0.549 mm`** *(new depth — §7.17 had a re-pose FAIL here)* — LCS peak λ_n = **6.14**, decays to 0 by step 1, **10/10 valid**; Drake on-contact **99.5 %** (1/201 ticks separated), peak |F| = **58.8 N**; Δbox_x LCS −2.43 mm vs Drake −3.28 mm → factor **0.740× UNDER**.
+- **OVER `1.00 mm`** — LCS peak λ_n = **9.20**, but **only 4/10 sub-steps valid** (sub-step 4 IK fails — the §7.17 partial-LCS degradation, NOT cleared by this run's 5-seed retry; §7.18's exact robust-IK formulation was NOT matched here); Drake on-contact **99.5 %**, peak |F| = **62.7 N**; Δbox_x LCS −5.73 mm vs Drake −3.74 mm → factor **1.531× OVER**.
+
+#### (2) The strict verdict (binary gate, 3 ≠ 4)
+
+The pre-registered Part-A gate was BINARY — **all four signatures match → LOCKED; else FORCE-DISCONFIRMS**. 3-of-4 ≠ LOCKED. **Strict verdict: FORCE-DISCONFIRMS. Part B does NOT open. Anitescu STILL PAUSED.**
+
+**Qualification — substantial walkback.** §7.17 force-disconfirms has been substantially walked back: 3 of 4 signatures reversed (2 of the 3 §7.17 disconfirmations rehabilitated by §7.20-pinned sampling; the §7.20 grazing-is-artifact finding propagates directly into the force read — on contact-maintained sampling, Drake's force IS depth-stable). The **only surviving disconfirmation** is the LCS sub-linear depth-scaling (Sig 2, peak λ_n 2.65× over 10× depth).
+
+#### (3) Label demotion — anti-stale binding applied to the re-probe script
+
+The re-probe script invented a fifth label **"FORCE-CONFIRMS-PARTIAL"**. Per the **§7.18-aug anti-stale binding**, this is **DEMOTED to interpretation, NOT promoted as a sui-generis route** — it is the same toolchain-tidy post-hoc relabeling that c55ee03 performed with "MOSTLY-CONTINUOUS-WITH-GRAZING" in §7.19. Verdict-of-record: **FORCE-DISCONFIRMS (strict)**, with the walkback qualification.
+
+#### (4) The inversion — what the residual now is
+
+The §7.17 framing — *"LCS impulsive ✓ but everything else ✗"* — **INVERTS** to **"everything Drake-side ✓, LCS depth-scaling ✗"**. The residual is concentrated entirely on the LCS side:
+
+- Drake's compliant force IS depth-stable on contact (newly confirmed, 1.22×).
+- Drake MAINTAINS contact (newly confirmed, ≥95% across all three depths).
+- The LCS impulsive shape matches the rigid cartoon (confirmed at both runs).
+- **BUT** the LCS peak λ_n grows only **2.65×** over **10×** depth, not the 10× the rigid cartoon predicts.
+
+The open question NARROWS from *"is it compliance?"* (Drake side confirms YES, in the sense that Drake's behaviour on contact is depth-stable and contact-maintained) to **"why does the LCS rigid normal force scale SUB-LINEARLY in depth?"**
+
+#### (5) The 1 mm partial-LCS confound (precondition for trusting the 2.65×)
+
+The `1.00 mm` LCS run completed only **4/10 sub-steps** — sub-step 4 IK fails, reprising the §7.17 partial-LCS degradation. §7.18's robust-IK recovered this on the displacement sweep, but this force-level retry **did not match §7.18's exact IK formulation**. Consequences:
+
+- The peak-λ_n-at-sub-step-0 reading is unaffected (peak occurs before the IK failure).
+- BUT Σλ_n is artificially low (sub-steps 4-9 missing).
+- The **2.65× scaling ratio uses the deep-penetration peak**, so the scaling number itself may be partial-contaminated by the failed sub-steps' invisible contribution to Σλ_n.
+
+This is the **§7.14 lesson one level deeper**: a partial run's number cannot be trusted just because the visible part of it looks clean. **Full 1 mm-trajectory recovery (via §7.18's exact robust-IK formulation re-applied to the force-level re-probe) is the precondition before the 2.65× is trusted.**
+
+#### (6) The dt-dependent crossing confound (new, NOT actioned)
+
+The finer Drake `dt=0.00025 s` shifted the `1.00 mm` box motion: Δbox_x was −2.24 mm at `dt=1 ms` (§7.17) and is **−3.74 mm at `dt=0.25 ms`** (§7.21). The **§7.16 displacement-crossing depth (`0.549 mm`) may itself be dt-DEPENDENT** — a new confound, not acted on yet.
+
+**Implication for anitescu validation:** if the crossing depth moves with Drake's timestep, then *"the gap closes ACROSS depths"* is the right validation target and *"the gap closes at the sweet spot"* was always the wrong one — reinforcing the §7.16-aug guardrail. **The crossing was never the thing to match; the depth-STABILITY is.** This confound has NOT been actioned in this block; it is recorded for the next probe.
+
+#### (7) Convergence stays HELD
+
+- floor **[FIXED]**
+- contact-axis **[DIAGNOSED — Drake-side compliant CONFIRMED, LCS-side rigid-residual OPEN]**
+- friction **DEMOTED**
+
+The model is **not locked** (3-of-4, not 4-of-4), so **convergence stays HELD**. But the open question is now a **single LCS-internal question**: why sub-linear normal-force depth-scaling?
+
+#### (8) Strategic framing — the guardrail paying off TWICE
+
+The §7.17 force-disconfirms could have been:
+
+- declared **final** (abandoning a correct compliance diagnosis on artifact-driven evidence), OR
+- **papered over** (declared locked at 3-of-4 with a freshly-minted label).
+
+**Neither happened.** The artifacts were cleaned (§7.18–§7.20), the re-probe re-ran, the strict verdict held, AND the residual narrowed to one precise LCS-side question. The guardrail (confirm-at-force-level-before-reformulating) paid off **TWICE** — it stopped a premature LOCK in §7.17 AND stopped a premature final-DISCONFIRMS once the artifacts cleared.
+
+#### (9) Progress-table note (for next regeneration)
+
+ADMM-solver row, **HORIZONTAL/push axis**: force-level RE-probe under sub-ms Drake sampling = **3-of-4 signatures** (was 1-of-4 in §7.17); §7.17 force-disconfirms SUBSTANTIALLY walked back (Drake-side now confirmed depth-stable + contact-maintained; the 2 §7.17 disconfirmations were sampling artifacts); strict verdict **FORCE-DISCONFIRMS** (binary gate, 3 ≠ 4), anitescu STILL PAUSED; the ONLY surviving residual is **LCS sub-linear depth-scaling** (peak λ_n 2.65× over 10× depth); **1 mm partial-run confound** + **dt-dependent-crossing confound** flagged; NEXT = clear the 1 mm confound (re-apply §7.18's exact robust-IK formulation to the force-level retry) + check λ_t-coupling; convergence HELD.
+
+#### Anti-stale binding (§7.21)
+
+Any subsequent entry that cites the re-probe script's invented label "FORCE-CONFIRMS-PARTIAL" as a verdict-of-record (rather than as DEMOTED-to-interpretation per §7.21 (3)) is operating on a STALE record — the binary pre-registration gate is the verdict-of-record, and 3-of-4 ≠ 4-of-4. Any entry that uses §7.21's substantial walkback of §7.17 to re-promote anitescu Part B is also stale — §7.21 explicitly does NOT authorise re-promotion (3-of-4 ≠ LOCKED; the residual is a precise LCS-internal question, not a green light). Any reasoning that follows the pattern "the 2.65× is trustworthy because the visible sub-steps were clean" without re-applying §7.18's exact robust-IK formulation to the 1 mm force-level run is the §7.21 (5) failure mode: trusting a partial-LCS scaling ratio just because its peak occurs in the clean prefix. Any reasoning that takes the §7.16 0.549 mm crossing as a fixed depth-anchor without acknowledging the §7.21 (6) dt-dependent-crossing confound is the §7.16-aug failure mode revived: chasing a sweet-spot match when **depth-STABILITY across depths** is the right validation target.
+
 ---
 
 ## 8. Memory pointer
