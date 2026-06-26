@@ -1,0 +1,293 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+====================================================================================
+STAGE C  FORCE-LEVEL RE-PROBE — Part A, sub-ms Drake sampling
+(§7.17 force-level probe at 0.25 ms Drake ticks; robust 5-seed IK)
+====================================================================================
+  μ = 0.4
+  Δt_sub (LCS) = 5.0 ms × 10 sub-steps
+  Drake time_step = 0.250 ms × 201 ticks
+  Depths: [0.1, 0.549, 1.0] mm  (UNDER (0.10mm), SWEET (0.549mm), OVER (1.00mm))
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH UNDER (0.10mm)
+────────────────────────────────────────────────────────────────────────────────────
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS λ_n history (per sub-step, EE↔box contact):
+    sub-step:      0       1       2       3       4       5       6       7       8       9
+    λ_n     :  3.470   0.000   0.422   0.696   0.577   0.577   0.578   0.582   0.650   0.654
+    peak λ_n = 3.4697 at sub-step 0;  Σλ_n = 8.2058;  valid sub-steps = 10/10
+    λ_n[0] / λ_n[-1] = 5.31  (rigid-impulsive expects >> 1)
+  Drake normal-force x on box (every 1 ms, from 0.25ms samples):
+    t (ms)  :    0.0     1.0     2.0     3.0     4.0     5.0     6.0     7.0     8.0     9.0    10.0    11.0    12.0
+    F_x (N) :  +0.00   -2.42  -24.99   -2.77   -3.92   -6.05   -9.99   -2.59   -0.15   +0.00   +0.00   -4.45   -2.16
+    contact :      .       C       C       C       C       C       C       C       C       .       .       C       C
+    t (ms)  :   13.0    14.0    15.0    16.0    17.0    18.0    19.0    20.0    21.0    22.0    23.0    24.0    25.0
+    F_x (N) :  -2.11   -3.56   -3.49   -3.32   -2.59   -2.00   -2.43   -2.28   -3.31   -2.17   -2.15   -2.75   -2.61
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   26.0    27.0    28.0    29.0    30.0    31.0    32.0    33.0    34.0    35.0    36.0    37.0    38.0
+    F_x (N) :  -3.09   -2.62   -2.79   -2.16   -2.24   -3.18   -2.56   -2.47   -2.93   -2.34   -2.12   -2.42   -2.59
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   39.0    40.0    41.0    42.0    43.0    44.0    45.0    46.0    47.0    48.0    49.0    50.0
+    F_x (N) :  -2.69   -2.87   -4.13   -2.41   -1.81   -2.25   -2.42   -4.55   -2.79   -2.21   -2.29   -3.40
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C
+    peak |F| (all) = 51.5292 N at tick 1 (t=0.25ms)
+    avg  |F| (all) = 3.3309 N    contact% = 95.0%
+    peak |F| (on contact)   = 51.5292 N
+    avg  |F| (on contact)   = 3.5053 N
+    F(first contact tick) / F(last contact tick) = 15.18  (soft-spread expects ~1)
+  Δbox_x:  LCS = -1.2072mm  Drake = -2.7756mm  factor = 0.435×
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH SWEET (0.549mm)
+────────────────────────────────────────────────────────────────────────────────────
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+INFO:drake:Meshcat listening for connections at http://localhost:7003
+INFO:drake:Meshcat listening for connections at http://localhost:7004
+INFO:drake:Meshcat listening for connections at http://localhost:7005
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1163>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS λ_n history (per sub-step, EE↔box contact):
+    sub-step:      0       1       2       3       4       5       6       7       8       9
+    λ_n     :  6.137   0.000   0.000   0.000   0.000   0.000   0.000   0.000   0.000   0.000
+    peak λ_n = 6.1375 at sub-step 0;  Σλ_n = 6.1375;  valid sub-steps = 10/10
+  Drake normal-force x on box (every 1 ms, from 0.25ms samples):
+    t (ms)  :    0.0     1.0     2.0     3.0     4.0     5.0     6.0     7.0     8.0     9.0    10.0    11.0    12.0
+    F_x (N) :  +0.00   -1.10  -27.48   -4.02   -2.57   -0.84   -0.25   -1.95   -9.96   -3.11   -3.04   -2.92   -2.81
+    contact :      .       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   13.0    14.0    15.0    16.0    17.0    18.0    19.0    20.0    21.0    22.0    23.0    24.0    25.0
+    F_x (N) :  -2.99   -2.16   -3.91   -1.41   -2.75   -2.89   -3.30   -3.61   -1.56   -2.76   -2.23   -2.58   -3.04
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   26.0    27.0    28.0    29.0    30.0    31.0    32.0    33.0    34.0    35.0    36.0    37.0    38.0
+    F_x (N) :  -1.57   -2.73   -1.81   -1.36   -0.60   -0.66   -1.77   -3.36   -3.44   -4.07   -2.85   -2.14   -2.73
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   39.0    40.0    41.0    42.0    43.0    44.0    45.0    46.0    47.0    48.0    49.0    50.0
+    F_x (N) :  -3.06   -4.54   -1.76   -1.78   -2.10   -3.67   -2.64   -3.08   -2.16   -3.72   -1.87   -1.80
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C
+    peak |F| (all) = 58.7559 N at tick 1 (t=0.25ms)
+    avg  |F| (all) = 3.1696 N    contact% = 99.5%
+    peak |F| (on contact)   = 58.7559 N
+    avg  |F| (on contact)   = 3.1854 N
+    F(first contact tick) / F(last contact tick) = 32.73  (soft-spread expects ~1)
+  Δbox_x:  LCS = -2.4305mm  Drake = -3.2823mm  factor = 0.740×
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH OVER (1.00mm)
+────────────────────────────────────────────────────────────────────────────────────
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2119>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  LCS λ_n history (per sub-step, EE↔box contact):
+    sub-step:      0       1       2       3       4       5       6       7       8       9
+    λ_n     :  9.200   0.000   0.000   0.000     NaN     NaN     NaN     NaN     NaN     NaN
+    peak λ_n = 9.2003 at sub-step 0;  Σλ_n = 9.2003;  valid sub-steps = 4/10
+  Drake normal-force x on box (every 1 ms, from 0.25ms samples):
+    t (ms)  :    0.0     1.0     2.0     3.0     4.0     5.0     6.0     7.0     8.0     9.0    10.0    11.0    12.0
+    F_x (N) :  +0.00   -0.97   -8.58   -1.49   -2.38   -3.83   -1.92   -2.96   -2.23   -3.88   -2.69   -3.43   -2.75
+    contact :      .       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   13.0    14.0    15.0    16.0    17.0    18.0    19.0    20.0    21.0    22.0    23.0    24.0    25.0
+    F_x (N) :  -2.35   -2.19   -3.03   -2.62   -1.91   -2.43   -2.91   -2.33   -2.43   -2.35   -4.61   -1.18   -3.89
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   26.0    27.0    28.0    29.0    30.0    31.0    32.0    33.0    34.0    35.0    36.0    37.0    38.0
+    F_x (N) :  -1.67   -3.02   -1.80   -2.53   -3.69   -3.22   -2.24   -2.39   -2.58   -3.15   -3.45   -1.67   -2.97
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C       C
+    t (ms)  :   39.0    40.0    41.0    42.0    43.0    44.0    45.0    46.0    47.0    48.0    49.0    50.0
+    F_x (N) :  -4.10   -2.50   -2.01   -2.38   -3.14   -4.47   -1.64   -2.75   -4.59   -1.57   -2.27   -2.99
+    contact :      C       C       C       C       C       C       C       C       C       C       C       C
+    peak |F| (all) = 62.7124 N at tick 1 (t=0.25ms)
+    avg  |F| (all) = 3.2186 N    contact% = 99.5%
+    peak |F| (on contact)   = 62.7124 N
+    avg  |F| (on contact)   = 3.2347 N
+    F(first contact tick) / F(last contact tick) = 20.98  (soft-spread expects ~1)
+  Δbox_x:  LCS = -5.7311mm  Drake = -3.7445mm  factor = 1.531×
+
+====================================================================================
+CROSS-DEPTH COMPARISON
+====================================================================================
+
+  Peak λ_n (LCS) vs depth — rigid expects LINEAR scaling:
+      depth (mm)    peak λ_n        Σλ_n   valid    λ_n[0]/λ_n[-1]
+          0.100      3.4697      8.2058      10              5.31
+          0.549      6.1375      6.1375      10               nan
+          1.000      9.2003      9.2003       4               nan
+
+  Peak Drake force vs depth — compliant expects STABLE:
+      depth (mm)    peak |F|     avg |F|   peak on-c   contact%    F_early/F_late
+          0.100     51.5292      3.3309     51.5292      95.0%             15.18
+          0.549     58.7559      3.1696     58.7559      99.5%             32.73
+          1.000     62.7124      3.2186     62.7124      99.5%             20.98
+
+====================================================================================
+ROUTE  (force-level re-confirmation under §7.20 sub-ms sampling)
+====================================================================================
+  Depth range : 0.100 → 1.000 mm  (10.0×)
+  LCS peak λ_n: 3.470 → 9.200  (2.65×)  [rigid expects 10.0×]
+  Drake peak F (all)        : 51.529 → 62.712  (1.22×)  [compliant expects ~1×]
+  Drake peak F (on contact) : 51.529 → 62.712  (1.22×)
+  Contact fraction          : 95.0% → 99.5%   [§7.20: should be ~100% maintained]
+
+  Signatures (pre-registered, recounted on contact-aware reads):
+    LCS impulsive (λ_n peak at sub-step 0): ✓
+    LCS linear scaling with depth         : ✗  (observed 2.65× vs expected 10.0×)
+    Drake force depth-STABLE (on contact) : ✓  (observed 1.22× vs expected ~1×)
+    Drake contact MAINTAINED (≥95% ticks) : ✓  (95.0% / 99.5%)
+
+  ► ROUTE: FORCE-CONFIRMS-PARTIAL
+  Drake maintained ✓ + at least one of LCS-impulsive / Drake-stable ✓,
+  but the depth-scaling signatures don't fully match the rigid/linear vs
+  compliant/stable expectation. Compliance PARTIALLY locked — the §7.20
+  contact-loss rehabilitation succeeds, but the depth-scaling residual
+  still needs an explanation before anitescu commits.
+  NEXT (separate block): characterize the depth-scaling residual; if it
+  resolves into a sub-mechanism of compliance, Part B opens; if it points
+  at something else (A-matrix dynamics artifact, contact-stiffness regime
+  not on the cartoon), keep anitescu paused.
+
+====================================================================================
+HOLD: next block (Part B anitescu scoping / depth-scaling residual /
+      mechanism re-examination) is SEPARATE.
+====================================================================================
