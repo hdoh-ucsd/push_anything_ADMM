@@ -2174,6 +2174,59 @@ ADMM-solver row, **HORIZONTAL/push axis**: force-level RE-probe under sub-ms Dra
 
 Any subsequent entry that cites the re-probe script's invented label "FORCE-CONFIRMS-PARTIAL" as a verdict-of-record (rather than as DEMOTED-to-interpretation per §7.21 (3)) is operating on a STALE record — the binary pre-registration gate is the verdict-of-record, and 3-of-4 ≠ 4-of-4. Any entry that uses §7.21's substantial walkback of §7.17 to re-promote anitescu Part B is also stale — §7.21 explicitly does NOT authorise re-promotion (3-of-4 ≠ LOCKED; the residual is a precise LCS-internal question, not a green light). Any reasoning that follows the pattern "the 2.65× is trustworthy because the visible sub-steps were clean" without re-applying §7.18's exact robust-IK formulation to the 1 mm force-level run is the §7.21 (5) failure mode: trusting a partial-LCS scaling ratio just because its peak occurs in the clean prefix. Any reasoning that takes the §7.16 0.549 mm crossing as a fixed depth-anchor without acknowledging the §7.21 (6) dt-dependent-crossing confound is the §7.16-aug failure mode revived: chasing a sweet-spot match when **depth-STABILITY across depths** is the right validation target.
 
+### 7.22 — LCS residual probe (Part A 1mm-confound + Part B λ_t-coupling): IS-DYNAMICS — 1mm confound CLEARED under §7.18's exact warm-aware IK (the §7.21 fixed-seed retry was the formulation gap, not a geometric limit); peak-λ_n 2.65× HOLDS on clean full-trajectory data; λ_t-coupling cleanly DISCONFIRMED (non-monotonic, sign-flipped — the friction-cone hypothesis is not the home of the residual); two of four candidate homes ELIMINATED (partial-run + friction-cone); residual localized to the A-matrix dynamics-propagation channel; anitescu STAYS PAUSED; convergence HELD (2026-06-26)
+
+Artifacts on disk (committed `b414aff`): script `scripts/_stage_c_lcs_residual_probe.py`, output `stage_c/lcs_residual_probe_output.txt`. Method: replace the §7.21 re-probe's fixed-seed IK retry with §7.18 sweep-cleanup's EXACT warm-aware perturbation recipe (`[q_arm_warm, POSTURE_NOMINAL, q_arm_warm + ±0.1 rad rand1, +rand2, +rand3]`, `rng = np.random.default_rng(seed=0)`). LCS-only (Drake forward not required for either question). Extract per sub-step at each depth `{0.10, 0.549, 1.00 mm}`: `λ_n`, `Σλ_t`, plus the impulse-channel decomposition `D[box_v_x, :] @ λ` split into normal (`D · λ_n`) and tangent (`D · λ_t`) contributions. Pre-registered routes (the next block scopes against these; this probe does not execute the next block): RESOLVES-INTO-COMPLIANCE / IS-DYNAMICS / PERSISTS-UNEXPLAINED / 1mm-STILL-FAILS.
+
+#### (1) The 1 mm confound — CLEARED
+
+Under §7.18's EXACT IK formulation (warm + posture + 3 random ±0.1 rad/joint perturbations of warm, `rng seed=0` — the recipe the §7.21 re-probe did **NOT** match), **1.00 mm recovers full 10/10 sub-steps CLEAN**. Every sub-step's IK succeeded on **seed 0** (the warm-start; no perturbation was even needed once the IK was warm-aware) — so the §7.21 partial-run failure at sub-step 4 was a **FORMULATION gap (not warm-aware)**, NOT a hard geometric limit.
+
+Peak-λ_n depth-scaling on clean data: `3.470 → 6.137 → 9.200` at `0.10 / 0.549 / 1.00 mm`. The `0.10 → 1.00 mm` ratio is **2.65× — STAYS** (identical to §7.21 to 0.1%).
+
+**Why the §7.21 partial reading was unaffected:** the peak occurred at sub-step 0, and sub-steps 4-9 turned out to have **λ_n = 0** (contact SEPARATED after the impulse), so `Σλ_n at 1 mm = peak λ_n = 9.200` either way. The §7.21 (5) precondition was correct (a partial run's number cannot be trusted just because the visible prefix looks clean), but the specific worry it raised (Σλ_n artificially low → 2.65× contaminated) turned out invariant under truncation. **CONFOUND CLEARED — the residual is REAL on clean full-trajectory data.**
+
+#### (2) λ_t-coupling — DISCONFIRMED
+
+`λ_t` at sub-step 0 goes **NON-MONOTONIC** with depth (`1.388 → 0.587 → 0.806` at `0.10 / 0.549 / 1.00 mm` — magnitude does **NOT** grow). Tangent-channel `D · λ_t → box_v_x` scales **0.77× over 10× depth** (essentially FLAT). Total channel `D · λ → box_v_x` scales **3.87× over 10× depth** (sub-linear, **61.3% deviation from linear**).
+
+The tangent contribution **OPPOSES** the normal (sign-flipped); the ratio `t/n` DECREASES with depth (`−0.393 → −0.159 → −0.114`).
+
+**λt-DOES-NOT-ACCOUNT.** The hypothesis ("at deeper penetration, more impulse routes into the friction-cone tangent channel") is CLEANLY disconfirmed — sign-flipped, not merely weak. The friction-cone coupling is not the home of the residual.
+
+#### (3) Route IS-DYNAMICS
+
+Sig 2 (LCS `λ_n` LINEAR normal scaling) stays **DISCONFIRMED** on clean full-trajectory data; the sub-linear residual lives in the **A-matrix dynamics-PROPAGATION channel (`A · x`)**, NOT the `D · λ` contact-channel split. Two of the four candidate homes for the residual are now ELIMINATED:
+
+| candidate home | status | source |
+|---|---|---|
+| partial-run artifact (§7.21 (5) confound) | **CLEARED** | §7.22 (1) |
+| friction-cone coupling (λ_t channel) | **DISCONFIRMED** | §7.22 (2) |
+| A-matrix dynamics propagation | **OPEN** | next block |
+| beyond-pure-normal-compliance (mechanism reopens) | **OPEN** | conditional on A-matrix |
+
+The residual is localized to the dynamics-propagation channel.
+
+#### (4) Honest-flag honored — no relabeling minted
+
+Per the pre-registered CRITICAL HONESTY FLAG (§7.21 (3) anti-stale binding extended to this probe): even if λ_t-coupling **had** succeeded, it would have been recorded as a **REFINEMENT** of the cartoon (*"linear TOTAL impulse with a normal/tangential split"*), NOT a 4th confirm. Since λ_t-coupling did **NOT** succeed, that distinction is **moot** — Sig 2 stays disconfirmed in **FACT**, not just literally. **No relabeling minted.** The same demotion that bound `"FORCE-CONFIRMS-PARTIAL"` (§7.21 (3)) and `"MOSTLY-CONTINUOUS-WITH-GRAZING"` (§7.19 (5)) is preserved here without needing to be applied.
+
+#### (5) Convergence stays HELD
+
+- floor **[FIXED]**
+- contact-axis **[DIAGNOSED — Drake-side compliant CONFIRMED; LCS-side rigid-residual now LOCALIZED to the A-matrix propagation channel, OPEN]**
+- friction **DEMOTED**
+
+The model is **not locked**. **Convergence stays HELD.** **Anitescu STAYS PAUSED** — IS-DYNAMICS does not authorise re-promotion (the residual is now precisely localized, but localization is not naming, and the A-matrix candidate may itself rule the residual *out of* pure normal compliance once measured).
+
+#### (6) Progress-table note (for next regeneration)
+
+ADMM-solver row, **HORIZONTAL/push axis**: the LCS sub-linear depth-scaling residual is REAL on clean data (1 mm confound CLEARED via §7.18's exact warm-aware IK; **2.65× holds**); **λ_t-coupling DISCONFIRMED** (non-monotonic, sign-flipped); route **IS-DYNAMICS** (residual in the A-matrix propagation channel, not the contact-channel split); two of four candidate homes eliminated; NEXT = LCS-vs-Drake box-velocity propagation across depths (A-matrix contribution to `box_v_x` at the linearization point); anitescu PAUSED; convergence HELD.
+
+#### Anti-stale binding (§7.22)
+
+Any subsequent entry that cites the §7.21 1 mm partial-run worry as still-open is operating on a STALE record — §7.22 (1) cleared it on clean full-trajectory data under §7.18's exact warm-aware IK, AND showed the original Σλ_n concern was truncation-invariant (sub-steps 4-9 carried λ_n = 0). Any entry that re-opens λ_t-coupling as a candidate for the residual without addressing the §7.22 (2) non-monotonic + sign-flipped reads is also stale — λ_t was cleanly disconfirmed (the channel runs opposite the normal, not parallel; the ratio shrinks with depth, not grows). Any entry that treats IS-DYNAMICS as authorising anitescu re-promotion is the same staleness mode as §7.21's "3-of-4 ≠ 4-of-4": localization is not naming, and the A-matrix candidate has not yet been measured — once it is, the residual may resolve into compliance OR reopen beyond it. Any reasoning that follows the pattern "λ_t was the candidate and it didn't work, so compliance is dead" is also stale — IS-DYNAMICS leaves compliance *and* a different-mechanism explanation BOTH live; only the A-matrix probe in the next block settles which.
+
 ---
 
 ## 8. Memory pointer
