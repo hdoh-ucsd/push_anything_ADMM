@@ -1647,6 +1647,161 @@ Any subsequent entry that schedules the friction audit at this stage is operatin
 
 **Next gate (corrected from §7.15-aug):** characterize the normal-compliance gap quantitatively (sub-step force/velocity profile vs Drake's compliant force history at the SAME state), then scope the anitescu port direction (a separate block — not just a probe, an implementation scoping decision). Friction audit re-opens only if characterization rules out compliance. NOT actioned in this plan-doc edit.
 
+### 7.16 — augmentation (2026-06-25): force-level-confirmation framing for the characterization + scoping-discipline guardrail for the anitescu phase-transition + milestone framing
+
+#### (1) CONFIRM §7.16's core (banked; restated as the augment's anchor)
+
+The gap factor crosses 1× **SMOOTHLY and MONOTONICALLY at ~0.549 mm** across the swept depths [0.10, 0.20, 0.30, 0.50, 0.70, 1.00 mm]; all six depths PASS the per-state §7.14 hard gate (the 1 mm OVER-prediction is REAL, GATE-FAILS-DEEP ruled out, the §7.15-aug "1 mm inversion may have been arm-contaminated" concern laid to rest). **ROUTE NORMAL-COMPLIANCE.** Drake's box motion is stable across depths (-1.87 to -2.33 mm) while the LCS scales nearly linearly (-1.21 to -5.73 mm, ~5× over a 10× depth change) — the rigid-vs-compliant normal-force signature (Drake compliant point-contact softens with depth; LCS Stewart-Trinkle is rigid). The 0.549 mm crossing is the quantitative fingerprint: the depth at which the rigid LCS delivers the same impulse Drake's compliant contact delivers over Δt = 0.05 s. Routing consequences (banked): **friction DEMOTED**; **anitescu RE-PROMOTED to indicated** (the reference's velocity-level convex compliance reformulation is the named axis); §7.13 contact-burst REINTERPRETED as a downstream consequence of rigid-vs-compliant, not an independent finding; §7.14 settled (gate stands, friction deferred indefinitely, anitescu indicated); **convergence HELD** for the sharpened reason (contact-model wrong, not solver — reformulation precedes tuning).
+
+#### (2) THE FORCE-LEVEL-CONFIRMATION FRAMING (augment, for the characterization)
+
+The sweep diagnosed rigid-vs-compliant at the **DISPLACEMENT level** (box Δx vs depth). The characterization should LOCK the diagnosis at the **FORCE level**: compare the LCS's normal force/impulse profile over the 10 sub-steps vs Drake's compliant force history at the SAME state (re-posed clean, box-pinned, at one or more swept depths — the 0.549 mm sweet-spot and an off-spot pair, e.g., 0.10 mm and 1.00 mm, to map the under-spot AND the over-spot).
+
+**Pre-registered force-level signatures:**
+
+| Side | Expected signature if rigid-vs-compliant |
+|---|---|
+| LCS sub-step λ_n history | **rigid-impulsive** — sharp early spike, magnitude scaling with penetration depth, decaying quickly as the box accelerates away from the contact |
+| Drake ContactResults @ 1 ms ticks | **soft-spread** — depth-stable peak force, distributed over the contact's stiffness time-constant, weaker depth-dependence |
+| LCS vs Drake at the sweet-spot (~0.549 mm) | total impulse over Δt = 0.05 s should match by construction (that's what the displacement-level crossing was); time-profiles still differ |
+
+**Three-outcome pre-registration:**
+
+- **CONFIRMED-COMPLIANCE** — force profiles match the pre-registered rigid-vs-compliant shapes (LCS impulsive, Drake soft-spread; impulse magnitudes match at the sweet-spot; magnitudes diverge per depth in opposite directions for the over-spot and under-spot). The diagnosis is **locked at the force level**; anitescu scoping proceeds on solid ground.
+- **UNEXPECTED-MATCH** — force profiles are similar (LCS not impulsive OR Drake not soft-spread), yet displacements diverge as §7.16 showed. The mechanism is something else (e.g., an A-matrix dynamics artifact masquerading as compliance). **DO NOT proceed to anitescu** — re-examine.
+- **PARTIAL** — force profiles partially match (e.g., LCS impulsive ✓ but Drake also impulsive ✗, or vice versa). Probably mixed mechanism. Characterize the residual before anitescu.
+
+**The discipline: force-level confirmation BEFORE the reformulation.** The displacement-level evidence is strong but not load-bearing alone for a structural model change. The force-level test is cheap (offline, same constructed state, just dump per-tick force/impulse and plot) and is the natural follow-up to the sweep.
+
+#### (3) THE SCOPING-DISCIPLINE GUARDRAIL (augment, the phase-transition caution)
+
+Anitescu is the **FIRST genuinely LARGE structural change** in this arc. Everything prior has been:
+- offline diagnosis on constructed states (near-zero compute cost; reversible by definition — nothing edited in `lcs_formulator.py`'s primary path)
+- one-flag toggles (`LCS_EXPLICIT_BOX_GND`, `EE_PEN_M`, `Δt`, `box_ground_drag`) — small surface area, each isolating one variable
+
+Porting the velocity-level convex compliance reformulation touches the **LCS construction itself** — the structure of `linearize_discrete_ee_space`, the meaning of E/F/H/c, the relationship between λ and v_box. It is real engineering with its own bug surface, and it **changes the model that the entire pipeline runs on** (the OSC executor, the C3+ ADMM solver, the sampling controller all consume the LCS).
+
+**DISCIPLINE for the phase transition (the guardrail):**
+
+| Discipline | Application |
+|---|---|
+| **(a) SCOPE, not BUILD** | The next block is a SCOPING block, not an implementation block. What does anitescu's reformulation entail? How much of `lcs_formulator.py` does it touch? What is the reference's exact construction (read it carefully)? What does it change in E/F/H/c semantics? What are the API touch-points downstream? Produce a written scope, not code. |
+| **(b) STAGE BEHIND A FLAG** | Like `LCS_EXPLICIT_BOX_GND`, the anitescu path goes behind a `LCS_USE_ANITESCU` (or similar) flag, **default-OFF**. The Stewart-Trinkle path remains the default until validated. This makes the change reversible without git revert. |
+| **(c) VALIDATE OFFLINE FIRST** | Validate the anitescu LCS against Drake on the clean (box-pinned) constructed state — re-run the §7.16 sweep, but with `LCS_USE_ANITESCU=1`. If compliance is the right diagnosis, the factor should close to ~1× **ACROSS depths** (not just at the 0.549 mm sweet spot — the sweep's smooth crossing was the rigid signature; if the new model is right, the crossing should flatten near 1× everywhere). Then re-run the friction audit (cheap, well-defined now) ONLY if any residual remains. Then — and only then — touch the live pipeline. |
+| **(d) CHEAP BEFORE EXPENSIVE; ONE MECHANISM AT A TIME** | The §7.10–§7.16 chain enforced this and it kept the contamination + sign-flip recoverable. Here the surface area is larger so the discipline matters MORE. **Do not combine anitescu with a friction-audit fix, or with a Δt change, or with a solver toggle.** One axis at a time. |
+
+**The diagnosis phase is DONE.** The build phase has the most risk — gate it the same way everything else was gated.
+
+#### (4) STRATEGIC FRAMING — the milestone
+
+The no-push was a MODEL problem, and the model problem is now **FULLY NAMED**:
+
+| Mechanism | Status | Evidence |
+|---|---|---|
+| Missing floor contact | **FIXED** | §7.10 vertical-only confirmation at `LCS_EXPLICIT_BOX_GND=4`; vertical |Δz| ≤ 0.01 mm across all subsequent probes |
+| Rigid-vs-compliant normal contact | **DIAGNOSED; anitescu indicated** | §7.16 monotonic crossing of 1× at 0.549 mm across six gated-clean depths |
+
+The port under-pushed because its LCS used Stewart-Trinkle rigid contact where Drake + the reference use compliant contact; the sweep gives the quantitative crossing (~0.549 mm) that proves it. **A clean, defensible root-cause story for the entire no-push arc, pointing at a specific reference-aligned fix.** The DIAGNOSIS phase is done; the BUILD phase (port anitescu) is substantial but well-defined.
+
+#### (5) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **NORMAL-COMPLIANCE diagnosed** (gap crosses 1× SMOOTHLY at 0.549 mm penetration, all six depths gate-clean; Drake-stable / LCS-linear = rigid-vs-compliant normal-force signature).
+- **Friction DEMOTED**; **anitescu RE-PROMOTED to indicated** (the reference's velocity-level convex compliance reformulation is the named axis).
+- **§7.13 contact-burst REINTERPRETED** as a downstream consequence of rigid-vs-compliant, not an independent finding.
+- **Convergence: HELD** for the sharpened reason (model wrong, not solver).
+- **NEXT GATE** = characterize at the FORCE LEVEL (lock the diagnosis at force) + then SCOPE anitescu (scope-not-build, stage-behind-flag, validate-offline-first); each is a separate block.
+- **The no-push root cause is FULLY NAMED**: missing floor [FIXED] + rigid-vs-compliant normal contact [DIAGNOSED].
+
+#### Anti-stale binding (augment)
+
+Any subsequent entry that proceeds to anitescu port implementation WITHOUT the force-level-confirmation pre-step is operating on a STALE record — §7.16-aug requires the displacement-level diagnosis to be locked at the force level before committing to a structural model change. Any entry that lands an anitescu path WITHOUT the (a)–(d) guardrail (scope-first, flag-staged, offline-validated, one-axis) is also stale — the §7.10–§7.16 cheap-before-expensive discipline applies MORE at the build phase, not less, because the surface area to go wrong is larger. Any entry that frames "the no-push is solved" without distinguishing the two sub-mechanisms (floor [FIXED] vs compliance [DIAGNOSED, not yet fixed]) is stale — only the first sub-mechanism is closed in the codebase; the second is closed in the diagnosis but open in the build.
+
+**Next gate (corrected from §7.16 main body):** force-level confirmation probe — dump LCS sub-step λ_n history + Drake ContactResults force history at the same (box-pinned, clean) state at three depths (0.10, ~0.55, 1.00 mm) and verify rigid-impulsive (LCS) vs soft-spread (Drake) profiles match the pre-registered shapes. **Only after CONFIRMED-COMPLIANCE** does anitescu scoping open (and that is itself a SCOPE block, not a BUILD block). NOT actioned in this plan-doc edit.
+
+### 7.17 — Force-level confirmation probe (Part A): FORCE-DISCONFIRMS — LCS shape IS impulsive (rigid signature ✓) but scaling sub-linear; Drake force is OSCILLATING (intermittent contact, not soft-spread); discovered §7.16's 1 mm number was a PARTIAL LCS run; anitescu Part B PAUSED (2026-06-25)
+
+**Result: the §7.16 displacement-level NORMAL-COMPLIANCE diagnosis is NOT cleanly locked at the force level. The LCS λ_n sub-step profile DOES show rigid-impulsive shape (sharp spike at step 0, decay after) — one of the pre-registered signatures matches. But the other three pre-registered signatures FAIL: (i) LCS peak λ_n scales SUB-linearly with depth (2.65× growth for 10× depth change, not the rigid-linear 10×); (ii) Drake's compliant ContactResults force history is OSCILLATING, not soft-spread, consistent with intermittent contact (the box bounces off the pusher); (iii) Drake peak force slightly DECREASES with depth (30.4 N → 23.1 N), not depth-stable. Additionally: at 1.00 mm the LCS sub-step IK FAILS at step 4, meaning §7.16's 1 mm Δbox_x = −5.73 mm and factor 0.391× came from a 3-4-substep PARTIAL LCS run, not the full 10-step sub-stepping — a §7.16 confound that was previously unnamed. Per §7.16-aug discipline, the displacement-level evidence does not lock the mechanism cleanly enough to justify the anitescu phase transition. ROUTE FORCE-DISCONFIRMS. Anitescu Part B PAUSED.** Banked here. Commit `8b55c94` (`scripts/_stage_c_force_level_probe.py` + `stage_c/force_level_probe_output.txt`).
+
+#### (1) The four pre-registered force-level signatures — split outcome
+
+§7.16-aug (2) pre-registered four signatures of rigid-vs-compliant at the force level. Outcome:
+
+| Pre-registered signature | Expected | Observed | Match? |
+|---|---|---|---|
+| LCS λ_n profile SHAPE | rigid-impulsive (sharp early spike, decay) | spike at step 0 (3.470 at 0.10 mm; 9.200 at 1.00 mm), λ_n[0]/λ_n[-1] = 5.31× at 0.10 mm | ✓ |
+| LCS peak λ_n scaling with depth | rigid-linear (~10× growth for 10× depth) | 3.47 → 9.20 = **2.65× growth** | ✗ sub-linear |
+| Drake force profile SHAPE | soft-spread (depth-stable peak, distributed) | OSCILLATING force, F_x at every 5 ms = `[0, -6.4, 0, -5.2, -2.2, -0.8, -8.2, -1.4, -5.1, -7.2, -0.9]` N at 0.10 mm | ✗ intermittent contact |
+| Drake peak force scaling with depth | compliant-stable (~1× growth) | 30.4 N → 23.1 N = **0.76× growth** (slightly DECREASING) | ✗ inverse |
+
+**Only 1 of 4 pre-registered signatures matched.** The §7.16 displacement-level diagnosis is NOT cleanly locked at the force level.
+
+#### (2) THE §7.16 1 mm CONFOUND — now named
+
+At EE_PEN_M = 1.00 mm, the LCS sub-step machinery FAILS at step 4 (sub-step IK cannot converge after the box accelerates fast under the deep-penetration contact force). The probe records `λ_n = [9.200, 0.000, 0.000, 0.000, NaN, NaN, NaN, NaN, NaN, NaN]` — only 3-4 sub-steps complete before the trajectory aborts.
+
+**§7.16's 1 mm Δbox_x = −5.731 mm came from a PARTIAL LCS run** (terminated at sub-step ~3 = t=0.015 s), not the full 10-step sub-stepping over Δt=0.05 s. The reported factor 0.391× (the "OVER-prediction") may therefore be an ARTIFACT of partial-trajectory truncation: the LCS delivered a big first-step impulse, then aborted before the rest of the dynamics could play out. A clean 10-step run would have produced a smaller Δbox_x, possibly closer to Drake's reference, possibly weakening or reversing the §7.16 monotonic crossing-of-1×.
+
+This confound was not visible in the §7.16 sweep output because that probe printed `fail` counts but did NOT correlate them with the reported factor. The force-level probe surfaced it via direct λ_n NaN markers.
+
+#### (3) Drake's intermittent-contact dynamics — the unmodeled mechanism
+
+Drake's force history at 0.10 mm shows the box-pusher contact ENGAGING and DISENGAGING multiple times across the 50 ms window — `F_x = [0, -6.4, 0, -5.2, -2.2, -0.8, -8.2, -1.4, -5.1, -7.2, -0.9]` N. The zeros at intermediate ticks (5 ms, 10 ms) indicate contact loss; the spikes (-6.4, -5.2, -8.2 N) indicate re-engagement. The box is BOUNCING.
+
+This is consistent with: the box's compliant floor contact lets it lift slightly when pushed; the pusher's compliant contact releases when the box lifts; the box falls back; contact re-engages. Drake's "compliant point-contact" at this geometry produces an OSCILLATORY, not soft-spread, force trace.
+
+**Drake's actual mechanism is intermittent-bouncing-contact, not the textbook "spread distributed force" of compliant contact.** The §7.16-aug pre-registration ("soft-spread depth-stable") was a CARTOON of compliant contact that doesn't match the actual Drake dynamics at this state. The §7.16 displacement-level signature may have been comparing rigid-Stewart-Trinkle to dynamic-bouncing-Drake, not rigid-vs-compliant in the textbook sense.
+
+#### (4) 0.549 mm sweet-spot IK FAIL — a side note
+
+The probe also tried the §7.16 interpolated crossing depth (0.549 mm) but the box-pinned IK with the per-pair clearance constraints + posture cost failed on both seeds tried. The §7.16 sweep at 0.50 mm worked (factor 1.112×), so 0.549 mm should be feasible with more seeds. Not pursued here — the 0.10 mm and 1.00 mm pair is sufficient to read the depth-scaling signature.
+
+#### (5) ROUTE: FORCE-DISCONFIRMS — anitescu Part B PAUSED
+
+Per the §7.16-aug discipline ("force-level confirmation BEFORE the reformulation") and the §7.17 result (1-of-4 signatures + 1 mm partial-run confound + Drake intermittent-contact unmodeled), **the diagnosis is NOT locked at the force level**. Anitescu Part B does NOT open.
+
+Routing consequences:
+
+| Item | Pre-§7.17 | Post-§7.17 |
+|---|---|---|
+| Anitescu Part B (scoping) | OPEN after §7.16 (per §7.16-aug) | **PAUSED** — force-level confirmation failed |
+| §7.16 displacement-level diagnosis | NORMAL-COMPLIANCE (banked) | **UNDER SUSPICION** — 1 mm point was a partial LCS run; the monotonic crossing may be partly artifact |
+| Friction audit | DEMOTED (§7.16) | **STILL DEMOTED** — no evidence of tangential signal; not the indicated direction |
+| Convergence | HELD (§7.16) | **STILL HELD** — model is wrong for some mechanism, just not cleanly named |
+
+#### (6) Strategic framing — honest correction
+
+§7.16's NORMAL-COMPLIANCE framing was REAL at the displacement level but possibly OVERINTERPRETED in mechanism. The §7.17 cleanup reveals:
+- A real partial-LCS-run confound at deeper depths (§7.16's 1 mm number is partially an artifact)
+- Drake's actual dynamics at this state include intermittent contact (bouncing), not just smooth compliance
+- The LCS sub-step force shape IS rigid-impulsive, but the magnitude scaling is sub-linear
+
+**The "no-push root cause is FULLY NAMED" milestone (§7.16-aug (4)) is RESCINDED.** The floor sub-mechanism is still FIXED (§7.10). The contact-axis sub-mechanism is **DIAGNOSED-WITH-CONFOUNDS** — there is a real model-vs-plant gap (the §7.11 / §7.13 / §7.15 factors stand at the displacement level) but the precise mechanism is not cleanly named.
+
+This is the same discipline the §7.10 / §7.14 audits enforced: cautious-against-comfortable-re-interpretation. The §7.16 "we have a fingerprint" framing was attractive; §7.17 forces us back to "we have an unresolved residual that includes an unnamed mechanism."
+
+#### (7) Next gate — re-examine §7.16's deep-depth confounds, NOT anitescu
+
+The §7.16 sweep must be re-run with sub-step IK robustness improvements (more seeds per sub-step, fall-back q_arm warm starts, or accept-partial-and-flag) so the deep-depth points are not partial-LCS artifacts. Also: characterize Drake's intermittent-contact dynamics at this state — is the box bouncing off the FLOOR (rigid-ish floor contact in Drake → vertical bounce → horizontal contact intermittency)? If yes, the §7.16 "Drake stable" framing may have been an integral-over-bouncing average, not a clean compliant response.
+
+**If §7.16 SURVIVES this cleanup** → re-do this force-level probe with the cleanup; if force-level CONFIRMS-COMPLIANCE then → anitescu Part B opens. **If §7.16 does NOT survive** → the diagnosis itself revisits; possibly the "rigid-vs-compliant" framing is too simple, and the actual gap is in dynamics (a mixture of contact-model and integration-method differences).
+
+#### (8) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **Force-level confirmation FAILED** — only 1 of 4 pre-registered signatures matched (LCS shape impulsive ✓; LCS scaling sub-linear ✗; Drake oscillating not spread ✗; Drake scaling slightly inverse ✗).
+- **§7.16 1 mm number = PARTIAL LCS run** (sub-step IK fails at step 4) — the monotonic crossing was partly an artifact of partial sub-stepping at deeper depths.
+- **Anitescu Part B PAUSED** — diagnosis not locked at the force level.
+- **§7.16 displacement-level signature** UNDER SUSPICION pending §7.16 sweep cleanup.
+- **The "no-push root cause is FULLY NAMED" milestone is RESCINDED.** Floor [FIXED] stands; contact-axis [DIAGNOSED-WITH-CONFOUNDS, not cleanly named].
+- **Friction:** still DEMOTED. **Convergence:** still HELD. **Anitescu:** PAUSED, not parked-pending-friction; awaiting §7.16 cleanup outcome.
+
+#### Anti-stale binding
+
+Any subsequent entry that proceeds to anitescu scoping or implementation based on §7.16 alone is operating on a STALE record — §7.17 demotes §7.16's force-level interpretation pending the deep-depth sub-step IK cleanup. Any entry that cites §7.16's 1 mm Δbox_x = −5.73 mm or factor 0.391× as a clean force-level signal is stale — it is a partial-LCS-run artifact. Any entry that cites the "no-push root cause is FULLY NAMED" milestone (§7.16-aug (4)) is stale — §7.17 rescinds that framing; the floor sub-mechanism is FIXED but the contact-axis sub-mechanism is DIAGNOSED-WITH-CONFOUNDS, not cleanly named.
+
+**Next gate (corrected from §7.16-aug):** §7.16 sweep cleanup — re-run the penetration sweep with sub-step IK robustness improvements + correlate fail-counts with reported factors (the deep-depth points must be flagged or re-solved if partial). If the §7.16 monotonic crossing SURVIVES the cleanup, re-do this force-level probe; only on CONFIRMED-COMPLIANCE does anitescu Part B open. NOT actioned in this plan-doc edit.
+
 ---
 
 ## 8. Memory pointer
