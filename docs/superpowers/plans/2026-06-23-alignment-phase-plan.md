@@ -2419,6 +2419,111 @@ ADMM-solver row, **HORIZONTAL/push axis**: FIX scoped — rigid-impulse assumpti
 
 Any subsequent entry that cites §7.23's *"anitescu DEMOTED to candidate"* as authorising the **friction-cone** swap as a fix-direction is operating on a STALE record — §7.24 (3) split anitescu into friction-cone (RETIRED, orthogonal to the gap) vs velocity-level normal (REINCARNATED as Candidate C). Any entry that equates *"anitescu retired"* with *"the Anitescu-Potra velocity-level normal formulation is retired"* has the same staleness mode — it is the friction-cone axis that is retired, not the velocity-level normal axis. Any entry that scopes a compliance term to all normal contacts (including BOX-VERT) without acknowledging §7.24 (5)'s vertical-fix-preservation argument is also stale — softening BOX-VERT re-introduces the §7.9–§7.12 floor-fall failure mode that `LCS_EXPLICIT_BOX_GND=4` was added to fix. Any entry that pre-commits to Candidate C escalation without first running A against the §7.24 (6) band is the §7.21 *"3-of-4 ≠ 4-of-4"* failure mode extended to fix-selection — the validation band is the verdict, not the inspection of perfect flatness. Any reasoning that follows the pattern *"Drake saturates so the LCS must too"* without acknowledging the §7.24 (2) caveat that linear LCP compliance gives slope-reduction NOT hard-saturation is also stale — A is a slope-reduction fix that may pass the band, not a saturation fix.
 
+### 7.25 — Candidate A built (b3a9442) + validated A-INSUFFICIENT (STRUCTURAL: constant-k uniformly crushes the depth-asymmetric band, shallow already on-target at k=0 so any k>0 breaks shallow); reference normal-complementarity is HYBRID (c_lcs has BOTH φ/dt and J_n·v terms already); Step-1 conflation UNTANGLED — *"drop φ/dt" = "velocity-level formulation" = "the missing compliance"* are the SAME fix (NOT opposed); the box_v_x(depth) curve is LINEAR in φ/dt at k=0 → TWO concerns for the C build: (i) β-reweighting of φ/dt = depth-rescaling = REPEATS A in a different variable (no β overlap); (ii) pure velocity-level (drop φ/dt, v_target=0) extrapolates to −0.036 m/s, UNDER-predicts Drake at both depths — may need a saturating-stiffness term on top. Convergence HELD (2026-06-26)
+
+Artifacts on disk (committed `b3a9442`): build at `control/lcs_formulator.py` (env `LCS_NORMAL_COMPLIANCE_K`, default 0.0 = OFF), validation script `scripts/_stage_c_candidate_a_validation.py`, output `stage_c/candidate_a_validation_output.txt`. Markdown-only banking here.
+
+#### (1) Candidate A built — EE-BOX-only soft-LCP behind default-OFF flag
+
+One-line additive `F_lcs[SLN + i_c, SLN + i_c] += k_compliance` for every EE-BOX-tagged contact in `linearize_discrete_ee_space` (~`:1496-1505`). BOX-VERT / floor contacts **UNTOUCHED** (preserves §7.9–§7.12 vertical fix). R^7 path NOT mirrored (live planner uses ee-space; mirror deferred until/if needed). Env var `LCS_NORMAL_COMPLIANCE_K`, default `0.0` = OFF (byte-identical pre-§7.24 behaviour). Committed in `b3a9442`. **The flag STAYS** as a banked diagnostic; NOT removed.
+
+#### (2) Validation — A-INSUFFICIENT (STRUCTURAL, not tuning)
+
+Across `{0.10, 0.549, 1.00}` mm × `k ∈ {0.0, 0.02, 0.04, 0.06, 0.08}` (box_v_x at t = 5 ms; Drake `dt = 0.25 ms` FIXED; clean box-pinned state; §7.18 robust 5-seed IK; per-depth §7.14 gate clean at every k — `pusher = 1, floor = 4, arm = 0`):
+
+| k | 0.10 mm | shallow? | 0.549 mm | deep? | 1.00 mm | deep? |
+|---|---|---|---|---|---|---|
+| 0.000 | −0.0527 | **Y** | −0.1291 | N | −0.2037 | N |
+| 0.020 | −0.0209 | N | −0.0677 | **Y** | −0.1116 | N |
+| 0.040 | −0.0104 | N | −0.0414 | N | −0.0722 | **Y** |
+| 0.060 | −0.0069 | N | −0.0267 | N | −0.0502 | **Y** |
+| 0.080 | −0.0062 | N | −0.0174 | N | −0.0363 | N |
+
+**No k passes the band at all three depths simultaneously.**
+
+**Structural reason:** at k = 0 the shallow regime MATCHES (Y) but deep is way off; ANY k > 0 that bends deep into the band **simultaneously CRUSHES** the shallow anchor (at k = 0.02 the 0.10 mm collapses to −0.021, ~60% under the 5% shallow band's lower bound). The constant-k linear soft-LCP is **fundamentally INCOMPATIBLE** with the band's **ASYMMETRIC depth dependence** — shallow is already on-target so any UNIFORM bending breaks it. **This is a STRUCTURAL incompatibility (depth-uniform knob vs depth-asymmetric target), NOT a tuning miss.** No tighter k-grid would help; the issue is the knob, not the value.
+
+ROUTES **A-BREAKS-VERTICAL** and **K-SWEEP-DEGENERATE** are both **RULED OUT** — per-depth gate clean at every k, LCP healthy at every k.
+
+#### (3) Reference normal-formulation — HYBRID
+
+The reference uses:
+- `contact_model: 'anitescu'` (`reference_logic_tree.md:356/469`)
+- `num_friction_directions: 2` (SOCP cone — vs port's 4-direction polyhedral pyramid)
+- `qp_projection_alpha: 0.01`
+- `scale_lcs: true`
+- `spring_stiffness: 0.0` (DISABLED — `:363`)
+
+Reference's full source NOT on disk. **Key port observation:** `c_lcs[SLN] = phi/dt + c_const_v_box + c_const_v_ee` (`lcs_formulator.py:1492`) ALREADY includes BOTH φ/dt position-stabilization AND J_n·v velocity-level terms — the port's normal complementarity is **HYBRID** (not pure φ/dt).
+
+#### (4) Step-1 conflation UNTANGLED — correction to the §7.24-build's scope
+
+The Step-1 reading in the §7.24-build report said: *"C = velocity-level is partially misleading; the velocity term is already there; what's missing is compliance."* **That conflates two different things and is CORRECTED:**
+
+| construct | what it is | what it is NOT |
+|---|---|---|
+| J_n·v terms in `c_lcs` (HYBRID port) | Standard Stewart-Trinkle next-step velocity contribution (constant part, J_n·v at the linearization point) | Anitescu velocity-level **SATURATION** mechanism |
+| Anitescu velocity-level normal formulation | **DROP φ/dt** (no position-forcing); enforce normal-velocity constraint η_n = J_n·v_post − v_target | A second additive term on top of φ/dt |
+
+With **v_target = 0**, Candidate C reduces EXACTLY to *"c_lcs[SLN] = velocity terms only, φ/dt removed."*
+
+So *"missing compliance"*, *"velocity-level formulation"*, and *"drop φ/dt"* are the **SAME fix**, **NOT opposed**. The Step-4 routing (escalate to C) is RIGHT; the Step-1 caveat is **RETIRED**. The discovery (HYBRID c_lcs) DOES matter — but in the **OPPOSITE direction**: it makes C a **ONE-LINE change** (the velocity terms it needs are already present and correctly computed), and confirms **C = "drop φ/dt"**.
+
+#### (5) The linear-in-φ/dt analysis — TWO pre-registered concerns for the C build
+
+From the k = 0 row, box_v_x vs depth/dt (φ-magnitude / dt = `{0.02, 0.110, 0.20}` m/s) is essentially **LINEAR**:
+
+| depth/dt | measured box_v_x | fit −0.84·(depth/dt) − 0.036 | residual |
+|---|---|---|---|
+| 0.02 m/s | −0.0527 | −0.0528 | < 1% |
+| 0.110 m/s | −0.1291 | −0.1284 | < 1% |
+| 0.20 m/s | −0.2037 | −0.2040 | < 1% |
+
+**Three consequences:**
+
+**(i) Localization confirmed.** Depth-scaling lives ENTIRELY in φ/dt (the c_lcs[SLN] driving term); the off-diagonal LCP coupling adds a constant intercept (−0.036) but does NOT add depth-dependence to first order.
+
+**(ii) WARNING — a β-reweighting of φ/dt (`c = β·φ/dt + velocity terms`) is algebraically EQUIVALENT to rescaling depth:** the same linear curve, just at slope `−0.84·β`. Solving the band per regime:
+
+| regime | target |LCS box_v_x| range | β range |
+|---|---|---|
+| shallow (0.10 mm, ±5% of 0.054) | [0.0513, 0.0567] | **β ∈ [0.91, 1.23]** |
+| deep 1.00 mm (±25% of 0.065) | [0.0487, 0.0812] | **β ∈ [0.08, 0.27]** |
+
+**NO OVERLAP** — the EXACT SAME failure as Candidate A, just in a different variable. **C MUST NOT be implemented as a β-scaling of φ/dt** — if it is, it REPEATS A.
+
+**(iii) CONCERN — extrapolating the fit to φ/dt → 0** (what pure velocity-level / drop-φ/dt with v_target = 0 produces) gives `box_v_x → −0.036` m/s for ALL depths. This **UNDER-predicts Drake** at both depths:
+
+| regime | Drake target | velocity-level prediction (−0.036) | in band? |
+|---|---|---|---|
+| shallow (5%, [−0.0567, −0.0513]) | −0.054 | −0.036 | **N (33% under)** |
+| deep 0.549/1.00 mm (25%, [−0.0812, −0.0487]) | −0.064 | −0.036 | **N (44% under)** |
+
+**Physical reading:** Drake's deep impulse (12.8 mN·s) exceeds what zeroing the approach velocity alone gives (~7 mN·s) — so Drake's compliant force carries a **SATURATING PENETRATION component (finite stiffness)** ON TOP of velocity-damping. If so, the right fix is *"rigid-like at shallow, saturating at deep"* — a **finite-stiffness compliant contact** — which is NEITHER the constant-k soft-LCP (proportional, crushes shallow) NOR pure velocity-level (flat, under-predicts).
+
+**Caveat on the −0.036 number:** it is a LINEAR EXTRAPOLATION of the k=0 depth-variation; the LCP off-diagonal BOX-VERT coupling could shift the actual velocity-level result. So this is a pre-registered **concern to test**, not a verdict. The C build should treat *"C flattens but UNDER-predicts"* as a LIVE pre-registered outcome.
+
+#### (6) Route + convergence HELD
+
+**Route: A-INSUFFICIENT → escalate to Candidate C** (velocity-level target = drop φ/dt, v_target = 0, the Anitescu velocity-level NORMAL formulation), built as the **ACTUAL velocity-level formulation**, **NOT a β-scaling of φ/dt**. Anitescu friction-cone still RETIRED. `scale_lcs` (Candidate D) stays DEFERRED (lower priority than C; normalization still expected solution-invariant). 
+
+| axis | state |
+|---|---|
+| floor | **[FIXED]** |
+| contact-axis | **[DIAGNOSED → A built + insufficient (STRUCTURAL); C is the velocity-level formulation; saturating-stiffness escalation flagged as pre-registered concern]** |
+| friction | **DEMOTED** |
+| anitescu friction-cone | **RETIRED** |
+| anitescu velocity-normal | **= Candidate C** |
+| convergence | **HELD** |
+
+#### (7) Progress-table note (for next regeneration)
+
+ADMM-solver row, **HORIZONTAL/push axis**: Candidate A (constant-k soft-LCP, EE-BOX-only, `LCS_NORMAL_COMPLIANCE_K` default-OFF) BUILT (`b3a9442`) + validated **A-INSUFFICIENT** — no k passes all three depths; **STRUCTURAL incompatibility** (depth-uniform k vs depth-asymmetric band: shallow already matched at k=0, any k>0 crushes it); gate clean at every k (A-BREAKS-VERTICAL + K-SWEEP-DEGENERATE ruled out). `box_v_x` LINEAR in φ/dt at k=0 (≈ **−0.84·(depth/dt) − 0.036**) → depth-scaling entirely in φ/dt; **β-reweighting of φ/dt = depth-rescaling = repeats A** (no β overlap [0.91, 1.23] vs [0.08, 0.27]); pure velocity-level (drop φ/dt, v_target=0) extrapolates to **−0.036 → UNDER-predicts Drake** → may need saturating-stiffness. NEXT = **Candidate C (actual velocity-level formulation, NOT β-scaling)**, EE-BOX-only, default-OFF; three-outcome (in-band / under-predicts → saturating-compliance / doesn't-flatten). anitescu friction-cone RETIRED; `scale_lcs` DEFERRED; convergence HELD.
+
+#### Anti-stale binding (§7.25)
+
+Any subsequent entry that frames Candidate A's failure as a tuning miss (*"a tighter k-grid would find one that passes"*) is operating on a STALE record — §7.25 (2) establishes the failure is STRUCTURAL: depth-uniform k vs depth-asymmetric band, shallow already on-target at k=0 so no k>0 helps. Any entry that builds Candidate C as a β-scaling of φ/dt is the same staleness mode in a different variable — §7.25 (5) (ii) shows β-scaling repeats A's failure exactly (no overlap between shallow [0.91, 1.23] and 1mm deep [0.08, 0.27]). Any entry that treats the HYBRID c_lcs finding (§7.25 (3)) as evidence that *"velocity-level is already in the port"* is also stale — the J_n·v terms are the Stewart-Trinkle next-step velocity contribution, not the Anitescu velocity-level **saturation** mechanism; the Anitescu formulation is the φ/dt-DROP, which the port does not have. Any entry that pre-commits to the velocity-level fix being sufficient without acknowledging the §7.25 (5) (iii) UNDER-prediction concern is stale — pure velocity-level extrapolates to −0.036 vs Drake's −0.054 / −0.064, and the saturating-stiffness route is the live pre-registered outcome if C flattens too far.
+
 ---
 
 ## 8. Memory pointer
