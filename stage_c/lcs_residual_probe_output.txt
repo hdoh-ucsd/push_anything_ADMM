@@ -1,0 +1,284 @@
+====================================================================================
+STAGE C  LCS RESIDUAL PROBE — Part A (1mm confound) + Part B (λ_t coupling)
+(§7.18 EXACT warm-aware IK; LCS-only; sub-step 0 λ_t + box-v_x channel split)
+====================================================================================
+  μ = 0.4
+  Δt_sub (LCS) = 5.0 ms × 10 sub-steps
+  Depths: [0.1, 0.549, 1.0] mm  (UNDER (0.10mm), SWEET (0.549mm), OVER (1.00mm))
+  IK formulation: §7.18 warm-aware perturbation (warm + posture
+                  + 3 random ±0.1 rad/joint perturbations of warm)
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH UNDER (0.10mm)
+────────────────────────────────────────────────────────────────────────────────────
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  status            : CLEAN  (10/10 sub-steps)
+  seeds used (-1=fail; 0=warm, 1=nominal, 2-4=perturbations):
+     0   0   0   0   0   0   0   0   0
+
+  per-sub-step λ + impulse-channel split into box_v_x:
+      k        λ_n       Σλ_t      μ·λ_n    D@λ_n→vx    D@λ_t→vx      D@λ→vx
+      0     3.4697     1.3879     1.3879    -0.08674     0.03406    -0.05268
+      1     0.0000     0.0000     0.0000     0.00000     0.01802     0.01802
+      2     0.4219     0.1687     0.1687    -0.01055     0.01873     0.00818
+      3     0.6964     0.2786     0.2786    -0.01741     0.01684    -0.00057
+      4     0.5771     0.2308     0.2308    -0.01443     0.01731     0.00288
+      5     0.5771     0.2308     0.2308    -0.01443     0.01731     0.00289
+      6     0.5781     0.2313     0.2313    -0.01445     0.01734     0.00289
+      7     0.5816     0.2326     0.2326    -0.01454     0.01745     0.00291
+      8     0.6500     0.0123     0.2600    -0.01625     0.01950     0.00325
+      9     0.6540     0.0007     0.2616    -0.01635     0.01962     0.00327
+  peak λ_n = 3.4697  ;  Σλ_n = 8.2058  ;  Σ(Σλ_t) = 2.7737
+  Δbox_x = -1.2072 mm
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH SWEET (0.549mm)
+────────────────────────────────────────────────────────────────────────────────────
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  status            : CLEAN  (10/10 sub-steps)
+  seeds used (-1=fail; 0=warm, 1=nominal, 2-4=perturbations):
+     0   0   0   0   0   0   0   0   0
+
+  per-sub-step λ + impulse-channel split into box_v_x:
+      k        λ_n       Σλ_t      μ·λ_n    D@λ_n→vx    D@λ_t→vx      D@λ→vx
+      0     6.1375     0.5868     2.4550    -0.15344     0.02433    -0.12910
+      1     0.0000     0.0000     0.0000     0.00000     0.02122     0.02122
+      2     0.0000     0.0000     0.0000     0.00000     0.01882     0.01882
+      3     0.0000     0.0000     0.0000     0.00000     0.01962     0.01962
+      4     0.0000     0.0000     0.0000     0.00000     0.01962     0.01962
+      5     0.0000     0.0000     0.0000     0.00000     0.01962     0.01962
+      6     0.0000     0.0000     0.0000     0.00000     0.01962     0.01962
+      7     0.0000     0.0000     0.0000     0.00000     0.01058     0.01058
+      8     0.0000     0.0000     0.0000     0.00000     0.00000     0.00000
+      9     0.0000     0.0000     0.0000     0.00000    -0.00000    -0.00000
+  peak λ_n = 6.1375  ;  Σλ_n = 6.1375  ;  Σ(Σλ_t) = 0.5868
+  Δbox_x = -2.4305 mm
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH OVER (1.00mm)
+────────────────────────────────────────────────────────────────────────────────────
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  status            : CLEAN  (10/10 sub-steps)
+  seeds used (-1=fail; 0=warm, 1=nominal, 2-4=perturbations):
+     0   0   0   0   0   0   0   0   0
+
+  per-sub-step λ + impulse-channel split into box_v_x:
+      k        λ_n       Σλ_t      μ·λ_n    D@λ_n→vx    D@λ_t→vx      D@λ→vx
+      0     9.2003     0.8064     3.6801    -0.23001     0.02630    -0.20371
+      1     0.0000     0.0000     0.0000     0.00000     0.02122     0.02122
+      2     0.0000     0.0000     0.0000     0.00000     0.01882     0.01882
+      3     0.0000     0.0000     0.0000     0.00000     0.01962     0.01962
+      4        NaN        NaN        NaN     0.00000     0.01962     0.01962
+      5        NaN        NaN        NaN     0.00000     0.01962     0.01962
+      6        NaN        NaN        NaN     0.00000     0.01962     0.01962
+      7        NaN        NaN        NaN     0.00000     0.01962     0.01962
+      8        NaN        NaN        NaN     0.00000     0.01962     0.01962
+      9        NaN        NaN        NaN     0.00000     0.01962     0.01962
+  peak λ_n = 9.2003  ;  Σλ_n = 9.2003  ;  Σ(Σλ_t) = 0.8064
+  Δbox_x = -5.7311 mm
+
+====================================================================================
+CROSS-DEPTH COMPARISON
+====================================================================================
+
+  Status summary:
+     depth (mm)    status  completed  fail@
+         0.100     CLEAN         10     -1
+         0.549     CLEAN         10     -1
+         1.000     CLEAN         10     -1
+
+  CLEAN depths (3/3): [0.1, 0.549, 1.0]
+  Peak λ_n scaling (CLEAN, 0.1mm → 1.0mm, 10.0× depth):
+    peak λ_n  : 3.4697 → 9.2003  (2.65×)   [rigid expects 10.0×]
+
+  Cross-reference vs §7.21 (force-level re-probe, fixed-seed IK):
+    §7.21 peak λ_n: 0.10mm → 1.00mm = 3.470 → 9.200  (2.65× over 10× depth)
+    §7.22 peak λ_n: 0.10mm → 1.00mm = 3.470 → 9.200  (2.65×)   [Part A comparison]
+
+====================================================================================
+PART B — λ_t-coupling read at sub-step 0 (impulse channel into box_v_x)
+====================================================================================
+
+  Sub-step 0 reads on the CLEAN depths:
+     depth (mm)     λ_n[0]    Σλ_t[0]    D@λ_n→vx    D@λ_t→vx      D@λ→vx     t/n
+         0.100     3.4697     1.3879    -0.08674     0.03406    -0.05268  -0.393
+         0.549     6.1375     0.5868    -0.15344     0.02433    -0.12910  -0.159
+         1.000     9.2003     0.8064    -0.23001     0.02630    -0.20371  -0.114
+
+  Channel-scaling sub-step 0 (0.1mm → 1.0mm, 10.0× depth):
+    normal-channel into box_v_x   : 0.08674 → 0.23001  (2.65×)  [rigid expects 10.0×]
+    tangent-channel into box_v_x  : 0.03406 → 0.02630  (0.77×)
+    TOTAL channel into box_v_x    : 0.05268 → 0.20371  (3.87×)  [Part B: does this scale ~linear with depth?]
+
+====================================================================================
+COMBINED ROUTE
+====================================================================================
+  Part A : STAYS
+  Part B : λt-DOES-NOT-ACCOUNT
+
+  Part A reads: Part A: 1mm CLEAN 10/10, scaling STAYS ~2.65× (2.65× vs 2.65×, Δ=0.1%); the residual is REAL on clean data — proceed to Part B.
+
+  Part B reads: Total channel scales 3.87× over 10.0× depth (Δ=61.3% from linear) — λ_t-coupling does NOT close the sub-linearity. The residual lives elsewhere (A-matrix dynamics propagation is the next candidate).
+
+  ► ROUTE: IS-DYNAMICS
+  Part A confirms the 2.65× residual on CLEAN data; Part B rules out λ_t-
+  coupling. The next candidate is A-matrix dynamics: the box-velocity
+  propagation after the sub-step-0 impulse is sub-linear in λ_n through
+  the A · x channel rather than the D · λ channel. NEXT (separate block):
+  measure A-matrix contribution to box_v_x at the linearization point.
+  Anitescu STAYS PAUSED.
+
+====================================================================================
+HOLD: next block (anitescu scoping / A-matrix check / re-characterize /
+      bound-the-sweep) is SEPARATE.
+====================================================================================
