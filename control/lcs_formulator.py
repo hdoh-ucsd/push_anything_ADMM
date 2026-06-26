@@ -93,6 +93,24 @@ class LCSFormulator:
         self._box_drag_c = float(box_ground_drag)
         self._obj_body   = obj_body
 
+        # §7.24 Candidate A — soft-LCP compliance on the EE-BOX normal contact
+        # only (NOT the floor / BOX-VERT contacts, which would re-break the
+        # §7.9-§7.12 vertical fix). Default 0.0 = OFF (pure rigid Stewart-
+        # Trinkle, byte-identical to pre-§7.24 behaviour). When > 0, an
+        # additive k·I term is appended to F_lcs at the SLN+ee_box_idx
+        # diagonal in linearize_discrete_ee_space (mirrored in the R^7 path
+        # only if trivial — see :1025). Env override
+        # LCS_NORMAL_COMPLIANCE_K takes precedence over the constructor arg
+        # so offline validation can sweep k without main.py edits.
+        _env_kn = os.environ.get("LCS_NORMAL_COMPLIANCE_K", "")
+        if _env_kn:
+            try:
+                self._normal_compliance_k = float(_env_kn)
+            except ValueError:
+                self._normal_compliance_k = 0.0
+        else:
+            self._normal_compliance_k = 0.0
+
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
         self.n_u = plant.num_actuators()
@@ -1483,6 +1501,18 @@ class LCSFormulator:
             F_lcs[SLN:SLN + n_c, SLT:SLT + n_t] = (
                 dt * (J_n_box @ Minv_JtT_box) + (dt / m_ee) * (J_n_ee @ J_t_ee.T)
             )
+
+            # §7.24 Candidate A — soft-LCP compliance on EE-BOX-only normal
+            # contacts. Adds k·1 to the F-diagonal of each EE-BOX λ_n slot:
+            # 0 ≤ λ_n ⊥ (η_n_rigid + k·λ_n) ≥ 0. Bounds λ_n at deep depth
+            # by allowing partial penetration to persist. NOT applied to
+            # BOX-VERT (floor) contacts — softening those re-introduces floor
+            # penetration and risks re-breaking the §7.9-§7.12 vertical fix.
+            # Default k = 0.0 (OFF, byte-identical pre-§7.24 behaviour).
+            if self._normal_compliance_k > 0.0:
+                for i_c, info in enumerate(self._last_contact_info[:n_c]):
+                    if info.get('tag', '') == 'EE-BOX':
+                        F_lcs[SLN + i_c, SLN + i_c] += self._normal_compliance_k
             # H: u-coupling — only the v_ee path contributes, m_ee scaling.
             H_lcs[SLN:SLN + n_c, :] = (dt / m_ee) * J_n_ee
             # c: const offset: φ/dt + J_n · (current_v + dt · d_offset)
