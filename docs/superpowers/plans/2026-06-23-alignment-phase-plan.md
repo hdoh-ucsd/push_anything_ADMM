@@ -907,6 +907,495 @@ Any subsequent entry that treats "the brute-force oracle (λ_n = 0.5839) is the 
 
 ---
 
+### 7.9 — augmentation (2026-06-25): CONFIRM core + tangent-row CORRECTION (prominent) + BOTH-AXES gate + strategic reframe
+
+#### (1) CONFIRM the MODEL-BROKEN core
+
+The §7.9 core stands: LCS-with-oracle predicts the box FALLS **17.33 mm in 0.05 s** (vz = -0.345 m/s) while Drake renders **0 mm** (box stationary, floor holds) — a **1.7e7× mismatch**. ROOT: `n_lambda = 6` = exactly ONE contact pair (the EE-BOX pair); NO box-ground contact in the LCS. Gravity pulls the box down (`d_const[15] ≈ -0.49 m/s/step`); the single EE-BOX λ_n contributes only +0.146 m/s/step; nothing opposes the fall. Drake's compliant floor contact holds the box up; the LCS does not model it. **The no-push is a MODEL problem (LCS missing box-ground), NOT a solver problem.**
+
+#### (2) TANGENT-ROW CORRECTION (prominent — a standing assumption FALSIFIED)
+
+**The deck's framing "E-matrix tangent rows zeroed, friction unenforced through η (v1)" is WRONG on the captured live instance.** Direct matrix read on `seed0_full50.npz`:
+
+- row 0 (γ slack) — **zeroed** (standard Stewart-Trinkle slack)
+- row 1 (λ_n) — 5 nonzeros
+- rows 2-5 (λ_t[0..3]) — **4 nonzeros each**
+
+Tangent friction IS enforced via the LCS complementarity on this instance. The actual LCS structural bug is the **MISSING box-ground contact**, NOT zeroed tangent rows. This corrects an assumption carried from the slides AND repeated in the probe framing (the §7.6 reframe-paragraph banked "E-matrix tangent rows ZEROED (v1, friction unenforced through η)"). **SUPERSEDED — do not cite "tangent rows zeroed" again.**
+
+#### (3) THE SHARED FICTIONAL-PREDICTION SIGNATURE — finally EXPLAINED, elevated to ROOT
+
+§7.8(3) banked this as a hypothesis: componentwise (234/0) and LCP (228/1.4 %) produced the SAME fictional-prediction signature. The §7.9 result is the answer: **both projections were solving the SAME wrong LCS**. The projection choice could NEVER have fixed this — the bug is structural in the LCS, upstream of how the LCS is solved. **This is why every projection probe (componentwise non-convergence, the LCP oracle-match, the over-strict-criterion question) was operating one level BELOW the fault.** The shared signature is no longer a hypothesis; it is the diagnostic identity of the root cause.
+
+#### (4) CONFIRM THE DEMOTIONS (now canonical, not provisional)
+
+- §7.8 "make componentwise converge like the reference (eq 12, iter 3)" — **DEMOTED**. Converging to the oracle on this LCS = a precise solution to a box falling through the floor = still fictional.
+- §7.6 "no-push = Probe B componentwise non-convergence" — stays correct at the SOLVER level but is **NOT THE ROOT**. The root is the LCS missing box-ground.
+- The reference-settings precondition (§7.7's "next gate" before §7.9) — **DEMOTED to contingent-after** (only meaningful once the LCS matches the plant).
+
+#### (5) NEXT GATE + the BOTH-AXES requirement
+
+The route is **CONTACT-MODEL ALIGNMENT FIRST.** Leading hypothesis (cheaply testable): the `LCS_EXPLICIT_BOX_GND` synthesis (`lcs_formulator.py:71`, default-OFF) adds floor-contact rows (n_lambda 6 → 78) so the oracle on THAT LCS includes floor forces balancing gravity.
+
+**The falsification test:** enable `LCS_EXPLICIT_BOX_GND`, re-extract the LCS at the captured x0, recompute the oracle, re-run the consistency test.
+
+**GATE for "model now consistent" — BOTH axes must close:**
+- **(a) VERTICAL.** LCS-with-oracle predicts ≈ 0 vertical motion (floor holds, matching Drake's 0). The predicted fall must go from **-17.33 mm to ≈ 0**.
+- **(b) HORIZONTAL.** LCS-with-oracle predicts horizontal box motion that Drake renders under EE push. Fixing the fall (vertical) is **NECESSARY but NOT SUFFICIENT** — the goal is horizontal pushing.
+
+**Do NOT pre-commit a contact count (4 vs 12) — read it off the result.** The natural choices per `lcs_formulator.py:67` are 4 (bottom corners only), 8 (all vertices), or 12 (8 vertices + 4 bottom-face centers).
+
+**NOTE on oracle computation cost:** the brute-force oracle was a 2⁶ = 64 enumeration on the 6-dim λ. At `n_lambda = 78` a 2⁷⁸ enumeration is intractable. **The new oracle must use the per-knot LCP/Lemke solve (Cell B's method) or a complementarity/feasibility solve, NOT brute-force.**
+
+#### (6) STRATEGIC REFRAME
+
+This is a **TRACTABLE result.** A solver convergence problem is murky (tune ρ/iters and hope); a missing contact constraint is concrete, has a sharp falsifiable prediction (the box should stop falling), and the fix-lever already exists in-code behind a flag (`LCS_EXPLICIT_BOX_GND`). **The project moved from "the ADMM will not converge for reasons we are chasing" to "the LCS is missing the floor, here is the switch that adds it."** The deeper bug is the more tractable one.
+
+#### (7) Progress-table note (for next regeneration)
+
+When the progress table is next regenerated, the ADMM-solver row's framing shifts:
+- **ROOT:** the LCS missing box-ground (a MODEL bug), NOT the solver.
+- **Leading fix:** contact-model alignment (`LCS_EXPLICIT_BOX_GND`), NOT convergence.
+- **Projection/convergence question:** DEMOTED to contingent-on-a-correct-LCS.
+
+#### Anti-stale binding (canonical addition)
+
+Any subsequent entry that cites "E-matrix tangent rows zeroed" without correction, or proposes "make componentwise converge" as the next gate, is operating on a stale record. The current state-of-truth (canonical):
+- The captured LCS's E has only the **γ slack row zeroed** — tangent friction IS enforced via complementarity.
+- The no-push is a MODEL problem (LCS missing box-ground).
+- The next gate is `LCS_EXPLICIT_BOX_GND` enable + re-extract + recompute oracle + re-run consistency, with the **BOTH-AXES** pass bar (vertical fall → 0 AND horizontal pushing matches Drake).
+
+**Next gate (corrected from §7.9 main body):** contact-model alignment via `LCS_EXPLICIT_BOX_GND`, with the BOTH-AXES gate above. Oracle recomputation uses Lemke-per-knot or feasibility solve (NOT brute-force enumeration, intractable at n_lambda = 78). NOT actioned in this plan-doc edit.
+
+---
+
+### 7.10 — Contact-model falsification probe: VERTICAL CONFIRMED at count=4; horizontal DEGENERATE/untested; status VERTICAL-ONLY (2026-06-25)
+
+**The §7.9 sharp falsifiable prediction (adding box-ground stops the predicted fall) is CONFIRMED at LCS_EXPLICIT_BOX_GND=4. But the horizontal/push axis is UNTESTED at this captured state (degenerate — EE not in contact). Status is VERTICAL-ONLY, NOT MODEL-FIXED.** Banked here (the falsification probe + output are committed in `58ec6df`'s successor; this section completes the doc record).
+
+#### (1) VERTICAL CONFIRMED at count=4
+
+| Signal | Before (n_λ=6) | After count=4 (n_λ=24) | Drake |
+|---|---|---|---|
+| Δ box xyz | (-1.313, -1.313, **-17.226**) mm | (-0.001, -0.001, **+0.009**) mm | (0, 0, 0) mm |
+| LCS box vz | -0.345 m/s | -0.0002 m/s | 0 m/s |
+| Δz vs Drake | 17.226 mm | **0.009 mm** | — |
+| VERTICAL CLOSE | False (1.7e7× off) | **TRUE** (< 1 mm bar) | — |
+
+**MECHANISM (not just the number moving):** the 4 corner contacts each carry ≈ 0.5 N normal force; ~2 N total ≈ m·g = 1.96 N. **Gravity is balanced; the box is held up for the right physical reason.** The §7.9 falsifiable prediction is CONFIRMED. The MODEL-BROKEN root cause is now **ESTABLISHED, not hypothesized**.
+
+#### (2) count=12 FAILS — instructive layout reason
+
+| Count | n_λ | Lemke | LCS Δz |
+|---|---|---|---|
+| 4 (cube bottom corners) | 24 | Found feasible (res 1.0e-8) | +0.009 mm |
+| 12 (vertices + face centers) | 72 | **FAILED** (res inf; λ=0 everywhere) | -24.525 mm |
+
+The 12-vertex synthesis includes 4 TOP vertices at distance +0.1 m (NOT penetrating); Lemke cannot cleanly handle the mix of penetrating + non-touching contacts on this instance. **count=4 (exactly the corners touching the floor) is the right configuration** — read off the result, not guessed. The §7.9-aug discipline ("do NOT pre-commit a contact count") was vindicated. **ORACLE-INTRACTABLE is REFUTED**: Lemke worked at count=4; the count=12 failure is a LAYOUT mismatch, not solver intractability.
+
+#### (3) HORIZONTAL is DEGENERATE — NOT a fidelity confirmation
+
+At the captured x0 the **EE is 5 cm ABOVE the box top (NOT in contact)**. Both LCS and Drake show ≈ 0 horizontal motion (LCS Δxy ≈ 0, Drake Δxy ≈ 0, |Δ| = 0.002 mm) simply because **NOTHING IS PUSHING the box**. The horizontal "close" is a **VACUOUS PASS** — two things agreeing that an unpushed box does not move — **NOT a faithful test of horizontal-push fidelity**. A non-degenerate horizontal test REQUIRES a state where the EE is in contact with the box face.
+
+#### (4) STATUS = VERTICAL-ONLY, NOT MODEL-FIXED
+
+The contact-model fix (`LCS_EXPLICIT_BOX_GND=4`) is CONFIRMED for the **SUPPORT axis (vertical)**, UNTESTED for the **PUSH axis (horizontal)**. This matters because the ENTIRE POINT of the system is horizontal pushing — **a box correctly held up but with untested push dynamics is still UNVALIDATED for the task**. The §7.9-aug BOTH-AXES gate was specifically designed so a vertical-only fix could not be read as MODEL-FIXED; this is exactly that situation.
+
+- Vertical = **fixed (confirmed)**.
+- Horizontal = **untested (degenerate capture state)**.
+- **DO NOT call this MODEL-FIXED — call it VERTICAL-ONLY.**
+
+#### (5) Demotions / holds carried forward
+
+- **§7.8(3) shared-fictional-prediction explanation is OPERATIONALLY VINDICATED.** Solving any LCS-consistent λ on the count=0 LCS produced the same fictional fall regardless of projection family **because the LCS itself was wrong** (componentwise + LCP both fictional → the LCS was the bug, not the projection).
+- **Option 2 (LIVE verification) HELD / REJECTED for now.** Flipping `LCS_EXPLICIT_BOX_GND=4` live conflates the contact-model fix with solver non-convergence + cadence + storm; a null result would not isolate cause. The offline horizontal test isolates the contact model — **do NOT go live until offline horizontal confirms.**
+- **Option 3 (reference-settings convergence) HELD.** Convergence is only meaningful on a CORRECT LCS, and the LCS is confirmed on ONE axis only; running it now tests the solver against a half-validated model (the same trap one axis down). **Re-promote only after horizontal is validated.**
+
+#### (6) NEXT GATE — the non-degenerate horizontal probe
+
+The captured instance is EE-above (degenerate for horizontal); the test needs an **EE-in-contact** state.
+
+**Pre-registered sharp prediction:** with the EE in contact + floor modeled (count=4), the LCS-with-oracle should predict horizontal box motion **in the push direction matching Drake** (the push-axis analog of the vertical prediction that just confirmed).
+
+- **If yes** → MODEL-FIXED for real; convergence question (option 3) becomes meaningful on a fully-correct LCS.
+- **If the LCS predicts push Drake does not render (or vice versa)** → a SECOND contact-model gap on the push axis.
+
+#### (7) Strategic framing (honest)
+
+A **MAJOR, REAL** result — the root cause is CONFIRMED and the fix-lever works on the support axis — **but it is HALF-VALIDATED, and the unvalidated half (horizontal/push) is the half that matters for the task.** The "deeper bug is the more tractable one" thesis (§7.9-aug) holds — one env-knob flip fixed the fall. **But "fixes the fall" and "fixes the push" are DIFFERENT claims; only the first is established.** Resisting the temptation to call it done here is the same discipline that caught the prior comfortable re-interpretations (the 28 mm "improvement", the 34 mm "partial chain closure", the LCP "leading candidate").
+
+#### (8) Progress-table note (for next regeneration)
+
+ADMM-solver row should read:
+- **ROOT:** LCS missing box-ground (**CONFIRMED**).
+- **Fix-lever:** `LCS_EXPLICIT_BOX_GND=4` fixes vertical (CONFIRMED offline, gravity balanced).
+- **Horizontal/push axis:** UNTESTED (degenerate capture).
+- **Status:** **VERTICAL-ONLY**, NOT MODEL-FIXED.
+- **Next:** non-degenerate horizontal probe.
+
+#### Anti-stale binding
+
+Any subsequent entry that cites the falsification result as "MODEL-FIXED" or proposes the live `LCS_EXPLICIT_BOX_GND=4` flip / the reference-settings precondition as the next gate WITHOUT first running the non-degenerate horizontal probe is operating on a STALE record. The current state-of-truth: vertical confirmed at count=4, horizontal degenerate at the captured state, status VERTICAL-ONLY.
+
+**Next gate (corrected from §7.9-aug):** non-degenerate horizontal probe — capture or construct an EE-in-contact state, re-run consistency under `LCS_EXPLICIT_BOX_GND=4`, verify the push-axis analog of the vertical confirmation. NOT actioned in this plan-doc edit.
+
+---
+
+### 7.11 — Horizontal consistency probe: HORIZONTAL-GAP CONFIRMED; status PARTIAL not MODEL-FIXED (2026-06-25)
+
+**Result: LCS-with-oracle at LCS_EXPLICIT_BOX_GND=4 captures only 27% of Drake's horizontal push (under-predicts magnitude by 3.7×). Direction is right; magnitude is not. Vertical still holds under push. Status is PARTIAL — vertical fixed, horizontal GAP CONFIRMED. The §7.10 "do NOT call this MODEL-FIXED" discipline is operationally vindicated; the bare claim is now FALSIFIED, not just cautioned-against.** Banked here (horizontal probe + output are committed; this section completes the doc record).
+
+#### (1) HORIZONTAL-GAP CONFIRMED
+
+**Constructed contact state (offline, clean — no live capture needed):**
+- Box at rest at (0, 0, 0.05); quat = identity.
+- EE at (+0.0749, 0, 0.05) — east face, 0.1 mm penetration.
+- EE velocity = (-0.05, 0, 0) m/s — westward push (matches task-id 4).
+- u = 0 (no commanded force; momentum drives the contact).
+- IK Δ on EE pose: 0.173 mm.
+
+**LCS at LCS_EXPLICIT_BOX_GND=4 + Lemke (residual 1.97e-8, clean):**
+- `n_λ = 30` (1 EE-BOX + 4 BOX-VERT × 6 slots).
+- λ_n EE-BOX: **0.821 N** (push contact force).
+- λ_n floor: **(0.294, 0.294, 0.687, 0.687) N** — UNEQUAL corner loading consistent with horizontal push; sum = 1.962 N ≈ m·g = 1.96 N (gravity balanced under push).
+
+**Push result (Δt = 0.05 s):**
+
+| Signal | LCS | Drake |
+|---|---|---|
+| Δ box xyz | (-0.451, +0.012, **-0.000**) mm | (-1.684, +0.165, **-0.495**) mm |
+| Δ box vel | (-0.0090, +0.0002, 0) m/s | (-0.0128, -0.0021, +0.0304) m/s |
+| xy gap vs Drake | — | **1.242 mm (> 1 mm bar)** |
+| z gap vs Drake | — | 0.495 mm (< 1 mm bar) |
+
+**Direction RIGHT (both westward); magnitude UNDER by 3.7×. LCS captures 27% of Drake's horizontal box motion. HORIZONTAL CLOSE = FALSE.**
+
+#### (2) VERTICAL still holds at the contact state
+
+LCS Δz = 0 (box stays on floor under push); Drake Δz = -0.495 mm (slight settling under push transient) — within the 1 mm bar. **The count=4 floor support is PRESERVED under push conditions**; the vertical confirmation extends to this new state.
+
+#### (3) STATUS = PARTIAL, NOT MODEL-FIXED
+
+The contact-model fix is **NECESSARY** (vertical holds at both the EE-above and EE-in-contact states) but **NOT SUFFICIENT** (horizontal under-predicts 3.7×). MODEL-FIXED-REAL is REFUTED. The prior §7.10 "do NOT call this MODEL-FIXED" discipline is **OPERATIONALLY VINDICATED** — the bare claim is now FALSIFIED, not just cautioned-against.
+
+| Route | Verdict |
+|---|---|
+| MODEL-FIXED-REAL | **REFUTED** (horizontal does not close). |
+| HORIZONTAL-GAP (vertical holds, horizontal doesn't) | **CONFIRMED.** |
+| CAPTURE-HARD | REFUTED (clean offline construction). |
+| ORACLE-ISSUE | REFUTED (Lemke worked at the contact state). |
+
+Status: contact model **PARTIAL** — vertical fixed (both states), horizontal GAP CONFIRMED (27% / 3.7×).
+
+#### (4) THREE GAP HYPOTHESES (framed, NOT isolated this block)
+
+**(a) `box_ground_drag = 10.0/s` viscous damping in the LCS A matrix (lcs_formulator.py:93).** Per-step multiplier `(1 - c·dt) = 0.5×` — HALVES box translational velocity per planner step. Could explain ~2× of the 3.7× under-prediction.
+- **CRITICAL caveat:** `box_ground_drag` is a PORT-SPECIFIC approximation (the stand-in for box-ground contact). With explicit floor contacts now present at count=4, the drag may be a **REDUNDANT BAND-AID** double-counting ground interaction. **The reference has NO box_ground_drag** (anitescu + explicit contacts) — so removing it is a move TOWARD the reference, not a port-specific hack.
+- **LEADING hypothesis.**
+
+**(b) Discrete-time LCS Euler step over 0.05 s vs Drake's 1 ms substeps.** Nonlinearities accumulate; Drake captures intermediate contact transitions the LCS does not. A DIFFERENT kind of error (integration, not a wrong term).
+
+**(c) Stewart-Trinkle vs Drake compliant contact.** μ matches (both 0.4), but instantaneous force balance differs; the deepest/rarest, about the enforcement *mechanism* not the *coefficient*.
+
+**Residual caveat:** even if drag is ~2× of the gap, that leaves **~1.85× unexplained** — the gap likely has more than one contributor. Don't expect a single-contributor closure.
+
+#### (5) CONVERGENCE STAYS HELD
+
+Re-promoting the reference-settings convergence question now would test the solver against a model that under-predicts the push by 3.7× — **the same "test the solver on a half-validated model" trap §7.10 warned against**. Convergence HELD until the horizontal gap closes (the model quantitatively right on the push axis).
+
+#### (6) Strategic framing (continuing the honesty)
+
+The "deeper bug is the more tractable one" thesis (§7.9-aug) HELD for vertical (one env flag flipped it) but is visibly **NOT holding for horizontal** — the contact model is **structurally present but quantitatively wrong**, and quantitative contact-model errors are the **genuinely hard part of contact-implicit work**. This is the half that matters for the task.
+
+**Not a setback — the problem getting honest about its actual difficulty.**
+
+ON THE HORIZON: if the gap is fundamental to the Stewart-Trinkle-vs-compliant difference (not removable drag or discretization), matching the reference's LCS may eventually require the **anitescu reformulation** (the reference's actual contact model). Deferred — heavy lift — on the other side of the cheap structural tests.
+
+#### (7) NEXT GATE — the drag-removal probe (cheapest first move, framed structurally)
+
+**Is `box_ground_drag` a redundant band-aid the count=4 fix superseded?** Disable it offline (`box_ground_drag=0` in the formulator constructor), re-test horizontal at the same constructed state.
+
+**THREE-OUTCOME pre-registration:**
+- **Gap closes to ~1×** (LCS now matches Drake) → drag was the whole story. Revisit the residual arithmetic — possibly the integration error was much smaller than feared.
+- **Gap closes to ~1.85×** → drag was ~2× as predicted; SECOND contributor remains. Δt sub-stepping is the next probe.
+- **Gap barely moves** → the 0.5× multiplier was a red herring. The gap is in integration (b) or friction enforcement (c). Δt next; friction audit deepest.
+
+Then (b) Δt sub-stepping on the residual; (c) friction audit held as deepest / last.
+
+#### (8) Progress-table note (for next regeneration)
+
+ADMM-solver row:
+- **ROOT:** LCS missing box-ground (CONFIRMED).
+- **Fix-lever:** `LCS_EXPLICIT_BOX_GND=4` fixes vertical (CONFIRMED at both EE-above and EE-in-contact states; gravity balanced; holds under push).
+- **Horizontal/push axis:** **PARTIAL** — LCS captures **27%** of Drake's push, under-predicts **3.7×** (GAP CONFIRMED).
+- **Status:** **PARTIAL**, not MODEL-FIXED.
+- **Next:** HORIZONTAL-GAP investigation, starting with the drag-removal probe.
+- **Convergence:** HELD until the model is quantitatively right on the push axis.
+
+#### Anti-stale binding
+
+Any subsequent entry that cites the contact-model fix as "MODEL-FIXED" or proposes the live `LCS_EXPLICIT_BOX_GND=4` flip / the reference-settings precondition as the next gate WITHOUT first closing the horizontal gap is operating on a STALE record. The current state-of-truth: vertical fixed (both states), horizontal under-predicts 3.7× at count=4, status PARTIAL, drag-removal probe is the cheapest next move.
+
+**Next gate (corrected from §7.10):** drag-removal probe — set `box_ground_drag = 0` in the formulator constructor offline, re-extract LCS at the constructed contact state under `LCS_EXPLICIT_BOX_GND=4`, recompute the oracle via Lemke, re-step Drake from the same state, compare horizontal box motion. Three-outcome pre-registered: gap closes to 1× / 1.85× / barely. NOT actioned in this plan-doc edit.
+
+---
+
+### 7.12 — Drag-removal probe: REDHERRING (byte-identical, drag inert at v_box=0); two structural findings distinct (2026-06-25)
+
+**Result: drag=10 vs drag=0 produced BITWISE-IDENTICAL LCS predictions at the constructed contact state. The 3.73× under-prediction did NOT move with drag — not "barely", literally byte-equivalent.** Cleanest possible REDHERRING (DRAG-NOT-IT). Commit `36da966` (`scripts/_stage_c_drag_removal.py` + `stage_c/drag_removal_output.txt`).
+
+#### (1) DRAG-REDHERRING (DRAG-NOT-IT) — byte-identical
+
+drag=10 vs drag=0 at the constructed contact state produced **BITWISE-IDENTICAL** LCS predictions — same Δbox **(-0.451, +0.012, -0.000) mm**, same λ down to every nonzero (λ_n EE-BOX **0.821**, floor **(0.294, 0.294, 0.687, 0.687)**), same Lemke residual **1.97e-8**, same horizontal xy-gap to Drake **1.2423 mm**. The 3.73× under-prediction **did NOT move with drag** — not "barely moved", **literally byte-equivalent**.
+
+**OUTCOME: REDHERRING, cleanest possible.**
+
+#### (2) THE MECHANISM — drag multiplies a zero
+
+`box_ground_drag` enters via the A matrix as `(1 - c·Δt) = 0.5×` on the box **TRANSLATIONAL VELOCITY**. At the constructed contact-entry state **v_box = 0** — there is **nothing for the multiplier to scale**. The 0.5× single-step arithmetic (the "~2×" prediction) was applied to a term that multiplies zero — **definitionally irrelevant at the contact-entry instant**.
+
+**CORRECTION:** the prior §7.11 §(4)(a) "could explain ~2×" prediction was **WRONG-ON-ARRIVAL**; the residual caveat ("~1.85× unexplained") **UNDERSTATED** it — **ALL 3.73× is unexplained by drag**. (The "~2×" was a reviewer prediction from the §7.11 framing; the three-outcome pre-registration caught it against expectation — recording the falsification, not the original guess.)
+
+#### (3) THE TWO STRUCTURAL FINDINGS (kept DISTINCT)
+
+**(a)** `box_ground_drag` is dynamically **INERT** at this contact state (multiplies v_box=0) — **NOT the gap closer**.
+
+**(b)** Drag IS **redundant** with the explicit count=4 contacts on the **VERTICAL** axis — with drag=0 the floor still holds (Δz=0, gravity balanced by λ_n floor sum 1.962 N ≈ m·g); removing it is a **move TOWARD the reference** (no drag term) with **NO cost** to the vertical-holds property. But given (a) it is NOT the gap closer either.
+
+**One frame:** drag was a band-aid the explicit contacts superseded, **AND** it never was the cause of the horizontal gap at this state.
+
+#### (4) THE CAVEAT (scope limit, for the Δt block)
+
+Drag may STILL matter once **v_box ≠ 0** (steady-state coast). The test here was at the contact-entry **INSTANT** (v_box=0). The Δt sub-stepping test will pass through states with **NON-ZERO v_box**, where `box_ground_drag` (which multiplies v_box) **RE-ENTERS** — so the Δt test and the drag question are now **ENTANGLED**. The drag question is **NOT fully closed** for trajectory-mean comparisons, only at this entry instant.
+
+#### (5) CONVERGENCE STAYS HELD
+
+The model is still quantitatively wrong on the push axis (**3.73× under, UNCHANGED** by drag). Status STAYS PARTIAL not MODEL-FIXED. Convergence **HELD**.
+
+#### (6) Strategic framing (starker)
+
+**The cheapest structural explanation (drag) is SPENT and EMPTY** — drag was already dynamically inert; the gap is NOT a redundant approximation we can delete. The 3.73× lives in EITHER the **integration (Δt)** OR the **contact mechanism itself (Stewart-Trinkle vs Drake compliant)** — the second is the genuinely hard one (does not yield to a flag/parameter).
+
+- If Δt closes it → fixable (discretization mismatch).
+- If Δt does NOT → the reference's actual contact formulation (**anitescu**) may be required, because Stewart-Trinkle may not reproduce Drake's compliant-contact push at this scale.
+
+**The search space has narrowed to "discretization or fundamental contact-model difference"; only one is cheap.**
+
+#### (7) THE NEXT GATE — the Δt test as a 2×2 FACTORIAL (not a single comparison)
+
+**Δt ∈ {0.05, 0.005} × drag ∈ {0, 10}.** The factorial:
+- ISOLATES sub-stepping from drag-on-a-moving-box (sub-stepping passes through v_box≠0 states where drag re-enters)
+- CLOSES the drag caveat (tests drag exactly where it claims to still matter, v_box≠0)
+
+Only the **Δt=0.005 row is NEW** (the Δt=0.05 row is the two known byte-identical baselines).
+
+**THREE-OUTCOME pre-registration (on the Δt effect):**
+- **Δt-IS-IT (WHOLE ~1×)** → sub-stepping was the dominant contributor; live implication = planner-Δt vs sim-Δt mismatch (consider sub-stepping or Δt match).
+- **Δt-IS-HALF (~1.85×)** → Δt is half the gap; SECOND contributor is friction (Stewart-Trinkle vs compliant). Friction audit next.
+- **Δt-NOT-IT (barely)** → gap is in the friction mechanism itself; skip to friction audit (deepest).
+
+**VERTICAL must still hold** under Δt change (sanity). Friction audit held as last/deepest.
+
+#### (8) Progress-table note (for next regeneration)
+
+ADMM-solver row:
+- **HORIZONTAL/push axis:** PARTIAL, **3.73× under UNCHANGED** by drag (drag inert at contact entry, multiplies v_box=0).
+- **Drag redundant-on-vertical:** band-aid superseded by count=4 (a move toward the reference).
+- **The gap is:** discretization (Δt) **OR** contact-mechanism (Stewart-Trinkle vs compliant).
+- **Next:** Δt 2×2 factorial.
+- **Convergence:** HELD.
+
+#### Anti-stale binding
+
+Any subsequent entry that proposes `box_ground_drag` as a horizontal-gap explanation is operating on a STALE record — the term is dynamically inert at v_box=0; the 3.73× is in discretization (Δt) or contact mechanism (Stewart-Trinkle vs compliant). Any "drag is the band-aid that superseded the explicit contacts" framing must distinguish (3)(a) [inert here, not the gap closer] from (3)(b) [redundant-on-vertical, move toward reference]; conflating them is unsupported.
+
+**Next gate (corrected from §7.11):** Δt 2×2 factorial (Δt ∈ {0.05, 0.005} × drag ∈ {0, 10}) at the same constructed contact state under `LCS_EXPLICIT_BOX_GND=4`. Three-outcome pre-registered on the Δt effect; vertical-must-hold sanity; friction audit last. NOT actioned in this plan-doc edit.
+
+---
+
+### 7.13 — Δt × drag 2×2 factorial: Δt-DOMINANT (3.73× → 1.43×, contact-burst mechanism); residual 1.43× = STATUS Δt-DOMINANT-residual, NOT MODEL-FIXED-REAL (2026-06-25)
+
+**Result: sub-stepping the LCS at Δt=0.005 (10× sub-steps, re-extracted each step) closes ~57% of the original horizontal gap — factor 3.73× → 1.43×. The Δt main effect (-0.7057 mm on box_x) is DOMINANT; drag is tiny (~6%); the 1.43× lands WHOLE per pre-registered threshold (<1.5×) but at the boundary, not 1.00×.** Commit `238a70e` (`scripts/_stage_c_dt_factorial.py` + `stage_c/dt_factorial_output.txt`).
+
+#### (1) Δt-DOMINANT (Δt-IS-IT, WHOLE per threshold)
+
+The Δt × drag 2×2 factorial:
+
+| Cell | Δt | drag | LCS Δbox_x (mm) | factor |Drake/LCS_x| |
+|---|---|---|---|---|
+| Drake (1ms substeps) | 0.05 | — | **-1.684** | 1.00× |
+| A  | 0.05  | 10 | -0.451 | **3.73×** |
+| B  | 0.05  | 0  | -0.451 | **3.73×** (byte-identical to A) |
+| C  | 0.005 (10× RE-EXTRACT) | 10 | **-1.135** | **1.48×** |
+| D  | 0.005 (10× RE-EXTRACT) | 0  | **-1.178** | **1.43×** |
+| Cf | 0.005 (10× FIXED-LCS ref) | 10 | -1.166 | 1.44× |
+| Df | 0.005 (10× FIXED-LCS ref) | 0  | -1.211 | 1.39× |
+
+**Δt main effect on box_x: -0.7057 mm** — sub-stepping closes ~57% of the original 1.23 mm gap. **Best factor 1.43×** (was 3.73×). Per pre-registered threshold (<1.5 → WHOLE): **Δt-IS-IT (WHOLE)** — Δt is the **DOMINANT** contributor.
+
+#### (2) THE HONEST RESIDUAL
+
+**1.43× is at the WHOLE boundary, NOT 1.00×.** ~41% of the original gap (0.51 mm of 1.23 mm) STILL REMAINS at Δt=0.005. Δt was DOMINANT but the gap is **NOT fully closed** — a SECOND smaller contributor (friction the leading candidate) is in play.
+
+**STATUS = Δt-DOMINANT-residual-1.43×, NOT MODEL-FIXED-REAL.** The model cannot be called fixed with 43% of the gap unexplained. The threshold says WHOLE; the residual says there is more; **the residual wins.**
+
+#### (3) THE MECHANISM (the real finding, bigger than the factor)
+
+The per-sub-step λ history shows a much richer contact picture than the single-step LCS:
+- **First sub-step λ_max = 2.342, nnz = 14**  (vs single-step λ_max = 0.821)
+- **Last  sub-step λ_max = 0.687, nnz = 14**
+
+**The single-step LCS AVERAGES a contact-burst-then-relax over 0.05 s into a single quasi-static force; the sub-stepped path captures the burst.** THIS IS WHY the model under-predicted: contact-implicit dynamics over 50 ms are **TRANSIENT**, and a single linearized step smears the transient into its mean.
+
+The 3.73 → 1.43 is **a discretization artifact identified and removed, NOT a tuning win.** This mechanism survives even if the residual story changes.
+
+#### (4) DRAG-MATTERS-MOVING (small) — the §7.12 caveat empirically CLOSED
+
+- At Δt=0.05 (v_box=0 the whole step):       A-B = **+0.0000 mm** (drag inert, consistent with §7.12 byte-identical).
+- At Δt=0.005 (v_box≠0 after first sub-step): C-D = **+0.0434 mm** (drag re-enters).
+
+**DRAG-MATTERS-MOVING confirmed** — drag DOES re-enter once v_box≠0 — but magnitude ~6% of the Δt main effect (0.043 / 0.706); drag main effect (avg over Δt) is **+0.0217 mm**, tiny. The §7.12 drag caveat closes empirically: **drag at v_box≠0 is real but small; NOT a re-chase target.**
+
+#### (5) VERTICAL HOLDS in all six cells
+
+Δz = **0.0000 mm in EVERY cell** (A, B, C, D, Cf, Df). The count=4 floor support is stable across Δt and drag. Vertical sanity **HOLDS.**
+
+#### (6) FAITHFULNESS — re-extract vs fixed-LCS
+
+- C (re-extract, drag=10): -1.135 mm  vs  Cf (fixed-LCS): -1.166 mm → diff **+0.031 mm**
+- D (re-extract, drag=0):  -1.178 mm  vs  Df (fixed-LCS): -1.211 mm → diff **+0.032 mm**
+
+Within **~3%**. Both close most of the gap; **re-extract closes marginally LESS** (the stale linearization gives a marginally larger numerical push — interesting). The faithfulness caveat is empirically small at this scale; **C/D are the faithful values.** No IK fallback was triggered.
+
+#### (7) CONVERGENCE STAYS HELD
+
+Testing the solver against a model still **1.43× off on push** is the same trap (a smaller version of §7.10/§7.11/§7.12). **HELD until the residual is investigated.**
+
+#### (8) Strategic framing (encouraging)
+
+The gap is **MOSTLY discretization — the fixable kind.** Going into the factorial the worry was that the 3.73× lived in the contact mechanism (the hard reformulation — anitescu); ~57% turns out to be **discretization** — a known fixable mismatch with a concrete live implication (the planner steps at 0.05 s while the sim captures 1-ms transients; planner sub-stepping or Δt-match is the fix). Only the residual ~41% is murkier, **with a bounded ceiling.**
+
+**Moved from "the gap might be fundamental" to "most is discretization, the remainder is one friction audit from being either closed or accepted."**
+
+#### (9) THE NEXT GATE — the friction audit (the ONLY remaining candidate at this state)
+
+By elimination: at this state, count=4, with Δt dominant and drag tiny, the remaining mechanism difference is **friction enforcement (Stewart-Trinkle instantaneous λ_t resolution vs Drake compliant friction)**. μ matches (0.4) — about the **MECHANISM**, not the coefficient.
+
+**MUST be measured at Δt=0.005** (where the residual lives), NOT at Δt=0.05 (inside the discretization error).
+
+**THREE-OUTCOME pre-registration (including ACCEPT-AND-STOP as a LEGITIMATE ending):**
+- **friction-CLOSES (~1×)** → model-matches-plant; **re-promote convergence**.
+- **friction-PART (sub-10% floor remains)** → likely the **IRREDUCIBLE** Stewart-Trinkle-vs-compliant friction floor → **ACCEPT** the LCS as good-enough. A **legitimate stopping point, NOT a failure**.
+- **friction-BARELY-MOVES** → residual uncharacterized; **anitescu becomes live** (the reference's actual contact formulation).
+
+#### (10) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **Δt-DOMINANT, 3.73× → 1.43×** (sub-stepping closes ~57%, contact-burst mechanism).
+- **Residual 1.43×** (friction the leading remaining candidate).
+- **Drag confirmed-but-tiny** (DRAG-MATTERS-MOVING ~6% of Δt).
+- **Status:** Δt-DOMINANT-residual-1.43×, **NOT MODEL-FIXED-REAL**.
+- **Next:** friction audit on the sub-stepped path.
+- **Convergence:** HELD.
+
+#### Anti-stale binding
+
+Any subsequent entry that calls the contact model MODEL-FIXED-REAL on the basis of the §7.13 Δt result alone is operating on a STALE record — the residual 1.43× says ~41% of the gap is unexplained at the finest tested Δt; the threshold-passing WHOLE classification is dominated by the residual. Any "discretization closed it" framing must distinguish (1) [Δt-IS-IT WHOLE per threshold] from (2) [residual 1.43× says NOT MODEL-FIXED-REAL]. The contact-burst mechanism (3) survives independently of how the residual story resolves.
+
+**Next gate (corrected from §7.12):** friction audit on the sub-stepped path (Stewart-Trinkle λ_t vs Drake compliant friction) at Δt=0.005, NOT at Δt=0.05. Three-outcome pre-registered including ACCEPT-AND-STOP as a legitimate ending. NOT actioned in this plan-doc edit.
+
+### 7.14 — Friction-audit setup: AUDIT-SETUP-BROKEN — phantom panda_link7↔box at 37× the pusher impulse contaminated the §7.11→§7.13 Drake reference; MECHANISMS survive, NUMERICS need re-measurement; friction + anitescu DEFERRED; convergence HELD (2026-06-25)
+
+**Result: the friction audit did NOT isolate friction-mechanism; it surfaced an upstream contamination of the §7.11→§7.13 chain. At the constructed contact state Drake renders THREE contact pairs on the box, not two — a phantom panda_link7↔box arm-wrist contact carrying 37× the pusher impulse that the LCS does not model at all. The §7.11→§7.13 quantitative factors (3.73×, 1.43×) compared an LCS-pusher-and-floor model to a Drake-with-arm-artifact reference — apples-to-oranges. MECHANISMS (drag inert, Δt captures the contact burst, count=4 stabilizes vertical) SURVIVE; NUMERICS need re-measurement on a clean (pusher-only) setup; the clean re-run may close the gap with no friction work at all.** Banked here. Commit `9680429` (`scripts/_stage_c_friction_audit.py` — the instrument that caught the contamination; the contact-pair-count check the script performs is the new precondition gate).
+
+#### (1) AUDIT-SETUP-BROKEN
+
+The friction audit did NOT isolate friction-mechanism; it surfaced an upstream contamination. **The friction explanation of the 1.43× residual is UNANSWERABLE on this setup because the Drake reference push is not what we thought.**
+
+#### (2) THE CONTAMINATION — phantom arm↔box contact
+
+At the constructed contact state, Drake finds **THREE contact pairs** on the box at t=0.005s, not two:
+
+| Pair | Bodies | Impulse on box_x (N·s) | Notes |
+|---|---|---|---|
+| 0 | world / ground | floor normal **+0.000**, floor tangent **+0.806** | legit floor (4 corner contacts aggregated) |
+| 1 | **panda_link7** ↔ box | **-0.788** | **LCS-EXCLUDED ARTIFACT** (arm wrist intrudes the box) |
+| 2 | pusher / EE ↔ box | **-0.021** | legit |
+
+**The arm-wrist contact carries 37× the pusher impulse.** Drake's -1.684 mm box displacement is driven by **panda_link7↔box, NOT pusher↔box** — the IK-set arm pose, while putting the pusher at the east face, intrudes the WRIST into the box.
+
+The LCS's contact filter (EE body `pusher`, geom IDs `[223]`) **EXCLUDES** panda_link7, so the LCS models pusher↔box + 4 floor only. The §7.11→§7.13 chain compared an **LCS-pusher-and-floor** model to a **Drake-with-arm-artifact** reference — apples-to-oranges. The 3.73× and 1.43× are **NOT** model-vs-plant numbers; they are **model-vs-(plant+artifact)** numbers.
+
+#### (3) CROSS-CHECK — where the LCS push actually comes from (Drake-independent)
+
+Per the LCS λ decomposition at this state (no Drake dependence):
+
+| Channel | Cumulative Δbox_x (mm) |
+|---|---|
+| EE-normal (pusher) push | **-1.067** |
+| Floor tangent (friction resistance) | **+0.981** |
+| Net λ-driven | -0.086 |
+| Remainder (A-propagated velocity from earlier sub-steps) | -1.135 |
+
+**The LCS's actual model is EE-push-dominated with friction nearly cancelling.** Drake's actual rendered push is **ARM-artifact-dominated** with friction nearly cancelling the arm contact: J_pusher -0.021, J_arm -0.788, J_floor_tangent +0.806, net -0.003 N·s.
+
+If the LCS pusher↔box force is roughly the right magnitude vs Drake's pusher↔box force, the LCS may be modeling the right physics — **but we cannot test that here** because Drake's reference is dominated by something the LCS is not modeling at all.
+
+#### (4) SURVIVES / DOESN'T-SURVIVE — per-finding audit (THE KEY)
+
+| Section | Finding | Verdict |
+|---|---|---|
+| §7.11 | HORIZONTAL-GAP qualitative (LCS ≠ Drake at this state) | **SURVIVES qualitative** |
+| §7.11 | "27% / 3.73×" quantitative | **DOESN'T survive** (contaminated by arm artifact) |
+| §7.12 | DRAG-REDHERRING (drag inert at v_box=0) | **SURVIVES FULLY** — NO Drake dependence; LCS-internal A-matrix fact |
+| §7.13 | Δt-DOMINANT contact-burst mechanism (sub-stepping captures the burst; single step averages) | **SURVIVES qualitative** |
+| §7.13 | "1.43× residual" quantitative | **DOESN'T survive** — the residual was the arm/pusher mismatch, **NOT** friction-or-anitescu |
+| §7.13 | DRAG-MATTERS-MOVING (~6% of Δt) | **SURVIVES** — LCS-internal A-vs-A comparison, no Drake dep |
+
+**FRAME: MECHANISMS survive; NUMERICS need fresh measurement on a clean setup.**
+
+#### (5) CORRECTION — the trajectory-signature misread (a reviewer interpretation, flag explicitly)
+
+The prior reading "LCS leads the first ~15ms, then Drake takes over = the contact burst the single step averages out" was **WRONG.** The correct re-read: **Drake takes over because the ARM contact ramps up and overtakes the pusher, NOT a burst/friction mechanism.** The "LCS under-pushes Drake" is mostly Drake's arm contact ramping past the LCS's pusher contact. (A reviewer interpretation built on the contaminated reference — **superseded; do not cite the "burst" trajectory-signature story as model physics.**)
+
+ALSO: the §7.11 unequal floor loading (0.294 / 0.294 / 0.687 / 0.687) was read as "consistent with horizontal push" but is more consistent with **the ARM pressing off-center** — a contamination signature read as confirmation.
+
+#### (6) DEFERRALS
+
+- **Friction audit DEFERRED** (cannot be cleanly read on a contaminated setup).
+- **Anitescu DEFERRED** (was contingent on FRICTION-BARELY, which cannot be diagnosed here).
+- **Convergence STAYS HELD.**
+
+#### (7) STRATEGIC FRAMING — the consequential possibility
+
+**The clean re-run MAY close the gap to ~1× with NO friction work** — the entire §7.11→§7.13 quantitative gap may be the arm artifact. If the LCS's pusher↔box force was roughly right all along and only *looked* 3.73× short because compared against an arm-driven reference, **the contact model may have been far closer to correct than §7.13 thought.** The cross-check above hints at this: the LCS's EE push -1.067 mm with friction nearly cancelling is a coherent model. **MODEL-FIXED-REAL may be CLOSER than believed**, just measured against a contaminated reference.
+
+**Do NOT assume either way — the clean re-run decides.**
+
+#### (8) METHODOLOGICAL NOTE — why it went undetected, plus the new gate
+
+The contamination went undetected for FOUR sections (§7.11–§7.13) because **nobody checked Drake's contact-pair COUNT at the test state** — we assumed two and got three.
+
+**NEW RULE:** any model-vs-plant comparison must FIRST assert the plant's contact-pair set matches what the model includes — a **hard precondition** before any quantitative read.
+
+#### (9) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **AUDIT-SETUP-BROKEN** — the §7.11→§7.13 quantitative numbers (3.73×, 1.43×) were contaminated by a phantom panda_link7↔box contact (37× the pusher impulse) the LCS does not model.
+- **MECHANISMS survive** (drag inert, Δt captures the burst, count=4 stabilizes vertical).
+- **NUMERICS need re-measurement** on a clean (pusher-only) setup.
+- **The clean re-run may close the gap with no friction work.**
+- **Friction + anitescu deferred.**
+- **Convergence:** HELD.
+
+#### Anti-stale binding
+
+Any subsequent entry that cites §7.11 "27% / 3.73×" or §7.13 "1.43×" as model-vs-plant numbers is operating on a STALE record — those factors compared an LCS-pusher-and-floor model to a Drake-with-arm-artifact reference, not to clean plant physics. The MECHANISM findings (drag inert at v_box=0; contact-burst captured by sub-stepping; count=4 stabilizes vertical; DRAG-MATTERS-MOVING) survive and remain citable as mechanism statements. The QUANTITATIVE factors do not.
+
+**Next gate (corrected from §7.13):** re-pose probe — construct a contact state where Drake renders **exactly the contact-pair set the LCS models** (pusher↔box + floor only; no panda_link7↔box and no other arm-link↔box pair), then re-measure §7.11/§7.13 quantitatively on the clean setup. The friction audit is reopen-able only AFTER the clean reference is established (else friction-mechanism cannot be cleanly isolated). NOT actioned in this plan-doc edit.
+
+---
+
 ## 8. Memory pointer
 
 This file (`docs/superpowers/plans/2026-06-23-alignment-phase-plan.md`) is the **canonical source-of-truth** for the Alignment Phase plan + conformance state. It is updated as each stage / flagged item resolves, per §7. Future alignment plans index against this file; they do NOT re-derive from the logic trees at `/d/projects/ERL/push_anything_ADMM/understand_logic_tree/{reference,port}/`.
