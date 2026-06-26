@@ -2227,6 +2227,88 @@ ADMM-solver row, **HORIZONTAL/push axis**: the LCS sub-linear depth-scaling resi
 
 Any subsequent entry that cites the §7.21 1 mm partial-run worry as still-open is operating on a STALE record — §7.22 (1) cleared it on clean full-trajectory data under §7.18's exact warm-aware IK, AND showed the original Σλ_n concern was truncation-invariant (sub-steps 4-9 carried λ_n = 0). Any entry that re-opens λ_t-coupling as a candidate for the residual without addressing the §7.22 (2) non-monotonic + sign-flipped reads is also stale — λ_t was cleanly disconfirmed (the channel runs opposite the normal, not parallel; the ratio shrinks with depth, not grows). Any entry that treats IS-DYNAMICS as authorising anitescu re-promotion is the same staleness mode as §7.21's "3-of-4 ≠ 4-of-4": localization is not naming, and the A-matrix candidate has not yet been measured — once it is, the residual may resolve into compliance OR reopen beyond it. Any reasoning that follows the pattern "λ_t was the candidate and it didn't work, so compliance is dead" is also stale — IS-DYNAMICS leaves compliance *and* a different-mechanism explanation BOTH live; only the A-matrix probe in the next block settles which.
 
+**Correction-of-record (added in §7.23 (2)):** §7.22 (3) claimed the residual lives in "the A-matrix dynamics-propagation channel (`A · x`), NOT the `D · λ` contact-channel split." That attribution is **WRONG** and is corrected by §7.23 — the A·x contribution to box_v_x is ZERO at sub-step 0 (box at rest; the affine/gravity term is vertical), so ALL of the LCS box_v_x at sub-step 0 is the `D · λ` channel. §7.22 internally already measured `D · λ → box_v_x` at 3.87×, which locates the residual in `D · λ`; the "A·x not D·λ" wording in §7.22 (3) was self-contradictory with §7.22's own numbers. The §7.22 λ_t-flat reading STANDS (Sig 2 still disconfirmed; tangent channel does not absorb the impulse). The corrected localization is: within `D · λ`, the residual is in the NORMAL part (λ_n scales 2.65×, D-column normal-mapping amplifies that to 3.87× in velocity — a normal-channel D-column depth-dependence). The "A-matrix" framing was the wrong channel name for a box-at-rest horizontal-velocity comparison.
+
+### 7.23 — A-matrix probe (LCS-vs-Drake box-velocity propagation across depths, Drake dt=0.25 ms FIXED): PROPAGATION-DIVERGES at depth (LCS 3.87× vs Drake 1.20× over 10× depth), BUT the route is COMPLIANCE-CONFIRMED — not mechanism-reopens-beyond-compliance. A·x = 0 (box at rest) re-localizes the residual to the D·λ NORMAL-impulse-to-velocity map and CORRECTS §7.22 (3)'s "A·x not D·λ" attribution. Drake's depth-stable box-velocity is the velocity-side SHADOW of §7.21's depth-stable on-contact force — same compliance signature, third observable. Normal compliance is now TRIPLE-confirmed (displacement §7.16 / force §7.21 / velocity §7.23). Anitescu DEMOTED from presumptive-fix to one CANDIDATE (changes the cone, not rigid-vs-compliant). Diagnosis phase effectively COMPLETE; entering FIX phase. Anitescu PAUSED; convergence HELD (2026-06-26)
+
+Artifacts on disk (committed `29bf054`): script `scripts/_stage_c_a_matrix_probe.py`, output `stage_c/a_matrix_probe_output.txt`. Method: clean box-pinned state at each depth (§7.18 5-seed re-pose, §7.14 contact-pair gate per-depth — `pusher=1, floor=4` from the `LCS_EXPLICIT_BOX_GND=4` synthesized `BOX-VERT-{0..3}` pairs, `arm=0`); LCS side runs one sub-step (Δt = 5 ms) via `linearize_discrete_ee_space` + LCP, reports `box_v_x` channel-decomposed into `A·x` + `D·λ` + `d` contributions; Drake side runs from the SAME configuration with `dt = 0.25 ms FIXED` (§7.20-pinned, held fixed across ALL depths to avoid the §7.21 (6) dt-dependent-crossing confound), AdvanceTo(5 ms), reports actual `box_v_x`. Pre-registered routes: PROPAGATION-MATCHES (cartoon was wrong about propagation, compliance survives, anitescu re-promotes) / PROPAGATION-DIVERGES (dynamics-matrix gap, mechanism reopens) / A-MATRIX-INCONCLUSIVE.
+
+#### (1) The DIVERGES result — LCS vs Drake box_v_x at t = 5 ms
+
+| depth (mm) | LCS box_v_x | Drake box_v_x | LCS/Drake |
+|---|---|---|---|
+| 0.100 | −0.052685 | −0.053988 | **0.976 ≈ MATCH** |
+| 0.549 | −0.129102 | −0.064133 | **2.013** (LCS 2× too fast) |
+| 1.000 | −0.203710 | −0.064927 | **3.138** (LCS 3× too fast) |
+
+**LCS box_v_x scales 3.87× over 10× depth; Drake scales 1.20×** (essentially FLAT). Drake's actual box-velocity is **depth-invariant once contact engages**. Per-depth gate CLEAN at all three (`pusher = 1`, `floor = 4` from `LCS_EXPLICIT_BOX_GND=4`, `arm = 0`; Drake `dt = 0.00025 s` fixed).
+
+#### (2) A·x = ZERO re-localization — corrects §7.22 (3)'s attribution
+
+**The `A · x` contribution to box_v_x is ZERO at sub-step 0** (box starts at rest; the affine / gravity term is vertical), so ALL of the LCS box_v_x at sub-step 0 is the `D · λ` channel.
+
+**This CORRECTS §7.22 (3).** §7.22 said *"residual in the A-matrix dynamics-propagation channel (A·x), NOT the D·λ contact-channel split."* That is **WRONG** and is corrected here. The residual is **entirely in the D·λ normal-impulse-to-velocity map**. (§7.22 internally already reported *"D·λ → box_v_x scales 3.87×"*, which locates it in `D · λ`; the "A·x not D·λ" conclusion was self-contradictory with §7.22's own numbers.)
+
+The §7.22 λ_t-flat finding STANDS (Sig 2 disconfirmed; tangent channel does not absorb the impulse) but does NOT move the residual out of `D · λ`. Within `D · λ`, the residual is in the **NORMAL** part: `λ_n` scales 2.65×, and the D-matrix normal-column mapping amplifies that to 3.87× in velocity = **a D-column depth-dependence in the normal-impulse channel**. The "A-matrix" framing was the wrong channel name for a box-at-rest horizontal-velocity comparison; the residual is in the **rigid-normal-impulse-to-velocity mapping**.
+
+#### (3) Route: COMPLIANCE-CONFIRMED — NOT mechanism-reopens-beyond-compliance
+
+The mechanism is Drake's compliant normal contact **SATURATING** (once engaged, force AND velocity become depth-invariant) while the LCS rigid normal impulse keeps **SCALING** with penetration. This is the **THIRD triangulated confirmation** of the SAME signature:
+
+| § | observable | Drake | LCS | Drake/depth scaling |
+|---|---|---|---|---|
+| §7.16 | displacement (Δbox_x) | depth-stable bench | rigid scaling | sweet at ~0.549 mm |
+| §7.21 | on-contact force \|F\| | 1.22× (depth-stable) | λ_n 2.65× | ≈ flat |
+| **§7.23** | **box_v_x at 5 ms** | **1.20× (depth-stable)** | **3.87×** | **≈ flat** |
+
+The §7.23 Drake-side result is the **velocity-side SHADOW of §7.21's force-side** (depth-stable on-contact force ⇒ depth-stable box-velocity in finite time, necessarily — the same physical fact from a different angle).
+
+**Correction to the probe report's auto-routing:** the probe report said *"mechanism REOPENS beyond pure normal compliance with a new specific target"* — this **conflates** two statements: *"anitescu may not be the right fix"* (TRUE — see §7.23 (4)) with *"the mechanism is beyond compliance"* (FALSE — contradicted by the report's own description *"Drake's compliance spreads the impulse over time"*). This is NOT the mechanism reopening beyond compliance — it is the §7.16 normal-compliance diagnosis getting its **cleanest, most direct confirmation**, now at the velocity level.
+
+#### (4) Anitescu DEMOTED to candidate — re-attaching the probe's correct insight
+
+Anitescu changes the friction-**CONE** formulation (polyhedral pyramid → smooth/SOCP); it does NOT obviously introduce a depth-stable normal-impulse / finite-stiffness behaviour. So anitescu is **DEMOTED** from presumptive-fix (the *"PROPAGATION-MATCHES → anitescu re-promotes"* expectation carried through §§7.15-aug, 7.16-aug, 7.17, 7.21, 7.22) to **ONE candidate to evaluate against the normal-compliance target**, NOT the presumptive fix.
+
+The fix is **RE-TARGETED** to a **normal-compliance representation** — concrete candidates:
+- compliant Stewart-Trinkle (φ regularized with a stiffness term so the impulse saturates with depth),
+- smoothed / penalty-regularized contact in the D-column derivation,
+- a stiffness / compliance-time-constant term that bends the normal-impulse-to-velocity map in the deep regime.
+
+Anitescu remains on the candidate list only if its velocity-level convex formulation can be shown to introduce a depth-stable normal-impulse signature (not its primary advertised effect, so the scoping must establish this rather than assume it).
+
+#### (5) The shallow anchor
+
+LCS and Drake **AGREE at 0.10 mm to 2.4%** and only diverge at depth. This is the unambiguous shallow-limit anchor: **rigid is the SHALLOW LIMIT of compliant**. The LCS rigid-impulse map is a correct local linearization until Drake's compliance saturates.
+
+The fix is therefore a **depth-ONSET compliance term** (leaves the shallow regime alone, bends the deep regime DOWN to Drake's flat box_v_x ≈ −0.064 m/s), **NOT an LCS rebuild**. This is the smallest-surface-area fix consistent with the data, and it preserves §7.14's contact-pair-gate, §7.18's robust IK, §7.20's sub-ms sampling discipline, and §7.22's tangent-channel reads unchanged.
+
+#### (6) Diagnosis effectively COMPLETE — entering FIX phase
+
+The **no-push diagnosis phase is effectively COMPLETE**:
+
+- **Mechanism NAMED** — normal compliance.
+- **TRIPLE-confirmed** — displacement (§7.16) + force (§7.21) + velocity (§7.23).
+- **Residual PRECISELY localized** — the `D · λ` normal-impulse-to-velocity map (the rigid-impulse assumption breaking down when Drake's compliance saturates beyond ~0.5 mm depth).
+- **Shallow-anchored** — 0.10 mm match to 2.4% gives a clean "what the LCS does right" baseline; the fix only needs to bend the deep regime.
+
+**Entering the FIX phase.**
+
+| axis | state |
+|---|---|
+| floor | **[FIXED]** |
+| contact-axis | **[DIAGNOSED — normal compliance confirmed across 3 observables; residual = rigid-impulse-vs-compliant-saturation in the D·λ normal channel; FIX open]** |
+| friction | **DEMOTED** |
+| anitescu | **PAUSED (demoted to candidate, not presumptive fix)** |
+| convergence | **HELD** (model still not fixed) |
+
+#### (7) Progress-table note (for next regeneration)
+
+ADMM-solver row, **HORIZONTAL/push axis**: A-matrix LCS-vs-Drake propagation probe = **PROPAGATION-DIVERGES** (Drake box_v_x depth-FLAT 1.20×, LCS 3.87×); **A·x = 0** (box at rest) re-localizes the residual to the **D·λ normal-impulse-to-velocity** map (CORRECTS §7.22's A·x attribution); mechanism = **normal compliance, now TRIPLE-confirmed** (displacement §7.16 / force §7.21 / velocity §7.23) — Drake's compliant normal contact saturates depth-flat, LCS rigid normal impulse keeps scaling; shallow agreement (0.10 mm 2.4%) → rigid is the shallow limit, fix = **depth-onset compliance term**; anitescu **DEMOTED to candidate** (changes the cone, not rigid-vs-compliant); diagnosis effectively **COMPLETE**, entering FIX phase; convergence HELD.
+
+#### Anti-stale binding (§7.23)
+
+Any subsequent entry that cites the probe report's auto-routing *"mechanism REOPENS beyond pure normal compliance"* as a verdict-of-record is operating on a STALE record — §7.23 (3) explicitly corrected that auto-routing as a conflation of *"anitescu may not be the right fix"* (TRUE) with *"the mechanism is beyond compliance"* (FALSE). The verdict-of-record is **COMPLIANCE-CONFIRMED, triple-triangulated**, with anitescu demoted to candidate; not mechanism-reopens. Any entry that cites §7.22 (3)'s *"residual in A·x, not D·λ"* without acknowledging the §7.23 (2) correction is also stale — A·x = 0 in the box-at-rest comparison, so the residual was always in `D · λ`. Any entry that treats anitescu as the presumptive fix is the same staleness mode as §7.21's "3-of-4 ≠ 4-of-4" extended to fix-selection: cone-formulation is not stiffness-mechanism, and the §7.23 (4) re-targeting binds the fix scope to normal-compliance representations. Any entry that uses the §7.16-aug *"gap closes across depths"* validation target without acknowledging the §7.23 (5) shallow-anchor constraint is also stale — the shallow agreement is part of the constraint: a correct fix must NOT degrade the 0.10 mm match while bending the deep regime down to Drake's ~−0.064 m/s flat.
+
 ---
 
 ## 8. Memory pointer
