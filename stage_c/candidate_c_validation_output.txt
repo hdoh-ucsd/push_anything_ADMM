@@ -1,0 +1,87 @@
+====================================================================================
+STAGE C  CANDIDATE C VALIDATION — velocity-level normal on EE-BOX-only
+(drop phi/dt for EE-BOX contact; v_target=0; no k-sweep — single config)
+====================================================================================
+  μ = 0.4  m_box = 0.2 kg
+  Δt_sub = 5.0 ms
+  Drake reference box_v_x: -0.053988 / -0.064133 / -0.064927 at 0.10/0.549/1.00 mm
+
+====================================================================================
+  configuration: baseline (rigid)
+====================================================================================
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  UNDER (0.10mm): box_v_x = -0.052685  λ_n = +3.4697  gate(p=1,f=4,a=0)=OK  lcp=OK  VL=False
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=593>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  SWEET (0.549mm): box_v_x = -0.129102  λ_n = +6.1375  gate(p=1,f=4,a=0)=OK  lcp=OK  VL=False
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=971>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  OVER (1.00mm): box_v_x = -0.203710  λ_n = +9.2003  gate(p=1,f=4,a=0)=OK  lcp=OK  VL=False
+
+====================================================================================
+  configuration: C (velocity-level, drop φ/dt)
+====================================================================================
+INFO:drake:Meshcat listening for connections at http://localhost:7003
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1341>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  UNDER (0.10mm): box_v_x = -0.036459  λ_n = +2.7070  gate(p=1,f=4,a=0)=OK  lcp=OK  VL=True
+INFO:drake:Meshcat listening for connections at http://localhost:7004
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1711>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  SWEET (0.549mm): box_v_x = -0.037591  λ_n = +2.4812  gate(p=1,f=4,a=0)=OK  lcp=OK  VL=True
+INFO:drake:Meshcat listening for connections at http://localhost:7005
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2089>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+  OVER (1.00mm): box_v_x = -0.037241  λ_n = +2.5508  gate(p=1,f=4,a=0)=OK  lcp=OK  VL=True
+
+====================================================================================
+BAND CHECK
+====================================================================================
+
+  Shallow (0.10mm): ±5% of 0.053988 → |LCS| ∈ [0.051289, 0.056687]
+  Deep    (≥0.549): ±25% of 0.064927 → |LCS| ∈ [0.048695, 0.081159]
+
+          config       0.10mm  shal?      0.549mm  deep?       1.00mm  deep?    gate
+     rigid (k=0)    -0.052685      Y    -0.129102      N    -0.203710      N      OK
+  velocity-level    -0.036459      N    -0.037591      N    -0.037241      N      OK
+
+====================================================================================
+ROUTE
+====================================================================================
+  ► ROUTE: C-UNDER-PREDICTS
+  Velocity-level FLATTENS but UNDER-predicts (v_deep ≈
+  0.0372 < Drake's 0.0649 band-lower-bound
+  0.0487). Drake's impulse needs a
+  SATURATING-PENETRATION component (finite stiffness) ON
+  TOP of velocity-damping. The fix is a finite-stiffness
+  compliant contact — NEITHER constant-k soft-LCP NOR pure
+  velocity-level.
+  NEXT (separate block): scope the saturating-stiffness /
+  compliant-contact build.
+
+====================================================================================
+HOLD: next block (live flip / saturating-stiffness build / diagnose
+      / cleaner removal) is SEPARATE.
+====================================================================================

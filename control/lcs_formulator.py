@@ -111,6 +111,17 @@ class LCSFormulator:
         else:
             self._normal_compliance_k = 0.0
 
+        # §7.26 Candidate C — velocity-level normal formulation (Anitescu-
+        # Potra style) on the EE-BOX contact only: DROP the φ/dt position-
+        # forcing term from c_lcs[SLN+ee_box_idx], leaving only the J_n·v
+        # velocity contributions. Equivalent to enforcing η_n = J_n·v_post
+        # − v_target with v_target = 0 (Stewart-Trinkle's φ/dt is the
+        # position-stabilization that drives rigid resolution). Default
+        # OFF (byte-identical pre-§7.26 behaviour). Not mutually exclusive
+        # with A's LCS_NORMAL_COMPLIANCE_K (the two flags compose).
+        _env_vl = os.environ.get("LCS_NORMAL_VELOCITY_LEVEL", "")
+        self._normal_velocity_level = bool(int(_env_vl)) if _env_vl else False
+
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
         self.n_u = plant.num_actuators()
@@ -1522,6 +1533,19 @@ class LCSFormulator:
             c_lcs[SLN:SLN + n_c] = phi / dt + c_const_v_box + c_const_v_ee
             # NOTE: c_lcs absorbs the "constant" of η linearized at (x*, u*);
             # E and H carry the gradient parts. We subtract E·x* + H·u* below.
+
+            # §7.26 Candidate C — velocity-level normal on EE-BOX only:
+            # subtract phi/dt for each EE-BOX-tagged contact (drop the
+            # position-forcing term, keep the velocity contributions). This
+            # is the Anitescu-Potra velocity-level normal formulation with
+            # v_target = 0; the rigid Stewart-Trinkle behaviour is restored
+            # when the flag is OFF (default). BOX-VERT/floor contacts keep
+            # their phi/dt (altering them re-breaks the §7.9-§7.12 vertical
+            # fix — see §7.24 (5)).
+            if self._normal_velocity_level:
+                for i_c, info in enumerate(self._last_contact_info[:n_c]):
+                    if info.get('tag', '') == 'EE-BOX':
+                        c_lcs[SLN + i_c] -= phi[i_c] / dt
 
             # λ_t rows analogously.
             E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] = dt * (J_t_box @ df_box_dboxq)
