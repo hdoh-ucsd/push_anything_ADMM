@@ -1507,6 +1507,146 @@ Any subsequent entry that revives §7.14's optimistic framing ("clean re-run wil
 
 **Next gate (corrected from §7.14):** friction audit on the CLEAN sub-stepped path (Stewart-Trinkle λ_t vs Drake compliant friction) at Δt=0.005 — the §7.13 (9) three-outcome pre-registration now applies on a defined, uncontaminated residual. Parallel/orthogonal next gate: the EE_PEN_M sweep (does an intermediate penetration land closer to 1×? rigid-vs-compliant signature). NOT actioned in this plan-doc edit.
 
+### 7.15 — augmentation (2026-06-25): routing refinement — the EE_PEN_M sign-flip is a NORMAL-COMPLIANCE signature; penetration SWEEP comes BEFORE the friction audit; friction DEMOTED; anitescu re-promotable if normal-compliance
+
+#### (1) CONFIRM §7.15's core (already banked; restated as the augment's anchor)
+
+The §7.15 core stands: HARD GATE PASS at the re-posed clean state via the **box-pin fix** (the box's 7 floating-base DOFs were silently free decision vars and were relocating the BOX to satisfy clearance until the pin landed) + per-link `panda_link4–7 ↔ box` distance constraints ≥ 5 mm + posture quadratic cost. BOTH static SignedDistance @ t=0 and dynamic ContactResults @ t=0.005 s confirm 1 pusher↔box + 1 floor↔box + **0 arm↔box** at the re-posed state. The gap PERSISTS clean: single-step **3.93×** (was 3.73× contaminated), sub-stepped **1.70×** (was 1.43× contaminated). The arm was net-DECELERATING (Drake clean Δbox_x = −2.033 mm vs contaminated −1.684 mm; arm impulse J_arm = −0.788 ≈ −J_floor_tangent = +0.806, mutually self-cancelling). Removing the arm WIDENED the gap ~7–19% — the §7.14 (7) optimistic "the whole gap may be the arm artifact / MODEL-FIXED-REAL is close" prediction is REFUTED; §7.14's audit-broken finding itself + the contact-pair-count gate STAND (the contamination was real and the precondition gate is essential — only the optimistic prediction falls). Mechanisms re-confirmed clean (drag byte-identical A=B at v_box=0; contact-burst sub-stepping closes 57% of the clean gap — same magnitude as the contaminated chain's 57%; DRAG-MATTERS-MOVING ~7% at Δt=0.005; vertical |Δz| ≤ 0.01 mm).
+
+#### (2) THE ROUTING REFINEMENT (the augment)
+
+The §7.15 (6) **EE_PEN_M sweep** observation:
+
+| EE_PEN_M | factor A (single-step) | factor D (sub-stepped) |
+|---|---|---|
+| **0.1 mm** (§7.13 apples-to-apples) | 3.93× (UNDER-predicts) | **1.70× (UNDER-predicts)** |
+| **1.0 mm** (10× deeper) | 2.01× (UNDER-predicts) | **0.48× (OVER-predicts!)** |
+
+**This sign-flip across penetration depth reframes the next gate.** Re-reading the signature:
+
+- The sub-stepped factor crosses **1× somewhere between 0.1 mm and 1 mm penetration** — there is a depth at which LCS ≈ Drake.
+- The crossing is across **EE_PEN_M = the normal penetration depth**. The variable being swept is the NORMAL-direction state (how deep is the contact), not the tangent friction.
+- Normal-force law: compliant Drake softens with depth (force ~ k·δ with k variable as area-of-contact / material law); rigid Stewart-Trinkle is a flat hard constraint (any depth gives any force needed to enforce non-penetration, weighted by LCP geometry). The crossing-of-1× across depth is a **rigid-vs-compliant NORMAL contact signature**.
+- **Auditing friction first would be the WRONG-AXIS test** — friction is a TANGENT-force question. If the ~1.70× residual is in the normal-force-law direction, characterizing tangential friction would describe a force that is not the one carrying the residual.
+
+**THE NEXT GATE SHIFTS.** A penetration SWEEP — map the gap across EE_PEN_M (e.g., 0.1 / 0.25 / 0.5 / 1.0 / 2.0 mm, with a per-depth contact-pair gate so each cell remains uncontaminated) — comes **BEFORE** the friction audit. The sweep disambiguates which axis carries the residual:
+
+| Sweep outcome | Interpretation | Next direction |
+|---|---|---|
+| Factor crosses 1× **smoothly** with depth | Residual is **NORMAL-COMPLIANCE** (rigid-vs-compliant contact-model gap) | Contact-model conversation (a compliance term, OR the anitescu reformulation). Anitescu is **NO LONGER merely parked-pending-FRICTION-BARELY** — it becomes the indicated direction. |
+| Factor stays **FLAT** at ~1.70× across depth (under-predicts at all depths) | Residual is **NOT normal-compliance** — it is in the tangent direction (or A-matrix dynamics) | Friction audit becomes the right next probe (§7.13 (9) three-outcome on the clean setup, as §7.15 originally routed). |
+| Factor crosses 1× **noisily / non-monotonically** | Mixed mechanism (some normal, some tangential, possibly LCP-degeneracy regions) | Re-decompose; may need both probes. |
+
+**The friction audit is DEMOTED.** Its scheduling is now contingent on the sweep's FLAT outcome.
+
+#### (3) STRATEGIC FRAMING — honest, encouraging
+
+- The gap is **REAL** (~1.70× sub-stepped at the apples-to-apples depth, not a phantom). §7.14's optimism is REFUTED.
+- The mechanisms are **VALIDATED on a clean rig**. §7.12 / §7.13's mechanism findings transfer quantitatively from the contaminated chain to the clean setup.
+- There is now a **SPECIFIC PHYSICAL SIGNATURE** pointing at WHAT the residual is: the EE_PEN_M sign-flip is consistent with normal-contact compliance — the rigid Stewart-Trinkle vs Drake-compliant difference. This was suspected as the hard floor all along (§7.13 (8) "going into the factorial the worry was that the 3.73× lived in the contact mechanism (the hard reformulation — anitescu)"); the sweep is the falsifiable test.
+- Not lost — we have a **FINGERPRINT**. Convergence STAYS HELD (a 1.7× model is not one to tune a solver against; if the sweep names the residual as normal-compliance, the contact-model conversation precedes the solver conversation).
+
+#### (4) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **Clean re-run GATE-PASS** (box-pin fix); gap PERSISTS clean — **3.93× single-step / 1.70× sub-stepped** (the arm artifact accounted for ~7–19%, and was net-DECELERATING).
+- **Mechanisms re-confirmed clean** (drag byte-identical at v_box=0; contact-burst ~57% closure; DRAG-MATTERS-MOVING ~7%; vertical count=4 holds).
+- **§7.14 optimism refuted; gate-finding stands** (contamination real, contact-pair-count gate essential).
+- **The EE_PEN_M sign-flip (1.70× at 0.1 mm → 0.48× at 1 mm) is a NORMAL-COMPLIANCE signature.**
+- **NEXT GATE = penetration sweep** (normal-compliance-vs-friction disambiguation) **BEFORE** the friction audit; friction DEMOTED to contingent-after; **anitescu re-promotable if sweep names normal-compliance**.
+- **Convergence:** HELD.
+
+#### Anti-stale binding (augment)
+
+Any subsequent entry that schedules the friction audit BEFORE the penetration sweep is operating on a STALE record — §7.15-aug RE-ORDERS the next-gate sequence on the basis of the EE_PEN_M sign-flip. The sweep is the falsifier of the normal-compliance hypothesis; the friction audit is the falsifier of the residual-is-tangential hypothesis. The order matters because measuring tangent forces when the residual lives in the normal-force law would mischaracterize the residual.
+
+**Next gate (corrected from §7.15 main body):** EE_PEN_M penetration sweep on the CLEAN setup (per-depth contact-pair gate, factor crossing-of-1× test). Friction audit becomes the next-after-that gate ONLY IF the sweep returns FLAT. Anitescu re-promotes from parked-pending-FRICTION-BARELY to indicated-direction IF the sweep returns CROSSES-SMOOTHLY (normal-compliance). NOT actioned in this plan-doc edit.
+
+### 7.16 — Penetration sweep: NORMAL-COMPLIANCE — factor crosses 1× SMOOTHLY at ~0.55 mm penetration (1.68× under at 0.1 mm → 0.39× over at 1 mm, monotonic, all 6 depths gate-PASS); residual is rigid-vs-compliant NORMAL contact, NOT friction; friction DEMOTED; anitescu RE-PROMOTED as indicated direction (2026-06-25)
+
+**Result: factor monotonically decreases from 1.684× (UNDER at 0.1 mm) to 0.391× (OVER at 1.0 mm), crossing 1× at ~0.549 mm. All 6 depths PASS the per-state §7.14 hard gate (STATIC SignedDistance @ t=0 AND DYNAMIC ContactResults @ t=0.005 s both show 1 pusher + 1 floor + 0 arm at every depth). The 1 mm OVER-prediction is real and clean, not arm contamination. The §7.15-aug-routed NORMAL-COMPLIANCE outcome is selected — the residual is in the rigid-vs-compliant NORMAL contact-force law, NOT friction. Friction is DEMOTED (the §7.15 friction-audit-reopens plan is overturned). Anitescu RE-PROMOTED from parked-pending-FRICTION-BARELY to the INDICATED DIRECTION.** Banked here. Commit `9e3f027` (`scripts/_stage_c_penetration_sweep.py` + `stage_c/penetration_sweep_output.txt`).
+
+#### (1) The sweep table
+
+Δt = 0.005 s, drag = 0, count = 4, sub-stepped, re-extracted; box-pinned IK clean state at each depth; Drake reference at 1 ms substeps over 0.05 s.
+
+| EE_PEN_M | gate | Drake Δbox_x (mm) | LCS Δbox_x (mm) | factor | direction |
+|---|---|---|---|---|---|
+| 0.10 mm | PASS | -2.0331 | -1.2072 | **1.684×** | UNDER |
+| 0.20 mm | PASS | -2.0144 | -1.3670 | **1.474×** | UNDER |
+| 0.30 mm | PASS | -1.8729 | -1.5051 | **1.244×** | UNDER |
+| 0.50 mm | PASS | -2.3288 | -2.0948 | **1.112×** | UNDER |
+| 0.70 mm | PASS | -2.3029 | -3.5244 | **0.653×** | **OVER** |
+| 1.00 mm | PASS | -2.2388 | -5.7311 | **0.391×** | **OVER** |
+
+**Crossing of 1× at ~0.549 mm (linear interpolation between 0.50 mm and 0.70 mm).** Monotonic across all six depths. Spread 1.293 (1.684× − 0.391×).
+
+#### (2) Per-state hard gate — all 6 depths CLEAN
+
+| Depth | static (pusher / floor / arm / other) | dynamic | d(pusher↔box) | d(floor↔box) |
+|---|---|---|---|---|
+| 0.10 mm | 1 / 1 / **0** / 0 | 1 / 1 / **0** / 0 | -0.100 mm | -0.076 mm |
+| 0.20 mm | 1 / 1 / **0** / 0 | 1 / 1 / **0** / 0 | -0.199 mm | -0.064 mm |
+| 0.30 mm | 1 / 1 / **0** / 0 | 1 / 1 / **0** / 0 | -0.281 mm | -0.046 mm |
+| 0.50 mm | 1 / 1 / **0** / 0 | 1 / 1 / **0** / 0 | -0.478 mm | -0.043 mm |
+| 0.70 mm | 1 / 1 / **0** / 0 | 1 / 1 / **0** / 0 | -0.700 mm | -0.071 mm |
+| 1.00 mm | 1 / 1 / **0** / 0 | 1 / 1 / **0** / 0 | -0.999 mm | -0.057 mm |
+
+**GATE-FAILS-DEEP is RULED OUT** — no arm-link↔box pair forms at any tested depth. The §7.15-aug concern that "the 1 mm inversion may have been a contaminated read" is laid to rest: the 1 mm OVER-prediction is clean.
+
+#### (3) The mechanism — rigid LCS vs compliant Drake
+
+Drake's box motion is stable in the **-1.87 to -2.33 mm range** across all six depths (variation ~25%). LCS sub-stepped scales nearly linearly with depth, from **-1.21 mm to -5.73 mm** (variation ~5×). The driver:
+
+- **Drake's compliant point-contact**: normal force scales with penetration depth but ALSO with a finite stiffness that saturates with area; deeper penetration → more force, but the contact softens. Net result: stable box motion across depths.
+- **LCS Stewart-Trinkle**: rigid non-penetration; λ_n adjusts to enforce zero penetration at the LCP equilibrium. Deeper "target" penetration → larger λ_n required to satisfy the complementarity → more impulse delivered. Result: roughly linear scaling with depth.
+
+**The 1× crossing at ~0.55 mm is the depth at which the rigid LCS delivers the same impulse over Δt = 0.05 s as the compliant Drake.** It is a quantitative fingerprint of the rigid-vs-compliant mismatch, not a tunable parameter of the LCS.
+
+#### (4) §7.13 burst mechanism: REINTERPRETED
+
+§7.13 (3) said the sub-stepping mechanism is "the single-step LCS AVERAGES a contact-burst over 0.05 s; the sub-stepped path captures the burst." The contact-burst language survives but its physical interpretation is now sharpened:
+
+**The burst is the rigid LCS's response to penetration.** When the LCP is solved at finer Δt, the rigid contact delivers a sharp impulse to enforce non-penetration AS IF IT IS HAPPENING NOW; Drake's compliant contact spreads the same momentum over a finite-stiffness time constant. At Δt=0.05, the LCS averages the burst into a smaller mean force (under-predicts); at Δt=0.005, the LCS resolves the burst and the magnitude is governed by depth (over- or under-predicts per depth). **The contact-burst mechanism is a DOWNSTREAM CONSEQUENCE of rigid-vs-compliant, not an independent finding.**
+
+#### (5) §7.14 finally settled
+
+§7.14's audit-broken finding (contamination real, contact-pair-count gate essential) STANDS. §7.14's optimistic framing (§7.15 already refuted: "the whole gap may be the arm") is REFUTED. §7.14's deferral of friction + anitescu pending a clean residual is now: **friction stays DEFERRED indefinitely** (the residual was never tangential to begin with), and **anitescu is RE-PROMOTED** to the indicated direction (the reference's velocity-level convex compliance reformulation is the exact structural axis the sweep names).
+
+#### (6) Convergence STAYS HELD
+
+The model is now characterized as **rigid-where-Drake-is-compliant**. Tuning the C3+ ADMM against this model would tune to a wrong contact model, not a solver-convergence issue. Convergence stays held until the contact model is brought into the compliant family (anitescu reformulation, or an explicit compliance term).
+
+#### (7) Routing consequences — friction DEMOTED, anitescu RE-PROMOTED
+
+| Item | Pre-sweep status | Post-sweep status |
+|---|---|---|
+| Friction audit | RE-OPENED at clean setup (§7.15 main body) | **DEMOTED** — residual is normal, not tangential; friction audit re-opens ONLY IF next-block characterization rules out compliance |
+| Anitescu | Parked-pending-FRICTION-BARELY (§7.13, §7.15) | **RE-PROMOTED** — the indicated direction; scope the port (separate block) |
+| Penetration sweep | NEXT GATE (§7.15-aug) | DONE — NORMAL-COMPLIANCE routed |
+| Convergence | HELD (§7.15) | **STILL HELD** — but for a sharpened reason (contact model wrong, not solver wrong) |
+| Sweet-spot depth | ~0.5–1 mm hypothesized (§7.15) | **~0.549 mm measured** — quantitative handle on the rigid-vs-compliant mismatch |
+
+#### (8) Strategic framing — confirmed
+
+The §7.15-aug strategic position was: "we now have a FINGERPRINT pointing at WHAT the residual is." The sweep confirms the fingerprint quantitatively. The §7.13 mechanism findings (drag-redherring, contact-burst, DRAG-MATTERS-MOVING, vertical count=4) all stand. The §7.11→§7.16 chain converges on a single physical statement: **the LCS contact model is rigid where Drake is compliant; the gap is in the normal-force law; the fix is to reformulate the contact model (anitescu) or add an explicit compliance term, NOT to tune friction or the solver.**
+
+#### (9) Progress-table note (for next regeneration)
+
+ADMM-solver row, HORIZONTAL/push axis:
+- **NORMAL-COMPLIANCE confirmed** — factor crosses 1× SMOOTHLY at ~0.549 mm penetration, monotonic 1.684× → 0.391× across 0.1–1.0 mm; all 6 depths gate-PASS.
+- **The residual is rigid-vs-compliant NORMAL contact**, NOT friction; the §7.15 friction-audit-reopens plan is overturned.
+- **Friction DEMOTED**; **anitescu RE-PROMOTED** as the indicated direction (the reference's velocity-level convex compliance reformulation).
+- **Sweet-spot depth measured at ~0.549 mm** — a quantitative handle on the rigid-vs-compliant mismatch.
+- **§7.13 contact-burst mechanism REINTERPRETED**: a downstream consequence of rigid-vs-compliant, not an independent finding.
+- **Convergence:** HELD — model is rigid-where-Drake-is-compliant; contact-model reformulation precedes solver tuning.
+
+#### Anti-stale binding
+
+Any subsequent entry that schedules the friction audit at this stage is operating on a STALE record — §7.16 demotes friction to contingent-only-if-compliance-is-ruled-out. Any entry that treats anitescu as "parked-pending-FRICTION-BARELY" (§7.13 / §7.15 language) is also stale — §7.16 promotes anitescu to the indicated direction. The §7.13 contact-burst mechanism may still be cited as a sub-stepping-resolves-the-burst statement, but the burst itself is now identified as the rigid-LCS response to enforced non-penetration, not a property of the contact independent of the model class.
+
+**Next gate (corrected from §7.15-aug):** characterize the normal-compliance gap quantitatively (sub-step force/velocity profile vs Drake's compliant force history at the SAME state), then scope the anitescu port direction (a separate block — not just a probe, an implementation scoping decision). Friction audit re-opens only if characterization rules out compliance. NOT actioned in this plan-doc edit.
+
 ---
 
 ## 8. Memory pointer
