@@ -1,0 +1,248 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+INFO:drake:Meshcat listening for connections at http://localhost:7003
+INFO:drake:Meshcat listening for connections at http://localhost:7004
+INFO:drake:Meshcat listening for connections at http://localhost:7005
+========================================================================
+STAGE C  RE-POSE PROBE  (Path A: re-pose + HARD GATE + clean re-run)
+========================================================================
+  μ = 0.4
+  EE_POS = [0.0749 0.     0.05  ], EE_VEL_X = -0.05
+  Arm-box clearance: ['panda_link4', 'panda_link5', 'panda_link6', 'panda_link7'] geoms >= 5.0 mm from box geoms
+
+────────────────────────────────────────────────────────────────────────
+STEP 1 — RE-POSE
+────────────────────────────────────────────────────────────────────────
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+  ► Re-pose succeeded with seed index 0.
+
+────────────────────────────────────────────────────────────────────────
+STEP 2 — HARD GATE (Drake contact-pair set check)
+────────────────────────────────────────────────────────────────────────
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+  STATIC (SignedDistance) pairs at re-posed state (within 10 mm):
+    floor↔box: d=-0.077mm
+    pusher↔box: d=-0.100mm
+  STATIC summary: 1 pusher↔box, 1 floor↔box, 0 ARM↔box (ARTIFACT), 0 other
+
+  DYNAMIC (ContactResults) pairs at t=0.005s:
+    floor↔box: world
+    pusher↔box: pusher
+  DYNAMIC summary: 1 pusher↔box, 1 floor↔box, 0 ARM↔box (ARTIFACT), 0 other
+
+  ► HARD GATE: PASS — STATIC + DYNAMIC arm↔box both = 0; clean setup (pusher + floor only).
+
+────────────────────────────────────────────────────────────────────────
+STEP 3 — CLEAN RE-RUN (§7.11/§7.12/§7.13 quantitative)
+────────────────────────────────────────────────────────────────────────
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+  Drake reference (Δt=0.001 substeps, 0.05 s total):
+    Δbox_x = -2.0331 mm
+    Δbox_z = -0.0096 mm
+
+  LCS cells (Δt × drag × extraction):
+    cell       Δt  drag      extr   Δbox_x (mm)   Δbox_z (mm)   factor
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1388>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+    A        0.05    10    single       -0.5176       +0.0100    3.93×
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=1758>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+    B        0.05     0    single       -0.5176       +0.0100    3.93×
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+INFO:drake:Meshcat listening for connections at http://localhost:7006
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2128>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+    C       0.005    10    re-ext       -1.1555       -0.0000    1.76×
+  [setup] arm geoms (link4-8): 26  box geoms: 1  → 26 pair constraints
+  [IK seed 0] IK OK
+      q_arm        = [ 0.9803  0.9425  0.4468 -1.6122  0.0856  1.9981  0.785 ]
+      p_pusher     = [ 7.491e-02 -1.000e-05  5.001e-02]  (target [0.0749 0.     0.05  ])
+      p_box        = [1.000e-05 1.000e-05 4.999e-02]
+      center-dist  = 74.900mm  sphere-box rough = -0.100mm
+      EE_err  = 0.017mm   d_pusher_box =  -0.100mm   d_floor_box  =  -0.077mm
+      min_d_arm_box   = +18.913mm (panda_link7)   min_d_arm_floor = +41.797mm
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=2498>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+    D       0.005     0    re-ext       -1.1988       -0.0000    1.70×
+
+────────────────────────────────────────────────────────────────────────
+STEP 4 — READ + ROUTE
+────────────────────────────────────────────────────────────────────────
+
+  Drake Δbox_x          : -2.0331 mm  (clean reference)
+  LCS single-step (A/B) : -0.5176 mm / -0.5176 mm
+  LCS sub-stepped (C/D) : -1.1555 mm / -1.1988 mm
+
+  Δt-MAIN-EFFECT (avg over drag): -0.6596 mm
+  DRAG-MAIN-EFFECT @Δt=0.05    : +0.0000 mm (should be ~0; v_box=0)
+  DRAG-MAIN-EFFECT @Δt=0.005   : -0.0432 mm (drag re-enters at v_box≠0)
+
+  Per-cell deviation from 1× (smaller = better):
+    cell A: factor 3.93×  deviation 2.93  (UNDER-predicts Drake)
+    cell B: factor 3.93×  deviation 2.93  (UNDER-predicts Drake)
+    cell C: factor 1.76×  deviation 0.76  (UNDER-predicts Drake)
+    cell D: factor 1.70×  deviation 0.70  (UNDER-predicts Drake)
+  Best cell (smallest deviation): D (deviation 0.70, factor 1.70×)
+  Vertical sanity (max |Δz|)  : 0.0100 mm (should be ~0; box held by floor)
+
+  §7.13 comparison (contaminated → clean):
+    single-step: 3.73× (contam) → 3.93× (clean) — cleared -7% of gap
+    sub-stepped: 1.43× (contam) → 1.70× (clean) — now under-predicts
+
+  ► ROUTE: GAP-PERSISTS-LARGE
+  The clean-state gap is still large (best deviation 0.70). There is a
+  real model-vs-plant mismatch even after removing contamination. The Δt
+  decomposition reruns on solid ground; IF a residual remains after Δt,
+  the friction audit finally has a defined, uncontaminated residual to
+  chase.
+
+========================================================================
+HOLD: next block (re-decompose / re-promote / friction) is SEPARATE.
+========================================================================
