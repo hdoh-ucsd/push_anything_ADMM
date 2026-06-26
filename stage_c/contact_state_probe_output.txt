@@ -1,0 +1,127 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+INFO:drake:Meshcat listening for connections at http://localhost:7001
+INFO:drake:Meshcat listening for connections at http://localhost:7002
+INFO:drake:Meshcat listening for connections at http://localhost:7003
+INFO:drake:Meshcat listening for connections at http://localhost:7004
+INFO:drake:Meshcat listening for connections at http://localhost:7005
+INFO:drake:Meshcat listening for connections at http://localhost:7006
+INFO:drake:Meshcat listening for connections at http://localhost:7007
+INFO:drake:Meshcat listening for connections at http://localhost:7008
+INFO:drake:Meshcat listening for connections at http://localhost:7009
+INFO:drake:Meshcat listening for connections at http://localhost:7010
+INFO:drake:Meshcat listening for connections at http://localhost:7011
+====================================================================================
+STAGE C  CONTACT-STATE PROBE  (mechanism name: COMPLIANCE vs INTERMITTENT)
+====================================================================================
+  μ = 0.4, Drake 1ms ticks × 51 samples over 0.05s
+  Sweep EE_PEN_M ∈ [0.1, 0.2, 0.3, 0.5, 0.7, 1.0] mm
+  Discriminator: ContactResults PRESENCE for pusher↔box pair (NOT force value).
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.10 mm
+────────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm=0)
+  pusher↔box PRESENCE per 1ms (51 ticks 0..50):
+    [011111111000011111111110111111111111101111111111111]
+  pusher↔box signed-distance (mm) at every 5ms:
+    -0.100 -0.038 +0.028 -0.021 -0.008 -0.002 -0.012 -0.004 -0.013 -0.013 -0.003
+  pusher↔box |F| (N) at every 5ms:
+     0.00  9.24  0.00  6.68  3.57  0.95  8.27  2.33  5.63  7.44  1.85
+  engaged ticks: 44/51  (86.3%)  longest run: 13
+  disengages: 3  re-engages: 4
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.20 mm
+────────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm=0)
+  pusher↔box PRESENCE per 1ms (51 ticks 0..50):
+    [011111111111111111111111111111111101111111111111111]
+  pusher↔box signed-distance (mm) at every 5ms:
+    -0.199 -0.117 -0.030 -0.012 -0.003 -0.008 -0.012 -0.007 -0.000 -0.011 -0.011
+  pusher↔box |F| (N) at every 5ms:
+     0.00  7.51  3.48  7.24  1.92  3.75  6.51  4.14  0.81  6.78  6.08
+  engaged ticks: 49/51  (96.1%)  longest run: 33
+  disengages: 1  re-engages: 2
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.30 mm
+────────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm=0)
+  pusher↔box PRESENCE per 1ms (51 ticks 0..50):
+    [011111111111111111111111110011111111111111111111111]
+  pusher↔box signed-distance (mm) at every 5ms:
+    -0.281 -0.193 -0.101 -0.034 -0.010 +0.000 -0.012 -0.009 -0.004 -0.015 -0.014
+  pusher↔box |F| (N) at every 5ms:
+     0.00  9.39  5.27  7.53  6.50  0.56  6.21  5.00  2.13  9.21  8.74
+  engaged ticks: 48/51  (94.1%)  longest run: 25
+  disengages: 1  re-engages: 2
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.50 mm
+────────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm=0)
+  pusher↔box PRESENCE per 1ms (51 ticks 0..50):
+    [011111111111111111111111111111100001111111111111111]
+  pusher↔box signed-distance (mm) at every 5ms:
+    -0.478 -0.383 -0.286 -0.193 -0.099 -0.026 +0.001 -0.004 -0.014 -0.017 -0.005
+  pusher↔box |F| (N) at every 5ms:
+     0.00 16.30  0.49 10.05  0.47 10.58  0.60  2.26  9.57 11.12  2.64
+  engaged ticks: 46/51  (90.2%)  longest run: 30
+  disengages: 1  re-engages: 2
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 0.70 mm
+────────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm=0)
+  pusher↔box PRESENCE per 1ms (51 ticks 0..50):
+    [011111111111111111111111111111111111111110000111110]
+  pusher↔box signed-distance (mm) at every 5ms:
+    -0.700 -0.603 -0.506 -0.408 -0.314 -0.219 -0.125 -0.045 +0.004 -0.010 -0.034
+  pusher↔box |F| (N) at every 5ms:
+     0.00  7.89 10.07  0.46  9.77 15.65  0.52  7.74  0.44  5.50  0.00
+  engaged ticks: 45/51  (88.2%)  longest run: 40
+  disengages: 2  re-engages: 2
+
+────────────────────────────────────────────────────────────────────────────────────
+DEPTH EE_PEN_M = 1.00 mm
+────────────────────────────────────────────────────────────────────────────────────
+  GATE PASS (pusher=1, floor=1, arm=0)
+  pusher↔box PRESENCE per 1ms (51 ticks 0..50):
+    [011111111111111111111111111111111111111111111111111]
+  pusher↔box signed-distance (mm) at every 5ms:
+    -0.999 -0.902 -0.802 -0.705 -0.607 -0.510 -0.415 -0.317 -0.223 -0.134 -0.050
+  pusher↔box |F| (N) at every 5ms:
+     0.00 12.88  2.42  2.22  5.06  4.95 12.62  5.91  2.18 18.17  9.86
+  engaged ticks: 50/51  (98.0%)  longest run: 50
+  disengages: 0  re-engages: 1
+
+====================================================================================
+SUMMARY  (per-depth contact-state continuity)
+====================================================================================
+    EE_PEN     status   engaged %   longest run  disengage  re-engage
+    0.10mm      CLEAN       86.3%            13          3          4
+    0.20mm      CLEAN       96.1%            33          1          2
+    0.30mm      CLEAN       94.1%            25          1          2
+    0.50mm      CLEAN       90.2%            30          1          2
+    0.70mm      CLEAN       88.2%            40          2          2
+    1.00mm      CLEAN       98.0%            50          0          1
+
+====================================================================================
+ROUTE
+====================================================================================
+  engaged fraction range: 86.3% — 98.0%
+  disengage count range : 0 — 3
+  longest run range     : 13 — 50
+  all continuous (zero disengages)? : NO
+  all intermittent (≥2 disengages)? : NO
+  monotonic w/ depth?               : NO  (spread 3)
+
+  ► ROUTE: AMBIGUOUS / MIXED
+  The contact-state pattern is mixed — some depths continuous, some
+  intermittent, no monotonic depth dependence. May need finer time-
+  resolution OR a penetration-depth time series (continuous signed-
+  distance) rather than binary contact indicator. Re-examine.
+
+====================================================================================
+HOLD: next block (mechanism-fix scoping / re-probe / etc) is SEPARATE.
+====================================================================================
