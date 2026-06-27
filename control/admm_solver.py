@@ -855,7 +855,12 @@ class C3Solver:
         import os as _os_d
         _dump_path = _os_d.environ.get("PUSHA_ADMM_DUMP", "")
         _dump_at   = int(_os_d.environ.get("PUSHA_ADMM_DUMP_AT", "50"))
-        if _dump_path and not getattr(self, "_admm_dump_done", False):
+        _dump_min_iter = int(_os_d.environ.get("PUSHA_ADMM_DUMP_MIN_ITER", "20"))
+        # Filter: skip surrogate sample-eval calls (admm_iter < 20); count
+        # only full c3-mode solves. The disambiguation needs the FULL path.
+        if (_dump_path
+                and not getattr(self, "_admm_dump_done", False)
+                and admm_iter >= _dump_min_iter):
             self._admm_dump_call = getattr(self, "_admm_dump_call", 0) + 1
             if self._admm_dump_call == _dump_at:
                 np.savez(
