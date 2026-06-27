@@ -1,0 +1,35 @@
+====================================================================================
+§7.34 FAITHFUL-DESIRED-STATE FEEDFORWARD-ACCEL — STRUCTURAL SANITY
+====================================================================================
+
+Test A — helper synthetic computation (offline):
+  case A (normal slowing, |a|=8 m/s², no clip)            : a_raw=[7.999999999999998, 0.0, 0.0]  a_clip=[7.999999999999998, 0.0, 0.0]  → PASS
+  case B (divergent jump, |a|=60 → clipped to 50 m/s²)    : a_raw=[60.0, 0.0, 0.0]  a_clip=[50.0, 0.0, 0.0]  → PASS
+  case C (NaN in v → np.isfinite fails → helper returns None): a_raw=[nan, 0.0, 0.0]  → PASS
+
+Test B — a_ff FLOWS into a_des at qp_builder.py:140
+        (a_des = a_ff + Kp·p_err + Kd·v_err)
+  a_ff = None   → a_des_x = -2.0000  (expected -2.0 — PD-only c893af3 path)
+  a_ff = (0,0,0)→ a_des_x = -2.0000  (expected -2.0 — 0 + PD = PD)
+  a_ff = (5,0,0)→ a_des_x = +3.0000  (expected +3.0 — shifted by a_ff)
+  → flow check: PASS
+
+Test C — QP feasible + FINITE for a_ff=None, (0,0,0), (5,0,0):
+  feasibility: r_none=True  r_zero=True  r_pos=True  → PASS
+  finite u_x : r_none=-1.9802  r_zero=-1.9802  r_pos=+2.9702  → PASS
+
+Test D — byte-identical default: a_ff = None → PD-only a_des
+        (i.e. matches c893af3 §7.33's case where the path did
+         not yet accept a_ff at all — passing None must not alter)
+  a_ff=None and a_ff=(0,0,0) produce same a_des AND same u: PASS
+  helper gate: not _reconcile_approach → None → byte-identical: PASS (structurally — `if not getattr(self, '_reconcile_approach', False): return None` at sampling_based_c3_controller.py:739)
+
+====================================================================================
+VERDICT
+====================================================================================
+  (i)  a_ff FINITE+BOUNDED under a_max=50, clipped on divergence, None on NaN : PASS
+  (ii) a_ff FLOWS into a_des via additive term (qp_builder.py:140) : PASS
+  (iii) OSC command finite + QP feasible across a_ff cases         : PASS
+  (iv) byte-identical default (a_ff=None → PD-only c893af3 path)   : PASS
+
+  STRUCTURAL SANITY: PASS — proceed to live sim

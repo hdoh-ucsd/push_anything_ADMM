@@ -130,6 +130,7 @@ class OperationalSpaceController:
                        J_n:          Optional[np.ndarray] = None,
                        J_t:          Optional[np.ndarray] = None,
                        lambda_des:   Optional[np.ndarray] = None,
+                       a_ee_desired: Optional[np.ndarray] = None,
                        ) -> Tuple[np.ndarray, dict]:
         """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict)."""
         plant = self.plant
@@ -205,6 +206,7 @@ class OperationalSpaceController:
             F_ff_external=F_ff_for_qp, solver=self._solver,
             use_force_tracking=self.use_force_tracking,
             lambda_des=lambda_des,
+            a_ff=a_ee_desired,
         )
         solve_ms = (time.perf_counter() - t0) * 1000.0
         self._total_solve_ms += solve_ms
@@ -247,12 +249,15 @@ class OperationalSpaceController:
 
         lam_des_arr = (np.zeros(3) if lambda_des is None
                        else np.asarray(lambda_des, dtype=float).reshape(3))
+        a_ff_arr = (np.zeros(3) if a_ee_desired is None
+                    else np.asarray(a_ee_desired, dtype=float).reshape(3))
 
         diag = dict(
             p_ee_now    = p_ee_now,
             v_ee_now    = v_ee_now,
             x_err       = p_err,
             xdot_err    = v_err,
+            a_ff        = a_ff_arr,
             tau_imp     = u_opt,      # legacy alias kept for downstream loggers
             tau_ff      = tau_ff_equiv,
             tau_out     = u_opt,

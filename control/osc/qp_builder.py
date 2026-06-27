@@ -88,6 +88,7 @@ def build_and_solve_qp(
     solver:         Optional[OsqpSolver] = None,
     use_force_tracking: bool = False,
     lambda_des:     Optional[np.ndarray] = None,   # (3,) Cartesian force command for λ_ext tracking
+    a_ff:           Optional[np.ndarray] = None,   # (3,) Cartesian feedforward acceleration (yddot_des analog)
 ) -> Tuple[np.ndarray, np.ndarray, bool, str]:
     """Build and solve the OSC QP for one control tick.
 
@@ -137,7 +138,16 @@ def build_and_solve_qp(
     prog.AddBoundingBoxConstraint(-limits.tau_max, limits.tau_max, u)
 
     # --- Cost 1: Cartesian tracking ‖J_v v̇ + J̇_v v − a_des‖² ---
-    a_des = gains.Kp_cart * p_err + gains.Kd_cart * v_err   # (3,)
+    # Reference's `yddot_command = yddot_des + Kp · error_y + Kd · error_ydot`
+    # (osc_tracking_data.cc:113-116). The port previously matched only the
+    # PD half; `a_ff` adds the `yddot_des` feedforward term so the port's
+    # a_des is PD + feedforward (faithful to the reference). When a_ff is
+    # None the PD-only form is preserved byte-identically.
+    if a_ff is None:
+        a_des = gains.Kp_cart * p_err + gains.Kd_cart * v_err   # (3,)
+    else:
+        a_ff_v = np.asarray(a_ff, dtype=float).reshape(3)
+        a_des = a_ff_v + gains.Kp_cart * p_err + gains.Kd_cart * v_err
     # residual_track = J_v @ vdot + Jdot_v_v - a_des
     # ‖residual‖² = vdot.T J_v.T J_v vdot + 2 vdot.T J_v.T (Jdot_v_v - a_des)
     #               + const
