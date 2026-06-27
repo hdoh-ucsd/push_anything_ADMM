@@ -240,11 +240,16 @@ def main():
                              "(default: config/sampling_c3_params.yaml).\n"
                              "Cannot be combined with --cost-bias.")
     parser.add_argument("--solver", choices=["c3", "c3plus"], default="c3",
-                        help="Inner ADMM solver. c3=Aydinoglu 2024 (default), "
-                             "c3plus=Bui 2026 with slack variable η = E x + F λ "
-                             "+ H u + c (eq. 5c) and Bui eq (12) componentwise "
-                             "δ-projection. v1 implements normal-direction "
-                             "complementarity only — friction LCS is a TODO.")
+                        help="Inner ADMM solver. c3=Aydinoglu 2024 (default; "
+                             "DEPRECATED — gated diagnostic, shares the LCS "
+                             "with c3plus and carries the current contact "
+                             "model, but the Lorentz-cone projection is no "
+                             "longer the recommended path; prefer c3plus). "
+                             "c3plus=Bui 2026 with slack variable η = E x + "
+                             "F λ + H u + c (eq. 5c) and Bui eq (12) "
+                             "componentwise δ-projection. v1 implements "
+                             "normal-direction complementarity only — "
+                             "friction LCS is a TODO.")
     parser.add_argument("--c3plus-projection", choices=["componentwise", "lcp"],
                         default="componentwise",
                         help="C3+ δ-step projection variant. "
