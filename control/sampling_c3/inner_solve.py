@@ -558,6 +558,18 @@ class InnerSolver:
                 "Parallel sample evaluation not yet implemented. "
                 "Profile the sequential K=4 baseline first.")
 
+        # Delta-1 audit (read-only, default-OFF): when PUSHA_SAMP_LCS_DUMP=1,
+        # emit a [SAMP-LCS] line per sample with sample_idx, sample_pos, the
+        # actually-resolved EE pose the LCS was linearized at (ee_pos_resolved),
+        # n_c, phi_min, and a J_n hash. Discriminator: if (n_c, phi_min,
+        # J_n_hash) is IDENTICAL across samples within one dispatch and
+        # ee_pos_resolved is also identical, the port shares ONE LCS at the
+        # current EE pose across all samples — the Delta-1 gap. If they
+        # differ, the port rebuilds per-sample. No behavior change otherwise.
+        import os as _os_d1
+        import hashlib as _hl_d1
+        _samp_lcs_dump = bool(_os_d1.environ.get("PUSHA_SAMP_LCS_DUMP", ""))
+
         results: list[SampleResult] = []
         for k, p in enumerate(samples):
             r = self.evaluate_sample(
@@ -573,6 +585,25 @@ class InnerSolver:
                 suppress_io   = (k != 0),   # k=0 is the "real" diagnostic stream
                 target_yaw    = target_yaw,
             )
+            if _samp_lcs_dump:
+                if r.J_n is not None:
+                    _n_c   = int(r.J_n.shape[0])
+                    _phi_m = (float(np.min(r.phi))
+                              if r.phi is not None and r.phi.size > 0
+                              else float("nan"))
+                    _jh    = _hl_d1.sha1(r.J_n.tobytes()).hexdigest()[:8]
+                    _er    = r.ee_pos_resolved
+                    print(f"[SAMP-LCS] sample_idx={k} "
+                          f"is_current={int(r.is_current_ee)} "
+                          f"sample_pos=({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f}) "
+                          f"ee_pos_resolved=({_er[0]:+.4f},{_er[1]:+.4f},"
+                          f"{_er[2]:+.4f}) "
+                          f"n_c={_n_c} phi_min={_phi_m:+.5f} "
+                          f"J_n_hash={_jh}", flush=True)
+                else:
+                    print(f"[SAMP-LCS] sample_idx={k} "
+                          f"sample_pos=({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f}) "
+                          f"n_c=NULL (LCS not built)", flush=True)
             results.append(r)
         return results
 
