@@ -646,7 +646,17 @@ class SamplingC3MPC:
           * planner has no last_x_seq (cold start, or free mode where
             the IK tracker — not the C3 solver — drives p_ee_des)
         """
-        if not getattr(self.params, "use_velocity_feedforward", False):
+        # §7.32 — FAITHFUL-DESIRED-STATE: under REF_RECONCILE_APPROACH the
+        # planner's predicted velocity is fed undamped (alpha = 1.0) to
+        # match the reference's `ydot_des = traj.EvalDerivative(t, 1)`
+        # (osc_tracking_data.cc:87-111). Without v_des, the §7.31 sim ran
+        # v_des = 0 → Kd · v_err damps against zero → Kp_cart = 400 slammed
+        # the EE into the box, generating 231 N contact and diverging
+        # (obj_z → −78 m). The velocity feedforward closes the over-drive
+        # branch. Bypasses the use_velocity_feedforward gate (still
+        # honoured outside the reconcile flag).
+        if (not getattr(self.params, "use_velocity_feedforward", False)
+                and not getattr(self, "_reconcile_approach", False)):
             return None
         x_seq = getattr(self.base_mpc, "last_x_seq", None)
         if x_seq is None or x_seq.shape[0] < 2:
@@ -657,7 +667,12 @@ class SamplingC3MPC:
         if bool(getattr(self.base_mpc, "use_ee_space", False)):
             v_ee_raw = x_seq[1][16:19].copy()
             v_max = float(self.params.velocity_feedforward_v_max)
-            alpha = float(self.params.velocity_feedforward_alpha)
+            # Under reconcile, undamped (alpha = 1.0) to match the
+            # reference's raw EvalDerivative; the v_max clip stays as
+            # a defensive bound against numerical garbage (planner
+            # divergence, NaN, etc.).
+            alpha = (1.0 if getattr(self, "_reconcile_approach", False)
+                     else float(self.params.velocity_feedforward_alpha))
             v_clipped = np.clip(v_ee_raw, -v_max, v_max)
             return alpha * v_clipped
         # R^7 path (legacy): finite-difference + J · v on planner knot 1.
@@ -2645,9 +2660,15 @@ class SamplingC3MPC:
             else:
                 _exec_lam_n, _exec_lam_t = _lam_n, _lam_t
                 _exec_Jn, _exec_Jt = _Jn, _Jt
-            # §7.31 — override _p_ee_des to the sampled face point when
-            # REF_RECONCILE_APPROACH is set; pass-through otherwise.
-            _p_ee_des = self._reconcile_surface_target(_p_ee_des, obj_xy)
+            # §7.32 — FAITHFUL-DESIRED-STATE: the §7.31 static surface-point
+            # override (a) was the over-drive failure mode (231 N, obj_z
+            # → −78 m). Dropped here; _p_ee_des stays as the planner's
+            # first-knot prediction (_x_seq[1][7:10] above) which IS the
+            # contact-establishment plan when always-on + proxy off (the
+            # plan evolves toward contact over the horizon and is
+            # goal-aware). _v_ee_des already carries the planner's
+            # predicted EE velocity at alpha = 1.0 under reconcile (see
+            # _velocity_feedforward_from_xseq).
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
@@ -2824,8 +2845,11 @@ class SamplingC3MPC:
                 _p_des, _v_des, _done = self._pwl_traj.eval(_sim_t)
                 _p_ee_des = _p_des
                 _v_ee_des = _v_des
-                # §7.31 — surface target override (free / PWL path).
-                _p_ee_des = self._reconcile_surface_target(_p_ee_des, obj_xy)
+                # §7.32 — FAITHFUL-DESIRED-STATE: static surface override
+                # dropped (free / PWL path); the PWL trajectory's own
+                # (_p_des, _v_des) is the free-mode analog of the
+                # reference's repos_execution_lcm_traj_ (analytic
+                # piecewise-linear path with its own velocity).
                 u_imp, imp_diag = self.executor.compute_torque(
                     current_q, current_v, plant_ctx,
                     p_ee_desired = _p_ee_des,
@@ -2846,8 +2870,13 @@ class SamplingC3MPC:
                     _p_ee_des = self._current_repos_target
                 else:
                     _p_ee_des = ee_pos_now
-                # §7.31 — surface target override (free / legacy path).
-                _p_ee_des = self._reconcile_surface_target(_p_ee_des, obj_xy)
+                # §7.32 — FAITHFUL-DESIRED-STATE: static surface override
+                # dropped (free / legacy path); _p_ee_des stays as the IK
+                # tracker's waypoint (or ee_pos_now if no waypoint). The
+                # legacy free path passes v_ee_desired = None (target
+                # velocity 0) — acceptable per §7.32 spec (free-mode
+                # over-drive is not the failure mode; c3-mode penetration
+                # is).
                 u_imp, imp_diag = self.executor.compute_torque(
                     current_q, current_v, plant_ctx,
                     p_ee_desired = _p_ee_des,

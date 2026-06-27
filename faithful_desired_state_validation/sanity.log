@@ -1,0 +1,33 @@
+====================================================================================
+§7.32 FAITHFUL-DESIRED-STATE — STRUCTURAL SANITY
+====================================================================================
+
+Test A — static surface-point override DROPPED from all 3 call sites:
+  zero live `_p_ee_des = self._reconcile_surface_target(...)` calls in the controller: PASS
+
+Test B — velocity feedforward helper (offline reconstruction):
+  reconcile ON  + |v_raw| ≤ v_max  → undamped (alpha=1.0)   = [-0.3, 0.1, 0.0]  → PASS
+  reconcile ON  + |v_raw| > v_max  → clipped at ±v_max=1.5 = [-1.5, 0.1, 0.0]  → PASS
+  reconcile OFF + default alpha=0.5 (gate respected)        = [-0.15, 0.05, 0.0]  → PASS
+
+Test C — v_des actually FLOWS into the PD law (qp_builder.py:140):
+  v_des = 0.0   (§7.31 over-drive case): a_des_x = -2.0000
+  v_des = -0.30 (faithful, approach)    : a_des_x = -14.0000
+  expected: v_des=0 → −2.0, v_des=−0.30 → −14.0 (Kd · 0.30 added) → PASS
+  both QPs feasible: PASS
+  both u FINITE      : PASS
+
+Test D — byte-identical default (REF_RECONCILE_APPROACH unset):
+  flag OFF: no static override call; velocity_feedforward gated by use_velocity_feedforward (default False); position-OSC and proxy gates default OFF — byte-identical pre-ace3625: PASS
+
+====================================================================================
+VERDICT
+====================================================================================
+  (a) static override dropped from all 3 sites         : PASS
+  (b) reconcile ON → planner v fed undamped + v_max-clipped : PASS
+  (c) reconcile OFF → use_velocity_feedforward gate respected: PASS
+  (d) v_des FLOWS into a_des via v_err (Kd_cart · v_err)    : PASS
+  (e) QP feasible + FINITE for both v_des = 0 and approach  : PASS
+  (f) byte-identical default (flag OFF)                     : PASS
+
+  STRUCTURAL SANITY: PASS — proceed to live sim
