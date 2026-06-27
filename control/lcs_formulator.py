@@ -122,6 +122,28 @@ class LCSFormulator:
         _env_vl = os.environ.get("LCS_NORMAL_VELOCITY_LEVEL", "")
         self._normal_velocity_level = bool(int(_env_vl)) if _env_vl else False
 
+        # §7.27 Candidate E — clamped-φ/dt saturating-stiffness on EE-BOX
+        # only: cap the penetration-rate magnitude |phi|/dt at v_cap. For
+        # shallow contact (|phi|/dt ≤ v_cap), unchanged (rigid). For deep
+        # contact, the rigid LCP drive is reduced to -v_cap, allowing
+        # partial penetration to persist (depth-asymmetric saturation —
+        # NOT a β-scaling, dodges the §7.25-(5)(ii) β-trap). In the
+        # signed-distance convention used here phi < 0 at penetration,
+        # so |phi|/dt ≤ v_cap is equivalent to phi/dt ≥ -v_cap, and the
+        # clamp is phi_eff/dt = max(phi/dt, -v_cap). Env LCS_NORMAL_PHI_CLAMP
+        # = v_cap in m/s; default unset / non-positive = OFF (byte-identical
+        # pre-§7.27 behaviour). Independent diagnostic from A and C — only
+        # one should be enabled at a time during validation.
+        _env_pc = os.environ.get("LCS_NORMAL_PHI_CLAMP", "")
+        self._normal_phi_clamp_v_cap = None
+        if _env_pc:
+            try:
+                v = float(_env_pc)
+                if v > 0.0:
+                    self._normal_phi_clamp_v_cap = v
+            except ValueError:
+                pass
+
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
         self.n_u = plant.num_actuators()
@@ -1533,6 +1555,23 @@ class LCSFormulator:
             c_lcs[SLN:SLN + n_c] = phi / dt + c_const_v_box + c_const_v_ee
             # NOTE: c_lcs absorbs the "constant" of η linearized at (x*, u*);
             # E and H carry the gradient parts. We subtract E·x* + H·u* below.
+
+            # §7.27 Candidate E — clamped-φ/dt saturating-stiffness on EE-BOX
+            # only. Replace phi[i_c]/dt with max(phi[i_c]/dt, -v_cap) — i.e.
+            # cap |phi|/dt at v_cap. Shallow contacts (|phi|/dt ≤ v_cap) are
+            # unchanged (rigid); deep contacts get a softened drive so the
+            # LCP no longer demands an unbounded next-step separation
+            # velocity. depth-ASYMMETRIC by construction (rigid below cap,
+            # saturated above) — NOT a β-scaling. BOX-VERT/floor contacts
+            # untouched (preserves the §7.9-§7.12 vertical fix). Default
+            # OFF (byte-identical pre-§7.27 behaviour).
+            if self._normal_phi_clamp_v_cap is not None:
+                v_cap = self._normal_phi_clamp_v_cap
+                for i_c, info in enumerate(self._last_contact_info[:n_c]):
+                    if info.get('tag', '') == 'EE-BOX':
+                        phi_over_dt = phi[i_c] / dt
+                        clamped = max(phi_over_dt, -v_cap)
+                        c_lcs[SLN + i_c] += (clamped - phi_over_dt)
 
             # §7.26 Candidate C — velocity-level normal on EE-BOX only:
             # subtract phi/dt for each EE-BOX-tagged contact (drop the
