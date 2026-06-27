@@ -2620,6 +2620,107 @@ ADMM-solver row, **HORIZONTAL/push axis**: Candidate C (velocity-level, drop φ/
 
 Any subsequent entry that frames the C-UNDER-PREDICTS result as evidence that the velocity-level formulation should be abandoned is operating on a STALE record — §7.26 (3) establishes that C is one of TWO load-bearing anchors for the saturating-stiffness shape; it is NOT a failed fix, it is a diagnostic anchor that pins the velocity-damping contribution. Any entry that escalates to a multi-parameter compliance build without first measuring the §7.26 (4) one-parameter clamp is the §7.21 *"3-of-4 ≠ 4-of-4"* failure mode again — the clamp is predicted to pass on the strength of two MEASURED endpoints (not pure extrapolation), and parsimony binds the build scope. Any entry that constructs Candidate E as a β-scaling of φ/dt is the §7.25 (5) (ii) staleness mode — β-scaling is depth-uniform and repeats A's failure; the clamp's piecewise structure (rigid below cap, saturated above) is its load-bearing feature, not the cap value. Any entry that pre-commits to the predicted v_cap = 0.034 without measuring the deep-geometry slope under partial clamping is the §7.26 (4) caveat ignored — the LCP active set could shift under clamping, and the prediction must be measured before being trusted.
 
+### 7.27 — Candidate E (clamped-φ/dt, v_cap=0.034, EE-BOX-only, `LCS_NORMAL_PHI_CLAMP` default-OFF) BUILT (`c5314ae`) + validated E-PASSES: anchors 3/3 within band at v_cap=0.034 (0.10/0.549/1.00 mm); held-out 0.25/0.75 mm matched Drake to 1.6%/0.4% (NOT used to fit v_cap — recovered the saturation SHAPE, not just anchor magnitudes); §7.25 linear-fit prediction matched to 4 decimals; gate clean every cell; rigid baseline byte-identical. The clamp is the validated contact-model fix. Convergence HELD (2026-06-26)
+
+Artifacts on disk (committed `c5314ae`): build at `control/lcs_formulator.py:96-145` (env `LCS_NORMAL_PHI_CLAMP`, default unset = OFF, value = v_cap in m/s) + `:1537-1551` (one-line additive delta `c_lcs[SLN+i_c] += max(phi[i_c]/dt, -v_cap) - phi[i_c]/dt` for every EE-BOX-tagged contact, AFTER the rigid `c_lcs[SLN] = phi/dt + c_const` assignment, BEFORE Candidate C's subtraction). Validation script `scripts/_stage_c_candidate_e_validation.py`, output `candidate_e_validation/run.log`. BOX-VERT / floor φ/dt UNTOUCHED (preserves §7.9–§7.12 vertical fix); A's `LCS_NORMAL_COMPLIANCE_K` and C's `LCS_NORMAL_VELOCITY_LEVEL` flags STAY intact (banked diagnostics, only one at a time during validation); R^7 path NOT mirrored.
+
+#### (1) Validation — anchors + held-out
+
+Drake on-the-fly (`dt=0.00025s`, DT_SUB=5ms) at 5 depths (3 anchors used to fit v_cap + 2 held-out NOT used to fit). v_cap sweep over {0.025, 0.030, 0.034, 0.040, 0.050}. Best v_cap = **0.034** (anchors passed 3/3, L1 = 0.00375):
+
+| depth | role | Drake | LCS @ v_cap=0.034 | band |
+|---|---|---|---|---|
+| 0.10 mm | anchor | −0.05399 | −0.05268 | **Y** (2.4% off, ±5%) |
+| 0.25 mm | **held-out** | −0.06597 | −0.06703 | **Y** (1.6% off, ±25%) |
+| 0.549 mm | anchor | −0.06413 | −0.06593 | **Y** (2.8% off, ±25%) |
+| 0.75 mm | **held-out** | −0.06815 | −0.06784 | **Y** (0.4% off, ±25%) |
+| 1.00 mm | anchor | −0.06493 | −0.06558 | **Y** (1.0% off, ±25%) |
+
+Gate **OK** (p=1, f=4, a=0) at every depth × v_cap cell and at the rigid baseline. LCP feasible everywhere. The §7.25 linear-fit prediction (−0.0528 / −0.0646 / −0.0646 at the anchors) matched to 4 decimals.
+
+#### (2) Held-out interpretation — recovered the SHAPE, not the points
+
+The rigid-to-saturated transition near onset depth ≈ v_cap·dt ≈ 0.17 mm matched Drake at 0.25 mm (just above onset) and at 0.75 mm (mid-saturated). The one-parameter clamp recovered the **physics**, not just the anchor magnitudes. §7.26 (4) caveat (deep-geometry slope under partial clamping unmeasured) is DISCHARGED.
+
+#### (3) Route + convergence HELD
+
+**Route: E-PASSES → live flip** (LCS_NORMAL_PHI_CLAMP=0.034 + full push sim, the original no-push question, the SEPARATE next block). Candidate F (additive-saturating-penetration-term, backup if clamp fails) **NOT ACTIVATED** — E passed offline. anitescu friction-cone STAYS RETIRED; `scale_lcs` STAYS DEFERRED.
+
+| axis | state |
+|---|---|
+| floor | **[FIXED]** |
+| contact-axis | **[DIAGNOSED + clamp validated E-PASSES]** (clamp is the validated contact-model fix; live flip is the next test) |
+| friction | DEMOTED |
+| anitescu friction-cone | RETIRED |
+| anitescu velocity-normal | = Candidate C (validated, UNDER-predicts; banked) |
+| `scale_lcs` (Candidate D) | DEFERRED |
+| flags | A (`LCS_NORMAL_COMPLIANCE_K`) + C (`LCS_NORMAL_VELOCITY_LEVEL`) + **E (`LCS_NORMAL_PHI_CLAMP`)** STAY as banked diagnostics |
+| convergence | **HELD** |
+
+#### Anti-stale binding (§7.27)
+
+Any subsequent entry that uses E-PASSES offline as a license to skip the live-flip measurement is the §7.21 *"3-of-4 ≠ 4-of-4"* failure mode again — offline validation says the clamp's PHYSICS is correct; it does NOT say the live system enters the regime where the clamp fires. Any entry that re-opens Candidate F before the live flip reports out is escalation without evidence. Any entry that pre-commits to the clamp as the no-push answer without the live-flip measurement is conflating constructed-state correctness with live behavior — the box-pinned probe ASSUMES contact; it cannot reveal whether the live system establishes contact at all.
+
+### 7.28 — LIVE FLIP of LCS_NORMAL_PHI_CLAMP=0.034 (`21be0a1`): RESULT BOX-MOVES-CLAMP-INERT (≡ BOX-STILL-FROZEN case a) — 0 EE-BOX LCS admissions across 601 steps, min φ in c3 mode = +2.01 mm (= the 2 mm admission threshold exactly), max +7.75 mm, ALL φ POSITIVE (separated, never penetrating); Drake `ee_box_normal=0.000` everywhere; 729 ADMM non-converge warnings (planner pinned 25/25); box moved 31 mm via Drake-side accidental EE-sphere graze during reposition, NOT via the clamp; 10% goal closure, NO success. THE REFRAMING: the *"we traced the no-push to the contact model and fixed it"* framing is RETIRED. The contact model was a REAL prerequisite bug (missing floor + rigid normal, §7.9–§7.27) but is NOT the binding constraint on the no-push. The binding constraint is UPSTREAM: the EE never establishes contact + ADMM non-convergence co-present (echoes the April deck). Convergence HELD (2026-06-26)
+
+Artifacts on disk (committed `21be0a1`): launch script `scripts/_clamp_live_v034.sh`, output `clamp_live_v034/run.log` (8553 lines), `clamp_live_v034/HEAD.txt` pinned to `c5314ae`.
+
+#### (1) Pre-flight — path gate resolved (ii)
+
+`main.py:445`: "R^7 path remains the default unless `--ee-space` is passed". The clamp lives in the EE-SPACE path (`linearize_discrete_ee_space:1537-1551`); R^7 NOT mirrored. Resolution (ii): passed `--ee-space` so the live LCS path = the clamp's validated path. End-to-end ee-space confirmed wired per memory `project_port_cartesian_migration_map.md` (3fda887 LANDED: main + MPC + LCS + cost + wrapper).
+
+#### (2) Sim result — box moves, clamp inert
+
+| metric | value |
+|---|---|
+| Run command | `LCS_NORMAL_PHI_CLAMP=0.034 python -u main.py pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --sampling-c3 config/sampling_c3_kik.yaml --admm-iter 25 --max-time 6 --seed 0 --no-record` |
+| Box motion | (0, 0) → (−0.0314, +0.0166) m, **31 mm** displacement |
+| Goal distance | 0.300 → 0.269 m, **10% closure** |
+| Success | NO |
+| Steps total | 601 (128 in c3 mode, 473 in free) |
+| **EE-BOX LCS admissions** | **0** across the entire run |
+| Min φ in c3 mode | +2.01 mm (= LCS admission threshold exactly) |
+| Max φ in c3 mode | +7.75 mm; ALL φ POSITIVE (separated, never penetrating) |
+| Drake `ee_box_normal` | 0.000 everywhere |
+| ADMM non-converge warnings | **729** (planner pinned at 25/25 iters) |
+
+The 31 mm box motion came from Drake-side accidental EE-sphere grazing during reposition motions, NOT from LCS-driven clamp-modulated force. The clamp activates at penetration > v_cap·dt ≈ 0.17 mm (φ < −0.17 mm); the live φ never crosses zero.
+
+#### (3) THE REFRAMING — what the live flip retired
+
+The framing *"we traced the no-push to the contact model and fixed it"* is **RETIRED**. The contact model was a REAL prerequisite bug — §7.9 (missing floor) through §7.27 (rigid-normal saturation) all addressed real defects. But the contact model is **NOT the binding constraint** on the no-push.
+
+The binding constraint is **UPSTREAM** of the LCS contact model:
+- The EE never establishes contact (0 admissions; min φ +2 mm; never penetrates).
+- ADMM non-convergence is co-present (729 warnings, 25/25 iters every step).
+
+Both signatures echo the **original April deck**: "contact-free is the binding constraint"; "iters=25/25 always". The clamp's offline E-PASSES physics is **correct and untouched** — the live system simply never enters the LCS-penetration regime where the clamp fires.
+
+#### (4) CONSTRUCTED-STATE LESSON
+
+The box-pinned penetration states (§7.18–§7.27) were the right tool for **ISOLATING the contact-model physics** — and they worked (E-PASSES). But they **ASSUMED contact** by construction (the IK pins the EE at chosen φ < 0). They could **never** reveal that the live system fails to ESTABLISH contact in the first place.
+
+**A perfect constructed-state result tells you nothing about live behavior if the live system never enters the constructed regime.** Future constructed-state arcs should front-load a *"does the live system enter this regime"* check before investing in the regime's physics.
+
+#### (5) Route + convergence HELD
+
+**Route: BOX-MOVES-CLAMP-INERT (≡ BOX-STILL-FROZEN case a) → diagnose live EE-BOX non-admission** (a SEPARATE block). The next investigation is the *upstream* binding: contact-pair admission + executor / dispatcher behavior + ADMM convergence — these are now what's binding, NOT the contact-model physics.
+
+| axis | state |
+|---|---|
+| floor | [FIXED] |
+| contact-axis | [DIAGNOSED + clamp validated, gated, INERT live] (offline E-PASSES correct; live system never enters the clamp's active regime) |
+| **binding** | **[SHIFTED upstream]** — reposition / EE-to-contact-establishment + ADMM convergence (the April deck's two co-signatures) |
+| friction | DEMOTED |
+| anitescu friction-cone | RETIRED |
+| `scale_lcs` (Candidate D) | DEFERRED |
+| flags | A + C + E STAY as banked diagnostics (default-OFF; do NOT prune) |
+| convergence | **HELD** |
+
+#### Anti-stale binding (§7.28)
+
+Any subsequent entry that frames *"the contact-model fix resolves the no-push"* is operating on a STALE record — the live flip retired that framing; the clamp is correct AND inert in the live regime, and these are NOT contradictory. Any entry that escalates to Candidate F based on the live INERT outcome is mis-routed — F was the backup for an offline-CLAMP-FAILS outcome, but offline E-PASSED, so the live INERT is not a clamp-physics issue. Any entry that re-tunes v_cap to "engage more" is treating the clamp as a knob to mask the upstream binding (executor / admission / convergence) and is the §7.26 (4) β-trap recurrence in a different variable. Any entry that flips the admission threshold from 2 mm to "fix" the live INERT before diagnosing why the live planner doesn't drive the EE deep enough is the §7.27-CONSTRUCTED-STATE-LESSON ignored — masking the upstream binding with a downstream knob. Any entry that prunes A / C / E flags as "no longer needed" is conflating a default-OFF flag (zero live cost) with a stale artifact — the three flags ARE the contact-model diagnostic battery; keep them banked. Any entry that re-promotes anitescu friction-cone, `scale_lcs`, or other deferred / retired axes citing the live INERT outcome is mis-routing — the live INERT does NOT re-open those; it shifts the focus UPSTREAM to reposition / EE-to-contact + ADMM convergence, which are the actual binding axes.
+
 ---
 
 ## 8. Memory pointer
