@@ -144,6 +144,25 @@ class LCSFormulator:
             except ValueError:
                 pass
 
+        # §7.36 — Anitescu friction-folded LCS (Bui 2026 reference's pushing
+        # contact_model). Mirrors lcs_factory.cc:235-275 (kAnitescu branch):
+        # single λ block of size 2·n_c·num_friction_directions = 4·n_c
+        # (no γ slack, no λ_n/λ_t split). Friction folded into J_c =
+        # E_t^T·J_n + diag(μ)·J_t; F = dt·J_c·M^{-1}·J_c^T is a single PSD
+        # block (vs ST's 3-block partitioned F, whose γ-γ block is rank-
+        # deficient by construction). Env LCS_CONTACT_MODEL ∈
+        # {"stewart_trinkle", "anitescu"}; default "stewart_trinkle" = byte-
+        # identical pre-§7.36. ORTHOGONAL to all other flags (REF_RECONCILE_*,
+        # LCS_ALWAYS_ON_EE_BOX, LCS_NORMAL_*); the §7.24/§7.26/§7.27 normal-
+        # row patches are ST-specific and become NO-OPs under Anitescu (no
+        # separate normal row to patch); they stay banked as ST-diagnostics.
+        _env_cm = os.environ.get("LCS_CONTACT_MODEL", "").strip().lower()
+        if _env_cm in ("anitescu", "kanitescu"):
+            self._contact_model = "anitescu"
+        else:
+            # default + any unrecognized value → Stewart-Trinkle
+            self._contact_model = "stewart_trinkle"
+
         # §7.30 — Always-on EE-BOX admission. Mirrors the reference's
         # LCSFactory::LinearizePlantToLCS scheme (lcs_factory.cc:31-105,
         # pre-specified contact_geoms with NO distance threshold): the
@@ -1650,6 +1669,109 @@ class LCSFormulator:
             # linearization value at the operating point — same convention as
             # the R^7 path.
             c_lcs -= E_lcs @ x_star + H_lcs @ u_star
+
+        # =================================================================
+        # §7.36 ANITESCU FRICTION-FOLDED LCS — opt-in OVERWRITE of D/E/F/H/c
+        # ----------------------------------------------------------------
+        # Default OFF (LCS_CONTACT_MODEL unset → "stewart_trinkle" → byte-
+        # identical pre-§7.36 path). When set to "anitescu", REPLACES the
+        # ST [γ, λ_n, λ_t] (6·n_c slots) LCS with the friction-folded
+        # Anitescu LCS (4·n_c slots) at the same linearization point.
+        #
+        # Mirrors lcs_factory.cc:235-275 (kAnitescu branch):
+        #   J_c   = E_t^T · J_n + diag(μ) · J_t            (n_λ, n_v_lowdim)
+        #   n_λ   = 2 · n_c · num_friction_directions = 4·n_c (dirs=2)
+        #   D, E, H follow with J_c folded in
+        #   F = dt · J_c · M^{-1} · J_c^T  (single PSD block — no γ-γ rank
+        #     deficiency, the structural difference vs ST's 3-block F)
+        #
+        # The §7.24 / §7.26 / §7.27 patches are STEWART-TRINKLE specific —
+        # they touch the λ_n row, which does NOT exist as a separate row
+        # under Anitescu. They are NO-OPs in Anitescu mode by construction;
+        # their flags stay banked as ST-diagnostics, orthogonal to this one.
+        # =================================================================
+        if self._contact_model == "anitescu":
+            NUM_FRICTION_DIRECTIONS = 2   # 2·dirs = 4 tangent dirs / contact
+            n_lam_an = 2 * n_c * NUM_FRICTION_DIRECTIONS    # = 4·n_c
+            if n_c > 0:
+                # E_t: (n_c, 4·n_c) — sums tangent-direction λ's per contact
+                E_t_an = np.zeros((n_c, n_lam_an))
+                for i in range(n_c):
+                    E_t_an[i, 4*i : 4*(i+1)] = 1.0
+                # anitescu_mu_vec: μ replicated 2·dirs per contact
+                anitescu_mu_vec = np.zeros(n_lam_an)
+                for i in range(n_c):
+                    anitescu_mu_vec[
+                        2 * NUM_FRICTION_DIRECTIONS * i :
+                        2 * NUM_FRICTION_DIRECTIONS * (i + 1)
+                    ] = mu
+                anitescu_mu_diag = np.diag(anitescu_mu_vec)
+                # J_c folding (analog of lcs_factory.cc:246):
+                #   J_c = E_t^T·J_n + diag(μ)·J_t
+                # In EE-space coords (box_v[6], v_ee[3]):
+                J_c_box = (E_t_an.T @ J_n_box
+                           + anitescu_mu_diag @ J_t_box)         # (4n_c, 6)
+                J_c_ee  = (E_t_an.T @ J_n_ee
+                           + anitescu_mu_diag @ J_t_ee)          # (4n_c, 3)
+                Minv_JcT_box = M_box_inv @ J_c_box.T              # (6, 4n_c)
+
+                # D — single block, no γ/λ_n/λ_t partition.
+                # Box rows: dt² · N_box · M_box^{-1} · J_c_box^T (box_q)
+                #          dt   · M_box^{-1} · J_c_box^T          (box_v)
+                # EE rows:  dt² / m_ee · J_c_ee^T                 (p_ee)
+                #          dt   / m_ee · J_c_ee^T                 (v_ee)
+                D_an = np.zeros((N_X, n_lam_an))
+                D_an[self.BOX_Q_SLOT, :] = (dt * dt) * (N_box @ Minv_JcT_box)
+                D_an[self.P_EE_SLOT,  :] = (dt * dt / m_ee) * J_c_ee.T
+                D_an[self.BOX_V_SLOT, :] = dt * Minv_JcT_box
+                D_an[self.V_EE_SLOT,  :] = (dt / m_ee) * J_c_ee.T
+
+                # E — gradient of η wrt x (single 4n_c × N_X block).
+                # η = E_t^T·phi/dt + J_c·v_{k+1}, with v_{k+1} = v + dt·f(x,u,λ).
+                #   ∂/∂box_q: dt · J_c_box · df_box_dboxq
+                #   ∂/∂box_v: J_c_box + dt · J_c_box · df_box_dboxv
+                #   ∂/∂v_ee : J_c_ee
+                # p_ee column is zero (no φ-vs-p_ee dependence in this LCS;
+                # the EE position contributes through J_c_ee on v_ee only —
+                # matches the ST EE-space path's structure at :1572).
+                E_an = np.zeros((n_lam_an, N_X))
+                E_an[:, self.BOX_Q_SLOT] = dt * (J_c_box @ df_box_dboxq)
+                E_an[:, self.BOX_V_SLOT] = (J_c_box
+                                            + dt * (J_c_box @ df_box_dboxv))
+                E_an[:, self.V_EE_SLOT]  = J_c_ee
+
+                # F — single PSD block (analog of lcs_factory.cc:259):
+                #   F = dt · J_c · M^{-1} · J_c^T
+                # With M block-diag between box and EE point-mass:
+                #   F = dt · J_c_box · M_box^{-1} · J_c_box^T
+                #     + (dt / m_ee) · J_c_ee · J_c_ee^T
+                F_an = (dt * (J_c_box @ Minv_JcT_box)
+                        + (dt / m_ee) * (J_c_ee @ J_c_ee.T))
+
+                # H — u-coupling: only v_ee path contributes, m_ee scaling.
+                H_an = (dt / m_ee) * J_c_ee                        # (4n_c, 3)
+
+                # c — linearization-point value of η; subtraction below
+                # converts to constant offset (same convention as ST :1652).
+                c_an = (E_t_an.T @ phi / dt
+                        + J_c_box @ (box_v + dt * d_box_v_offset)
+                        + J_c_ee  @ (v_ee  + dt * d_v_ee_offset))
+                c_an -= E_an @ x_star + H_an @ u_star
+            else:
+                # No contacts: trivial dimensions (n_lam_an = 0)
+                D_an = np.zeros((N_X, n_lam_an))
+                E_an = np.zeros((n_lam_an, N_X))
+                F_an = np.zeros((n_lam_an, n_lam_an))
+                H_an = np.zeros((n_lam_an, N_U))
+                c_an = np.zeros(n_lam_an)
+
+            # Overwrite the ST output with the Anitescu LCS.
+            n_lam = n_lam_an
+            D     = D_an
+            E_lcs = E_an
+            F_lcs = F_an
+            H_lcs = H_an
+            c_lcs = c_an
 
         # -----------------------------------------------------------------
         # 6. Stash for diagnostics + return (mirror R^7 path's API).

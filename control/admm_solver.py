@@ -376,14 +376,26 @@ class C3Solver:
 
         num_normals = J_n.shape[0]
         n_t         = J_t.shape[0]                  # 4·num_normals
-        n_lam       = 2 * num_normals + n_t         # 6·num_normals
+        # §7.36 — dimension n_lam from the LCS DIRECTLY (E.shape[0]), not
+        # from J_n/J_t shapes. Under Stewart-Trinkle E.shape[0] = 6·num_normals
+        # (γ + λ_n + λ_t); under Anitescu E.shape[0] = 4·num_normals (single
+        # folded λ block, no γ slack). Reading from E honours whatever LCS
+        # the formulator produced — no assumption about contact model.
+        n_lam       = int(E.shape[0]) if E is not None else (2 * num_normals + n_t)
         TOT         = n_x + n_lam + n_u
         total_dim   = N * TOT + n_x
 
         # Per-step λ slot offsets (within an n_lam-sized block).
+        # ST layout: γ=[0:n_c), λ_n=[n_c:2n_c), λ_t=[2n_c:6n_c).
+        # Anitescu layout: single λ block [0:4n_c) — SLN/SLT are not
+        # meaningful under Anitescu; their only consumers below are
+        # diagnostic prints and the ST-keyed first-knot extraction, both
+        # of which are guarded by the (n_lam == 2·num_normals + n_t)
+        # check before use.
         SG  = 0
         SLN = num_normals
         SLT = 2 * num_normals
+        _is_st_layout = (n_lam == 2 * num_normals + n_t)
 
         # Reuse cached identity; rebuild only when total_dim changes (rare)
         if total_dim != self._eye_total_dim:
@@ -600,8 +612,14 @@ class C3Solver:
         x_seq[N] = z_sol[N * TOT : N * TOT + n_x]
 
         # First-horizon contact force for Aydinoglu eq. 36 τ_ff. λ slot
-        # layout matches C3+: [γ; λ_n; λ_t]; expose physical components only.
-        if num_normals > 0:
+        # layout matches C3+: [γ; λ_n; λ_t] under Stewart-Trinkle.
+        # §7.36 — under Anitescu the layout collapses to a single λ block
+        # (no γ, no λ_n/λ_t split). Per-component normal/tangent extraction
+        # is ST-specific; under Anitescu we stash the raw folded λ block in
+        # self._last_lambda_anitescu_first and leave the ST-keyed views as
+        # zero placeholders (the executor pipeline is the separate next
+        # block — this guard keeps the solver shape-correct for the smoke).
+        if num_normals > 0 and _is_st_layout:
             _SLN0 = n_x + SLN
             _SLT0 = n_x + SLT
             self._last_lambda_n_first = z_sol[_SLN0 : _SLN0 + num_normals].copy()
@@ -617,11 +635,30 @@ class C3Solver:
                     _lt_h[_k] = z_sol[_base + SLT : _base + SLT + n_t]
             self._last_lambda_n_horizon = _ln_h
             self._last_lambda_t_horizon = _lt_h
+            self._last_lambda_anitescu_first = np.zeros(0)
+            self._last_lambda_anitescu_horizon = np.zeros((N, 0))
+        elif num_normals > 0:
+            # Anitescu single-block layout — n_lam = 4·num_normals.
+            _LAN0 = n_x
+            self._last_lambda_anitescu_first = z_sol[_LAN0 : _LAN0 + n_lam].copy()
+            _la_h = np.zeros((N, n_lam))
+            for _k in range(N):
+                _base = _k * TOT + n_x
+                _la_h[_k] = z_sol[_base : _base + n_lam]
+            self._last_lambda_anitescu_horizon = _la_h
+            # ST views left as placeholders — downstream executor pipeline
+            # under Anitescu is the SEPARATE next block (out of scope here).
+            self._last_lambda_n_first = np.zeros(num_normals)
+            self._last_lambda_t_first = np.zeros(n_t)
+            self._last_lambda_n_horizon = np.zeros((N, num_normals))
+            self._last_lambda_t_horizon = np.zeros((N, n_t))
         else:
             self._last_lambda_n_first = np.zeros(0)
             self._last_lambda_t_first = np.zeros(0)
             self._last_lambda_n_horizon = np.zeros((N, 0))
             self._last_lambda_t_horizon = np.zeros((N, 0))
+            self._last_lambda_anitescu_first = np.zeros(0)
+            self._last_lambda_anitescu_horizon = np.zeros((N, 0))
 
         # ---- Contact diagnostics (Phase 2: LCP projection) --------------
         self._diag_step += 1
@@ -891,7 +928,13 @@ class C3Solver:
         # so n_lambda = 6·num_normals (= 2·n_c + 4·n_c). The Bui eq. (12)
         # componentwise projection still operates pair-by-pair, so this
         # change is transparent to the projection logic itself.
-        n_lambda    = 2 * num_normals + J_t.shape[0]          # = 6·num_normals
+        # §7.36 — dimension n_lambda from the LCS DIRECTLY (E.shape[0]) so
+        # the consensus scaffolding honours whatever LCS the formulator
+        # produced — ST: 6·num_normals, Anitescu: 4·num_normals (folded).
+        # The Bui eq.(12) projection is element-wise (no slot keying) so
+        # the change is transparent to it.
+        n_lambda    = int(E.shape[0]) if E is not None else (2 * num_normals + J_t.shape[0])
+        _is_st_c3p  = (n_lambda == 2 * num_normals + J_t.shape[0])
         # ===== C3+ NEW: per-step block size doubles the contact slot =====
         TOT       = n_x + n_lambda + n_u + n_lambda
         total_dim = N * TOT + n_x
@@ -1221,12 +1264,20 @@ class C3Solver:
         x_seq[N] = z_sol[N * TOT : N * TOT + n_x]
 
         # First-horizon contact force for Aydinoglu eq. 36 τ_ff feedforward.
-        # λ = [γ; λ_n; λ_t]; we expose only the physical components.
+        # λ = [γ; λ_n; λ_t] under Stewart-Trinkle; we expose only the physical
+        # components.
         # D1: expose BOTH z_sol and delta views. Default consumers see
         # delta (the complementarity-feasible projection — see GATE
         # verdict + investigation T2). Flip via `solver.expose_zsol = True`
         # for A/B comparison.
-        if num_normals > 0:
+        # §7.36 — under Anitescu the layout collapses to a single λ block
+        # (no γ, no λ_n/λ_t split). Slot-keyed extraction below is
+        # ST-specific; we stash the raw Anitescu λ block in
+        # _last_lambda_anitescu_first / _horizon and leave the ST-keyed
+        # views as zero placeholders (executor pipeline under Anitescu is
+        # the separate next block — this guard keeps the solver shape-
+        # correct for the smoke).
+        if num_normals > 0 and _is_st_c3p:
             _SLN0 = SL + num_normals                   # λ_n offset in step 0's λ slot
             _SLT0 = SL + 2 * num_normals               # λ_t offset
             _n_t  = J_t.shape[0]
@@ -1264,6 +1315,32 @@ class C3Solver:
                 self._last_lambda_t_first   = self._last_lambda_t_first_delta
                 self._last_lambda_n_horizon = _ln_h_d
                 self._last_lambda_t_horizon = _lt_h_d
+            # ST path: no Anitescu λ stash
+            self._last_lambda_anitescu_first   = np.zeros(0)
+            self._last_lambda_anitescu_horizon = np.zeros((N, 0))
+        elif num_normals > 0:
+            # §7.36 — Anitescu single-block layout: stash raw folded λ.
+            _LAN0 = SL
+            self._last_lambda_anitescu_first = z_sol[_LAN0 : _LAN0 + n_lambda].copy()
+            _la_h = np.zeros((N, n_lambda))
+            for _k in range(N):
+                _base = _k * TOT
+                _la_h[_k] = z_sol[_base + SL : _base + SL + n_lambda]
+            self._last_lambda_anitescu_horizon = _la_h
+            # ST views left as placeholders — the executor pipeline under
+            # Anitescu (J_c-aware F_ff) is the SEPARATE next block.
+            self._last_lambda_n_first        = np.zeros(num_normals)
+            self._last_lambda_t_first        = np.zeros(J_t.shape[0])
+            self._last_lambda_n_horizon      = np.zeros((N, num_normals))
+            self._last_lambda_t_horizon      = np.zeros((N, J_t.shape[0]))
+            self._last_lambda_n_first_zsol   = None
+            self._last_lambda_n_first_delta  = None
+            self._last_lambda_t_first_zsol   = None
+            self._last_lambda_t_first_delta  = None
+            self._last_lambda_n_horizon_zsol  = None
+            self._last_lambda_n_horizon_delta = None
+            self._last_lambda_t_horizon_zsol  = None
+            self._last_lambda_t_horizon_delta = None
         else:
             self._last_lambda_n_first        = np.zeros(0)
             self._last_lambda_t_first        = np.zeros(0)
@@ -1277,6 +1354,8 @@ class C3Solver:
             self._last_lambda_n_horizon_delta = None
             self._last_lambda_t_horizon_zsol  = None
             self._last_lambda_t_horizon_delta = None
+            self._last_lambda_anitescu_first  = np.zeros(0)
+            self._last_lambda_anitescu_horizon = np.zeros((N, 0))
 
         # ---------------------------------------------------------------
         # Diagnostics — mirror C3's [MATH.QP], [MATH.δ], [MATH.ω] blocks.
