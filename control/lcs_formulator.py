@@ -144,6 +144,25 @@ class LCSFormulator:
             except ValueError:
                 pass
 
+        # §7.30 — Always-on EE-BOX admission. Mirrors the reference's
+        # LCSFactory::LinearizePlantToLCS scheme (lcs_factory.cc:31-105,
+        # pre-specified contact_geoms with NO distance threshold): the
+        # EE-BOX pair is included in the LCS at EVERY step regardless of
+        # phi. At separation (phi >= 0) the row is present with λ_n = 0
+        # trivially satisfying complementarity (exact + harmless — no
+        # spurious force), giving the planner visibility on the EE-BOX
+        # constraint at ALL distances so it can PLAN u to drive phi
+        # through zero (the port's filtered admission at 2 mm only lets
+        # the planner REACT once contact is already imminent). Default
+        # OFF (= the existing 2 mm filter, byte-identical pre-§7.30).
+        # NOTE: applies to the EE-BOX pair SPECIFICALLY — NOT a blanket
+        # no-filter (the lcs_formulator.py:443-450 ablation note records
+        # that loosening the threshold to 40 mm admits partial / garbage
+        # pairs that break the dispatcher cost-gap; always-on for the
+        # EE-BOX row only avoids that).
+        _env_ao = os.environ.get("LCS_ALWAYS_ON_EE_BOX", "")
+        self._always_on_ee_box = bool(int(_env_ao)) if _env_ao else False
+
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
         self.n_u = plant.num_actuators()
@@ -505,6 +524,30 @@ class LCSFormulator:
                     return False    # de-dup: synthesis owns this contact
                 return ee_box or box_ground
             sd_pairs = [sdp for sdp in sd_pairs if _admit(sdp)]
+
+            # §7.30 — Always-on EE-BOX admission. If the flag is set and
+            # the 2 mm threshold did NOT admit an EE-BOX pair this step,
+            # inject the EE-BOX pair explicitly (regardless of phi) via
+            # the pair-specific Drake call which does NOT apply the
+            # threshold. Mirrors lcs_factory.cc:31-105 (every contact_geom
+            # iterated unconditionally) for the EE-BOX pair only.
+            if self._always_on_ee_box:
+                _has_ee_box = any(
+                    ((sdp.id_A in self._manipuland_geom_ids
+                      and sdp.id_B in self._ee_geom_ids)
+                     or (sdp.id_B in self._manipuland_geom_ids
+                         and sdp.id_A in self._ee_geom_ids))
+                    for sdp in sd_pairs
+                )
+                if not _has_ee_box:
+                    for gid_ee in self._ee_geom_ids:
+                        for gid_box in self._manipuland_geom_ids:
+                            sdp_ee_box = (
+                                query_obj.ComputeSignedDistancePairClosestPoints(
+                                    gid_ee, gid_box))
+                            sd_pairs.append(sdp_ee_box)
+                            break
+                        break
 
         n_filtered = len(sd_pairs)
         if n_filtered > 10:
