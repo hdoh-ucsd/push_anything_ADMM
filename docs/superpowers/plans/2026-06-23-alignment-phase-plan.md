@@ -2524,6 +2524,102 @@ ADMM-solver row, **HORIZONTAL/push axis**: Candidate A (constant-k soft-LCP, EE-
 
 Any subsequent entry that frames Candidate A's failure as a tuning miss (*"a tighter k-grid would find one that passes"*) is operating on a STALE record — §7.25 (2) establishes the failure is STRUCTURAL: depth-uniform k vs depth-asymmetric band, shallow already on-target at k=0 so no k>0 helps. Any entry that builds Candidate C as a β-scaling of φ/dt is the same staleness mode in a different variable — §7.25 (5) (ii) shows β-scaling repeats A's failure exactly (no overlap between shallow [0.91, 1.23] and 1mm deep [0.08, 0.27]). Any entry that treats the HYBRID c_lcs finding (§7.25 (3)) as evidence that *"velocity-level is already in the port"* is also stale — the J_n·v terms are the Stewart-Trinkle next-step velocity contribution, not the Anitescu velocity-level **saturation** mechanism; the Anitescu formulation is the φ/dt-DROP, which the port does not have. Any entry that pre-commits to the velocity-level fix being sufficient without acknowledging the §7.25 (5) (iii) UNDER-prediction concern is stale — pure velocity-level extrapolates to −0.036 vs Drake's −0.054 / −0.064, and the saturating-stiffness route is the live pre-registered outcome if C flattens too far.
 
+### 7.26 — Candidate C built (5cab584, one-line, separability confirmed; rigid baseline byte-identical, reproduces §7.23 to 4 decimals) + validated C-UNDER-PREDICTS (flattens to −0.037 with 3% spread across 10× depth, but 33%/43% under Drake — tracks §7.25 (5) (iii) linear prediction −0.036 to 3%). TWO-ANCHOR DECOMPOSITION (the key new result): C = pure velocity-damping (−0.037 flat); rigid baseline = velocity-damping + full φ/dt; Drake sits BETWEEN; the saturating-stiffness contribution (Drake − C) = −0.0175 / −0.0265 / −0.0277 at 0.10 / 0.549 / 1.00 mm, sub-linear (1.6× over 10× depth), ≈ rigid's φ/dt at shallow but ≪ rigid's φ/dt at deep → "rigid at shallow, saturating at deep" — NEITHER A (proportional, crushes shallow) NOR C (flat, under-predicts). Reverse-engineered CLAMPED-φ/dt fix: `v_cap ≈ 0.034 m/s`, depth-asymmetric by construction (dodges the β-trap), predicted to pass all three depths but MUST be measured. Convergence HELD (2026-06-26)
+
+Artifacts on disk (committed `5cab584`): build at `control/lcs_formulator.py` (env `LCS_NORMAL_VELOCITY_LEVEL`, default OFF), validation script `scripts/_stage_c_candidate_c_validation.py`, output `stage_c/candidate_c_validation_output.txt`. Markdown-only banking here.
+
+#### (1) Candidate C built — one-line, separability confirmed
+
+`c_lcs[SLN:SLN + n_c] = phi/dt + c_const_v_box + c_const_v_ee` (`lcs_formulator.py:1522`), where the velocity terms (`:1520-1521`) are `J_n_box @ (box_v + dt·d_offset)` and `J_n_ee @ (v_ee + dt·d_offset)` — standard Stewart-Trinkle next-step velocity contributions. **φ/dt is CLEANLY SEPARABLE** — an additive scalar per contact; the subsequent `c_lcs -= E·x* + H·u*` linearization-subtraction at `:1546` doesn't touch it.
+
+Build: EE-BOX-only velocity-level normal (Anitescu-Potra style, v_target=0), **one-line subtraction** `c_lcs[SLN + i_c] -= phi[i_c] / dt` for every EE-BOX-tagged contact (`~:1532-1543`), behind `LCS_NORMAL_VELOCITY_LEVEL` env (default OFF, byte-identical pre-§7.26). BOX-VERT / floor KEEP their φ/dt (preserves §7.9–§7.12 vertical fix). A's `LCS_NORMAL_COMPLIANCE_K` flag intact (the two flags compose). R^7 path NOT mirrored. Committed `5cab584`.
+
+#### (2) Validation — C-UNDER-PREDICTS
+
+| config | 0.10 mm | shallow? | 0.549 mm | deep? | 1.00 mm | deep? | gate |
+|---|---|---|---|---|---|---|---|
+| rigid baseline (k=0, VL=OFF) | −0.052685 | **Y** | −0.129102 | N | −0.203710 | N | OK |
+| **velocity-level (VL=ON)** | **−0.036459** | N | **−0.037591** | N | **−0.037241** | N | OK |
+
+Velocity-level **FLATTENS PERFECTLY** (3% spread across 10× depth — dropping φ/dt eliminates the depth-scaling; confirms §7.25 (5) (i) localization) but **UNDER-PREDICTS** Drake at shallow (33% under, −0.037 vs −0.054) AND deep (43% under, −0.037 vs −0.065). Tracks §7.25 (5) (iii) linear-extrapolation prediction (−0.036) to <3% — the LCP off-diagonal BOX-VERT coupling shifted it to −0.037, **not enough to enter band**. Per-depth §7.14 gate clean at every config; LCP healthy. The rigid baseline reproduces §7.23 to 4 decimals — **PROVING the default-OFF flag is byte-identical**.
+
+#### (3) The TWO-ANCHOR DECOMPOSITION — the key new result
+
+Candidate C and the rigid baseline are **two anchor points that pin the fix shape**:
+
+| anchor | what it isolates | box_v_x at 0.10 / 0.549 / 1.00 mm |
+|---|---|---|
+| **C (velocity-level)** | pure velocity-damping (φ/dt dropped) | −0.0365 / −0.0376 / −0.0372 (FLAT, 3% spread) |
+| **rigid baseline** | velocity-damping + FULL rigid φ/dt | −0.0527 / −0.1291 / −0.2037 (LINEAR in depth) |
+| Drake | the true target | −0.0540 / −0.0641 / −0.0649 (saturates beyond 0.10 mm) |
+
+The **saturating-stiffness contribution** alone — what Drake's finite-stiffness penetration adds on top of pure velocity-damping — is `Drake − C`:
+
+| depth | Drake | C (VL=ON) | **Drake − C** (saturating-stiffness contribution) | rigid − C (full φ/dt contribution) |
+|---|---|---|---|---|
+| 0.10 mm | −0.0540 | −0.0365 | **−0.0175** | −0.0162 |
+| 0.549 mm | −0.0641 | −0.0376 | **−0.0265** | −0.0915 |
+| 1.00 mm | −0.0649 | −0.0372 | **−0.0277** | −0.1665 |
+
+**Shape of the saturating-stiffness contribution:**
+
+- Grows only **~1.6× over 10× depth** — heavily SUB-LINEAR, not flat.
+- At shallow (−0.0175) **≈ rigid's φ/dt contribution (−0.0162)** → **rigid IS the shallow limit** (the LCS already gets the shallow case right).
+- At deep (−0.0277) **≪ rigid's φ/dt contribution (−0.1665, which grows ~10× / linear)** → SATURATES at depth.
+
+The fix shape is therefore *"φ/dt-like, RIGID at shallow, SATURATING at deep"* — **NEITHER A** (constant-k, proportional in λ_n, crushes shallow) **NOR C** (pure velocity-level, flat, under-predicts). Both A and C are **CONFIRMED to be the wrong shape**; the right shape sits **BETWEEN** them.
+
+#### (4) The reverse-engineered CLAMP — lead formulation for the next block
+
+The shape *"rigid at shallow, saturating at deep"* is exactly a **CLAMPED φ/dt**: keep `phi/dt` for the EE-BOX contact, but **cap it at v_cap**: `min(|phi|/dt, v_cap)` — rigid below the cap (shallow), saturated above (deep).
+
+Using the rigid linear fit `box_v_x ≈ −0.84·(φ/dt)_eff − 0.036` from §7.25 (5), `v_cap` is reverse-engineered:
+
+`−0.84·v_cap − 0.036 = −0.064` ⇒ **`v_cap ≈ 0.033 – 0.0345 m/s`** (use 0.034)
+
+**Predicted box_v_x at v_cap = 0.034:**
+
+| depth | (φ/dt)_eff | clamped? | predicted box_v_x | Drake | predicted in band? |
+|---|---|---|---|---|---|
+| 0.10 mm | 0.020 (< cap) | NO (unclamped) | −0.0528 | −0.0540 | **Y** shallow (2.4% off) |
+| 0.549 mm | 0.110 (> cap) | YES → 0.034 | −0.0646 | −0.0641 | **Y** deep (0.8% off) |
+| 1.00 mm | 0.200 (> cap) | YES → 0.034 | −0.0646 | −0.0649 | **Y** deep (0.5% off) |
+
+**A ONE-PARAMETER clamp (v_cap ≈ 0.034) is predicted to PASS the band at all three depths.**
+
+The clamp is **depth-ASYMMETRIC by construction** (rigid below the cap, saturated above) — it does **NOT hit the β-equivalence trap** (β-scaling is depth-uniform; the clamp's piecewise structure breaks the algebraic equivalence to depth-rescaling).
+
+**FIRMNESS:** the rigid linear fit has been validated at BOTH endpoints:
+- **Full φ/dt** (rigid baseline — fit built on the depth-variation, residuals < 1%).
+- **Clamp-to-0** (velocity-level = drop-φ/dt — measured −0.037 vs predicted intercept −0.036, 3% agreement).
+
+The clamp at v_cap = 0.034 **interpolates between two MEASURED endpoints** — firmer than a pure extrapolation.
+
+**CAVEAT:** the deep-geometry slope UNDER partial clamping is the one unmeasured piece. Clamping changes c_lcs at fixed deep geometry, which could shift the LCP active set (e.g., BOX-VERT coupling response). **The clamp prediction MUST be MEASURED, not assumed.**
+
+#### (5) Route + convergence HELD
+
+**Route: C-UNDER-PREDICTS → build Candidate E (clamped-φ/dt)**, the reverse-engineered one-parameter saturating-stiffness fix, `v_cap ≈ 0.034`, EE-BOX-only, default-OFF. The **additive-saturating-penetration-term (Candidate F: C-base + a bounded penetration term)** is the BACKUP if the clamp fails.
+
+| axis | state |
+|---|---|
+| floor | **[FIXED]** |
+| contact-axis | **[DIAGNOSED → A+C both confirmed wrong shape; lead fix = clamped-φ/dt (v_cap ≈ 0.034 reverse-engineered, predicted-passing); MEASURE next]** |
+| friction | **DEMOTED** |
+| anitescu friction-cone | **RETIRED** |
+| anitescu velocity-normal | = Candidate C (validated, UNDER-predicts; insufficient on its own but the velocity-damping anchor) |
+| `scale_lcs` (Candidate D) | **DEFERRED** |
+| flags | `LCS_NORMAL_COMPLIANCE_K` (A) + `LCS_NORMAL_VELOCITY_LEVEL` (C) STAY as banked diagnostics (compose) |
+| convergence | **HELD** |
+
+#### (6) Progress-table note (for next regeneration)
+
+ADMM-solver row, **HORIZONTAL/push axis**: Candidate C (velocity-level, drop φ/dt, EE-BOX-only, `LCS_NORMAL_VELOCITY_LEVEL` default-OFF) BUILT (`5cab584`, one-line, separability confirmed, baseline byte-identical to §7.23 to 4 decimals) + validated **C-UNDER-PREDICTS** — flattens perfectly (−0.037, 3% spread) but 33%/43% under Drake (tracks the §7.25 −0.036 prediction to 3%). **TWO-ANCHOR DECOMPOSITION:** saturating-stiffness contribution (Drake − C) = ~0.0175 / ~0.0265 / ~0.0277 at 0.10 / 0.549 / 1.00 mm — **sub-linear (1.6×)**, rigid at shallow + saturates at deep. **LEAD FIX = clamped-φ/dt (Candidate E)**, `v_cap ≈ 0.034` reverse-engineered, **PREDICTED to pass all three depths** (one parameter, depth-asymmetric, dodges the β-trap); MUST be measured. A+C confirmed wrong shape; additive-term (F) is backup. anitescu friction-cone RETIRED; `scale_lcs` DEFERRED; convergence HELD.
+
+#### Anti-stale binding (§7.26)
+
+Any subsequent entry that frames the C-UNDER-PREDICTS result as evidence that the velocity-level formulation should be abandoned is operating on a STALE record — §7.26 (3) establishes that C is one of TWO load-bearing anchors for the saturating-stiffness shape; it is NOT a failed fix, it is a diagnostic anchor that pins the velocity-damping contribution. Any entry that escalates to a multi-parameter compliance build without first measuring the §7.26 (4) one-parameter clamp is the §7.21 *"3-of-4 ≠ 4-of-4"* failure mode again — the clamp is predicted to pass on the strength of two MEASURED endpoints (not pure extrapolation), and parsimony binds the build scope. Any entry that constructs Candidate E as a β-scaling of φ/dt is the §7.25 (5) (ii) staleness mode — β-scaling is depth-uniform and repeats A's failure; the clamp's piecewise structure (rigid below cap, saturated above) is its load-bearing feature, not the cap value. Any entry that pre-commits to the predicted v_cap = 0.034 without measuring the deep-geometry slope under partial clamping is the §7.26 (4) caveat ignored — the LCP active set could shift under clamping, and the prediction must be measured before being trusted.
+
 ---
 
 ## 8. Memory pointer
