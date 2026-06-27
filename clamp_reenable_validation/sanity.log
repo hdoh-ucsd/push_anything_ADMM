@@ -1,0 +1,38 @@
+========================================================================================
+§7.35 — Clamp × always-on × reconciliation INTERACTION sanity
+========================================================================================
+V_CAP = 0.034 m/s   DT = 0.05 s   activation threshold |phi| > V_CAP*DT = 1.70 mm
+
+Test (i)+(ii) — clamp delta as a function of phi:
+  (ii) φ>0 — large separation (10 mm)                      phi=  +0.0100 m  phi/dt= +0.2000 m/s  delta=+0.000000  (expect 0 — PASS)
+  (ii) φ>0 — small separation (1 mm) — always-on row       phi=  +0.0010 m  phi/dt= +0.0200 m/s  delta=+0.000000  (expect 0 — PASS)
+  (ii) φ=0 — exact contact                                 phi=  +0.0000 m  phi/dt= +0.0000 m/s  delta=+0.000000  (expect 0 — PASS)
+  (i)  φ<0 shallow — §7.33 regime (−0.06 mm)               phi=  -0.0001 m  phi/dt= -0.0012 m/s  delta=+0.000000  (expect 0 — PASS)
+  (i)  φ<0 shallow — §7.34 regime (−1.05 mm)               phi=  -0.0010 m  phi/dt= -0.0210 m/s  delta=+0.000000  (expect 0 — PASS)
+  (i)  φ<0 boundary — |phi|/dt = v_cap (1.70 mm)           phi=  -0.0017 m  phi/dt= -0.0340 m/s  delta=+0.000000  (expect 0 — PASS)
+  (i)  φ<0 DEEP — §7.27 anchor (3.0 mm)                    phi=  -0.0030 m  phi/dt= -0.0600 m/s  delta=+0.026000  (expected +0.026000 — PASS)
+  (i)  φ<0 VERY DEEP — §7.27 held-out (5.0 mm)             phi=  -0.0050 m  phi/dt= -0.1000 m/s  delta=+0.066000  (expected +0.066000 — PASS)
+
+Test (iii) — finite c_lcs contribution across all cases:
+  all deltas finite: ['+0.0000', '+0.0000', '+0.0000', '+0.0000', '+0.0000', '+0.0000', '+0.0260', '+0.0660']  → PASS
+
+Test (iv) — byte-identical default — clamp OFF code path:
+  guard at lcs_formulator.py:1611 still in place ('if ... is not None:'): PASS
+  env LCS_NORMAL_PHI_CLAMP unset → v_cap = None → clamp block skipped → byte-identical pre-§7.27: PASS (by structure)
+
+========================================================================================
+VERDICT
+========================================================================================
+  (i)  φ<0 DEEP clamp behaviour (§7.27 reproduced)            : PASS
+  (ii) φ>0 always-on row UNTOUCHED (max formula INERT at φ>0) : PASS
+     §7.33 / §7.34 shallow regime also UNTOUCHED              : PASS
+  (iii) FINITE c_lcs contribution                              : PASS
+  (iv) byte-identical default (clamp OFF)                     : PASS
+
+  INTERACTION SANITY: PASS — clamp safe to re-enable, proceed to live sim
+
+Prediction: at §7.33's max-depth (|phi|=0.06 mm) and §7.34's max-depth
+(|phi|=1.05 mm), |phi|/dt = 0.0012 and 0.021 m/s respectively — BOTH well
+under v_cap=0.034 m/s. The clamp will be DEPTH-INERT in this regime.
+Expected live-sim route: NO-CHANGE (clamp inert, like §7.30 always-on was
+until it became load-bearing in §7.31). The live test still runs to confirm.

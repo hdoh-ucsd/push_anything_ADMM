@@ -218,6 +218,20 @@ class SamplingC3MPC:
         import os as _os_rec
         _env_rec = _os_rec.environ.get("REF_RECONCILE_APPROACH", "")
         self._reconcile_approach = bool(int(_env_rec)) if _env_rec else False
+        # §7.35 — feedforward-accel SUB-GATE. The §7.34 build coupled the
+        # feedforward leg into REF_RECONCILE_APPROACH directly, which made
+        # the §7.33 working state (pos + vel only, no a_ff) unreachable
+        # whenever REF_RECONCILE_APPROACH was set. The §7.34 OVER-DRIVES
+        # result rendered the feedforward source-conditional (re-enables
+        # IFF ADMM converges OR mitigation lands); to preserve the §7.33
+        # working state under reconcile, the feedforward leg is now
+        # GATED by a SEPARATE env flag, default OFF. The §7.34 OVER-DRIVES
+        # regime is reproducible by setting REF_RECONCILE_FEEDFORWARD_ACCEL=1.
+        # The pos + vel reconciliation (§7.31 a/b/c + §7.32 velocity) is
+        # unaffected; default REF_RECONCILE_APPROACH=1 now = §7.33 DISSOLVES.
+        _env_ffa = _os_rec.environ.get("REF_RECONCILE_FEEDFORWARD_ACCEL", "")
+        self._reconcile_feedforward_accel = (
+            bool(int(_env_ffa)) if _env_ffa else False)
 
         _use_force_tracking = bool(getattr(params, "use_force_tracking", True))
         if self._reconcile_approach:
@@ -228,6 +242,10 @@ class SamplingC3MPC:
             _use_force_tracking = False
             print("[§7.31] REF_RECONCILE_APPROACH=1 → use_force_tracking=False "
                   "(position-OSC only; no 2 N floor)", flush=True)
+            if self._reconcile_feedforward_accel:
+                print("[§7.35] REF_RECONCILE_FEEDFORWARD_ACCEL=1 → feedforward-"
+                      "accel ENABLED (§7.34 OVER-DRIVES regime; source-conditional)",
+                      flush=True)
 
         self.executor = OperationalSpaceController(
             plant        = plant,
@@ -727,15 +745,21 @@ class SamplingC3MPC:
     def _acceleration_feedforward_from_xseq(self) -> Optional[np.ndarray]:
         """Derive defensive-clipped EE acceleration feedforward from planner
         x_seq second-difference. Returns None when:
-          * not under REF_RECONCILE_APPROACH (the only mode for which we
-            ALSO fed the velocity feedforward — keeping the activation set
-            synchronous so the PD-plus-feedforward law is only active when
-            BOTH legs (v_des, a_ff) are present)
+          * REF_RECONCILE_FEEDFORWARD_ACCEL is OFF (default — §7.35 sub-gate;
+            the §7.34 OVER-DRIVES verdict made the feedforward source-
+            conditional, so it stays OFF unless explicitly opted-in; the
+            §7.33 working state (pos + vel only) is the default under
+            REF_RECONCILE_APPROACH=1)
+          * not under REF_RECONCILE_APPROACH (the velocity feedforward is
+            also gated on this; PD-plus-feedforward law is only active when
+            BOTH legs present)
           * planner has no last_x_seq, or x_seq has fewer than 3 knots
           * not running --ee-space (the R^7 path has no analytic accel
             source; finite-differencing q-space velocity is even noisier
             and the c3-mode over-drive failure was on the EE-space path)
         """
+        if not getattr(self, "_reconcile_feedforward_accel", False):
+            return None
         if not getattr(self, "_reconcile_approach", False):
             return None
         x_seq = getattr(self.base_mpc, "last_x_seq", None)
