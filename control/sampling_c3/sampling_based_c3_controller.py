@@ -202,6 +202,33 @@ class SamplingC3MPC:
         # under the 30 Nm budget.
         _q_nominal = np.asarray(params.repos_ik_params.q_nominal,
                                 dtype=float)[:self.n_u]
+
+        # §7.31 — All-at-once reconciliation to the dairlib reference's
+        # contact-establishment path. Behind REF_RECONCILE_APPROACH env
+        # (default OFF = byte-identical). The flag atomically gates three
+        # coordinated changes: (a) surface EE desired-state (the OSC tracks
+        # the sampled face point at ~zero buffer, in both modes), (b)
+        # POSITION-tracking OSC (force-tracking disabled — no min-push-force
+        # floor; Kp_cart generates whatever torque reaches the target), (c)
+        # approach-cost proxy off (task_costs.py:build_ee_space skips the
+        # 100 mm-behind proxy block; the always-on row keeps D ≠ 0 so the
+        # proxy's anti-freeze role is no longer needed). Requires always-on
+        # (LCS_ALWAYS_ON_EE_BOX=1) for safety — without the always-on row,
+        # dropping the proxy would re-introduce the free-mode freeze trap.
+        import os as _os_rec
+        _env_rec = _os_rec.environ.get("REF_RECONCILE_APPROACH", "")
+        self._reconcile_approach = bool(int(_env_rec)) if _env_rec else False
+
+        _use_force_tracking = bool(getattr(params, "use_force_tracking", True))
+        if self._reconcile_approach:
+            # Position-OSC only — matches reference osc_params.yaml:51-59
+            # (EndEffectorKp = 200, Kd = 20; no force floor). The port's
+            # Kp_cart = 400 (config/osc_franka.yaml) already exceeds the
+            # reference's 200, so position authority is structurally strong.
+            _use_force_tracking = False
+            print("[§7.31] REF_RECONCILE_APPROACH=1 → use_force_tracking=False "
+                  "(position-OSC only; no 2 N floor)", flush=True)
+
         self.executor = OperationalSpaceController(
             plant        = plant,
             ee_frame     = ee_frame,
@@ -209,7 +236,7 @@ class SamplingC3MPC:
             q_nominal    = _q_nominal,
             gains_yaml   = params.osc_gains_yaml,
             log_diag     = self.log_diag,
-            use_force_tracking = bool(getattr(params, "use_force_tracking", True)),
+            use_force_tracking = _use_force_tracking,
             W_force      = float(getattr(params, "W_force", 100.0)),
         )
 
@@ -447,6 +474,41 @@ class SamplingC3MPC:
         self._sample_buffer_age = lifetime + 1
 
     # ----------------------------------------------------------------------
+    def _reconcile_surface_target(self,
+                                  default_p_ee_des: np.ndarray,
+                                  obj_xy: np.ndarray) -> np.ndarray:
+        """§7.31 — Override the EE desired-state to the SAMPLED FACE POINT
+        (~zero buffer, surface) when REF_RECONCILE_APPROACH is set; pass
+        through otherwise.
+
+        Matches the reference's `x_desired = c3_object->GetDesiredState()`
+        (sampling_based_c3_controller.cc:500): the OSC tracks the sampled
+        face point in BOTH modes. The port stores the sample at
+        `sampling_setback` (≈30 mm) OUTSIDE the face; this method projects
+        it back along the outward face normal so the target is at the
+        surface itself (buffer_distance ≈ 0, matching the reference's
+        push_t parameter).
+
+        Returns the original `default_p_ee_des` unchanged when:
+          * the flag is OFF, or
+          * `_current_repos_target` is None (no active sample), or
+          * the sample is at the box centre (degenerate normal).
+        """
+        if not self._reconcile_approach:
+            return default_p_ee_des
+        sample = self._current_repos_target
+        if sample is None or obj_xy is None:
+            return default_p_ee_des
+        sp = self.params.sampling_params
+        setback = float(getattr(sp, "sampling_setback", 0.030))
+        delta_xy = np.asarray(sample[:2], dtype=float) - np.asarray(obj_xy, dtype=float)
+        norm = float(np.linalg.norm(delta_xy))
+        if norm < 1e-6:
+            return default_p_ee_des
+        n_outward_xy = delta_xy / norm
+        surface_xy = np.asarray(sample[:2], dtype=float) - setback * n_outward_xy
+        return np.array([surface_xy[0], surface_xy[1], float(sample[2])])
+
     def _derive_force_command(self,
                               lambda_n: Optional[np.ndarray],
                               g_hat_3d: np.ndarray) -> np.ndarray:
@@ -2583,6 +2645,9 @@ class SamplingC3MPC:
             else:
                 _exec_lam_n, _exec_lam_t = _lam_n, _lam_t
                 _exec_Jn, _exec_Jt = _Jn, _Jt
+            # §7.31 — override _p_ee_des to the sampled face point when
+            # REF_RECONCILE_APPROACH is set; pass-through otherwise.
+            _p_ee_des = self._reconcile_surface_target(_p_ee_des, obj_xy)
             u_imp, imp_diag = self.executor.compute_torque(
                 current_q, current_v, plant_ctx,
                 p_ee_desired = _p_ee_des,
@@ -2759,6 +2824,8 @@ class SamplingC3MPC:
                 _p_des, _v_des, _done = self._pwl_traj.eval(_sim_t)
                 _p_ee_des = _p_des
                 _v_ee_des = _v_des
+                # §7.31 — surface target override (free / PWL path).
+                _p_ee_des = self._reconcile_surface_target(_p_ee_des, obj_xy)
                 u_imp, imp_diag = self.executor.compute_torque(
                     current_q, current_v, plant_ctx,
                     p_ee_desired = _p_ee_des,
@@ -2779,6 +2846,8 @@ class SamplingC3MPC:
                     _p_ee_des = self._current_repos_target
                 else:
                     _p_ee_des = ee_pos_now
+                # §7.31 — surface target override (free / legacy path).
+                _p_ee_des = self._reconcile_surface_target(_p_ee_des, obj_xy)
                 u_imp, imp_diag = self.executor.compute_torque(
                     current_q, current_v, plant_ctx,
                     p_ee_desired = _p_ee_des,

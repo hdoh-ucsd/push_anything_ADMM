@@ -1,0 +1,44 @@
+====================================================================================
+§7.31 RECONCILE APPROACH — STRUCTURAL SANITY
+====================================================================================
+
+Test A — surface-point projection (the _reconcile_surface_target math):
+  sample           = [0.08, 0.0, 0.05]  (30 mm outside east face)
+  obj_xy           = [0.0, 0.0]
+  setback          = 30 mm
+  surface point    = [0.05, 0.0, 0.05]
+  surface x = +50.000 mm (target box-face x = +50 mm) → PASS (at face)
+
+Test B — task_cost flag OFF (byte-identical pre-§7.31):
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+  w_ee_approach    = 8000.0  d_push = 0.05
+  Q[p_ee] diag     = [8000.0, 8000.0, 8000.0]
+  x_ref[p_ee]      = [0.16, 0.0, 0.05]
+  Q[p_ee] zero?    = False
+  proxy alive (expected)? PASS
+
+Test C — task_cost flag ON (REF_RECONCILE_APPROACH=1): proxy OFF
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+  Q[p_ee] diag     = [0.0, 0.0, 0.0]
+  x_ref[p_ee]      = [0.0, 0.0, 0.0]
+  Q[p_ee] zero?    = True
+  proxy OFF? PASS
+
+Test D — position-only OSC (use_force_tracking=False) produces FINITE control TOWARD surface:
+  QP success       = True  result = SolutionResult.kSolutionFound
+  a_des            = [-2.0, 0.0, 0.0]
+  |u|              = +1.9802
+  |vdot|           = +1.9802
+  u finite         = True
+  u_x toward surface (negative)? = PASS
+
+====================================================================================
+VERDICT
+====================================================================================
+  (a) surface-point projection lands AT the face                : PASS
+  (b) flag OFF byte-identical (proxy alive)                     : PASS
+  (c) flag ON → cost-proxy OFF (Q[p_ee] = 0, x_ref[p_ee] = 0)   : PASS
+  (d) position-OSC produces FINITE control                      : PASS
+  (e) position-OSC command points TOWARD surface (u_x < 0)      : PASS
+
+  STRUCTURAL SANITY: PASS — proceed to live sim

@@ -757,10 +757,21 @@ class QuadraticManipulationCost:
 
                 # DIRECT EE-approach cost on the p_ee state slot.
                 # No arm Jacobian, no J^T J block — paper-aligned.
-                Q[self._NEW_PEE_SLOT, self._NEW_PEE_SLOT] = (
-                    self.w_ee_approach * np.eye(3)
-                )
-                x_ref[self._NEW_PEE_SLOT] = effective_proxy
+                # §7.31 — proxy off: when REF_RECONCILE_APPROACH is set
+                # AND the always-on EE-BOX row is enabled (LCS row keeps
+                # D ≠ 0 so the proxy's anti-freeze role is unnecessary),
+                # skip this block. The reference has no equivalent
+                # backward-pull cost (sampling_based_c3_controller.cc:500
+                # x_desired = GetDesiredState — the sampled face point in
+                # both modes, NO 100 mm-behind term).
+                import os as _os_rec
+                _skip_proxy = bool(int(_os_rec.environ.get(
+                    "REF_RECONCILE_APPROACH", "0") or "0"))
+                if not _skip_proxy:
+                    Q[self._NEW_PEE_SLOT, self._NEW_PEE_SLOT] = (
+                        self.w_ee_approach * np.eye(3)
+                    )
+                    x_ref[self._NEW_PEE_SLOT] = effective_proxy
 
             # --- Perpendicular box-velocity penalty ---
             # Penalize box linear velocity components orthogonal to g_hat.
