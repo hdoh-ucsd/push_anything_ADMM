@@ -698,6 +698,64 @@ class SamplingC3MPC:
         v_clipped = np.clip(v_ee_raw, -v_max, v_max)
         return alpha * v_clipped
 
+    # §7.34 — FAITHFUL-DESIRED-STATE FEEDFORWARD-ACCEL
+    # ------------------------------------------------------------------
+    # Reference OSC PD law: yddot_command = yddot_des + Kp·error_y + Kd·error_ydot
+    #                      (osc_tracking_data.cc:113-116)
+    # Port OSC law (pre-§7.34): a_des = Kp_cart·p_err + Kd_cart·v_err
+    #                      (qp_builder.py:140 — PD only, NO feedforward accel)
+    # The §7.34 build adds the missing yddot_des leg so the port matches the
+    # reference's PD + feedforward structure.
+    #
+    # EE-space x has NO acceleration state slot (verified
+    # lcs_formulator.py:1196-1203 — x = [box_q(7), p_ee(3), box_v(6), v_ee(3)],
+    # N_X_NEW = 19). a_ff is computed by SECOND-difference of the v_ee state
+    # slot — (x_seq[2][16:19] − x_seq[1][16:19]) / dt_planner.
+    #
+    # dt_planner is base_mpc.dt (50 ms canonical) — NOT dt_ctrl. Same stride-
+    # bug guard as the velocity helper.
+    #
+    # SOURCE/NOISE GATE (§7.34 STEP 0b): the planner is non-converged (25/25
+    # per-solve, §7.33 finding), and second-differencing amplifies noise.
+    # Probe on §7.32 live log (scripts/_stage_c_feedforward_noise_probe.py)
+    # found median |a_ff| = 0 m/s², p90 = 16 m/s², max = 22 m/s², sign-flip
+    # rate 11% — bounded enough to feed with a defensive a_max clip. Pass.
+    #
+    # Defensive a_max clip = 50 m/s² (2× the observed max, covers 100% of
+    # the §7.32 probe sample). Bypasses garbage from planner divergence /
+    # NaN. Matches the v_max=1.5 m/s defensive bound on the velocity helper.
+    def _acceleration_feedforward_from_xseq(self) -> Optional[np.ndarray]:
+        """Derive defensive-clipped EE acceleration feedforward from planner
+        x_seq second-difference. Returns None when:
+          * not under REF_RECONCILE_APPROACH (the only mode for which we
+            ALSO fed the velocity feedforward — keeping the activation set
+            synchronous so the PD-plus-feedforward law is only active when
+            BOTH legs (v_des, a_ff) are present)
+          * planner has no last_x_seq, or x_seq has fewer than 3 knots
+          * not running --ee-space (the R^7 path has no analytic accel
+            source; finite-differencing q-space velocity is even noisier
+            and the c3-mode over-drive failure was on the EE-space path)
+        """
+        if not getattr(self, "_reconcile_approach", False):
+            return None
+        x_seq = getattr(self.base_mpc, "last_x_seq", None)
+        if x_seq is None or x_seq.shape[0] < 3:
+            return None
+        if not bool(getattr(self.base_mpc, "use_ee_space", False)):
+            return None
+        dt_planner = float(getattr(self.base_mpc, "dt", 0.05))
+        if not (dt_planner > 0.0 and np.isfinite(dt_planner)):
+            return None
+        v_at_1 = x_seq[1][16:19]
+        v_at_2 = x_seq[2][16:19]
+        a_raw = (v_at_2 - v_at_1) / dt_planner
+        if not np.all(np.isfinite(a_raw)):
+            return None
+        a_max = float(getattr(self.params,
+                              "acceleration_feedforward_a_max", 50.0))
+        a_clipped = np.clip(a_raw, -a_max, a_max)
+        return a_clipped
+
     def _build_samples(self,
                        ee_pos_now:  np.ndarray,
                        obj_xy:      np.ndarray,
@@ -2635,6 +2693,12 @@ class SamplingC3MPC:
             _v_ee_des = self._velocity_feedforward_from_xseq(
                 plant_ctx, current_q, current_v
             )
+            # §7.34 — FAITHFUL-DESIRED-STATE FEEDFORWARD-ACCEL
+            # Adds yddot_des leg to the OSC PD law so port matches the
+            # reference's `yddot_command = yddot_des + Kp·error_y + Kd·error_ydot`.
+            # Returns None when REF_RECONCILE_APPROACH is OFF → byte-identical
+            # pre-§7.34 PD-only path.
+            _a_ee_des = self._acceleration_feedforward_from_xseq()
             # Under --ee-space, the planner's J_n / J_t are in low-dim
             # velocity coords [box_v(6), v_ee(3)] — not n_v_full(13). The
             # executor uses J_n.T @ λ_n in n_v space; the planner's λ
@@ -2678,6 +2742,7 @@ class SamplingC3MPC:
                 J_n          = _exec_Jn,
                 J_t          = _exec_Jt,
                 lambda_des   = _lam_des,
+                a_ee_desired = _a_ee_des,
             )
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
             # the alpha=0 / disabled run has parsable rows for the baseline
@@ -2716,6 +2781,21 @@ class SamplingC3MPC:
                       f"|v_des|={_vff_mag:.4f} "
                       f"sat={int(_sat_flag)} "
                       f"util_max={_util_max:.3f}@j{_util_argmax}",
+                      flush=True)
+                # §7.34 — feedforward-accel telemetry. Emit per c3 tick.
+                if _a_ee_des is None:
+                    _aff_dump = np.zeros(3)
+                    _aff_mag  = 0.0
+                    _aff_on   = 0
+                else:
+                    _aff_dump = _a_ee_des
+                    _aff_mag  = float(np.linalg.norm(_a_ee_des))
+                    _aff_on   = 1
+                print(f"[AFF] step={self._step} mode=c3 "
+                      f"on={_aff_on} "
+                      f"a_ff=({_aff_dump[0]:+.4f},{_aff_dump[1]:+.4f},"
+                      f"{_aff_dump[2]:+.4f}) "
+                      f"|a_ff|={_aff_mag:.4f}",
                       flush=True)
             # Sink 3 vs Sink 4 diagnostic: split OSC's commanded vs solved force
             _ld = imp_diag.get('lambda_des')
