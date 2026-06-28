@@ -1084,6 +1084,7 @@ class C3Solver:
 
         primal_hist = []
         dual_hist   = []
+        rho_hist    = []
         tol         = 1e-3
         actual_iters = admm_iter
         u_lam_w = self._u_lambda
@@ -1206,6 +1207,7 @@ class C3Solver:
                 dr = float(rho * np.linalg.norm(dlt_vec - dlt_prev_vec))
                 primal_hist.append(pr)
                 dual_hist.append(dr)
+                rho_hist.append(float(rho))
 
                 if (it + 1) % 10 == 0:
                     if pr > 10.0 * dr and rho < 1000.0:
@@ -1231,6 +1233,32 @@ class C3Solver:
             print(f"[ADMM-C3+] primal: {primal_hist[0]:.4f}->{primal_hist[-1]:.4f}  "
                   f"dual: {dual_hist[0]:.4f}->{dual_hist[-1]:.4f}  "
                   f"mono={mono}  iters={actual_iters}/{admm_iter}  rho={rho:.1f}")
+
+        # §7.37 measurement scaffold (default-OFF). When
+        # PUSHA_ADMM_RESID_CSV=PATH is set, append per-iter (pr, dr, rho)
+        # for each rich-mode solve (admm_iter >= PUSHA_ADMM_RESID_MIN_ITER,
+        # default 20) to a CSV. Surrogate sample-eval solves are skipped.
+        # No behaviour change when the env var is unset.
+        import os as _os_r
+        _resid_csv = _os_r.environ.get("PUSHA_ADMM_RESID_CSV", "")
+        _resid_min_iter = int(_os_r.environ.get("PUSHA_ADMM_RESID_MIN_ITER", "20"))
+        if _resid_csv and n_lambda > 0 and primal_hist and admm_iter >= _resid_min_iter:
+            if not getattr(self, "_resid_csv_inited", False):
+                self._resid_csv_inited = True
+                self._resid_csv_solve_idx = 0
+                _need_header = not _os_r.path.exists(_resid_csv)
+                if _need_header:
+                    with open(_resid_csv, "w") as _f:
+                        _f.write("solve_idx,n_lambda,iter,pr,dr,rho,converged,iters_used,admm_iter\n")
+            self._resid_csv_solve_idx += 1
+            _solve_idx = self._resid_csv_solve_idx
+            _conv_flag = int(actual_iters < admm_iter)
+            with open(_resid_csv, "a") as _f:
+                for _i in range(len(primal_hist)):
+                    _f.write(f"{_solve_idx},{n_lambda},{_i+1},"
+                             f"{primal_hist[_i]:.6e},{dual_hist[_i]:.6e},"
+                             f"{rho_hist[_i]:.6f},{_conv_flag},"
+                             f"{actual_iters},{admm_iter}\n")
 
         # D2: surface ADMM convergence + non-converged warning. Consumed
         # by C3PlusMPC.last_converged → wrapper._derive_force_command,
