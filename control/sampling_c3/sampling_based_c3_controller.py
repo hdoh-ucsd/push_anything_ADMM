@@ -2475,7 +2475,22 @@ class SamplingC3MPC:
             # ground), so lam_n.size >= 1 even with no EE-BOX pair.
             _ee_box_pairs = getattr(self.base_mpc.formulator,
                                     "_last_ee_box_contacts", [])
-            _no_admitted_pair = (len(_ee_box_pairs) == 0)
+            # §7.51 — PUSHA_DISABLE_C3_OVERRIDE (default-OFF) skips the LTD
+            # APPROACH-OVERRIDE block entirely, leaving _p_ee_des at the FK
+            # source (_x_seq[1][7:10] at line 2263). Validated as load-bearing
+            # for the first box closure in §7.51 (with PUSHA_EE_APPROACH_FACE_
+            # TARGET=1 + w_ee_approach=8000 + W_force=1). Default-OFF
+            # byte-identical preserved. One-shot log on first c3 tick.
+            _disable_c3_override = (_os.environ.get(
+                "PUSHA_DISABLE_C3_OVERRIDE", "0") == "1")
+            if _disable_c3_override and not getattr(
+                    self, "_751_banner_printed", False):
+                print("[§7.51] PUSHA_DISABLE_C3_OVERRIDE=1 — LTD APPROACH-"
+                      "OVERRIDE skipped in c3; p_ee_des = FK(x_seq[1][7:10])",
+                      flush=True)
+                self._751_banner_printed = True
+            _no_admitted_pair = ((len(_ee_box_pairs) == 0)
+                                 and not _disable_c3_override)
             _override_fired_this_tick = False
             if _no_admitted_pair:
                 _box_xyz = np.array([
