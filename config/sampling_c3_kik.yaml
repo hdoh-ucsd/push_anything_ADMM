@@ -34,6 +34,12 @@ w_align:  30000.0
 # of typical c_C3 ~ 60000.
 w_travel: 200.0
 
+# Reference alignment (§7.51 bank): matches ref LambdaEndEffectorW=diag(1,1,1).
+# This is a default-changing edit: dataclass default is 100, ref-faithful is 1.
+# Validated as load-bearing for the first box closure in §7.51 (with face-target
+# and PUSHA_DISABLE_C3_OVERRIDE).
+W_force: 1.0
+
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
 use_commit_face_gate: false
 
