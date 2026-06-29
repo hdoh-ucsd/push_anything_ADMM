@@ -726,7 +726,31 @@ class QuadraticManipulationCost:
                     obj_xy[1] - (self.d_push + 0.15) * g_hat[1],
                     self.z_ref,
                 ])
-                if ee_to_box_dist > 0.25:
+                # §7.46 — when PUSHA_EE_APPROACH_FACE_TARGET=1, re-target the
+                # planner-cost proxy to the contact-face point (proxy_3d =
+                # obj_xy − d_push·g_hat) directly, bypassing the 3-stage
+                # pre_approach→approach→proxy blend. §7.45 confirmed the
+                # blend's backed-off staging puts effective_proxy ~90mm EAST
+                # of the EE at first c3 entry (West push) → planner u_x
+                # +x = wrong sign. proxy_3d sits +d_push WEST of the box,
+                # which is +0.03m WEST of the EE at the §7.42/45 geometry
+                # → predicted u_x flips negative.
+                # Default-OFF byte-identical (else-branch keeps the 3-stage
+                # blend). Affects ONLY the planner cost (build_ee_space);
+                # IK/reposition/APPROACH-OVERRIDE path is independent.
+                import os as _os_face
+                if (_os_face.environ.get(
+                        "PUSHA_EE_APPROACH_FACE_TARGET", "0") == "1"):
+                    effective_proxy = proxy_3d.copy()
+                    if not getattr(self, "_face_target_logged", False):
+                        print(f"[§7.46] PUSHA_EE_APPROACH_FACE_TARGET=1 "
+                              f"effective_proxy=proxy_3d="
+                              f"({proxy_3d[0]:+.3f},{proxy_3d[1]:+.3f},"
+                              f"{proxy_3d[2]:+.3f}) "
+                              f"ee_to_box={ee_to_box_dist:.3f}m "
+                              f"(staging blend bypassed)", flush=True)
+                        self._face_target_logged = True
+                elif ee_to_box_dist > 0.25:
                     effective_proxy = pre_approach_3d.copy()
                 elif ee_to_box_dist > 0.10:
                     t = (ee_to_box_dist - 0.10) / 0.15
