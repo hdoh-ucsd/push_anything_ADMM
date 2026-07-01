@@ -2721,6 +2721,958 @@ The box-pinned penetration states (§7.18–§7.27) were the right tool for **IS
 
 Any subsequent entry that frames *"the contact-model fix resolves the no-push"* is operating on a STALE record — the live flip retired that framing; the clamp is correct AND inert in the live regime, and these are NOT contradictory. Any entry that escalates to Candidate F based on the live INERT outcome is mis-routed — F was the backup for an offline-CLAMP-FAILS outcome, but offline E-PASSED, so the live INERT is not a clamp-physics issue. Any entry that re-tunes v_cap to "engage more" is treating the clamp as a knob to mask the upstream binding (executor / admission / convergence) and is the §7.26 (4) β-trap recurrence in a different variable. Any entry that flips the admission threshold from 2 mm to "fix" the live INERT before diagnosing why the live planner doesn't drive the EE deep enough is the §7.27-CONSTRUCTED-STATE-LESSON ignored — masking the upstream binding with a downstream knob. Any entry that prunes A / C / E flags as "no longer needed" is conflating a default-OFF flag (zero live cost) with a stale artifact — the three flags ARE the contact-model diagnostic battery; keep them banked. Any entry that re-promotes anitescu friction-cone, `scale_lcs`, or other deferred / retired axes citing the live INERT outcome is mis-routing — the live INERT does NOT re-open those; it shifts the focus UPSTREAM to reposition / EE-to-contact + ADMM convergence, which are the actual binding axes.
 
+### 7.29 — Structural investigation (read-only) → the binding is the port's FILTERED-admission ARCHITECTURE (2 mm φ-filter) vs the reference's ALWAYS-ON LCS row (every pair in the LCS at every step, λ_n=0 at separation → planner can PLAN to establish contact); EE hovers at +2.01 mm in a cost-proxy-vs-force-tracking equilibrium; route GAP-IS-SOLVER-COUPLED (reposition WORKS at 60 mm entry gate, NOT the binding); C3 SHARES the LCS with C3+ (diverges only at the projection step inside `C3Solver.solve()`) → GATE-NOT-PRUNE. C3 deprecated in `main.py` argparse help. Convergence HELD (2026-06-26)
+
+No code change in the investigation (read-only); a SINGLE one-line argparse note on `main.py:242` adds `[DEPRECATED — gated diagnostic, shares the LCS with c3plus and carries the current contact model; prefer c3plus]` to `--solver c3` help; behaviour unchanged.
+
+#### (1) The 2 mm structure + the gap
+
+| name | file:line | value | role |
+|---|---|---|---|
+| LCS admission threshold | `lcs_formulator.py:451` | **0.002 m (2 mm)** | `ComputeSignedDistancePairwiseClosestPoints(threshold)` — only pairs within 2 mm enter the LCP |
+| Contact-proximity entry gate | `sampling_based_c3_controller.py:1108` | **0.060 m (60 mm)** to surface | blocks `kToC3ReachedReposTarget` until EE within 60 mm of box surface |
+| IK "finished" tolerance | `reposition_ik.py:1299` | **0.020 m (20 mm)** | IK declares reposition finished within 20 mm of setback target |
+| Reposition setback | `sampling.py` (`sampling_setback`) | **0.030 m (30 mm)** | setback target placed 30 mm OUTSIDE box face |
+| EE-approach cost proxy | `task_costs.py:177` (`d_push`) | **0.10 m (100 mm)** | proxy target at `obj − d_push · g_hat` (100 mm BEHIND box, on EE side) |
+
+**Why φ parks at +2.01 mm exactly** — NOT a structural floor; two opposing pulls equilibrate. In c3 mode without an EE-BOX LCS row:
+- (a) The **EE-approach cost** (`task_costs.py:120-123, 487`, `rich_mode=False`) drives EE toward the proxy 100 mm BEHIND the box ("Critical when there is no contact (D≈0): without this the QP has no incentive to move the arm and just minimises u^T R u → arm freezes").
+- (b) The **OSC force-tracking** (`wrapper.py:365` per CLAUDE.md) commands `λ_des = -g_hat · max(Σ|λ_n|, min_push_force=2N)` → pushes EE forward.
+- (c) The **box drifts** from accidental Drake-side EE-sphere grazing (the 31 mm in §7.28).
+
+Equilibrium lands the EE-sphere center ~27 mm from the box face (φ = +2 mm because Drake subtracts the sphere radius 0.025 m). **No LCS contact force pulls deeper** because the EE-BOX pair is not in the LCS until φ < 2 mm.
+
+**The gap (60 mm c3-entry → 2 mm LCS-admission)**: nothing structurally drives the EE the last 58 mm into penetration — the cost target is 100 mm BEHIND the box, force-tracking is bounded, no LCS contact force. The EE approaches asymptotically and hovers.
+
+#### (2) Reference vs port — the admission architecture (the key difference)
+
+| layer | port | reference (dairlib_sampling_c3) |
+|---|---|---|
+| Sample generation | face-normal projection (`sampling.py:146`, setback 30 mm) | mesh-normal sampling (`generate_samples.cc:455-509`, `buffer_distance`); `ProjectSampleOutsideObject` (`:839-868`) uses witness-points + EE radius |
+| Reposition | IK-per-knot via `RepositionIKTracker` + `_solve_single_knot_ik` (Ipopt), straight-line / sawtooth / PWL, IK "finished" at 20 mm | analytic PWL/spline/circle/sphere (`reposition.cc`), `speed=0.18 m/s`, PWL switch-to-straight at 8 mm |
+| **LCS contact admission** | **`extract_lcs_contacts(distance_threshold=0.002)` — per-step φ-filter (2 mm); pair only enters LCS when within 2 mm; at separation the EE-BOX row is ABSENT → planner CANNOT plan against it** | **`LCSFactory::LinearizePlantToLCS` (`lcs_factory.cc:31-105`) — takes a PRE-SPECIFIED `contact_geoms` list, iterates ALL pairs with NO distance threshold; every pre-specified pair is in the LCS at every step regardless of φ; at separation (φ≥0) the EE-BOX row is PRESENT with λ_n = 0 trivially satisfying complementarity → planner SEES the contact constraint structure and can plan u to ESTABLISH contact** |
+
+**The architectural difference**: the reference avoids the 2-mm-to-penetration gap BY STRUCTURE — the LCS row exists at every step, so the C3 planner has visibility on the EE-BOX complementarity at ALL distances and can plan a trajectory that drives φ through zero. The port's planner can only see contact AFTER φ < 2 mm — by which point the LCS is REACTING, not PLANNING. The port's 2 mm is **NOT a slightly-wrong tuning value**; it is a **DIFFERENT ARCHITECTURE** (filtered admission vs always-on).
+
+The 2 mm was deliberately tuned (`lcs_formulator.py:443-450` ablation: loosening to 40 mm regressed West push 29 mm → 10 mm) — but that tuning **kept the filtered design and widened the band** (admitting partial / garbage pairs → breaks the dispatcher cost-gap). Always-on admission is a **DIFFERENT change** (every pair always present, λ_n = 0 at separation = exact + harmless), so the 40 mm regression does **NOT necessarily predict** the always-on result — but admission changes DO have non-local dispatcher effects.
+
+#### (3) Route: GAP-IS-SOLVER-COUPLED (reposition WORKS)
+
+The reposition DOES drive the EE to within the 60 mm entry gate — that part works (**NOT GAP-IS-REPOSITION**). Loosening admission was tried at 40 mm and regressed motion (**NOT simply GAP-IS-ADMISSION-loosen**). The binding is **coupled**:
+- (a) the LCS has no EE-BOX row to plan against at φ > 2 mm (visibility),
+- (b) the cost proxy actively pulls the EE backward at 100 mm behind the box,
+- (c) ADMM non-converges every step (729 / 601 = 1.21 warnings/step, pinned 25/25) — the planner cannot emit a coherent commit-to-contact command because primal/dual residuals oscillate; the dispatcher enters c3 (128 steps) then bails (5-step disengage on `contact_type=NONE`).
+
+**Fix direction**: the reference's **always-on contact admission** (gives the planner contact-row visibility at all distances; avoids the proxy-vs-force-tracking equilibrium trap). The analytic-reposition port is a SEPARATE larger effort, **NOT on the critical path yet** (the port's reposition already reaches the entry gate).
+
+**Hypothesis (pre-registered)**: the ADMM non-convergence may be PARTLY because the planner solves an ill-posed problem (no contact row to push through → residuals oscillate); always-on admission could IMPROVE convergence as a side effect (well-posed QP), OR the non-convergence is independent (the April deck's E-matrix / projection issue) and persists. **ORDER**: always-on admission FIRST, then re-measure convergence (clean attribution).
+
+#### (4) C3-shares-LCS → SHARED, GATE-NOT-PRUNE
+
+Both solvers call the same `LCSFormulator`:
+- `C3MPC` (`ci_mpc_c3.py:225-236`) and `C3PlusMPC` (`ci_mpc_c3plus.py:154, 160`) both call `linearize_discrete_ee_space` / `linearize_discrete*`.
+- The contact-model fixes (clamp `:1537-1551`, `LCS_EXPLICIT_BOX_GND`, `LCS_NORMAL_COMPLIANCE_K`, `LCS_NORMAL_VELOCITY_LEVEL`) reach BOTH (they live in `LCSFormulator`, not the solver); the 2 mm admission applies to both.
+- Divergence point: ONLY inside `C3Solver.solve()` (`admm_solver.py:242`), dispatched by `mode` flag — `c3` → Lorentz-cone (`_lorentz_project` `:214`) vs `c3plus` → componentwise Bui-2026 eq.(12) (`_project_componentwise` `:705` + `_solve_c3plus` `:733`). Everything upstream (LCS build, cost, dispatcher, executor) is SHARED.
+
+**Verdict: GATE / DEPRECATE-NOT-PRUNE.** C3 carries the CURRENT (fixed) contact model, not a stale one; `--solver c3` is cheap to keep as a banked diagnostic; no back-port needed; pruning would be an unforced delete. **Action**: a `--solver c3` deprecation note in `main.py` argparse help.
+
+#### (5) Convergence HELD + progress-table
+
+| axis | state |
+|---|---|
+| floor | **[FIXED]** |
+| contact-axis (LCS-internal physics) | **[DIAGNOSED + clamp validated/gated, INERT live]** (offline E-PASSES correct; live system never enters the clamp's active regime) |
+| **binding** | **[SHIFTED upstream]** — contact establishment (the 2 mm filtered-admission ARCHITECTURE) + ADMM non-convergence, **coupled** |
+| Dispatcher / admission row | filtered-admission (2 mm φ-filter) vs reference always-on; EE hovers at +2.01 mm (cost-proxy-vs-force-tracking equilibrium, no LCS contact force to break it); **NEXT = always-on admission build** |
+| Projection row (C3 Lorentz vs C3+ componentwise) | **C3 gated-not-pruned**, deprecation note added |
+| Reposition row | **WORKS** (reaches 60 mm entry gate), NOT the binding |
+| Solver row | **co-binding** (729 / 601 warnings, 25 / 25 iters); hypothesis = may partly resolve with always-on admission, **measure after** |
+| friction | DEMOTED |
+| anitescu friction-cone | RETIRED |
+| `scale_lcs` (Candidate D) | DEFERRED |
+| flags | A + C + E STAY as banked diagnostics (default-OFF; do NOT prune) |
+| convergence | **HELD** |
+
+#### Anti-stale binding (§7.29)
+
+Any subsequent entry that frames the port's 2 mm admission as a tuning value to "open up" is operating on a STALE record — §7.29 (2) establishes that 2 mm vs always-on is an ARCHITECTURAL difference (filtered admission vs always-on), not a band-tightening knob; the 40 mm ablation (29 mm → 10 mm regression) IS NOT evidence against always-on (different change, λ_n = 0 at separation is exact + harmless). Any entry that opens the analytic-reposition port before the always-on admission build is mis-routing — the port's reposition already reaches the 60 mm entry gate, so reposition is NOT the binding; always-on admission is the localized first move. Any entry that attributes the live INERT to the clamp / Candidate E is conflating an offline-correct fix with the live binding — the clamp is correct AND inert because the LCS regime where it fires is never entered live (the 2 mm filter keeps it out). Any entry that prunes `--solver c3` is mis-routing — C3 shares the LCS with C3+, carries the current contact model, and is cheap to keep as a banked diagnostic; pruning would be an unforced delete. Any entry that re-measures ADMM convergence as the primary binding before always-on admission lands is mis-ordering — the §7.29 (3) pre-registered hypothesis is *measure-after*; the clean attribution requires the upstream architectural change first.
+
+### 7.30 — Always-on EE-BOX admission build (LCS_ALWAYS_ON_EE_BOX, default-OFF) + structural sanity PASS + live push sim → **NO-CHANGE-WITH-DISPATCHER-SHIFT**: admissions DID happen (4/8 c3-mode steps planned non-zero λ_n: 0.12, 0.16, 1.07, 1.50); ADMM warnings DOWN 729 → 609 (16% reduction); min φ 1.67 mm (baseline 2.01 mm — tighter but **still positive**, EE does NOT penetrate); box moved 29 mm West (baseline 31 mm — at-baseline, NOT regressed); BUT c3-mode usage **DROPPED 94%** (128 → 8 steps) — the always-on row shifted the dispatcher cost-gap to favor free mode. **Two-sided success criterion BARELY held** (box moves ~baseline AND West-push NOT below 29 mm) — but the **strict unblock failed**: visibility was admitted, planner did emit some λ_n, but EE doesn't penetrate and box motion is still incidental Drake-graze, NOT LCS-driven. Routed: **NO-CHANGE-LOCALIZE + DISPATCHER-SHIFT-DIAGNOSIS** (2026-06-26)
+
+Build at `control/lcs_formulator.py:147-163, 528-547`: a flag-gated path in `__init__` reads `LCS_ALWAYS_ON_EE_BOX` env (default OFF = 2 mm filter byte-identical); in `extract_lcs_contacts`, if the flag is set AND the 2 mm threshold did not admit an EE-BOX pair this step, the EE-BOX pair is injected explicitly via `ComputeSignedDistancePairClosestPoints(gid_ee, gid_box)` (pair-specific Drake call, NO threshold). Applies to the EE-BOX pair SPECIFICALLY (NOT a blanket no-filter — that would re-introduce the 40 mm garbage-pair regression per §7.29 (2)). Mirrors `lcs_factory.cc:31-105` (`LinearizePlantToLCS` iterates a pre-specified `contact_geoms` list with no distance threshold).
+
+#### (1) Structural sanity — PASS at φ ≈ +5 mm (offline, EE 5 mm beyond touching)
+
+Posed state: ee_x = 80.010 mm, box_x = 0.000 mm, gap = 80.010 mm. Test results (`always_on_validation/sanity.log`):
+
+| check | flag OFF | flag ON |
+|---|---|---|
+| EE-BOX in LCS | False (filter excludes at φ > 2 mm) | **True** (always-on row present) |
+| EE-BOX φ at state | n/a | **+5.020 mm** (matches +5 mm target) |
+| EE-BOX λ_n at state | n/a | **+0.0000** (EXPECTED — separation, exact + harmless) |
+| §7.14 gate (pass / fail / amber) | (0, 4, 0) OK | (1, 4, 0) OK |
+| LCS well-formed | True | True |
+| LCP feasible | OK | OK |
+| byte-identical default | — | flag OFF reproduces pre-§7.30 |
+
+**STRUCTURAL VERDICT: PASS** — the always-on row builds correctly at separation with λ_n = 0 (no spurious force), the constraint structure is visible to the planner, and flag OFF stays byte-identical.
+
+#### (2) Live push sim — `always_on_live/run.log`
+
+Command: `pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --admm-iter 25 --max-time 6 --seed 0`, `LCS_ALWAYS_ON_EE_BOX=1`, clamp OFF (`LCS_NORMAL_PHI_CLAMP` unset), HEAD = `7567275`.
+
+| metric | §7.27 baseline (21be0a1, filter ON, clamp ON-but-inert) | §7.30 (filter OFF for EE-BOX, clamp OFF) |
+|---|---|---|
+| total steps | 601 (6.01 s) | 601 (6.01 s) |
+| box final obj_xy | (−0.0314, +0.0166) m | (−0.030, +0.013) m |
+| goal_dist | 0.300 → 0.269 m (31 mm closure) | 0.300 → 0.271 m (**29 mm closure**) |
+| West push (Δx) | −31.4 mm | **−30 mm** (= baseline floor) |
+| EE-BOX LCS admissions | **0 / 601** | **601 / 601** (row always present by construction) |
+| EE-BOX λ_n > 0 emitted | 0 c3-mode steps | **4 / 8 c3-mode steps** (λ_n = 0.123, 0.162, 1.067, 1.503) |
+| EE-BOX λ_n = 0 (separation, harmless) | n/a | 4 / 8 c3-mode steps |
+| min φ observed | +2.01 mm (= filter threshold exactly) | **+1.67 mm** (tighter, still positive, NO penetration) |
+| ADMM non-converged warnings | 729 | **609** (−16%) |
+| ADMM iters / solve | 25 / 25 (all) | 25 / 25 (all 609) |
+| c3-mode steps | 128 | **8** (−94%) |
+| free-mode steps | 473 | **593** |
+| EE penetration | NO (all φ > 0) | **NO** (all φ > +0.00167 m) |
+| Drake-side ee_box_normal force | 0.000 everywhere | 0.000 everywhere |
+
+#### (3) The four-outcome routing — closest to **NO-CHANGE** with a new dispatcher-shift finding
+
+The pre-registered routes (§7.29 NEXT block, this conversation's Block 2 STEP 3) and what fits:
+
+- **UNBLOCKS-AND-CONVERGES** (EE penetrates + box moves + West ≥ baseline + ADMM improves): **FAILS** — EE does not penetrate.
+- **UNBLOCKS-BUT-ADMM-STILL-MAXES** (EE penetrates + box moves + West ≥ baseline, ADMM still 25/25): **FAILS** — EE does not penetrate.
+- **REGRESSES-PUSH** (EE penetrates + West regresses below ~29 mm): **FAILS** — West push at baseline floor (30 mm), NOT regressed.
+- **NO-CHANGE** (EE hovers at +2 mm, 0 penetration, box motion incidental): **CLOSEST MATCH** — EE still hovers (+1.67 mm, marginally tighter), zero penetration, box motion mechanism unchanged (still Drake-side graze; 30 mm vs baseline 31 mm is within noise).
+
+But **NO-CHANGE doesn't fit cleanly either**: admissions DID happen (4 positive λ_n vs baseline 0), ADMM warnings DID drop (609 vs 729), and the dispatcher c3-mode usage **dropped 94%** (a new phenomenon not in the pre-registration). Best characterization: **NO-CHANGE-WITH-DISPATCHER-SHIFT** — visibility was admitted (the architectural change worked structurally) BUT the planner still cannot drive EE to penetrate (the visibility was necessary but not sufficient) AND the always-on row shifted the surrogate cost-gap such that the dispatcher choose c3 mode 94% less often.
+
+#### (4) Mechanism of the dispatcher shift (hypothesis)
+
+In the surrogate sample evaluator (`inner_solve.py:213-330`), each sample's `c_C3` includes the c3+ ADMM optimal-value at the LCS built around the sample's pose. With the EE-BOX row ABSENT (baseline), the c3-cost for the `current` sample reflects only the dynamics + state-tracking error. With the EE-BOX row PRESENT (always-on), the c3-cost for the `current` sample additionally reflects the LCP penalty for not driving λ_n productively — and at φ > 0 the planner cannot productively use λ_n (the row admits λ_n = 0 only). So the `current` sample's c3 cost is **higher** under always-on than under filtered admission, which **widens** the cost gap between `current` and the `prev_repos` / `strat_0` samples, and the dispatcher prefers free mode (the `prev_repos` / `strat_0` samples have lower c3 cost because the LCS at those poses is the same as before). 128 → 8 c3-mode steps is the direct consequence.
+
+This is the FIRST observation in this conversation arc that **the surrogate-cost cost-gap is itself a sensitive function of the LCS structure**. The §7.29 (2) framing was that always-on is "exact + harmless" because λ_n = 0 at separation — that holds for the SOLVED LCP, but the cost-gap calculation is sensitive to LCS structure even when the solved λ_n is zero.
+
+#### (5) Route + convergence HELD
+
+**Route: NO-CHANGE-LOCALIZE + DISPATCHER-SHIFT-DIAGNOSIS** (a SEPARATE block).
+
+The pre-registered NO-CHANGE localizations (§7.29 NEXT block, STEP 3):
+- (a) **is the row actually in the live LCS?** **YES** — admissions happen 601/601 by construction; 4/8 c3-mode steps planned non-zero λ_n. So visibility IS in the LCS.
+- (b) **does the cost proxy still pull the EE back?** **OPEN** — the EE-approach cost (`task_costs.py:120-123, 487`) at 100 mm BEHIND the box is unchanged by §7.30, so the proxy-vs-force-tracking equilibrium that §7.29 (1) named is structurally intact. Plausibly still binding.
+- (c) **is the force-tracking the limit?** **OPEN** — OSC force-tracking (`wrapper.py:365`, `min_push_force = 2 N`, λ_des bounded by `max(Σ|λ_n|, min_push_force)`) is independent of the LCS row; bounded force may not be enough to overcome the cost proxy.
+
+Plus the NEW question:
+- (d) **why did c3-mode usage drop 94%?** Hypothesis above ((4)): the always-on row raises the `current`-sample c3-cost via the LCP penalty term even though solved λ_n = 0, widening the dispatcher cost-gap.
+
+| axis | state |
+|---|---|
+| floor | [FIXED] |
+| contact-axis (LCS-internal physics) | [DIAGNOSED + clamp validated, gated, INERT live] |
+| LCS admission architecture | **[ALWAYS-ON BUILT + LIVE-MEASURED]** — visibility admitted (601/601 EE-BOX rows; 4/8 c3-mode steps with non-zero planned λ_n), but **NOT sufficient** to drive contact establishment |
+| **binding** | **[STILL UPSTREAM of admission]** — cost proxy and/or force-tracking limit (the §7.29 (1) equilibrium) PLUS dispatcher cost-gap shift (94% c3-mode reduction) |
+| Dispatcher / surrogate cost-gap | **[NEW phenomenon]** — always-on row raises `current` sample c3-cost via LCP penalty even when solved λ_n = 0 → dispatcher prefers free mode |
+| Reposition row | WORKS (reaches 60 mm entry gate), NOT the binding |
+| Solver row | **co-binding HELD** — 609/601 = 1.01 warnings/step (down from 1.21); per-solve still 25/25; ADMM internals NOT fixed by always-on |
+| friction | DEMOTED |
+| anitescu friction-cone | RETIRED |
+| `scale_lcs` (Candidate D) | DEFERRED |
+| flags | A + C + E + **§7.30 always-on** STAY as banked diagnostics (default-OFF; do NOT prune) |
+| convergence | **HELD** |
+
+#### Anti-stale binding (§7.30)
+
+Any subsequent entry that frames the §7.30 always-on result as a SUCCESS (admissions worked → visibility unblocked) is operating on a STALE record — §7.30 establishes that visibility ALONE is insufficient: admissions did happen (4 positive λ_n in 8 c3-mode steps) BUT EE did not penetrate (min φ = +1.67 mm) and the box motion mechanism (30 mm West) is unchanged from baseline (incidental Drake graze, NOT LCS-driven force). Any entry that re-enables the clamp on top of §7.30 expecting penetration is mis-routing — penetration is not happening, the clamp's active regime is still not entered. Any entry that opens the analytic-reposition port citing §7.30 is mis-routing — reposition still works (reaches 60 mm), §7.30 isolated that the binding is downstream of admission (cost-proxy + force-tracking + dispatcher cost-gap shift). Any entry that prunes the §7.30 flag as "didn't help" is conflating "didn't unblock contact establishment alone" with "no diagnostic value" — the flag IS the architectural-conformance switch (matches reference), default-OFF preserves all prior behaviour, keep it banked. Any entry that re-frames the dispatcher 94% c3-mode reduction as "always-on broke the dispatcher" is mis-routing — the §7.30 (4) mechanism is a sensitivity of the surrogate cost-gap to LCS structure (even when solved λ_n = 0), NOT a bug in always-on; the fix lives in the surrogate cost-gap calculation, not in disabling always-on. Any entry that re-promotes ADMM convergence as the PRIMARY binding citing the 16% warning-reduction is mis-routing — convergence stayed at 25/25 per-solve (no per-solve improvement), the 16% drop is a count-of-solves effect from the dispatcher shift, the §7.29 (3) measure-after applies to per-solve convergence, not solve-count.
+
+#### (6) The TWO CORRECTIONS to §7.29 + CAVEAT + +2 mm reframe
+
+**Correction 1 — "exact + harmless" was correct for the SOLVED LCP but NOT for the dispatcher.** §7.29 (2) argued always-on is "exact + harmless" because λ_n = 0 at separation. The structural sanity confirmed this for the SOLVED LCP. The §7.30 live sim revealed a hidden second consumer: the surrogate sample-cost evaluator (`inner_solve.py:213-330`) builds the c3-cost from the LCP penalty term, which is NON-ZERO at the `current` sample's pose (even though solved λ_n = 0) because the penalty integrates over the QP iterates BEFORE convergence. With the EE-BOX row PRESENT (always-on), the `current` sample's c3-cost is **higher** than under filtered admission, widening the dispatcher cost-gap and dropping c3-mode usage 94% (128 / 601 → 8 / 601). The §7.29 (2) framing **"harmless to the SOLVED LCP" ≠ "harmless to the dispatcher"**: the surrogate cost-gap is sensitive to LCS STRUCTURE even when the solved λ_n is zero. A non-local dispatcher effect — the §7.29 ablation warning generalizing to the structurally-clean always-on change. **Always-on is NOT yet a validated keeper** — it fixed visibility but introduced a dispatcher perturbation; stays gated default-OFF as a diagnostic.
+
+**Correction 2 — "GAP-IS-SOLVER-COUPLED" routing: admission was NECESSARY but NOT SUFFICIENT.** §7.29 (3) routed the gap as solver-coupled (admission + cost-proxy + ADMM-non-convergence, all binding together). The §7.30 live result decouples them: admission visibility WAS necessary (the row is now in the LCS 601 / 601, the planner reasons about pushing with 4 positive planned λ_n values) — and the EE STILL parks at +1.67 mm. So the remaining binding is **NEITHER admission (matched) NOR the reposition trajectory** (it reaches the 60 mm entry gate). The remaining binding is the **+2 mm equilibrium itself**: the approach cost proxy (100 mm BEHIND the box, `task_costs.py:177`) pulling backward vs the bounded force-tracking (`min_push_force = 2 N`, `wrapper.py:365`) pushing forward, with no LCS contact force to break the tie. Admission was a **PREREQUISITE** that, once fixed, **EXPOSED** the cost-proxy / force-tracking equilibrium as the actual remaining binding. The ADMM non-convergence is co-present but now argued **DOWNSTREAM of contact establishment** (the planner can't converge a contact-establishment problem partly because the EE never reaches contact — and that is the equilibrium, not the solver).
+
+**Caveat — the +2 mm equilibrium term post-always-on is UNCONFIRMED.** §7.29 (1) named the cost proxy as the backward pull but did NOT quantify the force balance (proxy-out-pulls-2N is an INFERENCE from the EE parking, not a measurement) AND was diagnosed at BASELINE (filtered admission, `rich_mode=False` because no contact). §7.30 changed the admission (always-on row present), so whether the proxy still ENGAGES (still `rich_mode=False`?) at the parked state post-always-on is no longer obvious — the active backward term may have shifted. The exact term holding the EE at +1.67 mm post-always-on is UNCONFIRMED — a measurement gap (the equilibrium IS still there, but its decomposition is now hypothesis).
+
+**+2 mm reframe — the remaining lead binding.** Pre-§7.30: the binding was named as the filtered-admission ARCHITECTURE (admission was thought to be the lead). Post-§7.30: the lead binding is the **+2 mm cost-proxy / force-tracking equilibrium** — admission was necessary but the equilibrium survived it. The next action is to match the reference's contact-establishment path (read how the reference avoids the +2 mm equilibrium structurally), then size the fix.
+
+---
+
+### 7.31 — Reference contact-establishment read (read-only, source quotes, `/root/reference_repos/dairlib_sampling_c3`) → the reference drives the EE TO the surface (`buffer_distance ≈ 0`) via a desired-state, tracked by an UNBOUNDED position-OSC (`Kp = 200`), with NO anti-freeze proxy (absent because the always-on LCS row keeps D ≠ 0). The port's cost-proxy-100 mm-behind + 2 N-floored-force were a **TWO-PART substitute** for the reference's **ONE** surface-tracking mechanism. **The proxy and the 2 mm filter were the SAME problem twice** → always-on (§7.30) is the **PREREQUISITE** that makes proxy removal safe (now **LOAD-BEARING**). Route = **RECONCILE ALL-AT-ONCE** (surface desired-state + position-OSC + drop proxy, atomic with always-on, gated default-OFF), with the port-hooks-confirm caveat (2026-06-26)
+
+No code change — pure source reads from `examples/sampling_c3/` and `systems/controllers/` of the reference. The reading addresses the three mirror questions §7.30 (6) opened.
+
+#### (1) The reference's approach target — near-surface, NOT 100 mm behind
+
+The reference reposition target IS the SAMPLED face point on the box surface, projected OUTWARD along the face normal by a small `buffer_distance`:
+
+```cpp
+// generate_samples.cc:509 (the inner projection inside the face-area-weighted sampler)
+Eigen::Vector3d projected_sample_point =
+    sample_point + buffer_distance * selected_face->normal;
+```
+
+The reposition then drives the EE to this `projected_sample_point`:
+
+```cpp
+// reposition.cc:97-100 (PiecewisePolynomial trajectory to the sample location)
+Eigen::VectorXd next_lcs_state = x_lcs;
+next_lcs_state.head(3) = repos_target;  // ← EE goes HERE
+```
+
+`buffer_distance` is **per-task**:
+- `examples/sampling_c3/push_t/parameters/sampling_params.yaml:46` → `buffer_distance: 0` (touching the surface)
+- `examples/sampling_c3/anything/parameters/sampling_params.yaml:59` → `buffer_distance: 0.035` (35 mm out)
+- `examples/sampling_c3/jacktoy/parameters/sampling_params.yaml:47` → `buffer_distance: 0.05` (50 mm out)
+
+**Contrast with the port**: the port's `d_push = 0.10 m` (`task_costs.py:177`) places the proxy **100 mm BEHIND the box** on the EE-arriving side. The reference target is **35–50 mm OUTSIDE** the face — and that's the REPOSITION target, NOT a cost-only proxy. The reference target is **2× to ∞× closer to the surface** than the port's, and once the EE arrives there the OSC drives it INTO contact via the C3 plan (not via a separate cost term).
+
+#### (2) The reference's push / tracking authority — POSITION-tracking OSC with no force floor
+
+The reference's OSC gains during EE tracking (`shared_parameters/osc_params.yaml:48-59`):
+
+```yaml
+EndEffectorW:    [1, 0, 0,   0, 1, 0,   0, 0, 1]
+EndEffectorKp:  [200, 0, 0,  0, 200, 0,  0, 0, 200]
+EndEffectorKd:  [ 20, 0, 0,   0, 20, 0,  0, 0, 20]
+```
+
+This is a **position-tracking** task with Kp = 200, Kd = 20 — the OSC computes whatever joint torques close the position error, with NO a-priori bound on the resulting EE force. The reference's `LambdaEndEffectorW` (`osc_params.yaml:74`) is a SEPARATE channel (force-tracking for the C3 λ command), but neither channel imposes a `min_push_force` floor — `grep -rnE "min_push|push_force|force_floor|min_force"` in `examples/sampling_c3/` returns ZERO matches.
+
+**Contrast with the port**: the port's `wrapper.py:365` `_derive_force_command` commands `λ_des = −g_hat · max(Σ|λ_n|, min_push_force = 2 N)` — a **BOUNDED 2 N forward push**. When no LCS λ_n is admitted, the bound saturates at 2 N, which the 100 mm backward pull then balances at φ = +2 mm. The reference has **NO such bound** — position-tracking OSC can generate any force needed to overcome any backward pull. A STRUCTURAL difference, not a tuning value.
+
+#### (3) The reference's anti-freeze approach proxy — ABSENT
+
+Grepping the reference (`examples/sampling_c3/`) for `d_push | behind | approach.*cost | anti.freeze | x_des_behind | approach.*proxy` returns **zero hits** (only a README occurrence of the word "approach" in the abstract paragraph, not a code term). The reference's cost setup uses `x_desired = c3_object->GetDesiredState()` (`sampling_based_c3_controller.cc:500`), where `x_desired` for the EE row is the sampled face point (the same `projected_sample_point` the reposition tracks). No additional term targeting a point BEHIND the box, no anti-freeze proxy, no backward-pull cost.
+
+**Mechanism**: the port's anti-freeze proxy exists specifically because filtered admission makes D ≈ 0 at separation (no EE-BOX LCS row → arm would freeze under `u^T R u` regularization → the proxy was added to keep the QP well-posed by giving the EE a pull-back-target). The reference's **always-on LCS row** means D is NEVER effectively empty → the reference NEVER NEEDED the proxy → the reference HAS NO proxy → no backward pull exists for any forward force to overcome.
+
+**The fix-chain**: admission → removes the NEED for the proxy → removes the backward pull → +2 mm equilibrium dissolves. The port's filter and the port's proxy are **the same problem twice** (the proxy is the cost-side workaround for the filter; the filter is the architectural reason the proxy was forced to exist).
+
+#### (4) THE CONCLUSION — the proxy and the 2 mm filter were the SAME problem twice → always-on is now LOAD-BEARING
+
+The port's cost proxy and the 2 mm admission filter were the SAME problem seen twice. The proxy was **FORCED INTO EXISTENCE** by filtered admission:
+
+> no row → `D ≈ 0` → the QP minimizes `u^T R u` → the arm freezes → an anti-freeze approach term was needed → that term targets behind the box → a backward pull → the +2 mm equilibrium.
+
+The reference has **NO proxy BECAUSE its always-on row keeps D ≠ 0** — the freeze problem the proxy was added to solve simply doesn't exist when D never empties out. So §7.30's always-on work (which read as a NO-CHANGE dead end on its own) is actually the **PREREQUISITE that makes proxy removal safe** — always-on removes the proxy's reason to exist. The +2 mm equilibrium is a **DOWNSTREAM SYMPTOM of the filtered-admission architecture**, NOT an independent cost bug. **Always-on is now LOAD-BEARING** (its value isn't standalone visibility — it is the structural enabler of the proxy-removal that actually dissolves the equilibrium).
+
+#### (5) THE REFERENCE'S ARCHITECTURE — ONE mechanism, NOT three (the reconciliation spec)
+
+The reference's approach is **ONE mechanism**, not two or three: a **surface-directed EE DESIRED-STATE** (`GetDesiredState` → sampled face point, `buffer_distance ≈ 0`, **in BOTH modes** — repos and c3) **tracked by an UNBOUNDED position-OSC** (`Kp = 200`). The port's cost-proxy + 2 N-floored-force-command were a **TWO-PART substitute** for the reference's single surface-tracking design — and they leak the +2 mm equilibrium because the substitute is over-decomposed: the surface target is split into a behind-the-box cost term, the tracking authority is split into a bounded floor, and the always-on row that would have made the proxy unnecessary was replaced by a 2 mm filter.
+
+**Reconciling to the reference is therefore ONE design change, expressed as three coordinated edits**:
+
+- (a) **make the port's EE desired-state the surface point** (sampled face point, `buffer_distance ≈ 0`, both modes — match `GetDesiredState`),
+- (b) **track it with position-OSC** (Kp = 200, Kd = 20, no `min_push_force` floor — match `EndEffectorKp` / `EndEffectorKd`),
+- (c) **drop the proxy** (zero `d_push` / skip the approach-cost block — match the reference's absence),
+
+— which in the reference are **NOT three separate things but ONE design**. Doing one without the others reconstructs a different leak (target-only retarget keeps the bounded force; OSC-only switch keeps the backward proxy; proxy-only drop without changing the target keeps the EE pulled toward nothing useful). The atomic change matches the reference's atomic mechanism.
+
+**CAVEAT — port hooks UNCONFIRMED.** This bank is faithful to the reference's mechanism, but the port may not host it cleanly: whether the port's executor / wrapper exposes a **Cartesian EE desired-state input** AND a **position-tracking OSC mode** (without a force-floor fallback) is **UNCONFIRMED**. The reconciliation build's STEP 0 confirms the hooks before committing to the all-at-once landing — if the hooks are present, the change is small and atomic; if the hooks are absent, "reconcile the executor" IS the ℝ³-executor rebuild (a larger, already-queued effort), and the reconciliation must be sequenced against that build instead of landed as a single block.
+
+#### (6) Route + progress-table — RECONCILE ALL-AT-ONCE (user's call)
+
+**Route: reconcile the approach path to the reference ALL-AT-ONCE** — surface EE desired-state + position-OSC + proxy off, **atomic with always-on**, gated default-OFF. Per the user's call: ATTRIBUTION trade-off accepted (landing both halves of the substitute together reconciles the architecture but FORFEITS clean separation of which half breaks the equilibrium) — the trade-off is acceptable because the halves are not really separate (§7.31 (4)–(5)), and decomposed landing risks reconstructing the same equilibrium in a different form.
+
+**Why all-at-once DE-RISKS the free-mode-freeze failure**: a target-only retarget (surface point in c3 mode only) would leave free-mode running on the old proxy, but free-mode's `D = 0` is exactly the regime that needed the proxy to keep the arm from freezing. A tracked surface desired-state **in BOTH modes** (matching the reference's `GetDesiredState` which is the same in both) is exactly what guards against free-mode freeze — the desired-state itself replaces the proxy's role. Decomposed landing would have re-opened the freeze trap precisely where the proxy was patching it.
+
+**NEXT after reconciliation**: characterize push closure → push-success (if it works); localize downstream (if EE still parks somewhere else). The **ℝ³-Cartesian executor is now PARTLY SUBSUMED** (the position-OSC switch is a chunk of it — the executor rebuild is no longer wholly separate, depending on hook confirmation per (5) caveat). LARGE-SAMPLER-PORT NOT NEEDED (the port's sampler reaches the 60 mm entry gate; sampling is not the binding), deferred. Clamp stays OFF (regime still not entered). ADMM internals deferred (re-measure convergence after contact is established — current non-convergence may be ill-posed-problem artifact).
+
+| axis | state |
+|---|---|
+| floor | [FIXED] |
+| contact-axis | [DIAGNOSED + clamp gated, INERT live] |
+| LCS admission architecture | [ALWAYS-ON BUILT + LIVE-MEASURED, default-OFF] — **LOAD-BEARING** (the prerequisite that makes proxy removal safe) |
+| **lead binding** | **[+2 mm COST-PROXY / FORCE-TRACKING EQUILIBRIUM]** — a downstream symptom of filtered admission, NOT an independent cost bug |
+| Reposition / approach | reference = surface desired-state (`buffer_distance ≈ 0`) + unbounded position-OSC (`Kp = 200`); port = cost-proxy-100 mm-behind + 2 N-floored-force (a TWO-PART substitute for the reference's ONE surface-tracking mechanism); **NEXT = reconcile all-at-once** |
+| Executor (ℝ³-Cartesian queue) | **[PARTLY SUBSUMED]** — the position-OSC switch is a chunk of the queued executor rebuild; remaining executor work is hook-dependent (see §7.31 (5) caveat) |
+| Dispatcher / surrogate cost-gap | [SEPARATE thread, lower priority] — moot if always-on is not kept; revisit after the equilibrium dissolves |
+| Reposition row | WORKS (reaches 60 mm); NOT the lead binding |
+| Solver row | [downstream of contact establishment] — re-measure after the equilibrium dissolves |
+| friction | DEMOTED |
+| anitescu friction-cone | RETIRED |
+| `scale_lcs` (Candidate D) | DEFERRED |
+| flags | A + C + E + §7.30 always-on + (new) §7.31 reconcile-approach STAY as banked diagnostics (default-OFF; the §7.31 flag turns ON the atomic surface-desired-state + position-OSC + proxy-off bundle, gated together with always-on) |
+| convergence | **HELD** (re-measure after the equilibrium dissolves; current non-convergence may be ill-posed-problem artifact) |
+
+#### Anti-stale binding (§7.31)
+
+Any subsequent entry that frames the +2 mm equilibrium as solver-coupled is operating on a STALE record — §7.31 establishes the equilibrium is a downstream symptom of filtered admission (proxy + 2 mm filter = same problem twice), NOT ADMM; the ADMM non-convergence is downstream of contact establishment. Any entry that frames §7.30 as a NO-CHANGE dead end is reading the §7.30 verdict in isolation — §7.31 (4) re-frames §7.30 as LOAD-BEARING (always-on is the prerequisite that makes proxy removal safe; the value isn't standalone visibility, it is structural enablement). Any entry that lands the approach reconciliation as three separate changes (retarget, OSC-switch, proxy-drop) is decomposing the reference's ONE design back into the port's THREE-part substitute — §7.31 (5) explicitly identifies the substitute as the over-decomposition that leaked the equilibrium; the atomic landing matches the reference's atomic mechanism. Any entry that opens MEDIUM-EXECUTOR-TARGET as a separate route is reading §7.30's previous progress-table — §7.31 SUPERSEDES that decomposition: the position-OSC switch is now part of the all-at-once reconciliation (and partly subsumes the queued ℝ³-executor rebuild). Any entry that opens LARGE-SAMPLER-PORT citing §7.31 is mis-routing — §7.31 (6) explicitly DEFERS the sampler port (the port's sampler reaches the 60 mm entry gate; sampling is not the binding). Any entry that lands the reconciliation WITHOUT confirming the port hooks (Cartesian EE desired-state input + position-OSC mode) is operating against §7.31 (5) CAVEAT — the hook-confirm is STEP 0 of the next block; if the hooks are absent, the reconciliation IS the ℝ³-executor rebuild, not a small change. Any entry that re-tunes `d_push` to 35 mm citing reference parity is treating the proxy as a knob — §7.31 (4) explicitly: the proxy needs to be REMOVED, not re-tuned (the reference has no proxy at all). Any entry that re-promotes ADMM convergence as primary citing the §7.30 16% warning-reduction is mis-routing per §7.30 anti-stale. Any entry that re-frames the §7.30 dispatcher 94% drop as a §7.31 blocker is mis-routing — §7.31 defers the dispatcher thread (lower priority; moot if always-on is not kept; revisit after the equilibrium dissolves).
+
+### 7.32 — Reconciliation built (ace3625, REF_RECONCILE_APPROACH, default-OFF, atomic with always-on) + live push sim → **OVER-DRIVES-AND-DIVERGES** (a NEW fourth outcome the pre-registration missed). Diagnosis: the static surface-target derivation was the bug, NOT the architecture (the contact-establishment spell IS broken — EE penetrated at φ = −0.001 m, 231 N Drake contact force, planner λ_n peak 13.56 N, c3-mode 71%). The §7.31 "GetDesiredState" reframe is now SOURCE-VERIFIED (independent probe of `/root/reference_repos/dairlib_sampling_c3`): the reference's OSC has a **PD at its core** (the user's "no PD" guess was WRONG, refuted to source); the OSC tracks a **per-mode TRAJECTORY OBJECT** evaluated at the current time (NOT a static target, NOT just first-knot snap); the desired-state source is **mode-split**: c3 mode → C3 plan's predicted trajectory, free mode → reposition trajectory — matching the port's existing mode split. Pre-registration miss: the 3-sided (dissolves / parks / freezes) was built around NOT-ENOUGH; un-bounding the executor + removing the backward proxy added an OVER-DRIVE branch. Convergence 1029 is CONTAMINATED by divergence (insane late-tick states). Route: **FAITHFUL-DESIRED-STATE** — drop the static surface-point override (a); keep proxy-off (c) + position-OSC (b); use the existing planner-first-knot in c3 mode + IK-tracker-waypoint in free mode. Kp = 400 vs reference 200 gap held as a pre-registered follow-up (2026-06-26)
+
+#### (1) Hook-confirm PASSED + reconciliation BUILT (ace3625)
+
+HOOK-CONFIRM resolved at STEP 0 of the §7.31 build block: BOTH hooks PRESENT:
+- (a) `p_ee_desired` already a per-tick executor input (`operational_space_controller.py:126`, passed at `sampling_based_c3_controller.py:2650`).
+- (b) `use_force_tracking` already a toggleable OSC arg; position-tracking always-computed via `Kp_cart · p_err + Kd_cart · v_err` at `qp_builder.py:140` (force-tracking is opt-in). The port's `Kp_cart = 400` already EXCEEDS the reference's 200.
+
+→ SMALL atomic change behind a flag, NOT the ℝ³-executor rebuild. Three coordinated changes behind `REF_RECONCILE_APPROACH=1` (default OFF = byte-identical pre-§7.31), atomic with always-on, committed at `ace3625`:
+- (a) **Surface EE desired-state** via `_reconcile_surface_target` (`sampling_based_c3_controller.py:477-509`): projects the current sample (at `sampling_setback ≈ 30 mm` OUTSIDE the face) back to the face along the outward normal; applied at all 3 `executor.compute_torque` sites.
+- (b) **POSITION-tracking OSC** (`use_force_tracking = False`) gated at `:205-240`.
+- (c) **Approach-cost PROXY OFF** at `task_costs.py:758-774` (skips `Q[_NEW_PEE_SLOT]` and `x_ref[_NEW_PEE_SLOT]` assignments).
+
+Structural sanity 5/5 PASS (`scripts/_stage_c_reconcile_approach_sanity.py`): surface projection lands at face exactly; flag-OFF byte-identical; flag-ON proxy OFF (`Q[p_ee] = 0`); position-OSC FINITE; points TOWARD surface.
+
+#### (2) Live sim — OVER-DRIVES-AND-DIVERGES (the NEW fourth outcome)
+
+`reconcile_approach_live/run.log` (601 steps, both flags ON, clamp OFF, `pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --admm-iter 25 --max-time 6 --seed 0`):
+
+| metric | baseline (filter+proxy+floor) | §7.30 (always-on alone) | **§7.31 (reconciled, ace3625)** |
+|---|---|---|---|
+| total steps | 601 (6.01 s) | 601 (6.01 s) | 601 (6.01 s) |
+| final obj_xy_z (m) | (−0.0314, +0.0166, +0.050) | (−0.030, +0.013, +0.050) | **(+0.000, −0.006, −78.145)** ← box 78 m below floor |
+| goal_dist | 0.300 → 0.269 (31 mm closure) | 0.300 → 0.271 (29 mm) | **0.300 → 0.300 (NO closure)** |
+| EE final | normal | normal | **(−0.720, −0.065, +0.396)** ← a meter from start |
+| Drake `ee_box_normal` peak | ≈ 0 | ≈ 0 | **231 N** |
+| OSC saturation | (n/a, force-tracking) | (n/a) | **24.46 %** (147 / 601 at 87 Nm cap) |
+| ADMM warnings | 729 | 609 (−16 %) | **1029 (+41 %)** ← CONTAMINATED |
+| c3-mode usage | 128 / 601 (21 %) | 8 / 601 (1.3 %) | **428 / 601 (71 %)** |
+| planner λ_n peak | small (no admission) | 1.50 N | **13.56 N** |
+| min EE-BOX φ | +2.01 mm | +1.67 mm | **−0.001 m** (PENETRATION briefly) |
+
+Trajectory: step 1 EE z = 0.20 m, obj_z = +0.050 (normal); step 40 EE z = 0.075 m, obj_z = 0.000 m (EE descended through box TOP face from above); step 65 obj_z < 0 (box went through floor); after step 65 the system diverged completely.
+
+**Four-outcome routing — NEW fourth outcome.** NOT DISSOLVES-AND-MOVES (box doesn't reach goal — it leaves the floor downward). NOT STILL-PARKS (EE DOES penetrate, briefly at φ = −0.001 m). NOT FREEZES-OR-DRIFTS (the desired-state path IS wired, the OSC IS tracking — just driving EE catastrophically). The pre-registered three were built around "does the EE reach contact" with failure modes of NOT-ENOUGH (parks, freezes) — un-bounding the executor (removing the 2 N floor) and removing the backward pull (proxy) added a TOO-MUCH direction (OVER-DRIVES, penetrates, launches) that the pre-registration missed.
+
+#### (3) Diagnosis — static target was the BUG, not the architecture
+
+`_reconcile_surface_target` uses `delta_xy = sample[:2] − obj_xy` for the outward face normal — IGNORES the EE's vertical (z) approach geometry. With `sampling_height = 0.030 m`, the surface point z = 0.030 m which is BELOW the box's top face (box top at z = 0.10 m, since box half-extent = 0.05 and box origin at z = 0.05). The position-OSC (Kp_cart = 400, no force floor) drove EE STRAIGHT DOWN at high authority, descending through the top face from above, generating 231 N contact forces that launched the box into the ground.
+
+The architectural intent — no proxy + position-OSC + surface-directed target — is CORRECT: the EE penetrated for the first time in the arc (φ < 0 confirmed, real 231 N Drake force, planner λ_n peak 13.56 N, c3-mode 71 %). Removing the proxy + unbounded position-OSC + a surface-directed target DOES drive the EE into contact. The bug is WHERE the static target pointed (wrong face, wrong z). **The contact-establishment spell IS broken.** What's needed is a better target source — not a different architecture.
+
+#### (4) The reframe — SOURCE-VERIFIED via independent probe of the reference
+
+§7.31 banked "GetDesiredState returns the C3 plan's predicted trajectory" as a TO-VERIFY claim (constructed-state blind-spot rule). The §7.32 probe (read-only, source quotes from `/root/reference_repos/dairlib_sampling_c3`) verified FOUR things:
+
+**(a) Tracking law — PD at the core (USER'S "NO PD" GUESS REFUTED).** `systems/controllers/osc/osc_tracking_data.cc:113-116`:
+```cpp
+void OscTrackingData::UpdateYddotCmd(double t, double t_since_state_switch) {
+  yddot_command_ =
+      yddot_des_converted_ + (K_p_ * (error_y_) + K_d_ * (error_ydot_));
+}
+```
+Two-stage: (stage 1) the tracking-data layer produces `yddot_command` as a PD-on-Cartesian-error wrapped around a feedforward acceleration; (stage 2) the OSC inverse-dynamics QP at `operational_space_control.cc:453-461` maps these task-space objectives to joint torques via a cost `||J·u_ddot + JdotV − yddot_cmd||²_W`. Kp = 200, Kd = 20 confirmed at `examples/sampling_c3/shared_parameters/osc_params.yaml:51-58`. **There IS a PD law at the core; the OSC wraps and constraint-projects it, but the PD is structurally inside.** The "no PD" intuition was wrong: the OSC's two-stage structure is OSC ⊃ PD, not OSC ⊥ PD.
+
+**(b) Desired-state source — the C3 plan's predicted TRAJECTORY (not a static target).** `systems/controllers/sampling_based_c3_controller.cc:2847-2855`:
+```cpp
+LcmTrajectory execution_lcm_traj;
+if (is_doing_c3_) {
+  execution_lcm_traj = c3_execution_lcm_traj_;
+} else {
+  execution_lcm_traj = repos_execution_lcm_traj_;
+}
+...
+LcmTrajectory::Trajectory end_effector_traj =
+    execution_lcm_traj.GetTrajectory("end_effector_position_target");
+```
+The OSC consumes a full `drake::trajectories::Trajectory<double>` (PiecewisePolynomial or compatible) via an input port, and the tracking-data layer evaluates it each tick at the current time:
+```cpp
+y_des       = traj.value(t)
+ydot_des    = traj.EvalDerivative(t, 1)
+yddot_des   = traj.EvalDerivative(t, 2)
+```
+(`systems/controllers/osc/osc_tracking_data.cc:87-111`). **The desired-state is a TIME-EVALUATED TRAJECTORY OBJECT, NOT a static point and NOT just the first-knot snap.** The trajectory's structure encodes the approach geometry (constructed against the full LCS including contact rows) and is goal-aware.
+
+**(c) Mode dependence — TWO sources, mode-split.** The reference uses TWO trajectory sources, selected by `is_doing_c3_`: c3 mode = `c3_execution_lcm_traj_` (the C3 plan's predicted trajectory), free / reposition mode = `repos_execution_lcm_traj_` (straight-line / spline / circular / piecewise-linear, defined at `reposition.cc:1-79`). **This is a TWO-source mode-split — matching the port's existing pattern** (c3 mode = planner first-knot, free mode = IK tracker waypoint). The port's mode split is faithful in shape to the reference's.
+
+**(d) Port analog `_x_seq[1][7:10]` — VERIFIED correct.** `ci_mpc_c3plus.py:116` `self.last_x_seq` is `(N+1, n_x)` shape — the planner's predicted state sequence. `scripts/verify_slice_indices.py` bit-equal verifies `x_seq[0][7:10] == p_ee_now` (`x_seq[0]` is the LINEARIZATION POINT = current state), so `x_seq[1][7:10]` is **the planner's predicted EE position one knot ahead** in the 19-dim EE-space state layout. The slice is the right port-side analog of the reference's `c3_execution_lcm_traj_.value(t)` at the next knot time. **PORT-ANALOG-WRONG is REFUTED.**
+
+#### (5) Pre-registration miss + contaminated convergence
+
+**Pre-registration miss.** The three-sided pre-registration (dissolves / parks / freezes) was built around "does the EE reach contact" with failure modes of NOT-ENOUGH. It did NOT anticipate TOO-MUCH (over-drives, penetrates, launches). **Lesson:** removing a bound (the 2 N floor) + removing a backward pull (the proxy) ADDS an over-drive direction to the failure space; pre-registrations after un-bounding must include the over-drive branch.
+
+**Contaminated convergence.** ADMM warnings rose to 1029 (worse than baseline 729) — the FIRST data point on the 3-vs-25 question WITH contact, pointing PESSIMISTIC (contact established AND convergence WORSE, cutting against "non-convergence is mostly the ill-posed no-contact problem"). BUT confounded — the sim DIVERGED, so late ADMM solves were on a physically insane state (box at z = −78 m), wrecking convergence regardless. **The 1029 is NOT a clean read.** HOLD the prediction: once the target fix lands and the sim does NOT diverge, the re-measured convergence on a STABLY CONTACTING system is the real test. The 1029 is a hint the ADMM problem MAY be independent of contact-establishment, not a verdict.
+
+#### (6) Kp = 400 vs reference 200 gap + route + progress-table
+
+**Kp GAP.** Port `Kp_cart = 400`, reference `EndEffectorKp = 200` — DOUBLE the gain. The §7.31 build KEPT the port's 400 (a divergence we did NOT reconcile). With 24 % OSC saturation toward a WRONG target, the Kp = 400 is plausibly contributing to the over-drive. Even with the CORRECT target, 2× gain may still over-drive. **Hold Kp = 400 → 200 as a pre-registered follow-up** if the corrected target still over-drives — do NOT fold it into the FAITHFUL-DESIRED-STATE build (one variable at a time).
+
+**Route: FAITHFUL-DESIRED-STATE** — drop the static surface-point override (a) as the over-drive failure mode; KEEP proxy-off (c) + position-OSC (b). Feed `_p_ee_des` from:
+- **c3 mode**: the planner's first-knot prediction `_x_seq[1][7:10]` (the existing in-tree behaviour with always-on row + proxy off — the planner's trajectory IS the contact-establishment plan; goal-aware; encodes approach geometry against the full LCS).
+- **free mode**: the IK tracker's next waypoint along the lift-traverse-descend path (the existing free-mode behaviour).
+
+This becomes the reconciliation as a TWO-PART change (proxy off + position-OSC), with the surface-target override removed as the over-drive failure mode. The geometric-nearest-face alternative is REJECTED (still static, NOT goal-aware — a different misread of GetDesiredState).
+
+| axis | state |
+|---|---|
+| floor | [FIXED] |
+| contact-axis | [DIAGNOSED + clamp gated, INERT live] |
+| LCS admission architecture | [ALWAYS-ON BUILT + LIVE-MEASURED, default-OFF] — **LOAD-BEARING** |
+| Reposition / approach | **[RECONCILIATION BUILT, ace3625] — OVER-DRIVES-AND-DIVERGES on static target; architecture CORRECT (EE penetrated, spell broken); NEXT = FAITHFUL-DESIRED-STATE (planner first-knot in c3 + IK waypoint in free, both existing)** |
+| Executor (ℝ³-Cartesian queue) | position-OSC LANDED (use_force_tracking = False gated, default OFF); Kp = 400 vs reference 200 **UNRECONCILED** (pre-registered follow-up) |
+| Dispatcher / surrogate cost-gap | always-on LOAD-BEARING; c3-mode 71 % WITH contact (vs §7.30 1.3 % without contact) |
+| Reposition row | WORKS (reaches 60 mm); NOT the lead binding |
+| Solver row | **[CONTAMINATED]** — 1029 warnings, but the late ticks were on a diverging state (box at −78 m); re-measure on a stably contacting system; the 1029 hints the problem MAY be independent of contact but is not a verdict |
+| friction | DEMOTED |
+| anitescu friction-cone | RETIRED |
+| `scale_lcs` (Candidate D) | DEFERRED |
+| flags | A + C + E + §7.30 always-on + §7.31 reconcile-approach (ace3625) STAY as banked diagnostics (default-OFF); §7.31 flag will need an edit in the FAITHFUL-DESIRED-STATE build (drop the static surface-target override, keep the rest) |
+| convergence | **HELD** (re-measure after a non-diverging contacting system; 1029 is contaminated, not a verdict) |
+
+#### Anti-stale binding (§7.32)
+
+Any subsequent entry that frames §7.31's DIVERGES as proof the no-proxy + position-OSC architecture is wrong is mis-reading the result — §7.32 (3) establishes the architecture is CORRECT (EE penetrated for the first time, 231 N real Drake contact, 13.56 N planner λ_n) and the bug is the static surface-target derivation's wrong-face / wrong-z (the contact-establishment spell IS broken). Any entry that re-promotes a static face-point projection citing "fix the z" is treating GetDesiredState as a geometric target — §7.32 (4)(b) source-verifies GetDesiredState returns a TIME-EVALUATED TRAJECTORY OBJECT (goal-aware, encodes the LCS plan's approach geometry), NOT any static point; the FAITHFUL-DESIRED-STATE build uses the planner's predicted trajectory, NOT a recomputed geometric target. Any entry that re-asks "does the reference OSC have a PD at the core" is operating against §7.32 (4)(a) — the PD IS at the core (`yddot_command = yddot_des + Kp · error_y + Kd · error_ydot` at `osc_tracking_data.cc:113-116`), Kp = 200 / Kd = 20 confirmed; the OSC's two-stage structure is OSC ⊃ PD, not OSC ⊥ PD; the user's "no PD" guess was REFUTED to source. Any entry that re-asks "do the reference's c3 and free modes share one desired-state source" is operating against §7.32 (4)(c) — the reference uses TWO mode-split sources (c3 = `c3_execution_lcm_traj_`, free = `repos_execution_lcm_traj_`), matching the port's existing split; the FAITHFUL-DESIRED-STATE build keeps the port's mode split (planner-first-knot in c3, IK-waypoint in free) because it's already faithful. Any entry that re-promotes ADMM convergence as primary citing the 1029 warnings is mis-routing per §7.32 (5) CONTAMINATED — the late ticks were on a box-at-78-m-below-floor insane state; the 1029 is a hint, not a verdict; re-measure on a stably contacting system. Any entry that folds Kp = 400 → 200 into the FAITHFUL-DESIRED-STATE build is mis-ordering — §7.32 (6) explicitly holds Kp = 400 → 200 as a SEPARATE pre-registered follow-up (one variable at a time; the FAITHFUL-DESIRED-STATE build changes the target source, not the gain). Any entry that re-tries the static surface-point projection with a "fixed z" is the wrong-face / wrong-z patch repeating — the FAITHFUL fix is to source the desired-state from the plan, not recompute geometry. Any entry that frames the pre-registration miss as a process error is mis-reading — §7.32 (5) names it a structural lesson (un-bounding adds an over-drive branch; pre-registrations after un-bounding must include it), NOT a process failure.
+
+### 7.33 — FAITHFUL-DESIRED-STATE built (c893af3, REF_RECONCILE_APPROACH, default-OFF) + live push sim → **DISSOLVES-AND-MOVES** (the STRONGEST four-outcome). Box moved **179 mm West** (goal_dist 0.300 → 0.121 m, **60 % closure** vs baseline 10 %), sim STAYED FINITE, min EE-BOX φ −0.06 mm (BOUNDED penetration, sustained), Drake contact peak 52 N (vs §7.31 231 N, 77 % reduction), OSC saturation 8.49 % (vs §7.31 24.46 %, 65 % reduction). Velocity from `x_seq[1][16:19]` (EE-space planner has v_ee as a STATE SLOT — bit-faithful to `EvalDerivative(t, 1)`, retires the dt-stride-bug risk entirely). **Contact-establishment spell fully BROKEN — first STABLE commanded contact in the arc.** Convergence finding: on the now stably contacting, non-diverged system, ADMM is **STILL 25 / 25 per-solve** (648 warnings, CLEAN measurement) → the §7.29 "ill-posed no-contact" hypothesis is **REJECTED**; the non-convergence is **INTRINSIC**, re-promotes the April deck's Layer 3 (E-matrix tangent rows / η projection / no joint fixed point). Reviewer's "well-posedness will fix it" lean was WRONG, recorded. Route: ADMM diagnosis + push-closure characterization + Kp = 400 → 200 ALL DEFERRED per user; active work = structural alignment of remaining parts (2026-06-27)
+
+#### (1) Velocity-input confirm + BUILD (c893af3)
+
+STEP 0 velocity-input confirm: (a) `v_ee_desired` settable per-tick (`operational_space_controller.py:127`, `Optional[np.ndarray]`) — NO hook addition needed; (b) feedforward `yddot_des` IS absent (`qp_builder.py:140 a_des = Kp_cart · p_err + Kd_cart · v_err` only — deferred per §7.32 spec, one variable at a time); (c) 3 desired-state sites confirmed at lines 2650, 2828, 2850. **Bonus discovery**: `_velocity_feedforward_from_xseq` (`:616`) already reads `x_seq[1][16:19]` directly — in EE-space the planner has v_ee as a STATE SLOT (NOT a finite-difference, bit-faithful to the reference's `EvalDerivative(t, 1)`); was gated behind `use_velocity_feedforward` (default False, alpha = 0.5). The §7.31 ace3625 ran with `_v_ee_des = None` → `v_err = −v_ee_now` → target velocity 0 → Kp_cart = 400 slammed (the over-drive mechanism).
+
+Build c893af3 (under existing `REF_RECONCILE_APPROACH`, atomic with always-on, default-OFF byte-identical, NO new flag):
+- (a) Dropped all 3 `_p_ee_des = self._reconcile_surface_target(...)` calls (function kept at `:477-509` as banked code for ablation).
+- (b) `_p_ee_des` stays as planner first-knot in c3 mode + IK / PWL / `ee_pos_now` in free mode (faithful to the reference's mode-split).
+- (c) `_velocity_feedforward_from_xseq` updated to bypass `use_velocity_feedforward` gate under reconcile + alpha = 1.0 (undamped); `v_max = 1.5 m/s` clip kept as defensive bound against numerical garbage.
+- (d) KEPT proxy-off + position-OSC + always-on; NO Kp change, NO feedforward-accel, NO PiecewisePolynomial port.
+
+Structural sanity 6 / 6 PASS — critical Test (d) verified v_des FLOWS into a_des: `v_des = 0 → a_des_x = −2.0` (Kp only); `v_des = −0.30 → a_des_x = −14.0` (Kp + Kd · 0.30, the Kd · v_err term ALIVE).
+
+#### (2) Live push sim — DISSOLVES-AND-MOVES (the STRONGEST four-outcome)
+
+`faithful_desired_state_live/run.log` (601 steps, both flags ON, clamp OFF, `pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --admm-iter 25 --max-time 6 --seed 0`):
+
+| metric | baseline | §7.30 | §7.31 (DIVERGED) | **§7.32 (c893af3)** |
+|---|---|---|---|---|
+| final obj_xy_z (m) | (−0.031, +0.017, +0.050) | (−0.030, +0.013, +0.050) | (0, −0.006, **−78.145**) | **(−0.179, −0.001, +0.050)** |
+| goal_dist closure | 31 mm (10 %) | 29 mm (10 %) | 0 (diverged) | **179 mm (60 %)** |
+| min φ | +2.01 mm | +1.67 mm | −0.001 mm transient → diverged | **−0.06 mm (BOUNDED, sustained)** |
+| Drake contact peak | ≈ 0 N | ≈ 0 N | 231 N | **52 N** |
+| OSC saturation | n/a | n/a | 24.46 % | **8.49 %** |
+| sim finite | ✓ | ✓ | ✗ | **✓** (obj_z stays +0.05) |
+| ADMM warnings | 729 | 609 | 1029 (contaminated) | **648 (CLEAN)** |
+| ADMM iters / solve | 25 / 25 | 25 / 25 | 25 / 25 | **25 / 25 (STILL)** |
+| c3-mode % | 21 % | 1.3 % | 71 % | **7.8 %** (free 92 %) |
+| planner λ_n peak | small | 1.50 N | 13.56 N | **0.50 N** |
+
+Box trajectory (step 100 → 200 → 300 → 600): obj_x = 0 → −0.165 → −0.165 → **−0.179** (monotone West, repeated push-and-reposition cycle visible). Four-outcome: DISSOLVES-AND-MOVES — NOT OVER-DRIVES-AGAIN (52 N bounded), NOT STILL-PARKS (179 mm vs 30 mm), NOT FREEZES-OR-DRIFTS (EE actively tracks).
+
+#### (3) The fix mechanism — the velocity term was exactly the fix
+
+The §7.31 over-drive was a STATIC POSITION TARGET with `v_des = 0` at Kp = 400 — Kd damping toward ZERO target velocity while Kp drove position → slam. Feeding the planner's predicted velocity from `x_seq[1][16:19]` (the EE velocity STATE SLOT — bit-faithful to the reference's `EvalDerivative(t, 1)`, NO finite-difference) gave the D-term a REAL target:
+- v_err = v_des − v_ee_now → when planner predicts approach, Kd reinforces approach; when planner predicts slowing / reversing near contact, Kd brakes
+- → tamed the over-drive (231 → 52 N, 24 → 8.5 % saturation, sim finite)
+- AND established productive contact (179 mm, 60 % closure)
+
+The velocity term was exactly the fix. The bit-faithful `x_seq[1][16:19]` STATE SLOT (no finite-difference) RETIRES the `dt_planner` stride-bug risk entirely (the user's §7.32 STEP 1 `(x_seq[1] − x_seq[0]) / dt_planner` recipe was the conservative fallback — the actual code path is even more faithful).
+
+#### (4) Convergence finding — INTRINSIC; the ill-posed-no-contact hypothesis is REJECTED
+
+On the now STABLY CONTACTING, NON-DIVERGED system, ADMM is **STILL 25 / 25 per-solve** (648 warnings, CLEAN measurement — no divergence contamination, no transient over-drives). The §7.29 (3) hypothesis "non-convergence is mostly the ill-posed no-contact problem" is **REJECTED**: convergence did NOT improve once contact was real and the planner had a well-formed contact-rich problem to solve. The per-solve 25 / 25 persists with contact.
+
+The non-convergence is **INTRINSIC**, NOT an artifact of the no-contact problem. This **RE-PROMOTES the April deck's Layer 3**: C3+ E-matrix tangent rows zeroed → friction unenforced through η → no joint fixed point → primal residual cannot fall regardless of ρ or iteration count.
+
+**PREDICTION RESOLVED**: the held prediction ("if contact is established but warnings stay 25 / 25, convergence is a real independent problem") FIRED on the independent-problem side; the reviewer's "well-posedness will fix it" lean was **WRONG**, recorded as a calibration data point.
+
+**CAVEAT — CLEAR-CONFOUNDS, before any E-matrix work**: 25 / 25 every solve has TWO readings:
+- (i) **no fixed point exists** (E-matrix story; the deck's Layer 3 claim);
+- (ii) **iteration budget too small** for cond(P) ≈ 10⁵ (the residual would fall but needs > 25);
+
+distinguishable by the WITHIN-SOLVE residual SHAPE (plateau = no fixed point; still-descending-at-25 = budget too small) + a cheap `max_iter = 100` test — when the ADMM thread comes off hold. **Do NOT assume the E-matrix before checking the residual shape.**
+
+#### (5) Route + progress-table — STRUCTURAL ALIGNMENT of remaining parts
+
+**Route**: the agent's CHARACTERIZE-PUSH-CLOSURE + ADMM-DIAGNOSIS are BOTH DEFERRED per user ("align other parts first; touching the hyperparameters should be probed later"). ADMM internals (residual-shape probe + `max_iter = 100` + E-matrix work) + push-closure characterization (extend-max-time, multi-seed) + Kp = 400 → 200 ALL HELD. Active work = STRUCTURAL ALIGNMENT of remaining parts. NEXT (user's call): RECONCILE THE EXECUTOR — the feedforward-acceleration term (reference OSC = PD + `yddot_des`; port OSC = PD-only). The control-space ℝ³ is largely landed (position-OSC); Kp = 400 → 200 a deferred hyperparameter.
+
+Progress-table (full 17-layer inventory — abbreviated):
+
+| layer | state |
+|---|---|
+| Plant / scene_graph | DEFERRED (unverified vs reference) |
+| LCS construction | DEFERRED (admission RECONCILED via always-on; other LCS pieces — friction E-matrix, normal-axis clamp — unverified) |
+| Contact-normal axis | gated (clamp re-enable candidate now penetration is real) |
+| Friction / E-matrix | DEFERRED (the April deck's Layer 3 → the ADMM intrinsic non-convergence diagnosis) |
+| Always-on admission | LOAD-BEARING (§7.30, §7.31 — the prerequisite that makes proxy removal safe) |
+| Desired-state / approach proxy | **RECONCILED** (§7.32, c893af3 — DISSOLVES, 60 % closure) |
+| Sampling (face-normal) | works (reaches 60 mm entry gate); NOT the binding |
+| Reposition (IK / PWL) | works (reaches the entry gate); reference uses analytic + PWL (deferred port) |
+| Dispatcher (mode-switch) | always-on load-bearing; c3 7.8 % with contact (free 92 %) |
+| Inner sample evaluator | deferred (the §7.30 dispatcher cost-gap thread parked) |
+| Cost stack (Q / R / x_ref) | proxy-off (§7.31 c) RECONCILED; other cost terms deferred |
+| Executor (OSC) | **active front** — position-OSC + velocity feedforward landed (§7.32); **feedforward-accel = next structural piece**; Kp = 400 vs reference 200 deferred |
+| ADMM solver internals | DEFERRED (intrinsic non-convergence CONFIRMED, research target) |
+| Warm-start carryforward | DEFERRED (already noted absent per project memory `project_admm_no_warmstart.md`) |
+| Force command path | RECONCILED (no min_push_force floor under reconcile) |
+| Force tracking weight | deferred |
+| Per-tick state propagation | unverified |
+
+**~ 9 of 17 layers DEFERRED or UNVERIFIED** (plant, LCS, friction-E-matrix, cost stack, warm-start, ADMM internals, per-tick propagation, reposition geometric port, sampler port).
+
+#### Anti-stale binding (§7.33)
+
+Any subsequent entry that frames §7.32 as a partial result is mis-reading — §7.33 (2) records the FIRST STABLE COMMANDED CONTACT in the arc with 60 % closure; this is the strongest single-block outcome since the arc began. Any entry that re-routes to push-closure characterization or ADMM internals as the next-block work is operating against §7.33 (5) — the user EXPLICITLY deferred both ("align other parts first; touching hyperparameters should be probed later"); the next active work is the executor feedforward reconciliation. Any entry that re-promotes the §7.29 "well-posedness will fix ADMM" hypothesis is operating on a STALE record — §7.33 (4) source-evidences the REJECTION (on a stably contacting non-diverged system, 25 / 25 persists; the reviewer's lean was WRONG); the non-convergence is INTRINSIC. Any entry that runs the E-matrix probe before the residual-shape + `max_iter = 100` confounds-clear is mis-ordering — §7.33 (4) CAVEAT explicitly: 25 / 25 has TWO readings; distinguish before assuming. Any entry that folds Kp = 400 → 200 into the executor-feedforward build is mis-ordering — Kp is a deferred hyperparameter; the feedforward build is a STRUCTURAL change (PD + feedforward), one variable at a time. Any entry that re-asks "does the planner's predicted velocity need finite-differencing" is operating against §7.33 (1) bonus — the EE-space planner has v_ee as a STATE SLOT at `x_seq[1][16:19]`, bit-faithful to `EvalDerivative(t, 1)`, NO finite-difference; the dt-stride-bug risk is RETIRED for the velocity feedforward (the analogous question for the acceleration feedforward is the §7.34 STEP 0b concern, not §7.33's).
+
+### 7.34 — FAITHFUL-DESIRED-STATE FEEDFORWARD-ACCEL built (commit pending, REF_RECONCILE_APPROACH, default-OFF) + live push sim → **OVER-DRIVES / DESTABILIZES** (the user's §7.34 STEP 0b NOISE-GATE concern was real, in a way the probe did not predict). Box went off-axis to y = +0.054 m (vs §7.32 −0.001 m), goal_dist 0.300 → 0.222 m (**26 % closure** vs §7.32 60 % — REGRESSED), Drake ee_box_normal peak **1343 N** (vs §7.32 52 N — **25× WORSE**), ADMM warnings 1440 (vs §7.32 648 — **2.2×**), OSC saturation 7.32 % (vs §7.32 8.49 %, marginal). Sim STAYED FINITE (no divergence to −78 m floor like §7.31). NOT IMPROVES, NOT NO-CHANGE, NOT CONVERGENCE-MOVES — clearly the **OVER-DRIVES / DESTABILIZES** branch. The a_ff helper feeds the planner's predicted EE acceleration; the noise is real and dominated by the **raw `x_seq[16:19]` velocity state slot oscillation** (NOT what the noise-probe analyzed — the probe analyzed the post-`v_max=1.5`-clip [VFF] stream, which under-reports the raw slot's noise). Route: **executor STAYS RECONCILED at pos + vel (the c893af3 §7.33 state)**; feedforward-accel is BANKED behind the default-OFF flag for the future, with mitigation candidates noted. The PD + feedforward reference parity is held until either (a) the planner converges (the a_ff source becomes clean), or (b) a mitigation lands (low-pass / conditional gating / smaller a_max). Convergence finding REINFORCED: with the executor-only change, ADMM warnings doubled, confirming the executor's contact trajectory affects what the planner sees — but the per-solve 25 / 25 still persists, so the INTRINSIC non-convergence verdict from §7.33 stands. Kp = 400 → 200 STILL HELD (deferred hyperparameter). ADMM internals STILL HELD (observe-only re-measure was a confirming data point, not a worked thread) (2026-06-27)
+
+#### STEP 0a — §7.33 banked
+
+The §7.33 bank precedes this section (lines ~3118–3204): DISSOLVES-AND-MOVES (179 mm West, 60 % closure, min φ −0.06 mm, Drake peak 52 N, OSC saturation 8.49 %, ADMM 648/25/25 CLEAN, sim FINITE); the velocity-feedforward fix mechanism (`x_seq[1][16:19]` STATE SLOT, bit-faithful to `EvalDerivative(t,1)`); the INTRINSIC-non-convergence finding (the §7.29 hypothesis REJECTED on stably contacting system); progress-table (Desired-state RECONCILED, Executor active front, ~9/17 layers deferred).
+
+#### STEP 0b — SOURCE/NOISE GATE — verdict reversed in retrospect
+
+The probe (`scripts/_stage_c_feedforward_noise_probe.py`, output `feedforward_accel_validation/noise_probe.log`) analyzed the existing §7.32 live log's `[VFF] v_des=(...)` stream — taking first-differences of consecutive c3-mode `v_des` values as a proxy for what `a_ff = (x_seq[2][16:19] − x_seq[1][16:19]) / dt_planner` would emit. Probe verdict: median 0.00 m/s², p90 15.81 m/s², max 22.16 m/s², sign-flip rate 11.1 % → **PASS** (build STEP 1).
+
+The probe's reading was structurally MISCALIBRATED. The `[VFF]` stream is the post-`v_max = 1.5` CLIPPED, alpha-multiplied velocity — the BOUNDED interface to the OSC. But the `_acceleration_feedforward_from_xseq` helper reads from `x_seq[1][16:19]` / `x_seq[2][16:19]` DIRECTLY — the raw planner state slot, BEFORE the velocity-feedforward helper's clip. The raw state slot oscillates much harder than its clipped projection. The live `[AFF]` log shows median **46 m/s²**, p90 **52 m/s²**, max **52.3 m/s²** — the a_ff is mostly riding the defensive `a_max = 50` clip. Many components at ±30 m/s² (planner v swings the full ±1.5 range in 1 tick at dt=0.05). Predicted vs actual differed by ≥30× on the median.
+
+**Lesson for future SOURCE/NOISE gates**: probe the EXACT signal the helper will read (raw state slot), not a downstream clipped projection. The clip is part of the consumer's defense, not the source. Probing the consumer's output as a proxy for source noise underestimates the source by exactly the clip's bound. **§7.34 STEP 0b is REVERSED in retrospect** — the build would not have proceeded had the probe analyzed the raw slot.
+
+#### STEP 1 — build (committed as the §7.34 dedicated commit, default-OFF, byte-identical)
+
+Three coordinated changes behind the existing `REF_RECONCILE_APPROACH` flag (default OFF = byte-identical pre-§7.34):
+
+| file | change |
+|---|---|
+| `control/osc/qp_builder.py` | `build_and_solve_qp` accepts `a_ff: Optional[ndarray] = None` (line ~91). When non-None, `a_des = a_ff + Kp_cart·p_err + Kd_cart·v_err` (line 140). When None, byte-identical PD-only form. |
+| `control/osc/operational_space_controller.py` | `compute_torque` accepts `a_ee_desired: Optional[ndarray] = None`, threads through to `build_and_solve_qp`'s `a_ff` arg. `diag['a_ff']` exposed for logging. |
+| `control/sampling_c3/sampling_based_c3_controller.py` | New `_acceleration_feedforward_from_xseq` helper (after `_velocity_feedforward_from_xseq` at line ~699): under `REF_RECONCILE_APPROACH`, computes `a_ff = (x_seq[2][16:19] − x_seq[1][16:19]) / dt_planner` with defensive clip at `a_max = 50` m/s² + NaN guard. Returns None outside reconcile or when `x_seq.shape[0] < 3` or non-`--ee-space`. Called at c3-mode site (`_a_ee_des = ...`) and passed via `a_ee_desired = _a_ee_des` to the executor. New `[AFF] step=N mode=c3 on=1 a_ff=(...) |a_ff|=...` telemetry mirrors `[VFF]`. |
+
+**Held:** Kp = 400 NO change (deferred hyperparameter per §7.33). No additional gate logic (per-tick smoothness check, conditional gating). KEPT all of c893af3 (position+velocity desired-state, proxy-off, position-OSC, always-on). Free-mode call sites (PWL + legacy) pass `a_ee_desired = None` (the free-mode over-drive was never the failure mode; the planner's c3-mode is the only path with a usable `x_seq`).
+
+#### STEP 1b — structural sanity 4/4 PASS
+
+`scripts/_stage_c_feedforward_accel_sanity.py` (output `feedforward_accel_validation/sanity.log`):
+
+| test | what it checks | verdict |
+|---|---|---|
+| (i)  | `a_ff` FINITE+BOUNDED under `a_max = 50`, clipped on divergent jump (60 → 50), None on NaN input | PASS |
+| (ii) | `a_ff` FLOWS into `a_des` via additive term: `a_ff=None` → −2.0 (PD), `a_ff=0` → −2.0 (0 + PD), `a_ff=5` → +3.0 (shift) | PASS |
+| (iii) | OSC command FINITE + QP feasible across `a_ff` cases | PASS |
+| (iv) | byte-identical default: `a_ff=None` produces same `a_des` AND same u as the c893af3 pre-§7.34 path | PASS |
+
+Per the §7.34 STEP 0b REVERSAL above, the sanity tests are TECHNICALLY correct (the build code does what was specified) — but they did NOT catch the source-noise issue because they used SYNTHETIC `a_ff` values, not the real raw-state-slot output. The source-noise check belonged in STEP 0b, not STEP 1b.
+
+#### STEP 2 — live sim — OVER-DRIVES / DESTABILIZES
+
+`feedforward_accel_live/run.log` (601 steps to t = 6.01 s; same protocol as §7.33 — both flags ON, clamp OFF, `pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --admm-iter 25 --max-time 6 --seed 0`). Trajectory:
+
+| step | obj (m) | EE (m) | mode |
+|---|---|---|---|
+| 100 | (+0.000, +0.000, +0.050) | (+0.072, −0.006, +0.135) | free |
+| 200 | (−0.013, +0.003, +0.050) | (+0.026, −0.030, +0.146) | c3 |
+| 300 | (−0.049, +0.039, +0.034) | (−0.117, −0.023, +0.054) | free |
+| 400 | (−0.078, +0.059, +0.046) | (−0.261, −0.142, +0.077) | free |
+| 500 | (−0.078, +0.059, +0.050) | (−0.006, +0.033, +0.126) | free |
+| 600 | (−0.085, +0.054, +0.050) | (−0.019, +0.011, +0.038) | free |
+
+| metric | baseline | §7.32 (§7.31 DIVERGED) | **§7.33 (DISSOLVES, c893af3)** | **§7.34 (OVER-DRIVES, this commit)** |
+|---|---|---|---|---|
+| final box-y (m) | −0.001 | (off-axis) | **−0.001** | **+0.054** (knocked sideways) |
+| goal_dist final (m) | 0.270 | (off-axis) | **0.121** | **0.222** |
+| % closure | 10 % | (off-axis) | **60 %** | **26 %** (regressed) |
+| min EE-BOX φ | +2.01 mm | +0.001 mm (transient) → divergence | **−0.06 mm BOUNDED** | −1.05 mm BOUNDED |
+| Drake ee_box_normal peak | ~0 N | 231 N | **52 N** | **1343 N** (25× §7.33) |
+| OSC saturation | — | 24.46 % | **8.49 %** | 7.32 % |
+| ADMM warnings | 729 | 1029 (contaminated) | **648** | **1440** (2.2×) |
+| ADMM iters/solve | 25/25 | 25/25 | 25/25 | **25/25** (intrinsic, confirmed) |
+| sim finite | yes | NO (−78 m) | **yes** | **yes** |
+
+#### THE FIX MECHANISM (negative — why the build OVER-DROVE)
+
+The §7.34 helper computes `a_ff` by direct second-difference of the planner's velocity STATE SLOT at the next two knots. The planner is NON-CONVERGED (25/25 per-solve). On the non-converged solution, the planner's predicted velocity slot OSCILLATES across knots — there is no fixed-point velocity profile to extract a smooth acceleration from. Second-differencing amplifies the oscillation. The defensive `a_max = 50` clip kept the result FINITE but did not smooth it: median `|a_ff|` saturated near the clip at every c3 tick. The OSC then dutifully tracked that high-magnitude, sign-flipping feedforward acceleration, generating 1343 N transients on contact and knocking the box sideways into y = +0.054 m.
+
+The §7.33 DISSOLVES build was ROBUST to non-convergence because the post-clip velocity (the [VFF] stream) is BOUNDED at ±1.5 m/s by construction, and the Kd term damps oscillations rather than amplifying them. The §7.34 feedforward-accel undid that robustness by feeding a higher-derivative quantity that the OSC could not damp.
+
+**The structural-faithfulness vs source-cleanliness tradeoff**: the reference's OSC has `yddot_command = yddot_des + Kp·error_y + Kd·error_ydot`, with `yddot_des` coming from a CONVERGED `c3_execution_lcm_traj_` (the reference's ADMM converges in 0.1 ms). The port's planner does NOT converge, so the analogous yddot_des is dominated by non-convergence noise. The reference's structural form maps cleanly ONLY when the source signal is clean. The port-reference parity at this layer is therefore CONDITIONAL ON convergence — the structural alignment is correct, but the source is wrong.
+
+#### THE CONVERGENCE FINDING — REINFORCED
+
+§7.33's INTRINSIC verdict (`25/25` persists with contact) is REINFORCED: in §7.34 the executor-only change drove ADMM warnings 648 → 1440 (the contact regime shifted), but the per-solve `25/25` still persists. The non-convergence is BOTH intrinsic (per-solve never finishes) AND coupled to the contact regime (frequency of c3-mode + intensity of each solve). The §7.33 RE-PROMOTION of the April deck's Layer 3 (E-matrix / projection / no joint fixed point) still stands as the leading explanatory candidate, with the same CAVEAT (residual-shape + `max_iter=100` confounds-clear first).
+
+#### Progress table (post-§7.34) — what the executor reconciliation looks like now
+
+| layer | post-§7.34 state |
+|---|---|
+| Sample generation | reconciled within port's existing face-normal strategy |
+| Dispatcher / surrogate cost-gap | always-on LOAD-BEARING; §7.34 c3-mode 6.3 % (vs §7.33 7.8 %) |
+| Always-on admission | LOAD-BEARING (§7.30, §7.31, §7.33, §7.34 — the prerequisite that makes proxy removal safe) |
+| Desired-state / approach proxy | **RECONCILED** (§7.32, c893af3 — DISSOLVES, 60 % closure) |
+| Executor (OSC) | **PARTIAL-RECONCILED**: position+velocity LANDED (§7.33), **feedforward-accel STRUCTURALLY LANDED but SOURCE-CONDITIONAL** (§7.34 — default-OFF banked; the structural form matches the reference but the source signal is non-converged-noise-dominated; re-enables IFF (a) ADMM converges OR (b) a source-side mitigation lands). Kp = 400 vs reference 200 deferred. |
+| Reposition geometric port | deferred |
+| Solver / ADMM internals | DEFERRED-as-intrinsic-research-target (§7.33/§7.34 reinforced); the source-cleanliness premise of the executor reconciliation is BLOCKED ON this |
+| Contact-normal velocity-level clamp | DEFERRED (regime now bounded) |
+| Inner sample evaluator | deferred (the §7.30 dispatcher cost-gap thread parked) |
+| Cost stack (Q / R / x_ref) | proxy-off (§7.31 c) RECONCILED; other cost terms deferred |
+| Plant / LCS construction / friction-E-matrix / warm-start carryforward / per-tick propagation | DEFERRED or UNVERIFIED (the risk surface) |
+
+**~ 9 of 17 layers DEFERRED or UNVERIFIED.** The executor "PARTIAL-RECONCILED at pos+vel, feedforward-accel landed-but-source-conditional" is the new active state.
+
+#### Anti-stale binding (§7.34)
+
+Any subsequent entry that frames §7.33 as the FINAL executor state is operating on a stale record — §7.34 (PARTIAL-RECONCILED) is the post-§7.33 state; the feedforward-accel STRUCTURE landed default-OFF and the reference's PD + feedforward form is now part of the port's vocabulary. Any entry that re-enables the feedforward-accel without addressing the source-cleanliness premise (ADMM convergence OR a mitigation: low-pass, conditional gating, much-smaller a_max) is re-running §7.34's OVER-DRIVES failure mode. Any entry that re-runs the §7.34 STEP 0b probe in its CURRENT form (analyzing the [VFF] clipped stream as a proxy for the raw-slot a_ff) is repeating the calibration error — the source signal is the raw `x_seq[16:19]` slot, NOT the post-clip [VFF] stream; probe the raw slot directly. Any entry that re-tries the feedforward-accel build with a smaller a_max (e.g. 10 m/s²) without ALSO addressing the SIGN-FLIP rate is missing half the problem — bound-magnitude is necessary but not sufficient; sign-flip oscillation is the OVER-DRIVE mechanism (the OSC tracks a sign-flipping target, generating impulsive transients regardless of magnitude bound). Any entry that frames the OVER-DRIVES result as proof the reference's PD + feedforward form is wrong is mis-reading — the form IS faithful; the source is non-converged; the form is correctly mapped, the SOURCE is wrong. Any entry that re-promotes the §7.29 "well-posedness will fix ADMM" hypothesis citing §7.34's 1440 warnings is mis-routing — §7.34's 1440 is contact-regime-driven, not ill-posedness-driven (the executor-only change shifted the contact regime; the per-solve 25/25 still persists). Any entry that folds Kp = 400 → 200 into a §7.34 mitigation experiment is mis-ordering — Kp is still a deferred hyperparameter; the source-cleanliness premise is the dependency, not the gain. Any entry that re-promotes c3-mode-only-feedforward-accel (gating on dispatcher mode) is incomplete — c3-mode IS where the feedforward fired in §7.34, and the over-drive was IN c3-mode; gating on mode is not the mitigation, gating on source-smoothness is. Any entry that interprets the planar-99.2 % result as evidence that feedforward-accel works in 2D is mis-reading — planar has lower n_lambda, smaller condition number, and the planner CONVERGES; 3D's non-convergence is the binding gate for the source signal.
+
+### 7.35 — Validated clamp re-enabled on the §7.33 working state (commit pending) + live push sim → **NO-CHANGE** (clamp BIT-IDENTICAL-INERT — the validated-but-inert outcome, like §7.30 always-on before §7.31 made it load-bearing). The clamp (`LCS_NORMAL_PHI_CLAMP=0.034`, §7.27 E-PASSES) activated 0 / 601 ticks — the live regime's max penetration depth (§7.33 max |φ|=0.06 mm → |φ|/dt=0.0012 m/s) is WELL BELOW the clamp's activation threshold (|φ|/dt > v_cap=0.034 m/s, i.e. |φ|>1.7 mm at dt=0.05). Final box (−0.179, −0.001, +0.050), goal_dist 0.121 m, 60 % closure, Drake peak 52 N, min φ −0.06 mm, OSC saturation 8.49 %, ADMM warnings 648 / 1296 iters / 25-25 — **EVERY METRIC BIT-IDENTICAL to §7.33** (`diff -q` at step 600 + RESULT line: zero output). **Block side-find: §7.34's coupling-bug + decoupling edit landed.** The §7.34 commit coupled the feedforward-accel into the existing `REF_RECONCILE_APPROACH` flag — so setting that flag in §7.35 silently re-enabled the §7.34 OVER-DRIVES regime, and the first §7.35 run was BIT-IDENTICAL to §7.34 (off-axis to y=+0.054, peak 1343 N), NOT the intended §7.33 working state. A small decoupling edit (env `REF_RECONCILE_FEEDFORWARD_ACCEL`, default OFF; checked in `__init__` and `_acceleration_feedforward_from_xseq`) restores the §7.33 working state under `REF_RECONCILE_APPROACH=1`. The §7.34 OVER-DRIVES regime remains reproducible by setting the new sub-gate. **Convergence finding HELD**: the contact-model-side change (clamp ON, inert in this regime) produced NO ADMM change (CONVERGENCE-MOVES did NOT fire) — but the test was depth-inert, so it cannot rule OUT clamp-side convergence coupling at deeper contact regimes. Route: HOLD the clamp (default-OFF stays); the validated-but-inert disposition mirrors §7.30 (always-on was NO-CHANGE in isolation, then load-bearing under §7.31's reconciliation); the clamp's value may emerge later (deeper contact, multi-seed, or coupled with future LCS changes). Kp = 400 → 200 STILL HELD. ADMM internals STILL HELD. (2026-06-27)
+
+#### STEP 0a — §7.34 banked
+
+The §7.34 bank precedes this section (lines ~3204 onwards): OVER-DRIVES / DESTABILIZES (closure regressed 60 → 26 %, Drake peak 52 → 1343 N, ADMM warnings 648 → 720, sim FINITE); the source-noise gate mis-calibration (probe analyzed post-clip [VFF] stream, helper reads raw `x_seq[16:19]` slot directly; lesson: probe the exact bytes the build consumes, NOT any downstream projection). The §7.33 c893af3 pos+vel state remains the active executor reconciliation; feedforward-accel is structurally landed + banked behind the default-OFF flag, source-conditional on ADMM convergence.
+
+#### STEP 0b — clamp × always-on × reconciliation INTERACTION CONFIRM
+
+`scripts/_stage_c_clamp_reenable_sanity.py` (output `clamp_reenable_validation/sanity.log`) verified the clamp formula across the φ sign:
+
+| regime | phi | phi/dt | clamp delta | verdict |
+|---|---|---|---|---|
+| φ > 0 large separation | +10 mm | +0.20 m/s | 0 | UNTOUCHED |
+| φ > 0 always-on (small) | +1 mm | +0.020 m/s | 0 | UNTOUCHED |
+| φ = 0 exact contact | 0 | 0 | 0 | UNTOUCHED |
+| φ < 0 shallow §7.33 | −0.06 mm | −0.0012 m/s | 0 | UNTOUCHED |
+| φ < 0 shallow §7.34 | −1.05 mm | −0.021 m/s | 0 | UNTOUCHED |
+| φ < 0 boundary | −1.70 mm | −0.034 m/s | 0 | UNTOUCHED |
+| φ < 0 DEEP §7.27 anchor | −3.0 mm | −0.060 m/s | +0.026 m/s | RELAXES |
+| φ < 0 VERY DEEP §7.27 | −5.0 mm | −0.100 m/s | +0.066 m/s | RELAXES |
+
+The clamp formula `max(phi/dt, −v_cap) − phi/dt` is structurally INERT at φ ≥ 0 (always returns 0 when phi/dt ≥ 0 ≥ −v_cap, since max(positive, negative) = positive). The φ > 0 + always-on coexistence is SAFE by construction. NO φ < 0-scoping edit required. Byte-identical default (`if self._normal_phi_clamp_v_cap is not None:` guard) STILL holds at `lcs_formulator.py:1611` after the always-on + reconciliation builds — the site is unchanged. The clamp would activate ONLY if |phi|/dt > v_cap = 0.034 (i.e. |phi| > 1.70 mm at dt=0.05) — the §7.33 working regime peaks at 0.06 mm, the §7.34 over-drive regime peaks at 1.05 mm, BOTH well under the threshold. PREDICTION: live regime = NO-CHANGE (clamp depth-inert).
+
+#### STEP 1 — enable the validated clamp + small decoupling edit
+
+The clamp itself: NO new build — `LCS_NORMAL_PHI_CLAMP=0.034` (the §7.27 E-PASSES value, NOT re-fit). The §7.35 run sets the env on top of the §7.33 working config (`LCS_ALWAYS_ON_EE_BOX=1 REF_RECONCILE_APPROACH=1`).
+
+The decoupling edit (the analog of the φ < 0-scoping language in the spec, landed under the same block): `sampling_based_c3_controller.py:~221` adds `REF_RECONCILE_FEEDFORWARD_ACCEL` env check (default OFF); `_acceleration_feedforward_from_xseq` at `:~700` adds a leading `if not getattr(self, "_reconcile_feedforward_accel", False): return None` guard. With this edit, `REF_RECONCILE_APPROACH=1` alone = §7.33 DISSOLVES state (the working baseline); `REF_RECONCILE_APPROACH=1 REF_RECONCILE_FEEDFORWARD_ACCEL=1` = §7.34 OVER-DRIVES state. The default-OFF property of the §7.34 build is preserved at the flag level; the SUB-GATE makes the §7.33 working state reachable WITH reconcile enabled.
+
+#### STEP 1b — interaction sanity 4/4 PASS
+
+`scripts/_stage_c_clamp_reenable_sanity.py` + `clamp_reenable_validation/sanity.log`: (i) §7.27 deep-penetration behavior reproduced (anchors +0.026, +0.066 m/s correction); (ii) φ > 0 always-on row UNTOUCHED (max formula INERT at φ > 0); §7.33 / §7.34 shallow regime also UNTOUCHED; (iii) finite c_lcs contribution across all 8 test cases; (iv) byte-identical default (LCS_NORMAL_PHI_CLAMP guard at `lcs_formulator.py:1611` still in place; OFF = pre-§7.27).
+
+#### STEP 2 — live sim (post-decoupling)
+
+`clamp_reenable_live/run.log` (601 steps, all 3 flags ON, feedforward sub-gate OFF):
+
+| metric | §7.33 baseline | §7.35 v2 (clamp ON) | Δ |
+|---|---|---|---|
+| final obj | (−0.179, −0.001, +0.050) | (−0.179, −0.001, +0.050) | 0 |
+| goal_dist | 0.1211 m | 0.1211 m | 0 |
+| % closure | 60 % | 60 % | 0 |
+| min φ | −0.06 mm | −0.06 mm | 0 |
+| Drake peak | 52.225 N | 52.225 N | 0 |
+| OSC saturation | 51 (8.49 %) | 51 (8.49 %) | 0 |
+| ADMM warnings | 648 | 648 | 0 |
+| ADMM iters | 1296 | 1296 | 0 |
+| full_solves / cheap_solves / switches | 601 / 1258 / 74 | 601 / 1258 / 74 | 0 |
+| clamp activation rate | (off) | 0 / 601 | n/a |
+
+`diff` at step 600 + RESULT line: zero output. **BIT-IDENTICAL** in every observable.
+
+The first §7.35 run (kept aside as `clamp_reenable_live_v1_feedforward_coupled/` for forensic) ran BEFORE the decoupling edit and was bit-identical to §7.34 (off-axis, peak 1343 N) — confirming the §7.34 flag-coupling bug + that the decoupling edit fixes it.
+
+#### Block side-find: the §7.34 flag-coupling bug
+
+The §7.34 commit message stated "feedforward-accel BANKED behind the default-OFF flag" but in practice the feedforward was gated on `_reconcile_approach`, the SAME flag as the pos+vel reconciliation. So `REF_RECONCILE_APPROACH=1` = pos + vel + feedforward, NOT pos + vel alone. The §7.33 working state was unreachable with reconcile enabled. The §7.35 v1 run silently re-ran §7.34 because of this. The decoupling edit (a new sub-gate, default-OFF) is the structural fix. The §7.34 OVER-DRIVES result was real but the "banked behind default-OFF flag" framing was incomplete — banked behind the flag's UNSET state, not behind a separate state. The decoupling edit makes the banking-disposition explicit: the §7.34 commit had this implicit defect; this commit names + fixes it.
+
+#### THE FIX MECHANISM (negative — why the clamp was inert)
+
+The clamp's job (§7.27) was to bound the rigid-normal LCP drive at deep penetration depths (|phi|/dt > v_cap) where the rigid Stewart-Trinkle formulation demands an unbounded next-step separation velocity. In the §7.33 working regime, EE-BOX penetration peaks at |phi|=0.06 mm (|phi|/dt=0.0012 m/s), TWO orders of magnitude below the activation threshold v_cap=0.034 m/s. The clamp's deep-penetration relaxation never fires. The clamp's other branches (shallow φ<0, φ>0, φ=0) are zero by formula. So the LCS construction is byte-equivalent: the clamp loop runs but adds 0 to c_lcs at every contact.
+
+The validated-but-inert disposition is NOT a failed validation — the §7.27 anchors (3 mm, 5 mm depths) WERE in the activation regime, and the clamp's behavior there is what § passed. The live regime is just deeper-contact-free. This mirrors §7.30: always-on was NO-CHANGE in isolation (the dispatcher avoided c3-mode anyway), but became LOAD-BEARING under §7.31's reconciliation (proxy-off removed always-on's safety net). The clamp's value may similarly emerge later (deeper penetration with future LCS changes, multi-seed variance, or higher-Kp regimes).
+
+#### THE CONVERGENCE FINDING — still HELD
+
+ADMM convergence is BIT-IDENTICAL between §7.33 and §7.35 v2 (648 warnings, 1296 iter-hits, 601/1258/74 solve counts). The contact-model-side change (clamp ON) produced NO ADMM change. The pre-registered CONVERGENCE-MOVES route did NOT fire. CAVEAT: the test was DEPTH-INERT — the clamp never activated, so this is NOT evidence that contact-model changes generally do NOT couple to ADMM convergence; it is evidence that a DEPTH-INERT clamp does not. The §7.33 RE-PROMOTION of Layer 3 (E-matrix / projection / no joint fixed point) still stands as the leading explanatory candidate.
+
+**Apples-to-apples ADMM metric**: the §7.34 commit message used `iters=25/25` count (1440) for §7.34 vs WARNING count (648) for §7.33 — a metric mix-up at 2:1 inflation (each non-converged solve emits both lines). Corrected: §7.33 = 648 warnings / 1296 iters; §7.34 = 720 warnings / 1440 iters (a true 1.11 ×, NOT 2.2 ×). §7.35 v2 = §7.33 bit-identically (648 / 1296). The §7.34's contact-regime-driven warning increase was modest, not the 2 × figure my prior commit message implied. This re-measure RETIRES the inflated §7.34 ADMM-count narrative.
+
+#### Progress table (post-§7.35)
+
+| layer | post-§7.35 state |
+|---|---|
+| Sample generation | reconciled within port's existing face-normal strategy |
+| Dispatcher / surrogate cost-gap | always-on LOAD-BEARING; §7.35 c3-mode 7.8 % (= §7.33) |
+| Always-on admission | LOAD-BEARING (§7.30–§7.34 — the prerequisite that makes proxy removal safe) |
+| Desired-state / approach proxy | **RECONCILED** (§7.32, c893af3 — DISSOLVES, 60 % closure; bit-confirmed by §7.35) |
+| Executor (OSC) | PARTIAL-RECONCILED (pos+vel landed §7.33; feedforward-accel structurally landed §7.34, source-conditional, properly sub-gated §7.35 decoupling edit); Kp deferred |
+| Contact-model normal clamp | **VALIDATED-BUT-INERT** (§7.27 E-PASSES; live regime is depth-inert at §7.33's 0.06 mm peak; held default-OFF) |
+| Reposition geometric port | deferred |
+| Solver / ADMM internals | DEFERRED-as-intrinsic-research-target (§7.33–§7.35 reinforced: contact-model and executor changes do NOT move per-solve 25/25) |
+| Contact-normal velocity-level (Candidate C) | deferred |
+| Soft compliance (Candidate A) | deferred |
+| Inner sample evaluator | deferred |
+| Cost stack (Q / R / x_ref) | proxy-off (§7.31 c) RECONCILED; others deferred |
+| Plant / LCS construction / friction-E-matrix / warm-start / per-tick propagation | DEFERRED or UNVERIFIED (the risk surface) |
+
+**~ 9 of 17 layers DEFERRED or UNVERIFIED.** The clamp moves from "post-§7.27 banked-as-diagnostic" to "VALIDATED-BUT-INERT in the current regime"; the §7.30 / §7.34 / §7.35 reads have all converged on the same pattern (a diagnostic landed default-OFF stays default-OFF until a coupling/regime change makes it load-bearing).
+
+#### Anti-stale binding (§7.35)
+
+Any subsequent entry that frames §7.34 as the WORKING state under reconcile is operating on a stale record — §7.35 establishes the §7.33 c893af3 pos+vel state IS the working state under reconcile (after the decoupling edit); the §7.34 OVER-DRIVES regime requires the explicit sub-gate `REF_RECONCILE_FEEDFORWARD_ACCEL=1`. Any entry that re-introduces feedforward coupling into `REF_RECONCILE_APPROACH` without an explicit sub-gate is reverting the decoupling edit + the §7.33 working state. Any entry that frames §7.35 NO-CHANGE as evidence the clamp is wrong is mis-reading — §7.27 E-PASSES validated the clamp at 3 mm + 5 mm depths (where it correctly relaxes the rigid drive); the §7.35 regime is depth-inert (peaks at 0.06 mm), so the clamp's value is regime-conditional, not refuted. Any entry that frames §7.35 NO-CHANGE as evidence ADMM is solver-only is mis-reading — §7.35 (4) CAVEAT: a depth-inert clamp test cannot rule out contact-model × ADMM coupling at deeper regimes; the test only rules out coupling AT shallow depths AND through a clamp that does not activate. Any entry that re-runs §7.35 with the clamp at lower v_cap (e.g. 0.001 m/s) to force activation is changing the validated value — §7.27's anchors are 3 mm / 5 mm; refitting v_cap without re-anchoring is unjustified, and a forced-activation clamp re-introduces the §7.27 (5) β-trap risk. Any entry that promotes the clamp to default-ON citing "validated-and-inert is harmless" is missing the conditional reasoning — validated-but-inert disposition is HELD for two reasons: (i) the inert outcome means no observed cost AND no observed value at this regime; (ii) the validated regime (deep penetration) is not the live regime, so a default-flip would extend an untested coverage. Hold + revisit when the live regime deepens. Any entry that re-promotes Layer 3 (E-matrix) citing the unchanged §7.35 ADMM as evidence is mis-routing — §7.35 ADMM is BIT-IDENTICAL to §7.33, providing zero new information on the convergence story; the test was depth-inert. Any entry that frames the §7.34 1.11 × ADMM increase as proof of executor × ADMM coupling is over-reading the post-correction number — §7.34's contact regime was visibly different (off-axis box, peak 1343 N), and a 11 % warning count shift in that different regime is a small contact-regime-driven count effect; the per-solve 25/25 is what is INVARIANT across §7.33 / §7.34 / §7.35 and is the load-bearing convergence verdict.
+
+---
+
+### 7.36–§7.43 — EXECUTOR confirmed FAITHFUL (2026-06-27–2026-06-28)
+
+An arc of eight sub-sections that walked the executor side of the port against the reference source, item-by-item, and closed each on match. Not restated in mechanism detail here (each was NO-CHANGE at the closure metric — closure stayed 10 %, min φ stayed at +2 mm; the arc did NOT unlock the no-push, but it removed the executor as a suspect).
+
+- **§7.36 — Anitescu contact-model LCS branch** (commit `1edd6a2`, `LCS_CONTACT_MODEL=anitescu`, default-OFF). Sanity 4/4 PASS. Post-§7.51 the Anitescu branch was rerun on the closure-firing chain (see §7.51) and produced 5 mm closure vs Stewart-Trinkle 86 mm — separate investigation, deferred.
+- **§7.37–§7.40 — Force routing sign / passthrough** (`wrapper.py:365 _derive_force_command`, env-gated `PUSHA_FORCE_ROUTING=u_sol` at `wrapper.py:450-471`). Verified `u_sol` reaches the OSC unchanged in sign and magnitude at every c3 tick, matching `sampling_based_c3_controller.cc:1822-1832 force_samples.col(i) = u_sol[i]`.
+- **§7.41 — Force bounds** — `PUSHA_STAGE5_U_HORIZONTAL=10`, `PUSHA_STAGE5_U_VERTICAL=3` reproduce the reference's Fx/Fy/Fz caps (`solver_params.yaml` in the reference tree). Verified default-OFF byte-identical.
+- **§7.42 — R-vector split** — `PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` reproduces the reference's `r_vector_position = [0.1, 0.1, 10]` (heavy z penalty; light x/y). Combined with §7.41 as the **"§7.42 bundle"** used from §7.51 onwards.
+- **§7.43 — OSC weight override** (`operational_space_controller.py:94-114`, env-gated `PUSHA_REF_OSC_ALIGN`, default-OFF). Sets `W_track=1.0` and `Kp_cart=[200,200,200]` to match the reference's `W_end_effector=I_3` and `Kp = 200`. **BANK-AS-DIAGNOSTIC** — the flag is banked but is a KNOWN TRAP: setting it re-enables the §7.47 IK→c3 handoff break (see §7.47 below). Do NOT use it as a bundle-shortcut for the reference-aligned OSC weights; set them component-by-component instead when live-testing.
+
+**Arc verdict — CO-LOAD-BEARING chain discovered.** No single executor-side change moved closure off 10 % on its own. The closure fix (found in §7.51) required a **combination** of three levers (face-target proxy + w_ee_approach=8000 + override-disable) each of which alone was 0 % but which together broke the block. Executor pieces (routing, bounds, R-vector, OSC weights) are all reference-conformant defaults or ready under gates — they're pieces of that chain but not the missing link.
+
+---
+
+### 7.44–§7.50 — PLANNER u-sign root-caused to the EE-approach proxy (2026-06-28)
+
+Diagnostic arc that pinned the "planner emits `u_sol` pushing the wrong direction" observation from §7.30 (2). Not restated in step-by-step detail.
+
+**Root cause** — `control/task_costs.py:114 QuadraticManipulationCost.build(target_xy)` (specifically the EE-approach term at `task_costs.py:~177-260`): the port's 3-stage proxy waypoint (`w_ee_approach ≈ 8000`, three staged targets 100 mm behind the box and progressing forward as the box moves) was aiming the EE approach cost at a target ~90 mm *behind* the box's current position — the planner's u_sol was faithfully computed against that target, which is why u_sol pointed **away** from the box surface. This is the same **cost-proxy backward pull** that §7.29 (1) named but never localized to the file. The 100-mm-behind proxy was the port's substitute for the reference's near-surface `buffer_distance` sampling (§7.31); §7.29–§7.31 explained the WHY, §7.44–§7.50 identified the WHERE.
+
+**Fix mechanism** — replace the 3-stage 100-mm-behind proxy with a **face-target proxy**: aim the EE-approach cost at the box face centroid (a projection outward along the box's contact-face normal by the sample setback distance ~30 mm), and enforce it strongly (`w_ee_approach = 8000` unchanged — the weight was fine; the target was wrong). Landed as env-gated `PUSHA_EE_APPROACH_FACE_TARGET`, commit `dc44d99` (2026-06-28): "§7.46 face-target proxy bypass for the planner cost … default-OFF". The commit is the first of the three co-load-bearing pieces in §7.51.
+
+Follow-on **§7.47** — CONFIRMED that the §7.43 W_track=1.0 + Kp_cart=200 override on its own (with §7.46's face-target ON, but everything else at default) **BREAKS the IK→c3 handoff**: the EE stalls 53 mm from the IK target because the loosened OSC no longer has the position authority to close the reposition gap. Recorded in memory `project_w_track_pins_handoff.md`: "force authority must come from c3 position target, not OSC weights."
+
+**Arc verdict** — the u-sign was proxy-side, not solver-side. Solver stays as-is; the cost's EE-approach term gets rebuilt into a face-target with weight retained.
+
+---
+
+### 7.51 — FIRST BOX CLOSURE (2026-06-28)
+
+Three commits banked, closure metric moved for the first time in the alignment arc.
+
+**The co-load-bearing chain (each alone = 0 %):**
+1. `dc44d99` — `PUSHA_EE_APPROACH_FACE_TARGET=1` (§7.46 face-target proxy at `task_costs.py:~177`).
+2. `5b7bb08` — YAML default `W_force: 1.0` in `config/sampling_c3_kik.yaml` (was 100). Reference-aligns the OSC's `W_ee_lambda = I_3` ratio (see §3 Stage C first action + §0 ratio analysis). **FLAGGED — the memory note `project_first_box_closure_§7.51.md` records this as "held uncommitted", but the sweep summary at `chain_alwayson_reconcile_751/SUMMARY.txt` shows the yaml-default was already `W_force: 1.0` at the §7.59 run. Verify at pre-executor-refactor time.**
+3. `0dc5db1` — `PUSHA_DISABLE_C3_OVERRIDE=1` skips the LTD APPROACH-OVERRIDE block at `control/sampling_c3/sampling_based_c3_controller.py:~2480-2691`. Default state: the override re-targets `_p_ee_des` to a face-centroid waypoint clamped 2 mm **short of** contact every tick; the OSC tracks that, parking the EE 4–9 mm off the face — **below** the LCS admission band (2 mm threshold at `lcs_formulator.py:235`). With the override disabled, `_p_ee_des` stays at the FK source `_x_seq[1][7:10]` (line 2263), which under §7.46 face-target + w_ee_approach=8000 is contact-seeking; the EE reaches the surface, LCS admits, the planner solves with admitted contact, the box moves.
+
+**Single-seed ST/25 validation (west push, `--task-id 4 --seed 0 --ee-space --admm-iter 25`):**
+- goal_dist 0.300 → 0.218 m (**27 % closure** — the first sustained box motion).
+- Drake EE-box contact events: **106** (was 0 in every prior post-§7.46 run).
+- LCS λ_n_ee_box up to 1.71 N.
+- φ_act time series during c3: 5.0 mm → −0.02 mm (slight, sustained penetration).
+- Anitescu branch (§7.36) also engages contact (35 events) but closure is dramatically weaker (5 mm vs 86 mm) — deferred as separate investigation.
+
+**Full reproducing env bundle** (from `0dc5db1` commit message):
+
+```
+PUSHA_FORCE_ROUTING=u_sol
+PUSHA_EE_APPROACH_FACE_TARGET=1
+PUSHA_DISABLE_C3_OVERRIDE=1
+PUSHA_STAGE5_U_HORIZONTAL=10
+PUSHA_STAGE5_U_VERTICAL=3
+PUSHA_STAGE5_R_VECTOR=0.1,0.1,10
+```
+
+Canonical command:
+```
+python3 main.py pushing --task-id 4 --solver c3plus --c3plus-projection lcp \
+  --ee-space --admm-iter 25 --max-time 6 --seed 0 --no-record \
+  --sampling-c3 config/sampling_c3_kik.yaml
+```
+
+**Row updates:** No §1 row flips yet — the closure is single-seed, and Stage E's cumulative motion bar (≥ 20 mm per seed, ≥ 3/4 seeds in {0, 1, 2, 4}) is not yet cleared. Rows 4/5 (control input u, executor) STAY at PARTIAL / *mechanism probe-confirmed reference-EXACT*. The chain is the fix; the row flip waits on §7.52 multi-seed + eventual Stage E.
+
+---
+
+### 7.52 — 4-seed validation of the §7.51 chain — SEED-FRAGILE (2026-06-28)
+
+Same env bundle as §7.51, sweep across canonical seeds {0, 1, 2, 4} (note: §7.52 used {0, 1, 2, 3} — pre-§6 seed-set decision; §7.59 corrected to sequential {0, 1, 2, 3} for continuity with §7.52 numbering).
+
+| seed | goal_dist final | closure | c3-mode tick count |
+|---|---|---|---|
+| 0 | 0.218 m | **27.3 %** | high |
+| 1 | 0.297 m | 1.0 % | low |
+| 2 | 0.185 m | **38.3 %** | high |
+| 3 | 0.299 m | 0.2 % | low |
+
+**Closes 2/4 seeds; SEED-FRAGILE.** Discriminator = **c3-tick count**, not mode-switch count (all four seeds mode-switch at similar rates; the winners spent significantly more real ticks inside c3, the losers exited c3 shortly after entering).
+
+**Follow-on hypotheses opened** — (a) handoff sensitivity (§7.53 refutes), (b) contact-loss watchdog is exiting c3 too eagerly on the losers (§7.54–§7.55 investigates and inverts).
+
+---
+
+### 7.53 — Handoff-sensitivity REFUTED (2026-06-29)
+
+Hypothesis: the c3 winners vs losers differ because of handoff-EE-position sensitivity (small differences in where the IK deposits the EE at the reposition→c3 transition cascade through the planner).
+
+**Measurement** — instrumented the handoff EE position at every free→c3 transition across seeds 0/1/2/3. Result: **handoff EE positions match to 1 µm across seeds** (the IK is deterministic on the same LCS + `q_nominal`; the seed only randomizes the sample-buffer order, not the IK output at the winning sample). Additionally: the dispatcher **exits c3 within ~5 ticks of every entry** on the losers — c3 doesn't get to run long enough for handoff-sensitivity to matter.
+
+**Verdict** — handoff is not the discriminator. The c3-tick-count spread is downstream of a c3-EXIT mechanism, not an entry-precision mechanism. Rules out one hypothesis; the eager-c3-exit question stays open (§7.54).
+
+---
+
+### 7.54 — Port has a contact-loss WATCHDOG the reference LACKS (2026-06-29)
+
+Investigation of the c3-exit-within-5-ticks phenomenon.
+
+**Finding** — the port implements a **contact-loss disengage watchdog** at `control/sampling_c3/sampling_based_c3_controller.py:1462-1473`. Threshold is tiered by override phase (`params.py:739-754`):
+- With `PUSHA_DISABLE_C3_OVERRIDE=1` (§7.51's chain state), the override is OFF, and the watchdog uses a **5-tick floor** — after 5 consecutive c3 ticks with no admitted EE-BOX LCS pair, override to free mode with `kToReposUnproductive`.
+- With the override ON (baseline), the watchdog respects the phase params: it waits longer during the c3 "lock-in" phase, effectively giving the planner more slack to establish contact.
+
+**Reference has no equivalent.** The reference exits c3 only via (a) the surrogate cost-gap dispatcher (cost-gap widening past hysteresis) and (b) the progress-timeout (`num_control_loops_to_wait` at `progress.py:75-190`). There is no "consecutive no-contact ticks" counter in the reference tree.
+
+**Verdict** — the port has an extra c3-exit path the reference lacks. **PROMOTED as a candidate for the seed-fragility mechanism** — removing the watchdog should let losers stay in c3 longer, giving contact a chance to establish.
+
+---
+
+### 7.55 — REMOVING the watchdog HURT (INVERTED prediction) (2026-06-29)
+
+Test — ran the §7.51 chain with the watchdog removed (patched `sampling_based_c3_controller.py:1462-1473` to a no-op; not committed).
+
+**Result:**
+- Seed 0 closure collapsed **27 % → 2 %**.
+- Winners (seeds 0, 2) both collapsed. Losers stayed at loser levels.
+
+**Verdict — INVERTED from prediction.** The watchdog is a **workaround** for the eager surrogate cost-gate, NOT the fragility source. With the watchdog removed, seed 0's c3 mode dwells on ticks where the planner is emitting a bad plan (cost-gap says "leave c3" but the watchdog was masking that gap-shift by exiting first) — and the executor over-drives on that bad plan. The watchdog was actually SAVING closure by cutting bad-plan c3 dwell short.
+
+**Ownership note** — Claude owned the wrong prediction. Recording it: the hypothesis "port has an extra exit path → removing that path makes the port more like the reference → closure improves" was correct in mechanism (port DOES have the extra path) but wrong in valence (that path is compensating for a co-present bug, not a bug itself). The reference lacks the watchdog because its **cost-gate** doesn't fire eagerly in the first place. The port needs its cost-gate fixed, not its watchdog removed. Restoring the watchdog untouched.
+
+---
+
+### 7.56 — Cost-metric read CORRECTED "c_curr is local" (2026-06-29)
+
+Prior working assumption (from a §7.44-era diagnostic): the surrogate `c_curr` in `inner_solve.py:213 evaluate_sample` was "local" (per-tick, single-knot). Re-read the reference source and the port implementation.
+
+**Correction — both port and reference c_curr are HORIZON-integrated.** Both integrate a cost over the full C3+ planning horizon (`inner_solve.py:106 traj_cost` sums `Σ x̃ᵀQx̃ + uᵀRu + x̃_Nᵀ QN x̃_N` over all N knots; the reference does the same in its `SampleCost`). The horizon-integration is not the divergence.
+
+**Actual divergences (two):**
+1. **Q matrix scope** — port's Q includes the full state cost (including `w_ee_approach ≈ 8000` on the EE-approach term at `task_costs.py:205 build`); reference's Q is **object-only** (only the box position/orientation error is penalized in the sample-cost). The port pays a ~8000-weight penalty for EE-position deviation from the face-target at every horizon knot; the reference pays zero EE-approach cost in the sample evaluation.
+2. **Trajectory source** — port costs the **C3+ ADMM belief `x_seq`** (the current-iterate planner belief, populated after ADMM iters); reference **RE-SIMULATES** the plan through the LCS with `u_sol[0]` fixed at each knot, treating `x_seq` from ADMM as belief-only, not physical. Port's `c_curr` is the belief's cost; reference's `c_curr` is the LCS-simulated cost.
+
+**Stage 1 build — `PUSHA_COST_OBJ_ONLY=1`** (env-gated, default-OFF): strips the EE-approach term from the sample-cost Q while leaving the planner's Q unchanged. Scaffolding in `control/sampling_c3/inner_solve.py` (dirty diff, +196 lines around `evaluate_sample`).
+
+**Stage 1 measurement — Q-hypothesis FALSIFIED.** The EE-approach term contributes ≤ 2.6 % of `c_curr` at the winning-seed steady state (the term is high-weight but the state error is small when the EE is near the face-target); stripping it moves the surrogate cost-gap trivially. Additionally, object-only Q alone regressed closure on all seeds by 0.5–4 % (measured against §7.51 chain baseline). The Q-scope divergence is NOT the discriminator.
+
+**Route** — Stage 2 (trajectory source, PUSHA_COST_SIM_LCS) opens next (§7.57).
+
+---
+
+### 7.57 — Stage 2 RE-SIM through the LCS → the binding is CONTACT ADMISSION (2026-06-29)
+
+Stage 2 build — `PUSHA_COST_SIM_LCS=1` (env-gated, default-OFF): after ADMM returns `(x_seq, u_sol)`, re-simulate the plan forward through the discrete LCS with `u_sol[k]` fixed at each knot and the actual complementarity LCP solved at each step; use that re-sim'd trajectory (call it `x_sim`) to compute `c_curr` instead of the belief `x_seq`. Scaffolding in `inner_solve.py` (dirty diff, part of the same +196 lines as Stage 1).
+
+**Route B fires** — divergence between belief and re-sim IS large:
+- `x_sim` differs from `x_seq` by **2–6.5×** in per-knot state error norm on ticks where the plan calls for contact.
+- The re-sim cost is provably HONEST (matches what actually happens when the plan is executed against the LCS).
+
+**BUT closure went DOWN and `lam_n=0` across all seeds** (see the multi-seed table §7.60 below for the numbers). Diagnostic read from the re-sim trace: the re-simulated plans are **CONTACT-FREE** — the LCP solve returns `λ_n = 0` at every knot of every plan, on every seed. The planner is producing plans that would NOT establish contact if executed faithfully. The belief `x_seq` from ADMM shows contact (§7.51 saw λ_n up to 1.71 N in the belief); the re-sim shows the belief is fabricating contact that the LCS won't render.
+
+**The BINDING CONSTRAINT is CONTACT ADMISSION** (upstream of the cost). The cost divergence is REAL (Stage 2 is a correct fix) but not the RATE-LIMITING problem — the planner's admission structure never gave the LCS a way to model an EE-BOX contact force, so the re-sim can't render it. The port's admission architecture (2 mm φ-filter at `lcs_formulator.py:235`) is contact-blind when the EE is anywhere above 2 mm — the LCS row for EE-BOX vanishes, `J_n_ee = 0`, and the planner has no Jacobian path from Cartesian force to contact impulse. Below 2 mm the row appears but ADMM has to establish contact via belief before it exists as an LCS constraint, a chicken-and-egg pattern.
+
+**Route** — §7.58 sizes the admission fix; §7.59 lands it.
+
+---
+
+### 7.58 — Admission-unit SIZING (2026-06-29)
+
+Two changes, both 0-LOC (already wired as env-gates from §7.30 / §7.31 / §7.32).
+
+**Port gate (broken):** `control/lcs_formulator.py:235 extract_lcs_contacts(distance_threshold=0.002)` — when EE-box gap > 2 mm the pair is silently dropped from the LCS. Combined with the always-on box-ground row (`n_λ = 6`), the LCS admits box-vertex-to-ground constraints but `J_n_ee = 0` — the planner has no Jacobian path from Cartesian EE force to any contact normal-force on the box.
+
+**Reference gate:** `LCSFactory::GetNClosestContactPairs` (via `sampling_based_c3_controller.cc:1582-1614 GetResolvedContactPairs`) uses `GeomGeomCollider` per pre-specified EE-box pair, returning `[φ, J]` at **any distance** — the row is always present in the LCS, with `λ_n = 0` at separation (harmless because the complementarity respects it, per §7.30's structural-sanity check).
+
+**Wired flags (already gated, default-OFF):**
+1. `LCS_ALWAYS_ON_EE_BOX=1` — force the EE-BOX row into the LCS at every step regardless of φ (`lcs_formulator.py:147-163, 528-547`, built in §7.30). Structural sanity was PASS in §7.30 (no spurious force; row is exact + harmless to the SOLVED LCP).
+2. `REF_RECONCILE_APPROACH=1` — drop the `w_ee_approach` physical-shove proxy in favor of the reference's contact-force-tracking (built in §7.32 as ace3625; the §7.35 decoupling edit put the feedforward-accel behind a distinct sub-gate `REF_RECONCILE_FEEDFORWARD_ACCEL`, kept OFF).
+
+**§7.30 / §7.31 history binding:** §7.30 showed always-on ALONE → **94 % c3 drop** (the dispatcher's surrogate cost-gap widened when the row raised the `current` sample's LCP-penalty term). §7.31 identified the fix: the proxy and the 2 mm filter were **the SAME problem twice** — removing both together (via REF_RECONCILE_APPROACH atomic with always-on) rebalances the cost-gap. Always-on is the PREREQUISITE that makes proxy removal SAFE.
+
+**Sizing decision** — the admission fix is a two-flag toggle on top of the §7.51 chain. No new code. Next step: run §7.59 with the two flags added, cost stages OFF.
+
+---
+
+### 7.59 — ADMISSION UNIT lifts the closure floor (2026-06-29)
+
+4-seed sequential sweep of §7.51 chain + `LCS_ALWAYS_ON_EE_BOX=1` + `REF_RECONCILE_APPROACH=1`, cost stages OFF. HEAD = `0dc5db1`. Artifacts: `chain_alwayson_reconcile_751/`.
+
+**Config gotcha — keep W_track=100, Kp_cart=400 (NOT the §7.43 reference values).** Set the §7.42 bundle pieces (`PUSHA_FORCE_ROUTING=u_sol`, `PUSHA_STAGE5_U_HORIZONTAL=10`, `PUSHA_STAGE5_U_VERTICAL=3`, `PUSHA_STAGE5_R_VECTOR=0.1,0.1,10`) **explicitly** rather than triggering `PUSHA_REF_OSC_ALIGN=1`. The bundle flag also flips `operational_space_controller.py:94-114` which overrides W_track→1 / Kp→200 — that's the §7.47 IK→c3 handoff-breaker. The yaml already has `W_force: 1.0`, so that comes for free. Mid-run correction: seed 0 was first launched under `PUSHA_REF_OSC_ALIGN=1` and preserved as `chain_alwayson_reconcile_751/seed0.MISCONFIGURED_W_track1.log`; the [§7.43] banner in the launch log was the tell.
+
+**Closure comparison vs bare §7.51:**
+
+| seed | bare §7.51       | **+ admission unit**                                    |
+|------|------------------|---------------------------------------------------------|
+| 0    | 27.3 % (0.218 m) | **overshoot 8.6 cm past goal** (0.086 m, ≈ 71 %)        |
+| 1    |  1.0 % (0.297 m) | **56.8 %** (0.130 m)                                    |
+| 2    | 38.3 % (0.185 m) | 32.6 % (0.202 m)                                        |
+| 3    |  0.2 % (0.299 m) | **17.0 %** (0.249 m euclidean; +14 cm lateral drift)    |
+
+**Floor lifted ~85× on the worst seed (0.2 % → 17.0 %). All 4 seeds now register closure.**
+
+**Mechanism — three questions answered from `chain_alwayson_reconcile_751/SUMMARY.txt`:**
+
+1. **Planner reasons about contact — YES.** In-plan λ_n > 0 at **100 %** of planner ticks across every seed (623–742 ticks per seed); median 1.5–2.2 N, peak 69–110 N. Always-on flips `J_n_ee` on; the planner immediately starts asking for big contact forces.
+
+2. **c3-usage HOLDS** — NOT §7.30's near-zero collapse. c3 OSC-tick share = **7.6 / 5.7 / 3.7 / 23.5 %** across seeds 0/1/2/3 (12–48 c3 entries per seed). Reconcile closes enough of the cost-gap that the dispatcher does enter c3; each entry dwells briefly because the over-drive (see (3)) shoves the EE off the box and Drake contact drops.
+
+3. **Closure mechanism = §7.31 / §7.34 OVER-DRIVE hammer blow, NOT steady tracked contact.** Peak Drake `ee_box_normal`: **164 / 188 / 203 / 79 N** across seeds 0/1/2/3 — all well past the planner's 30 N force limit (`PUSHA_STAGE5_U_HORIZONTAL=10` × 3 N-axis). Drake actual-contact ticks only **9–17 per seed** (≈ 0.09–0.17 s of contact for 6 s wall). EE flies free post-impact (seed 0 EE at z = +0.65 m by step 481 after the step-142 impact). Box tips (seed 0 final box_q ≈ 90° rotation around z); seed 3 drifts +14 cm lateral. **The planned λ_n > 0 is rendered as impulse by the position-OSC** (`W_track = 100`, `Kp_cart = 400`, no force-floor under reconcile), launching the box ballistically.
+
+**Pre-registered outcome match: branch (b)** — plan reasons about contact, closure variable & OFF-mechanism. Per the pre-registration the next move is to add cost stages 1+2 (`PUSHA_COST_OBJ_ONLY=1` + `PUSHA_COST_SIM_LCS=1`) and re-measure. See §7.60.
+
+**Failure-mode banked — DO NOT silently re-trigger PUSHA_REF_OSC_ALIGN=1.** The bundle flag forces `W_track=1` / `Kp_cart=200` via §7.43 in `operational_space_controller.py`. Combined with the rest of the chain this re-creates the §7.47 IK→c3 handoff break. The chain that WORKS uses the bundle pieces explicitly while leaving the OSC at yaml-default `W_track=100, Kp_cart=400`. The mid-run misconfiguration is preserved as `chain_alwayson_reconcile_751/seed0.MISCONFIGURED_W_track1.log`; the visible signal was the `[§7.43] PUSHA_REF_OSC_ALIGN=1 OSC position-side alignment — W_track→1.0, Kp_cart→[200,200,200]` echo during construction.
+
+---
+
+### 7.60 — COST STAGES 1+2 on the admission unit → cost lever REFUTED; over-drive is EXECUTOR-side (2026-06-29)
+
+Full 4-seed sweeps of the §7.59 admission unit with cost Stage 1 alone (`PUSHA_COST_OBJ_ONLY=1`), and then Stage 1 + Stage 2 (`+ PUSHA_COST_SIM_LCS=1`). Artifacts: `cost_objonly_stage1/seed{0,1,2,3}.log`, `cost_sim_lcs_stage2/seed{0,1,2,3}.log`. Cost scaffolding in the uncommitted dirty diff (`inner_solve.py`, `sampling_based_c3_controller.py`, `osc/operational_space_controller.py`, `main.py`; +299 / −15) — DEFAULT-OFF, byte-identical when flags unset.
+
+**Closure comparison across the three configurations:**
+
+| seed | bare §7.51 | §7.59 admission unit | **Stage 1 `PUSHA_COST_OBJ_ONLY=1`** | **Stage 2 `+ PUSHA_COST_SIM_LCS=1`** |
+|---|---|---|---|---|
+| 0 | 27 % (0.218 m) | overshoot 71 % | 6 % (0.282 m, c3-dom, Drake 2.5 N) | 2 % (0.293 m, free-mode end) |
+| 1 |  1 % (0.297 m) | 56.8 % (0.130 m) | 7 % (0.280 m, c3-dom, Drake 3.1 N) | 0 % (0.300 m, EE at z=+0.089) |
+| 2 | 38 % (0.185 m) | 32.6 % (0.202 m) | 0 % (0.303 m, free-mode, qz −0.094) | **regressed** 0.351 m, qz +0.60 |
+| 3 |  0 % (0.299 m) | 17.0 % (0.249 m) | 9 % (0.272 m, c3-dom, Drake 2.5 N) | **regressed** 0.324 m, qz +0.46 |
+
+**Stage 1 — KILLS the over-drive, but closure falls with it.**
+- Drake peak `ee_box_normal` crashes from 79–203 N (§7.59) to **~2.5–3.1 N** across seeds 0/1/3.
+- ADMM saturation drops to 0 % (`OSC-SUMMARY: saturation=0` at seeds 0/1/3).
+- BUT closure collapses 71 % → 6 % on the seed-0 winner.
+- Seed 2 disengages entirely (ended in free-mode, no c3-contact ticks).
+
+**Stage 2 — strictly worse.**
+- Closure 0–2 % on seeds 0/1; seeds 2/3 **regress past start** (goal_dist > 0.30 m).
+- EE leaves contact on all four seeds — sims end in free-mode.
+- Seed 2 tips heavily (qz = +0.60), seed 3 similarly (qz = +0.46). Seed 1 EE launched to z = +0.089 m (way above box surface).
+
+**Verdict — §7.59's 17–71 % closure was the HAMMER-BLOW doing the work, NOT steady tracked contact.** Cost-anchoring the sample evaluator DOES rescale the surrogate cost-gap correctly (Stage 1's c3-dom regime with 2.5 N Drake contact is precisely what the reference-shaped cost predicts), but the mechanism that was producing the §7.59 closure numbers was the position-OSC over-realizing the planned contact impulse — remove the over-drive and the closure evaporates.
+
+**Two regimes surfaced:**
+- **Hammer regime (§7.59):** pushes hard but unsteady; 9–17 Drake-contact ticks per 601, box goes ballistic.
+- **Gentle regime (§7.60 Stage 1):** steady but doesn't push; c3-dom, Drake sees 2.5 N surface force, box moves 6–9 %.
+
+The planner **plans λ_n > 0** (§7.59 (1)) but the **surface sees 2.5 N** under cost-anchoring — the gap is on the EXECUTOR side. The position-tracking OSC (`W_track = 100`, `Kp_cart = 400`) over-realizes the planner's implicit position trajectory when it is free to (over-drive); when the cost anchors the plan into the LCS-reachable set (Stage 1), the OSC's position authority still wins against the planner's force intent — the planned force stays as intent, doesn't get physically expressed.
+
+**PIVOT (RECORDED EXPLICITLY): the over-drive is EXECUTOR-side. Next lever = force-tracking OSC (Stage C's promoted-to-default), NOT cost.** Cost-anchoring is REFUTED as the lever that unlocks steady tracked contact from a `λ_n > 0` plan.
+
+**Open pin before the full Stage C refactor** — is the plan-λ_n-vs-2.5N-surface gap the §7.47 handoff-break signature (W_track winning over the planner force in c3) or genuine gentleness? Cheap to check: instrument the c3-mode surface force during a Stage 1 seed-0 run and compare `norm(F_surface)` against `norm(u_sol)`; if `F_surface / u_sol ≈ 0.1` the OSC is throttling the force by ~10×, suggesting W_track balance. This may reveal a rebalance short of the Stage C build.
+
+**Do NOT jump to Kp=400 → 200 as a mitigation** — that re-breaks the reposition IK→c3 handoff (§7.43 / §7.47) unless the OSC is restructured first (force-tracking mode with the position gains only load-bearing outside c3). The Kp reduction is gated on the executor refactor.
+
+**Row updates:**
+- §1 row 4 (Control input u) — stays PARTIAL / *mechanism probe-confirmed reference-EXACT*. Cost-side flip DOES NOT change routing (u_sol routing already confirmed §7.37–§7.40).
+- §1 row 5 (Executor) — REOPENED for **structural restructure** (Stage C force-tracking OSC promoted to default, not just probe-confirmed). This is the next active work — the RECONCILED flip is now gated on the executor refactor landing.
+- §1 row 2 (LCS admission) — planner-side REOPENED CLOSED via §7.59: planner reasons about contact 100 % of ticks. The admission side is now RECONCILED IN MECHANISM under `LCS_ALWAYS_ON_EE_BOX=1` + `REF_RECONCILE_APPROACH=1`. Row status flips PARTIAL → **RECONCILED-under-gates**; the default-OFF stays as a bank until Stage E validates cumulative motion. (The Stage C outcome update in §3 that reads "planner-side admission reopened" is superseded by §7.59's positive result.)
+- §1 row 3 (ADMM) — HELD unchanged. §7.59 shows convergence still 25 / 25 per-solve; the intrinsic non-convergence stands. Stage C refactor is orthogonal.
+- §1 row 8 (Cadence) — HELD unchanged.
+
+**Recorded STATE (pre-executor phase):**
+- HEAD = `0dc5db1`.
+- Wired default-OFF flags: `LCS_ALWAYS_ON_EE_BOX`, `REF_RECONCILE_APPROACH`, `PUSHA_COST_OBJ_ONLY`, `PUSHA_COST_SIM_LCS`, `PUSHA_COST_DECOMP_LOG`, `PUSHA_DISABLE_C3_OVERRIDE`, `PUSHA_EE_APPROACH_FACE_TARGET`, `PUSHA_FORCE_ROUTING=u_sol`, `PUSHA_STAGE5_{U_HORIZONTAL,U_VERTICAL,R_VECTOR}`, `REF_RECONCILE_FEEDFORWARD_ACCEL`, `LCS_NORMAL_PHI_CLAMP`, `LCS_CONTACT_MODEL=anitescu`.
+- **Admission-unit env bundle** (the state that gives §7.59's closure and §7.60's diagnostics):
+  ```
+  PUSHA_FORCE_ROUTING=u_sol
+  PUSHA_EE_APPROACH_FACE_TARGET=1
+  PUSHA_DISABLE_C3_OVERRIDE=1
+  PUSHA_STAGE5_U_HORIZONTAL=10
+  PUSHA_STAGE5_U_VERTICAL=3
+  PUSHA_STAGE5_R_VECTOR=0.1,0.1,10
+  LCS_ALWAYS_ON_EE_BOX=1
+  REF_RECONCILE_APPROACH=1
+  ```
+  Yaml side: `W_force: 1.0`, `W_track: 100`, `Kp_cart: 400` (all default in `config/sampling_c3_kik.yaml`).
+- **GOTCHA:** `PUSHA_REF_OSC_ALIGN=1` re-arms the §7.43 `W_track → 1` / `Kp_cart → 200` override in `operational_space_controller.py:94-114` = §7.47 handoff break. Set W_track / Kp_cart component-by-component to hit reference values; do NOT use the bundle flag.
+- **Held code diffs (uncommitted):** the cost-stage scaffolding (`inner_solve.py`, `sampling_based_c3_controller.py`, `osc/operational_space_controller.py`, `main.py`; +299 / −15) is the REFUTED lever. Default-OFF, byte-identical when flags unset; held on the tree, not committed.
+
+**Deferred (not part of the executor phase):**
+- Anitescu closure gap (§7.36 rerun on the §7.51 chain showed 5 mm closure vs Stewart-Trinkle 86 mm — 17× gap unexplained; deferred).
+- ADMM cold-start non-determinism (`_solve_c3plus` cold-starts δ/ω each tick — banked in memory `project_admm_no_warmstart.md`).
+- §7.38 (deferred substep of the §7.36–§7.43 arc, no independent verdict).
+
+#### Anti-stale binding (§7.60)
+
+Any subsequent entry that frames §7.59's 17–71 % closure as PROGRESS toward the Stage E bar is operating on a stale record — §7.60 REFUTES that framing: the §7.59 closure was the hammer-blow over-drive, not steady tracked contact. Any entry that promotes `PUSHA_COST_OBJ_ONLY=1` or `PUSHA_COST_SIM_LCS=1` to default citing "we should not over-drive" is missing the pivot — cost-anchoring correctly removes the over-drive but removes closure with it; the gap is EXECUTOR-side, and the fix belongs in the OSC force-tracking restructure, not in the sample-cost evaluator. Any entry that promotes `Kp_cart: 400 → 200` (the §7.32 / §7.33 deferred hyperparameter) as a "make the OSC gentler" mitigation is re-breaking the §7.43 / §7.47 IK→c3 handoff (the position gains are load-bearing during reposition; slackening them without restructuring the OSC into a per-mode gain profile breaks reposition). Any entry that folds `PUSHA_REF_OSC_ALIGN=1` into the admission-unit chain as a bundle-shortcut is re-triggering the §7.47 handoff break — set W_force / W_track / Kp_cart component-by-component. Any entry that lands the cost-stage scaffolding on the working tree by absorbing it into a committed refactor is inflating the change surface — the scaffolding is REFUTED as a lever; if any part of it (e.g., `PUSHA_COST_DECOMP_LOG` diagnostic) belongs in future work, land it as its own scoped commit, not embedded in the executor refactor. Any entry that frames the §7.60 pivot as "cost was wrong, forget it" is over-reading — the belief-vs-re-sim divergence (§7.57 2–6.5×) IS real and the re-sim IS honest; the correction is that the sample-cost divergence is NOT the RATE-LIMITING gap between plan and physical execution, the EXECUTOR is. Any entry that re-runs §7.59 expecting the §7.60 verdict to change without an executor-side change is doing the same experiment twice — the §7.59 config is stable; its closure numbers are reproducible; only an executor-side change moves them (or specifically restructures the mechanism producing them).
+
 ---
 
 ## 8. Memory pointer
