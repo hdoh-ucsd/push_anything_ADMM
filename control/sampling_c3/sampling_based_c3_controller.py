@@ -233,8 +233,39 @@ class SamplingC3MPC:
         self._reconcile_feedforward_accel = (
             bool(int(_env_ffa)) if _env_ffa else False)
 
+        # §7.55 — PUSHA_DISABLE_CONTACT_LOSS_GATE (default-OFF) skips the
+        # CONTACT-LOSS-EXIT watchdog at _solve_plan() that forces c3→repos
+        # after `_no_ee_box_streak ≥ contact_loss_threshold_*_s/dt_ctrl`
+        # consecutive no-contact ticks. The reference (dairlib_sampling_c3
+        # @257e3ed, systems/controllers/sampling_based_c3_controller.cc:1150-
+        # 1184) has NO such watchdog — it exits c3 only via cost+hysteresis
+        # or the cost-based progress timeout. With PUSHA_DISABLE_C3_OVERRIDE=1
+        # (§7.51), the disengage threshold drops to contact_loss_threshold_
+        # default_s = 5 ticks at 100 Hz, which bounces c3 out before contact
+        # admits (§7.54 root-cause). This flag is SEPARATE from PUSHA_DISABLE_
+        # C3_OVERRIDE so the effect of the watchdog removal is cleanly
+        # attributable. Default-OFF byte-identical preserved.
+        self._disable_contact_loss_gate = (
+            _os_rec.environ.get("PUSHA_DISABLE_CONTACT_LOSS_GATE", "0") == "1")
+
         _use_force_tracking = bool(getattr(params, "use_force_tracking", True))
-        if self._reconcile_approach:
+        # §7.63 — decouple REF_RECONCILE_APPROACH's cost-gate / velocity /
+        # buffer effects from its use_force_tracking=False assignment. The
+        # §7.31 bundle silently disabled force-tracking mode, which
+        # dropped the λ_ext var + W_force cost from the QP — so the
+        # PUSHA_FORCE_ROUTING=u_sol routing was silently discarded and
+        # the reference's ExternalForceTracking mechanism was NEVER
+        # actually active in any §7.59/60/62 admission-unit run. Default-
+        # OFF preserves that legacy behavior byte-identically; when set,
+        # reconcile stays ON for its other legs (cost gate, velocity
+        # feedforward alpha=1, buffer surface handling) but force-tracking
+        # is left at params.use_force_tracking (True by default) so the
+        # QP builds λ_ext and W_force·‖λ_ext−λ_des‖² and lambda_des
+        # actually reaches it.
+        _decouple_ftrack = (
+            _os_rec.environ.get("PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING",
+                                "0") == "1")
+        if self._reconcile_approach and not _decouple_ftrack:
             # Position-OSC only — matches reference osc_params.yaml:51-59
             # (EndEffectorKp = 200, Kd = 20; no force floor). The port's
             # Kp_cart = 400 (config/osc_franka.yaml) already exceeds the
@@ -242,11 +273,26 @@ class SamplingC3MPC:
             _use_force_tracking = False
             print("[§7.31] REF_RECONCILE_APPROACH=1 → use_force_tracking=False "
                   "(position-OSC only; no 2 N floor)", flush=True)
-            if self._reconcile_feedforward_accel:
-                print("[§7.35] REF_RECONCILE_FEEDFORWARD_ACCEL=1 → feedforward-"
-                      "accel ENABLED (§7.34 OVER-DRIVES regime; source-conditional)",
-                      flush=True)
+        elif self._reconcile_approach and _decouple_ftrack:
+            print("[§7.63] PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING=1 → "
+                  "REF_RECONCILE_APPROACH kept for cost-gate / velocity / "
+                  "buffer legs; use_force_tracking left at params.use_force_"
+                  f"tracking={_use_force_tracking} (force-mode ACTIVE, "
+                  "λ_ext + W_force cost in QP, lambda_des reaches QP)",
+                  flush=True)
+        if self._reconcile_approach and self._reconcile_feedforward_accel:
+            print("[§7.35] REF_RECONCILE_FEEDFORWARD_ACCEL=1 → feedforward-"
+                  "accel ENABLED (§7.34 OVER-DRIVES regime; source-conditional)",
+                  flush=True)
 
+        # §7.42 — when PUSHA_REF_OSC_ALIGN=1, override W_force to 1.0 to match
+        # the reference's `LambdaEndEffectorW = diag(1,1,1)` (osc_params.yaml:74).
+        # The bundling env flag (set in main.py) wires the routing + u-bounds +
+        # R-cost env vars together; W_force needs its own override here because
+        # it is read at construction (not via env at use-site like the others).
+        _ref_align = (os.environ.get("PUSHA_REF_OSC_ALIGN", "0") == "1")
+        _W_force_val = (1.0 if _ref_align
+                        else float(getattr(params, "W_force", 100.0)))
         self.executor = OperationalSpaceController(
             plant        = plant,
             ee_frame     = ee_frame,
@@ -255,7 +301,7 @@ class SamplingC3MPC:
             gains_yaml   = params.osc_gains_yaml,
             log_diag     = self.log_diag,
             use_force_tracking = _use_force_tracking,
-            W_force      = float(getattr(params, "W_force", 100.0)),
+            W_force      = _W_force_val,
         )
 
         # Stage A — Reposition PWL trajectory port (alignment plan §3).
@@ -1370,6 +1416,22 @@ class SamplingC3MPC:
             params             = self.params.progress_params,
         )
 
+        # §7.56 Stage 1 — [COST-DECOMP] diagnostic. Gated by
+        # PUSHA_COST_DECOMP_LOG=1 (default-OFF) so flag=0 stays byte-identical
+        # to the prior behaviour, including stdout.
+        import os as _os_cd
+        if _os_cd.environ.get("PUSHA_COST_DECOMP_LOG", "0") == "1":
+            _r0 = results[0]
+            if getattr(_r0, "c_C3_raw_full", float("inf")) != float("inf"):
+                _bostr = (f"{best_other_cost:.2f}"
+                          if best_other_cost != float("inf") else "-")
+                print(f"[COST-DECOMP] step={self._step} mode={mode} "
+                      f"reason={reason.name} "
+                      f"c_curr_full={_r0.c_C3_raw_full:.2f} "
+                      f"c_curr_objonly={_r0.c_C3_raw_objonly:.2f} "
+                      f"c_curr_used={_r0.c_C3_raw:.2f} "
+                      f"best_other={_bostr}", flush=True)
+
         # 6a-pre0. Wrong-face re-engagement guard (post-decide L2 override).
         # The pre-decide L2 site above mutates finished_repos, which only
         # short-circuits kToC3ReachedReposTarget (mode_switch.py:123-124).
@@ -1454,15 +1516,29 @@ class SamplingC3MPC:
         if (self._prev_mode == "c3"
                 and mode == "c3"
                 and self._no_ee_box_streak >= disengage_threshold):
-            mode = "free"
-            reason = SwitchReason.kToReposUnproductive
-            if self.log_diag:
-                print(f"[CONTACT-LOSS-EXIT] step={self._step} "
-                      f"no EE-BOX for {self._no_ee_box_streak} "
-                      f"steps threshold={disengage_threshold} "
-                      f"override_phase={self._approach_override_phase} "
-                      f"-> exit to repos", flush=True)
-            self._no_ee_box_streak = 0
+            if self._disable_contact_loss_gate:
+                # §7.55 — gate skipped; c3 held by cost+progress only
+                # (reference-faithful). One-shot log to confirm behavior.
+                if self.log_diag and not getattr(
+                        self, "_755_skip_logged", False):
+                    print(f"[§7.55] PUSHA_DISABLE_CONTACT_LOSS_GATE=1 — "
+                          f"CONTACT-LOSS-EXIT skipped at step={self._step} "
+                          f"(streak={self._no_ee_box_streak} "
+                          f"threshold={disengage_threshold} "
+                          f"phase={self._approach_override_phase}); "
+                          f"c3 held by cost+progress only",
+                          flush=True)
+                    self._755_skip_logged = True
+            else:
+                mode = "free"
+                reason = SwitchReason.kToReposUnproductive
+                if self.log_diag:
+                    print(f"[CONTACT-LOSS-EXIT] step={self._step} "
+                          f"no EE-BOX for {self._no_ee_box_streak} "
+                          f"steps threshold={disengage_threshold} "
+                          f"override_phase={self._approach_override_phase} "
+                          f"-> exit to repos", flush=True)
+                self._no_ee_box_streak = 0
         if self._prev_mode == "free":
             # Fresh start when re-entering c3 from free. Phase-agnostic
             # by design: zeroes BOTH the LCS contact-loss counter and
@@ -2782,6 +2858,7 @@ class SamplingC3MPC:
                 J_t          = _exec_Jt,
                 lambda_des   = _lam_des,
                 a_ee_desired = _a_ee_des,
+                mode         = "c3",  # §7.70 — reference-gain swap gate
             )
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
             # the alpha=0 / disabled run has parsable rows for the baseline
@@ -2978,6 +3055,7 @@ class SamplingC3MPC:
                     J_n          = None,
                     J_t          = None,
                     lambda_des   = None,
+                    mode         = "free",  # §7.70 — keep port Kp/W_track
                 )
             else:
                 # Legacy free-mode path (unchanged).
@@ -3004,6 +3082,7 @@ class SamplingC3MPC:
                     lambda_t     = None,
                     J_n          = None,
                     J_t          = None,
+                    mode         = "free",  # §7.70 — keep port Kp/W_track
                 )
         u_opt = u_imp
 
