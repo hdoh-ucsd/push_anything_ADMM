@@ -320,6 +320,30 @@ class C3PlusMPC:
                     _u_lo = None
                     _u_hi = None
 
+        # §7.67 — B1-A plumbing: pass the EE-BOX contact index to the solver
+        # (read from formulator's _last_contact_info tag list) so
+        # _solve_c3plus can apply Bui §IV-B.2's final-iter G-weighting on
+        # the load-bearing pair. Idx = position in the admitted-pair order;
+        # None if no EE-BOX pair was admitted this tick (solver skips B1-A).
+        _ee_box_idx = None
+        _cinfo = getattr(self.formulator, "_last_contact_info", None)
+        if _cinfo:
+            for _i, _info in enumerate(_cinfo):
+                if _info.get("tag", "") == "EE-BOX":
+                    _ee_box_idx = _i
+                    break
+        self.solver._ee_box_pair_idx = _ee_box_idx
+        # §7.67 — one-shot diagnostic: which tags did we see + n_c
+        if not getattr(self, "_b1a_tag_dump_done", False):
+            self._b1a_tag_dump_done = True
+            _tags = ([_i.get("tag", "?") for _i in _cinfo]
+                     if _cinfo else "(_cinfo None or empty)")
+            _n_cinfo = len(_cinfo) if _cinfo else 0
+            _n_jn = int(J_n.shape[0]) if J_n is not None else -1
+            print(f"[§7.67 B1-A PLUMB] first-solve mpc_step={self._mpc_step} "
+                  f"n_contact_info={_n_cinfo}  n_J_n={_n_jn}  "
+                  f"tags={_tags}  ee_box_idx={_ee_box_idx}", flush=True)
+
         # 4. Full-horizon C3+ ADMM solve — forwards slack expression (E, F, H, c)
         u_seq, x_seq = self.solver.solve(
             x0, A, B_ctrl, D, d, J_n, J_t, mu,

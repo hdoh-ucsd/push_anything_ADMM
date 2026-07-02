@@ -94,6 +94,26 @@ class OperationalSpaceController:
         if W_force is not None:
             self.gains.W_force = float(W_force)
 
+        # §7.43 — when PUSHA_REF_OSC_ALIGN=1, finish the reference-OSC alignment
+        # by setting the position-side weights/gains to reference values:
+        #   W_track   = 1.0          (ref EndEffectorW = diag(1,1,1),  osc_params.yaml:47-50)
+        #   Kp_cart   = [200,200,200] (ref EndEffectorKp = diag(200,200,200), :51-54)
+        #   Kd_cart   = [20,20,20]    (ref EndEffectorKd = diag(20,20,20),    :55-58)
+        # With W_force=1.0 (set at sampling_based_c3_controller.py:258 under the
+        # same flag), this restores the reference's 1:1 position:force authority
+        # ratio. The port's pre-flag 100:1 ratio (W_track=100 vs W_force=1) had
+        # near-zero force authority — §7.42's incomplete alignment.
+        # Default-OFF byte-identical preserved.
+        import os as _os
+        if _os.environ.get("PUSHA_REF_OSC_ALIGN", "0") == "1":
+            self.gains.W_track = 1.0
+            self.gains.Kp_cart = np.array([200.0, 200.0, 200.0])
+            self.gains.Kd_cart = np.array([20.0, 20.0, 20.0])
+            print("[§7.43] PUSHA_REF_OSC_ALIGN=1 OSC position-side alignment — "
+                  "W_track→1.0, Kp_cart→[200,200,200], Kd_cart→[20,20,20] "
+                  "(matched to shared_parameters/osc_params.yaml:47-58)",
+                  flush=True)
+
         # Resolve torque limits with precedence: override > yaml > URDF
         if torque_limit_override is not None:
             tau_max = np.full(self.n_arm, float(torque_limit_override))
@@ -102,6 +122,44 @@ class OperationalSpaceController:
         else:
             tau_max = franka_effort_limits(plant)[:self.n_arm]
         self.limits = OscLimits(tau_max=tau_max)
+
+        # §7.70 — c3-mode reference-gains variant (default-OFF).
+        # PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 activates a swap where
+        # compute_torque(mode="c3") uses reference-aligned gains:
+        #   Kp_cart = [200, 200, 200]   (ref EndEffectorKp:  osc_params.yaml:51-54)
+        #   Kd_cart = [ 20,  20,  20]   (ref EndEffectorKd:  osc_params.yaml:55-58)
+        #   W_track = 1.0               (ref EndEffectorW:   osc_params.yaml:47-50)
+        # Reposition/free calls (mode="free") keep the port gains
+        # (Kp=400/W_track=100) so §7.47 IK→c3 handoff is untouched.
+        # W_force unchanged (matches reference at 1.0 already).
+        # Falsified §7.69's "position task swapped off" — reference keeps
+        # the position task ACTIVE, just weighted 1:1 with force. The gap
+        # is COMPOUND POSITION AUTHORITY: port W_track·Kp = 100·400 =
+        # 40 000 vs reference 1·200 = 200 (200× over-drive at any
+        # nonzero p_err). This fix imports the reference's numbers only
+        # during c3, leaving free-mode Kp/W_track intact.
+        import os as _os_ref
+        self._c3_ref_gains_flag = (_os_ref.environ.get(
+            "PUSHA_OSC_C3_MODE_REFERENCE_GAINS", "0") == "1")
+        # Deep-copy the port gains to a c3 override that gets swapped in
+        # at compute_torque(mode="c3") when the flag is set.
+        self.gains_c3 = OscGains(
+            Kp_cart   = np.array([200.0, 200.0, 200.0]),
+            Kd_cart   = np.array([ 20.0,  20.0,  20.0]),
+            Kp_null   = self.gains.Kp_null.copy(),
+            Kd_null   = self.gains.Kd_null.copy(),
+            W_track   = 1.0,
+            W_posture = self.gains.W_posture,
+            W_torque  = self.gains.W_torque,
+            W_acc     = self.gains.W_acc,
+            W_force   = self.gains.W_force,
+        )
+        if self._c3_ref_gains_flag:
+            print("[§7.70] PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 — c3-mode "
+                  "gains (Kp=[200,200,200], Kd=[20,20,20], W_track=1.0) "
+                  "will be used for compute_torque(mode=\"c3\"); free/repos "
+                  "keeps port gains (Kp=[400,400,400], W_track=100).",
+                  flush=True)
 
         # Cache constant B matrix
         self._B = actuation_matrix(plant)   # (n_v, n_u)
@@ -131,8 +189,18 @@ class OperationalSpaceController:
                        J_t:          Optional[np.ndarray] = None,
                        lambda_des:   Optional[np.ndarray] = None,
                        a_ee_desired: Optional[np.ndarray] = None,
+                       mode:         str = "free",
                        ) -> Tuple[np.ndarray, dict]:
-        """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict)."""
+        """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict).
+
+        `mode`: "c3" or "free". When PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1
+        AND mode="c3", the QP is built with reference-aligned gains
+        (Kp=200, W_track=1) instead of the port defaults (Kp=400,
+        W_track=100). Free/repos calls (mode="free") always use port
+        gains — this keeps §7.47's IK→c3 handoff mechanism intact.
+        Default mode="free" preserves byte-identical behavior when
+        callers haven't been plumbed.
+        """
         plant = self.plant
         plant.SetPositions(plant_ctx, current_q)
         plant.SetVelocities(plant_ctx, current_v)
@@ -195,6 +263,19 @@ class OperationalSpaceController:
         else:
             F_ff_for_qp = F_ff
 
+        # --- §7.70 gain selection: c3-mode reference gains (flag-gated) ---
+        if self._c3_ref_gains_flag and mode == "c3":
+            _gains_active = self.gains_c3
+            if not getattr(self, "_c3_ref_banner", False):
+                self._c3_ref_banner = True
+                print(f"[§7.70] first c3-mode compute_torque with "
+                      f"reference gains: Kp={_gains_active.Kp_cart.tolist()} "
+                      f"Kd={_gains_active.Kd_cart.tolist()} "
+                      f"W_track={_gains_active.W_track} "
+                      f"W_force={_gains_active.W_force}", flush=True)
+        else:
+            _gains_active = self.gains
+
         # --- Build & solve QP ---
         t0 = time.perf_counter()
         u_opt, vdot_opt, success, result_str, lam_ext_opt = build_and_solve_qp(
@@ -202,7 +283,7 @@ class OperationalSpaceController:
             J_v=J_v, Jdot_v_v=Jdot_v_v,
             p_err=p_err, v_err=v_err,
             q_arm_err=q_arm_err, v_arm_err=v_arm_err,
-            gains=self.gains, limits=self.limits,
+            gains=_gains_active, limits=self.limits,
             F_ff_external=F_ff_for_qp, solver=self._solver,
             use_force_tracking=self.use_force_tracking,
             lambda_des=lambda_des,

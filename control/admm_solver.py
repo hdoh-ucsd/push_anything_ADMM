@@ -1090,12 +1090,114 @@ class C3Solver:
         u_lam_w = self._u_lambda
         u_eta_w = self._u_eta
 
+        # §7.67 — B1-A: Bui §IV-B.2 final-paragraph mechanism.
+        # Wire the `_w_G_ee_contact=1000.0` scaffolded at line 122 (TODO).
+        # On the FINAL ADMM iter, override the augmented-cost weight matrix
+        # G (eq 10) to `W` (=1000) on the EE-BOX λ_n + 4 λ_t + η_n + 4 η_t
+        # slots per knot, forcing z^λ_EE-BOX → δ^λ_EE-BOX on the load-
+        # bearing pair. BOX-GND and other pairs keep G=1 → their pr can
+        # stay high (per paper). Default-OFF; byte-identical when
+        # `PUSHA_G_WEIGHT_EE_BOX_FINAL` unset. Requires ST layout AND
+        # caller (ci_mpc_c3plus) to have set `self._ee_box_pair_idx`.
+        import os as _os_g
+        _g_ee_box_final_flag = (_os_g.environ.get(
+            "PUSHA_G_WEIGHT_EE_BOX_FINAL", "0") == "1")
+        _ee_box_pair_idx = getattr(self, "_ee_box_pair_idx", None)
+        _b1a_active = (_g_ee_box_final_flag
+                       and _is_st_c3p
+                       and n_lambda > 0
+                       and num_normals > 0
+                       and _ee_box_pair_idx is not None)
+        if (_g_ee_box_final_flag and not _b1a_active
+                and not getattr(self, "_b1a_skip_banner", False)):
+            self._b1a_skip_banner = True
+            print(f"[§7.67 B1-A] flag ON but SKIPPED — "
+                  f"_is_st_c3p={_is_st_c3p} n_lambda={n_lambda} "
+                  f"num_normals={num_normals} "
+                  f"ee_box_pair_idx={_ee_box_pair_idx}", flush=True)
+
         for it in range(admm_iter):
             delta_prev = delta.copy()
 
             with timed("admm.qp_build"):
                 q_total = q_ref - rho * (delta - omega)
-                cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+
+                # §7.67 — final-iter G-weighting override.
+                if _b1a_active and it == admm_iter - 1:
+                    _W = float(self._w_G_ee_contact)
+                    _SLN_c = num_normals              # λ_n offset in λ block
+                    _SLT_c = 2 * num_normals          # λ_t offset in λ block
+                    _idx   = int(_ee_box_pair_idx)
+                    _G_diag = np.ones(total_dim)
+                    for _k_kn in range(N):
+                        _base = _k_kn * TOT
+                        # EE-BOX λ_n (1 scalar per pair)
+                        _G_diag[_base + SL + _SLN_c + _idx] = _W
+                        # EE-BOX λ_t (4-edge polyhedron per pair)
+                        _lt_s = _base + SL + _SLT_c + 4 * _idx
+                        _G_diag[_lt_s : _lt_s + 4]           = _W
+                        # EE-BOX η_n
+                        _G_diag[_base + SE + _SLN_c + _idx] = _W
+                        # EE-BOX η_t
+                        _et_s = _base + SE + _SLT_c + 4 * _idx
+                        _G_diag[_et_s : _et_s + 4]           = _W
+                    _P_total_final = P + rho * np.diag(_G_diag)
+                    _P_sym_final = (0.5 * (_P_total_final + _P_total_final.T)
+                                    + 1e-8 * _eye_total)
+                    # Augmented linear term picks up G element-wise. Under
+                    # a converged ADMM, ω is near 0 and the pull is toward
+                    # δ. In a NON-converged ADMM, ω has drifted large (e.g.
+                    # +124 at slot 22 empirically) and δ−ω is far from δ —
+                    # even flipped in sign, forcing z to the λ≥0 bound at
+                    # 0. Since the paper's mechanism assumes the pull is
+                    # toward the previous projection δ (which IS LCS-
+                    # feasible), drop the ω term on the final iter for
+                    # the EE-BOX slots only. Other slots keep the standard
+                    # augmented form.
+                    _q_total_final = q_ref - rho * (delta - omega)
+                    # For each EE-BOX slot, overwrite: pull = -ρ·G·δ (no ω).
+                    for _k_kn in range(N):
+                        _base = _k_kn * TOT
+                        _sn  = _base + SL + _SLN_c + _idx        # λ_n
+                        _q_total_final[_sn] = -rho * _W * delta[_sn]
+                        _lt_s = _base + SL + _SLT_c + 4 * _idx   # λ_t
+                        _q_total_final[_lt_s : _lt_s + 4] = (
+                            -rho * _W * delta[_lt_s : _lt_s + 4])
+                        _en  = _base + SE + _SLN_c + _idx        # η_n
+                        _q_total_final[_en] = -rho * _W * delta[_en]
+                        _et_s = _base + SE + _SLT_c + 4 * _idx   # η_t
+                        _q_total_final[_et_s : _et_s + 4] = (
+                            -rho * _W * delta[_et_s : _et_s + 4])
+                    cost_bd.evaluator().UpdateCoefficients(
+                        _P_sym_final, _q_total_final)
+                    if not getattr(self, "_b1a_banner", False):
+                        self._b1a_banner = True
+                        _n_slots = 10 * N   # (λ_n + 4 λ_t + η_n + 4 η_t) · N
+                        # One-shot debug: state of the slot 22 (EE-BOX λ_n k=0)
+                        # right before the solve on first fire.
+                        _dbg_slot = 0 + SL + _SLN_c + _idx
+                        _dbg_Psym = float(_P_sym_final[_dbg_slot, _dbg_slot])
+                        _dbg_q    = float(_q_total_final[_dbg_slot])
+                        _dbg_del  = float(delta[_dbg_slot])
+                        _dbg_om   = float(omega[_dbg_slot])
+                        _dbg_iso  = -_dbg_q / _dbg_Psym  # isolated optimum
+                        print(f"[§7.67 B1-A] PUSHA_G_WEIGHT_EE_BOX_FINAL=1 "
+                              f"FIRST FIRE — final iter it={it}/"
+                              f"{admm_iter-1}. EE-BOX idx={_idx} "
+                              f"W_G={_W:.1f} slots={_n_slots} "
+                              f"(1 λ_n + 4 λ_t + 1 η_n + 4 η_t per knot "
+                              f"× N={N})", flush=True)
+                        print(f"[§7.67 B1-A DBG] slot={_dbg_slot} "
+                              f"(k=0 λ_n EE-BOX) "
+                              f"P_sym[slot,slot]={_dbg_Psym:.2e} "
+                              f"q[slot]={_dbg_q:.2e} "
+                              f"δ[slot]={_dbg_del:.5f} "
+                              f"ω[slot]={_dbg_om:.5f} "
+                              f"δ-ω={_dbg_del-_dbg_om:.5f} "
+                              f"isolated_QP_min=-q/P={_dbg_iso:.5f} "
+                              f"(pre-solve prediction)", flush=True)
+                else:
+                    cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
             with timed("admm.osqp_solve"):
                 res = self._solver.Solve(prog)
@@ -1103,58 +1205,117 @@ class C3Solver:
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
 
-            with timed("admm.z_update"):
-                # ===== δ-update (C3+ NEW): x and u pass through =====
-                delta = z_sol + omega
+            # §7.67 — B1-A: on the FINAL iter with G-weighting active,
+            # SKIP the projection + ω-update. Paper §IV-B.2 says
+            # "we terminate after the quadratic step" — the large G-pull on
+            # EE-BOX components in the QP already forces z^λ_EE-BOX →
+            # δ_prev^λ_EE-BOX; running another projection would recompute
+            # δ against the shifted z, defeating the consensus. δ stays at
+            # its pre-iter value (`delta_prev` == `delta` before this
+            # block), so the convergence log below reads
+            # |z_sol − δ_prev| = post-QP-pull gap.
+            _skip_projection = (_b1a_active and it == admm_iter - 1)
+            if not _skip_projection:
+                with timed("admm.z_update"):
+                    # ===== δ-update (C3+ NEW): x and u pass through =====
+                    delta = z_sol + omega
 
-                # ===== δ-update on (λ, η): two variants =====
-                #   componentwise (Bui eq 12)  : per-scalar-pair, no F coupling
-                #   lcp           (Aydinoglu)  : per-knot LCP solve, F coupling,
-                #                                δ_η = F·δ_λ + (E·δ_x + H·δ_u + c)
-                # Both produce δ_λ ≥ 0 and δ_η ≥ 0 with complementarity, but
-                # only the LCP variant guarantees δ satisfies the η equality
-                # (which is the QP equality constraint at OSQP-feasibility).
-                # The componentwise variant lets δ_λ and δ_η disagree from the
-                # affine expression — which is the mechanism that let the v6
-                # planner harvest fictional λ_n=7.5.
-                if n_lambda > 0:
-                    use_lcp = (self.c3plus_projection == "lcp")
-                    if use_lcp:
-                        # Local import — Drake-dependent (mirrors C3 path).
-                        from control.lcp_solver import solve_lcp
-                    lcp_residuals_block: list[float] = []
-                    for i in range(N):
-                        li = i * TOT + SL
-                        ei = i * TOT + SE
-                        xi = i * TOT          # x slot start
-                        ui = i * TOT + n_x + n_lambda  # u slot start
-                        lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
-                        eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
+                    # ===== δ-update on (λ, η): two variants =====
+                    #   componentwise (Bui eq 12)  : per-scalar-pair, no F coupling
+                    #   lcp           (Aydinoglu)  : per-knot LCP solve, F coupling,
+                    #                                δ_η = F·δ_λ + (E·δ_x + H·δ_u + c)
+                    # Both produce δ_λ ≥ 0 and δ_η ≥ 0 with complementarity, but
+                    # only the LCP variant guarantees δ satisfies the η equality
+                    # (which is the QP equality constraint at OSQP-feasibility).
+                    # The componentwise variant lets δ_λ and δ_η disagree from the
+                    # affine expression — which is the mechanism that let the v6
+                    # planner harvest fictional λ_n=7.5.
+                    if n_lambda > 0:
+                        use_lcp = (self.c3plus_projection == "lcp")
                         if use_lcp:
-                            # Same LCP recipe as the C3 path's δ-step:
-                            # q_lcp = E·δ_x + H·δ_u + c with δ_* = z + ω.
-                            d_x_iter = z_sol[xi:xi+n_x] + omega[xi:xi+n_x]
-                            d_u_iter = z_sol[ui:ui+n_u] + omega[ui:ui+n_u]
-                            q_lcp    = E @ d_x_iter + H @ d_u_iter + c_lcs
-                            d_lam, lcp_res = solve_lcp(F, q_lcp)
-                            # δ_η derived from F·δ_λ + q makes the LCP
-                            # solution consistent with the η equality
-                            # constraint of C3+ (Bui eq 5c).
-                            d_eta = F @ d_lam + q_lcp
-                            # Numerical floor: tiny negative from Lemke
-                            # round-off → clamp.
-                            d_eta = np.maximum(d_eta, 0.0)
-                            lcp_residuals_block.append(lcp_res)
-                        else:
-                            d_lam, d_eta = self._project_componentwise(
-                                lam_blk, eta_blk, u_lam_w, u_eta_w)
-                        delta[li:li+n_lambda] = d_lam
-                        delta[ei:ei+n_lambda] = d_eta
-                    # Stash LCP residual for diagnostics on the LCP path.
-                    if use_lcp and lcp_residuals_block:
-                        self._last_lcp_res_max = float(max(lcp_residuals_block))
+                            # Local import — Drake-dependent (mirrors C3 path).
+                            from control.lcp_solver import solve_lcp
+                        lcp_residuals_block: list[float] = []
+                        for i in range(N):
+                            li = i * TOT + SL
+                            ei = i * TOT + SE
+                            xi = i * TOT          # x slot start
+                            ui = i * TOT + n_x + n_lambda  # u slot start
+                            lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
+                            eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
+                            if use_lcp:
+                                # Same LCP recipe as the C3 path's δ-step:
+                                # q_lcp = E·δ_x + H·δ_u + c with δ_* = z + ω.
+                                d_x_iter = z_sol[xi:xi+n_x] + omega[xi:xi+n_x]
+                                d_u_iter = z_sol[ui:ui+n_u] + omega[ui:ui+n_u]
+                                q_lcp    = E @ d_x_iter + H @ d_u_iter + c_lcs
+                                d_lam, lcp_res = solve_lcp(F, q_lcp)
+                                # δ_η derived from F·δ_λ + q makes the LCP
+                                # solution consistent with the η equality
+                                # constraint of C3+ (Bui eq 5c).
+                                d_eta = F @ d_lam + q_lcp
+                                # Numerical floor: tiny negative from Lemke
+                                # round-off → clamp.
+                                d_eta = np.maximum(d_eta, 0.0)
+                                lcp_residuals_block.append(lcp_res)
+                            else:
+                                d_lam, d_eta = self._project_componentwise(
+                                    lam_blk, eta_blk, u_lam_w, u_eta_w)
+                            delta[li:li+n_lambda] = d_lam
+                            delta[ei:ei+n_lambda] = d_eta
+                        # Stash LCP residual for diagnostics on the LCP path.
+                        if use_lcp and lcp_residuals_block:
+                            self._last_lcp_res_max = float(max(lcp_residuals_block))
 
-            omega = omega + z_sol - delta
+                omega = omega + z_sol - delta
+
+            # §7.67 — B1-A convergence probe: on the final iter, log
+            # |z^λ_EE-BOX − δ^λ_EE-BOX| per component (λ_n + 4 λ_t) at k=0
+            # and horizon-max. One-shot proof on first fire, per-solve
+            # summary thereafter.
+            if _b1a_active and it == admm_iter - 1:
+                _idx = int(_ee_box_pair_idx)
+                _SLN_c = num_normals
+                _SLT_c = 2 * num_normals
+                # First-knot (k=0)
+                _zn0 = float(z_sol[SL + _SLN_c + _idx])
+                _dn0 = float(delta[SL + _SLN_c + _idx])
+                _lt_zs_0 = z_sol[SL + _SLT_c + 4*_idx : SL + _SLT_c + 4*(_idx+1)]
+                _lt_dl_0 = delta[SL + _SLT_c + 4*_idx : SL + _SLT_c + 4*(_idx+1)]
+                _gap_n0 = abs(_zn0 - _dn0)
+                _gap_t0 = float(np.max(np.abs(_lt_zs_0 - _lt_dl_0)))
+                # Horizon-max diff
+                _gap_n_hmax = _gap_n0
+                _gap_t_hmax = _gap_t0
+                for _k_kn in range(1, N):
+                    _base = _k_kn * TOT
+                    _zn_k = float(z_sol[_base + SL + _SLN_c + _idx])
+                    _dn_k = float(delta[_base + SL + _SLN_c + _idx])
+                    _gap_n_hmax = max(_gap_n_hmax, abs(_zn_k - _dn_k))
+                    _lt_zs_k = z_sol[_base + SL + _SLT_c + 4*_idx :
+                                     _base + SL + _SLT_c + 4*(_idx+1)]
+                    _lt_dl_k = delta[_base + SL + _SLT_c + 4*_idx :
+                                     _base + SL + _SLT_c + 4*(_idx+1)]
+                    _gap_t_hmax = max(_gap_t_hmax,
+                                      float(np.max(np.abs(_lt_zs_k - _lt_dl_k))))
+                # Check-1 verdict: EE-BOX pr below tol?
+                _b1a_conv = (_gap_n_hmax < tol and _gap_t_hmax < tol)
+                if not getattr(self, "_b1a_conv_dump_done", False):
+                    self._b1a_conv_dump_done = True
+                    print(f"[§7.67 B1-A CONV] first-solve final-iter "
+                          f"convergence proof: "
+                          f"λ_n_k0: zsol={_zn0:+.5f} δ={_dn0:+.5f} "
+                          f"|Δ|={_gap_n0:.2e}  "
+                          f"λ_t_k0 max|Δ|={_gap_t0:.2e}  "
+                          f"λ_n horizon-max|Δ|={_gap_n_hmax:.2e}  "
+                          f"λ_t horizon-max|Δ|={_gap_t_hmax:.2e}  "
+                          f"tol={tol:.0e}  EE-BOX-converged={_b1a_conv}",
+                          flush=True)
+                self._b1a_last_gap_n_k0    = _gap_n0
+                self._b1a_last_gap_t_k0    = _gap_t0
+                self._b1a_last_gap_n_hmax  = _gap_n_hmax
+                self._b1a_last_gap_t_hmax  = _gap_t_hmax
+                self._b1a_last_ee_conv     = _b1a_conv
 
             # ===== λ-horizon probe (writes per-iter, per-k) =====
             if (self._lprobe_path is not None
@@ -1332,6 +1493,7 @@ class C3Solver:
             self._last_lambda_n_horizon_delta = _ln_h_d
             self._last_lambda_t_horizon_zsol  = _lt_h_z
             self._last_lambda_t_horizon_delta = _lt_h_d
+
             # Default-consumer aliases (selectable via expose_zsol).
             if self.expose_zsol:
                 self._last_lambda_n_first   = self._last_lambda_n_first_zsol
