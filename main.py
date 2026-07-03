@@ -209,10 +209,32 @@ def main():
                         help="Override simulation duration in seconds (default: 8.0).")
     parser.add_argument("--early-exit-goal-d", type=float, default=None,
                         metavar="METRES",
-                        help="Goal-reached early-exit threshold: break sim loop "
-                             "when goal_dist <= this value (typical 0.05 m). "
-                             "When omitted, the loop runs to --max-time. Pre-threshold "
-                             "behavior is unchanged — only the loop terminates earlier.")
+                        help="Goal-reached threshold: mark reach when "
+                             "goal_dist <= this value (typical 0.05 m). "
+                             "Combined with --goal-settle-time, the sim continues "
+                             "past the reach for the settle window before breaking. "
+                             "When omitted, the loop runs to --max-time.")
+    parser.add_argument("--goal-settle-time", type=float, default=1.0,
+                        metavar="SEC",
+                        help="After the goal is reached, continue the sim for SEC "
+                             "seconds so the video shows the arrival before ending. "
+                             "Default 1.0 s.  Requires --early-exit-goal-d.")
+    parser.add_argument("--force-save-video", action="store_true",
+                        help="Encode the Drake-frames mp4 even if the goal was NOT "
+                             "reached. Default: encode only on goal-reach.")
+    parser.add_argument("--video-out", type=str, default=None, metavar="PATH.mp4",
+                        help="Output path for the encoded Drake-frames mp4 "
+                             "(runs paint_mode_text.py post-sim). Requires "
+                             "--drake-frames-dir.")
+    parser.add_argument("--sampling-height", type=float, default=None, metavar="Z",
+                        help="Override task_cfg['sampling_height'] in-memory. "
+                             "Must be >= sphere radius 0.025 m.")
+    parser.add_argument("--extra-log-path", type=str, default=None, metavar="PATH",
+                        help="Additionally copy the run log to PATH at end "
+                             "(e.g., a Windows-side results sink).")
+    parser.add_argument("--pitch-probe", action="store_true",
+                        help="Emit per-tick [PITCH-PROBE] rows: EE_z, box pitch "
+                             "angle, contact z on box face. For §7.74 diagnosis.")
     parser.add_argument("--math-diag", action="store_true",
                         help="Print math-level solver diagnostics ([MATH.*] tags). "
                              "Zero overhead when off.")
@@ -291,6 +313,31 @@ def main():
         parser.error("--sampling-c3 and --cost-bias are mutually exclusive. "
                      "Use one or the other.")
 
+    # §7.42 — PUSHA_REF_OSC_ALIGN: bundle four matched-reference defaults
+    # behind one default-OFF env flag. When set, activates (via setdefault, so
+    # individual env vars still override for surgical tests):
+    #   * PUSHA_FORCE_ROUTING=u_sol         — route planner u_sol → OSC λ_des
+    #     (sampling_based_c3_controller.py:562)
+    #   * PUSHA_STAGE5_U_HORIZONTAL=10      — per-axis Fx,Fy bound (admm_solver.py:1054,
+    #     ci_mpc_c3plus.py:308; matches anything/sampling_c3plus_options.yaml:34)
+    #   * PUSHA_STAGE5_U_VERTICAL=3         — per-axis Fz bound (matches yaml:35)
+    #   * PUSHA_STAGE5_R_VECTOR=0.1,0.1,10  — planner R cost = w_R_position·diag(r_vector_position)
+    #     = 10·diag(0.01,0.01,1)  (task_costs.py:796, matches yaml:120,125)
+    # W_force=1.0 is read at sampling_based_c3_controller.py:258 (construction
+    # time) when this flag is set, matching osc_params.yaml LambdaEndEffectorW.
+    # Default-OFF preserves all prior behaviour byte-identically.  ORTHOGONAL
+    # to LCS_CONTACT_MODEL / LCS_SAMPLE_AWARE_EE / LCS_NORMAL_* / REF_RECONCILE_*.
+    if os.environ.get("PUSHA_REF_OSC_ALIGN", "0") == "1":
+        os.environ.setdefault("PUSHA_FORCE_ROUTING",       "u_sol")
+        os.environ.setdefault("PUSHA_STAGE5_U_HORIZONTAL", "10")
+        os.environ.setdefault("PUSHA_STAGE5_U_VERTICAL",   "3")
+        os.environ.setdefault("PUSHA_STAGE5_R_VECTOR",     "0.1,0.1,10")
+        print("[§7.42] PUSHA_REF_OSC_ALIGN=1 active — "
+              "FORCE_ROUTING=u_sol, u_bounds=±10/±3, R=diag(0.1,0.1,10), "
+              "W_force→1.0 (matched to dairlib anything/sampling_c3plus_options.yaml + "
+              "shared_parameters/osc_params.yaml)",
+              flush=True)
+
     task_name   = args.task
     reset_every = args.reset_every
     # init_q is computed below, after plant_ctx is staged with the object pose.
@@ -354,6 +401,15 @@ def main():
         _was_goal = task_cfg.get("goal_xy")
         task_cfg["goal_xy"] = [_gx, _gy]
         print(f"[OVERRIDE] goal_xy=[{_gx}, {_gy}] (was {_was_goal})")
+
+    if args.sampling_height is not None:
+        if args.sampling_height < 0.025:
+            parser.error(f"--sampling-height {args.sampling_height} < "
+                         f"sphere radius 0.025 m — pusher would clip the table.")
+        _was_sh = task_cfg.get("sampling_height")
+        task_cfg["sampling_height"] = float(args.sampling_height)
+        print(f"[OVERRIDE] sampling_height={args.sampling_height:.4f} "
+              f"(was {_was_sh})")
 
     # ---- Structured log header -------------------------------------------
     _cost = task_cfg.get("cost", {})
@@ -600,6 +656,12 @@ def main():
     dt_ctrl       = 1.0 / float(_os_cad2.environ.get("PUSHA_CONTROL_HZ", "100"))
     max_time      = args.max_time if args.max_time is not None else 8.0
     step          = 0
+    # §7.74 goal-reach-then-settle: on first tick with goal_dist <=
+    # --early-exit-goal-d, record the reach step and continue for
+    # --goal-settle-time seconds so the video captures the arrival.
+    _goal_reach_step = None
+    _goal_reach_t = None
+    _settle_until_t = None
     if args.max_time is not None:
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
     _record_every = max(1, round(1.0 / (20.0 * dt_ctrl)))
@@ -730,6 +792,7 @@ def main():
             _gate_F_W = None
             _gate_n_BA = None
             _gate_ia_ee = None
+            _pp_contact_pt = None
             _n_pairs = _cr.num_point_pair_contacts()
             for _i in range(_n_pairs):
                 _info = _cr.point_pair_contact_info(_i)
@@ -747,6 +810,12 @@ def main():
                     _gate_F_W   = np.asarray(_Fvec, dtype=float).reshape(3)
                     _gate_n_BA  = np.asarray(_pp.nhat_BA_W, dtype=float).reshape(3)
                     _gate_ia_ee = (_ia in formulator._ee_geom_ids)
+                    # §7.74: contact point in world for pitch-probe.
+                    try:
+                        _pp_contact_pt = np.asarray(
+                            _info.contact_point(), dtype=float).reshape(3)
+                    except Exception:
+                        _pp_contact_pt = None
                     break
             print(f"[DRAKE-CONTACT] step={step} n_pairs={_n_pairs} "
                   f"ee_box_normal={_eebox_fmag:.3f}", flush=True)
@@ -778,19 +847,54 @@ def main():
                 f"ee_p=({ee_pos[0]:+.5f},{ee_pos[1]:+.5f},{ee_pos[2]:+.5f})",
                 flush=True,
             )
+
+            # §7.74 [PITCH-PROBE]: EE_z, box CoM z, contact z on box face
+            # (world frame), tip angle from vertical.  Tip = angle between
+            # box body +Z and world +Z, computed as acos(R(q)[2,2]) which is
+            # gimbal-lock-free at 90 deg (the observed §7.73 outcome).
+            if args.pitch_probe:
+                _qw = float(_box_q[0]); _qx = float(_box_q[1])
+                _qy = float(_box_q[2]); _qz = float(_box_q[3])
+                _r22 = 1.0 - 2.0 * (_qx*_qx + _qy*_qy)
+                _r22 = max(-1.0, min(1.0, _r22))
+                _tip_deg = float(np.degrees(np.arccos(_r22)))
+                _ee_z_now = float(ee_pos[2])
+                _box_z_com = float(current_q[obj_z_idx])
+                if _pp_contact_pt is not None:
+                    _cz = float(_pp_contact_pt[2])
+                    _cz_rel = _cz - _box_z_com
+                    _has_contact = 1
+                    _cz_str = f"{_cz:+.5f}"
+                    _cz_rel_str = f"{_cz_rel:+.5f}"
+                else:
+                    _has_contact = 0
+                    _cz_str = "nan"
+                    _cz_rel_str = "nan"
+                print(f"[PITCH-PROBE] step={step} t={sim_time:.3f}s "
+                      f"ee_z={_ee_z_now:+.5f} box_z_com={_box_z_com:+.5f} "
+                      f"contact_z={_cz_str} contact_z_rel_com={_cz_rel_str} "
+                      f"has_contact={_has_contact} tip_deg={_tip_deg:.2f}",
+                      flush=True)
         except Exception as _e:
             print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
 
-        # Goal-reached early-exit (opt-in via --early-exit-goal-d).  Checked
-        # after the [DRAKE-CONTACT] block so all per-tick logging/CSVs for
-        # this final tick still emit verbatim.  Pre-threshold behavior is
-        # unchanged — only the loop terminates earlier.
+        # Goal-reach + settle (opt-in via --early-exit-goal-d).  Mark the
+        # first tick that hits the threshold, then continue for
+        # --goal-settle-time seconds so the video shows the arrival before
+        # breaking.  Pre-reach behavior unchanged.
         if args.early_exit_goal_d is not None:
             _ex_obj_xy = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
             _ex_gd = float(np.linalg.norm(_ex_obj_xy - target_xy))
-            if _ex_gd <= args.early_exit_goal_d:
-                print(f"[EARLY-EXIT] step={step} t={sim_time:.3f}s "
+            if _goal_reach_step is None and _ex_gd <= args.early_exit_goal_d:
+                _goal_reach_step = step
+                _goal_reach_t = sim_time
+                _settle_until_t = sim_time + float(args.goal_settle_time)
+                print(f"[GOAL-REACH] step={step} t={sim_time:.3f}s "
                       f"goal_d={_ex_gd:.4f}m <= threshold={args.early_exit_goal_d:.4f}m "
+                      f"-> settling +{args.goal_settle_time:.2f}s then breaking")
+            if _goal_reach_step is not None and sim_time >= _settle_until_t:
+                print(f"[GOAL-SETTLE-DONE] step={step} t={sim_time:.3f}s "
+                      f"(reached step={_goal_reach_step} at t={_goal_reach_t:.3f}s) "
                       f"-> breaking sim loop")
                 break
 
@@ -826,6 +930,43 @@ def main():
     if mode_timeline_fp is not None:
         mode_timeline_fp.close()
         print(f"[VIDEO] mode_timeline -> {drake_frames_dir / 'mode_timeline.csv'}")
+
+    # §7.74 auto-encode: run paint_mode_text.py on the captured Drake frames
+    # when either the goal was reached OR --force-save-video was set.
+    # Non-success runs stay silent unless --force-save-video, to keep sweep
+    # output clean.
+    _goal_reached = _goal_reach_step is not None
+    if drake_frames_dir is not None and (args.force_save_video or _goal_reached):
+        _video_out = args.video_out or f"results/{stem}.mp4"
+        _video_out_path = Path(_video_out)
+        _video_out_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[VIDEO] encoding {drake_frames_dir} -> {_video_out_path}  "
+              f"(goal_reached={_goal_reached}, "
+              f"force_save={args.force_save_video})")
+        import subprocess as _sp
+        _paint = (Path(__file__).resolve().parent
+                  / "tools" / "visualizer" / "paint_mode_text.py")
+        _rc = _sp.run([
+            sys.executable, str(_paint),
+            "--frames-dir", str(drake_frames_dir),
+            "--output", str(_video_out_path),
+            "--fps", "30",
+        ]).returncode
+        if _rc == 0:
+            print(f"[VIDEO] mp4 saved -> {_video_out_path}")
+        else:
+            print(f"[VIDEO] paint_mode_text.py failed rc={_rc}")
+
+    # §7.74 side-load the log to a Windows sink (or any secondary path).
+    if args.extra_log_path is not None:
+        import shutil as _sh
+        _dst = Path(args.extra_log_path)
+        _dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _sh.copy2(_log_path, _dst)
+            print(f"[LOG-COPY] {_log_path} -> {_dst}")
+        except Exception as _e:
+            print(f"[LOG-COPY] failed: {type(_e).__name__}: {_e}")
 
 
 if __name__ == "__main__":
