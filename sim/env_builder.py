@@ -269,8 +269,42 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         depth_cam = DepthRenderCamera(core, DepthRange(0.1, 5.0))
         # Top-down: camera at camera_xyz, looking along world -Z.
         # Rotation: 180 deg about X — world +X -> image right, world +Y -> image up.
-        X_PB = ad.RigidTransform(ad.RotationMatrix.MakeXRotation(np.pi),
-                                 list(camera_xyz))
+        #
+        # §7.73d — PUSHA_CAMERA_PERSPECTIVE=1 replaces the top-down pose
+        # with an oblique perspective (elevated SE, looking at mid-scene)
+        # so the box's out-of-plane pitch reads. Default-OFF preserves
+        # the top-down capture used for the deck's original take-1.
+        import os as _os_cam
+        if _os_cam.environ.get("PUSHA_CAMERA_PERSPECTIVE", "0") == "1":
+            def _parse_triple_env(var, default):
+                v = _os_cam.environ.get(var)
+                if not v:
+                    return np.asarray(default, dtype=float)
+                try:
+                    return np.asarray([float(x) for x in v.split(",")],
+                                      dtype=float)
+                except Exception:
+                    return np.asarray(default, dtype=float)
+            _cp     = _parse_triple_env("PUSHA_CAM_EYE",    [0.30, -0.55, 0.45])
+            _target = _parse_triple_env("PUSHA_CAM_TARGET", [-0.15, 0.0, 0.05])
+            _fwd = _target - _cp; _fwd = _fwd / np.linalg.norm(_fwd)
+            _world_up = np.array([0.0, 0.0, 1.0])
+            # Right-hand rule: right = fwd × world_up (viewer facing fwd with
+            # head towards world_up → right hand points to world +right).
+            # The old (world_up × fwd) inverted _right AND propagated to
+            # _down, flipping world +Z onto image DOWN — the §7.73 clip's
+            # upside-down artifact.  Drake camera axes are +X right, +Y down,
+            # +Z forward, so _R = [right | down | fwd].
+            _right = np.cross(_fwd, _world_up)
+            _right = _right / np.linalg.norm(_right)
+            _down = np.cross(_fwd, _right)
+            _R = np.column_stack([_right, _down, _fwd])
+            X_PB = ad.RigidTransform(ad.RotationMatrix(_R), _cp.tolist())
+            print(f"[C3] PUSHA_CAMERA_PERSPECTIVE=1  cam@{_cp.tolist()}  "
+                  f"target@{_target.tolist()}", flush=True)
+        else:
+            X_PB = ad.RigidTransform(ad.RotationMatrix.MakeXRotation(np.pi),
+                                     list(camera_xyz))
         rgbd = builder.AddSystem(
             ad.RgbdSensor(parent_id=scene_graph.world_frame_id(),
                           X_PB=X_PB,
