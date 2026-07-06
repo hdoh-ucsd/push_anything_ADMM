@@ -305,6 +305,17 @@ class SamplingParams:
     sampling_setback:                    float = 0.030  # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
     sample_reject_clearance:             float = 0.005  # m, post-projection minimum gap to box surface
 
+    # Object-shape selector for the kFaceNormal sampler.
+    #   "box"    → 4 cardinal ±x/±y body-frame face patches (unchanged, regression-safe)
+    #   "tshape" → 8-patch T-shape face table (single-body-collapsed T; see
+    #              sampling.py:_TSHAPE_FACE_TABLE for the geometry constants).
+    # The reference's generic path is kMeshNormalMultiObject (mesh triangle-face
+    # normals filtered by |n_z|² < 0.035) — a future-work generalization.
+    # The port's hardcoded T table is faithful in OUTCOME for the T but not
+    # to the reference's generic mesh sampler; that's a documented fidelity
+    # boundary, not a shortcut. Adding the mesh sampler unlocks the shape zoo.
+    object_shape:                        str   = "box"
+
     # Face-selection bias toward goal-aligned faces (Stage 2B Mode-B fix).
     # When > 0, each face's draw probability is weighted by
     #   w_i = 1 + face_bias_strength * max(0, -n_world_i . g_hat_xy)
@@ -608,6 +619,39 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
+    # ---- Explicit manipuland-ground contact synthesis (§9 Option A) ------
+    # When > 0, LCSFormulator.extract_lcs_contacts appends N synthesized
+    # manipuland-bottom-face ↔ ground contact rows (in addition to Drake's
+    # EE-manipuland admits; the Drake-auto-admitted single BOX-GND pair is
+    # DE-DUPLICATED to avoid double-counting). Matches reference push_t
+    # resolve_contacts_to=[0,1,3] (3 T-ground pairs) — captures the T's
+    # distributed bottom-face friction so the planner's LCS models real
+    # torsional resistance to yaw. Default 0 preserves prior behavior.
+    # Env var LCS_EXPLICIT_MANIPULAND_GND takes precedence (backward compat:
+    # LCS_EXPLICIT_BOX_GND also honored).
+    lcs_explicit_manipuland_ground_contacts: int = 0
+
+    # ---- §9 Option B (Stage 2) — cost-LCS forward-sim ranking ------------
+    # When use_cost_lcs_ranking=True, InnerSolver.evaluate_sample computes the
+    # sample cost by (a) forward-simulating the planner's u_seq under
+    # PD-with-feedforward on the LCS, and (b) scoring the SIMULATED
+    # trajectory with an object-only quadratic cost. Mirrors reference
+    # `TrajectoryEvaluator::SimulatePDControlWithLCS` + `CalcCost` with
+    # cost_type=5 (kSimImpedanceObjectCostOnly). Disabled by default →
+    # keeps Stage-1 behavior (planner's own x_seq + object-only Q).
+    use_cost_lcs_ranking: bool = False
+    # Reference push_t/parameters/sampling_c3plus_options.yaml:
+    #   Kp_for_ee_pd_rollout: 100
+    #   Kd_for_ee_pd_rollout: 0.5
+    # Scalars broadcast to per-axis EE PD gains during cost simulation.
+    Kp_for_ee_pd_rollout: float = 100.0
+    Kd_for_ee_pd_rollout: float = 0.5
+    # PGS LCP knobs (Tikhonov regularization matches reference
+    # simulate_config.regularized=true, min_exp=-8).
+    cost_lcs_pgs_max_iter: int = 50
+    cost_lcs_pgs_tol: float = 1.0e-6
+    cost_lcs_pgs_reg: float = 1.0e-8
+
     # ----- Executor -----
     # The wrapper always instantiates `OperationalSpaceController` (a
     # per-tick QP). The alternate closed-form impedance executor was
@@ -898,6 +942,14 @@ class SamplingC3Params:
             w_travel             = float(raw.get("w_travel", 200.0)),
             w_rot                = float(raw.get("w_rot", 0.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
+            lcs_explicit_manipuland_ground_contacts = int(raw.get(
+                "lcs_explicit_manipuland_ground_contacts", 0)),
+            use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
+            Kp_for_ee_pd_rollout     = float(raw.get("Kp_for_ee_pd_rollout", 100.0)),
+            Kd_for_ee_pd_rollout     = float(raw.get("Kd_for_ee_pd_rollout", 0.5)),
+            cost_lcs_pgs_max_iter    = int(raw.get("cost_lcs_pgs_max_iter", 50)),
+            cost_lcs_pgs_tol         = float(raw.get("cost_lcs_pgs_tol", 1.0e-6)),
+            cost_lcs_pgs_reg         = float(raw.get("cost_lcs_pgs_reg", 1.0e-8)),
             osc_gains_yaml       = str(raw.get("osc_gains_yaml", "config/osc_franka.yaml")),
             use_force_tracking   = bool(raw.get("use_force_tracking", True)),
             W_force              = float(raw.get("W_force", 100.0)),

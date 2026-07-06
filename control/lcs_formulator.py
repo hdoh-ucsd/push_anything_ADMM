@@ -55,27 +55,35 @@ class LCSFormulator:
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
                  box_ground_drag: float = 10.0,
-                 lcs_explicit_box_ground_contacts: int = 0):
+                 lcs_explicit_manipuland_ground_contacts: int = 0,
+                 object_shape: str = "box"):
         self.plant = plant
         self.mu    = float(mu)
-        # Stage 1 12-contact LCS knob. When > 0, extract_lcs_contacts
-        # synthesizes N explicit box-vertex ↔ ground contact rows (in
-        # addition to Drake's EE-BOX admits; Drake's auto-admitted BOX-GND
-        # pair is DE-DUPLICATED to avoid double-counting). Reference's
-        # resolve_contacts_to_lists[2] is 12 for non-cube objects; for our
-        # cube the natural choices are 4 (bottom corners only), 8 (all
-        # vertices), or 12 (8 vertices + 4 bottom-face centers). Default 0
-        # preserves the current Drake-driven behavior exactly. Env-var
-        # override LCS_EXPLICIT_BOX_GND takes precedence so the smoke probe
-        # can flip the knob without main.py edits.
-        _env_synth = os.environ.get("LCS_EXPLICIT_BOX_GND", "")
+        # Stage 1 / §9 Option A: manipuland-ground contact synthesis knob.
+        # When > 0, extract_lcs_contacts appends N explicit manipuland-vertex
+        # ↔ ground contact rows (in addition to Drake's EE-manipuland admits;
+        # Drake's auto-admitted BOX-GND pair is DE-DUPLICATED to avoid double-
+        # counting). Reference push_t uses resolve_contacts_to=[0,1,3] → 3
+        # T-ground pairs; jacktoy uses 12 for its shape. For our cube the
+        # natural choices are 4/8/12. Default 0 preserves prior Drake-driven
+        # behavior exactly. Env-var override LCS_EXPLICIT_MANIPULAND_GND (or
+        # legacy LCS_EXPLICIT_BOX_GND) takes precedence.
+        _env_synth = os.environ.get("LCS_EXPLICIT_MANIPULAND_GND", "")
+        if not _env_synth:
+            _env_synth = os.environ.get("LCS_EXPLICIT_BOX_GND", "")  # legacy alias
         if _env_synth:
             try:
-                self.lcs_explicit_box_ground_contacts = int(_env_synth)
+                self.lcs_explicit_manipuland_ground_contacts = int(_env_synth)
             except ValueError:
-                self.lcs_explicit_box_ground_contacts = int(lcs_explicit_box_ground_contacts)
+                self.lcs_explicit_manipuland_ground_contacts = int(
+                    lcs_explicit_manipuland_ground_contacts)
         else:
-            self.lcs_explicit_box_ground_contacts = int(lcs_explicit_box_ground_contacts)
+            self.lcs_explicit_manipuland_ground_contacts = int(
+                lcs_explicit_manipuland_ground_contacts)
+        # Manipuland shape: dispatch tag for _synthesize_manipuland_ground_contacts.
+        # Valid: "box" (existing 4/8/12-vertex enumeration) or "tshape"
+        # (3-witness bottom-face set matching reference push_t).
+        self._object_shape = str(object_shape)
         # Lazy-initialized box half-extents (queried from geometry inspector
         # on the first synthesis call; needs a context, not available here).
         self._box_half_extents: "Optional[np.ndarray]" = None
@@ -394,33 +402,66 @@ class LCSFormulator:
             pts = np.array(corners + edge_mids).T
         else:
             raise ValueError(
-                f"lcs_explicit_box_ground_contacts must be 0, 4, 8, or 12 "
-                f"(got {n_synth})"
+                f"box vertex-set n_synth must be 4, 8, or 12 (got {n_synth})"
             )
         return pts
 
-    def _synthesize_box_ground_contacts(self, context, query_obj):
-        """Synthesize N box-vertex ↔ ground contact rows for Stage 1's
-        12-contact LCS. Returns four parallel lists, in the same format
-        as the Drake-admitted contacts:
+    def _tshape_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
+        """Return T-shape bottom-face witness points in the link frame.
 
-          phis_synth      : list[float]       signed distances φ
-          J_n_rows_synth  : list[(n_v,)]      normal-Jacobian rows
-          J_t_rows_synth  : list[(n_v,)]      tangent-Jacobian rows (4 per contact)
-          ci_synth        : list[dict]        contact-info dicts
+        Reference push_t geometry (see sim/env_builder.py:_tshape_sdf):
+          - vertical_bar (crossbar): pose (+0.05, 0, 0), size 0.16 × 0.04 × 0.04
+            → bottom face at link-z = -0.02, spans link-x ∈ [-0.03, +0.13],
+              link-y ∈ [-0.02, +0.02].
+          - horizontal_bar (stem): pose (-0.05, 0, 0, 0, 0, π/2), size 0.16 ×
+            0.04 × 0.04 → after 90° z-rot, bottom face at link-z = -0.02,
+            spans link-x ∈ [-0.07, -0.03], link-y ∈ [-0.08, +0.08].
 
-        On no-op (knob=0 or non-box manipuland), returns four empty lists.
+        n_synth = 3 (reference push_t resolve_contacts_to=[0,1,3]): a
+        triangular support spanning the T footprint —
+          W1 = crossbar +x tip     (+0.13,  0.00, -0.02)
+          W2 = stem +y tip         (-0.05, +0.08, -0.02)
+          W3 = stem -y tip         (-0.05, -0.08, -0.02)
+        This layout captures torsional friction resistance (three-point
+        contact vs Drake auto-admit's single point).
         """
-        if self.lcs_explicit_box_ground_contacts == 0 or self._obj_body is None:
+        if n_synth != 3:
+            raise ValueError(
+                f"T-shape vertex-set n_synth must be 3 (matches reference "
+                f"push_t resolve_contacts_to=[0,1,3]); got {n_synth}."
+            )
+        return np.array([
+            [+0.13,  0.00, -0.02],   # crossbar +x tip
+            [-0.05, +0.08, -0.02],   # stem +y tip
+            [-0.05, -0.08, -0.02],   # stem -y tip
+        ]).T   # (3, 3)
+
+    def _synthesize_manipuland_ground_contacts(self, context, query_obj):
+        """Synthesize N manipuland-vertex ↔ ground contact rows. Dispatches
+        on self._object_shape:
+          - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{4,8,12}].
+          - "tshape" → _tshape_vertex_set_body_frame(n_synth) [n=3].
+
+        Returns four parallel lists in the same format as Drake-admitted
+        contacts:
+          phis, J_n_rows, J_t_rows, ci
+
+        On no-op (knob=0, unsupported shape, or missing obj_body): empty lists.
+        """
+        if self.lcs_explicit_manipuland_ground_contacts == 0 or self._obj_body is None:
             return [], [], [], []
 
-        half_extents = self._maybe_init_box_half_extents(query_obj)
-        if not np.all(half_extents > 0):
-            # Manipuland is not a Box (sphere etc.); cannot enumerate vertices.
+        n_synth = self.lcs_explicit_manipuland_ground_contacts
+        if self._object_shape == "tshape":
+            verts_body = self._tshape_vertex_set_body_frame(n_synth)
+        elif self._object_shape == "box":
+            half_extents = self._maybe_init_box_half_extents(query_obj)
+            if not np.all(half_extents > 0):
+                return [], [], [], []
+            verts_body = self._box_vertex_set_body_frame(n_synth)
+        else:
+            # Unsupported shape (e.g. "sphere"): no vertex enumeration.
             return [], [], [], []
-
-        n_synth = self.lcs_explicit_box_ground_contacts
-        verts_body = self._box_vertex_set_body_frame(n_synth)   # (3, n_synth)
 
         box_frame    = self._obj_body.body_frame()
         W            = self.plant.world_frame()
@@ -459,13 +500,17 @@ class LCSFormulator:
                 J_t_rows_s.append(t_dir @ J_box)
 
             # Contact-info dict in the same shape as Drake's (line 354-363).
-            # Tagged "BOX-VERT-i" so the diagnostic distinguishes them from
-            # Drake's "EE-BOX" / "BOX-GND".
+            # Tagged shape-specific (BOX-VERT-i / T-VERT-i) so the diagnostic
+            # distinguishes synthesized rows from Drake's "EE-BOX" / "BOX-GND".
+            # Downstream tag consumers (_derive_force_command EE-BOX filter,
+            # B1-A pair-index scan) match on "EE-BOX" prefix only, so these
+            # synthesized rows are correctly excluded from EE-force intent.
+            _tag_prefix = "T-VERT" if self._object_shape == "tshape" else "BOX-VERT"
             ci_s.append({
                 "body_A":       self._obj_body.name(),
                 "body_B":       "ground (world_body)",
                 "a_is_box":     True,
-                "tag":          f"BOX-VERT-{i}",
+                "tag":          f"{_tag_prefix}-{i}",
                 "nhat_BA_W":    nhat_ground.copy(),
                 "nhat_onto_box": nhat_ground.copy(),
                 "p_ACa":        verts_body[:, i].copy(),
@@ -486,7 +531,35 @@ class LCSFormulator:
                              # and collapses the dispatcher cost-gap that
                              # triggers kToC3Cost entries. 2 mm slack covers
                              # Drake signed-distance discretization noise.
-                             distance_threshold: float = 0.002):
+                             distance_threshold: float = 0.002,
+                             # §9 Option B (5-pair cost-LCS): top-N-by-phi
+                             # EE-manipuland admission. Reference push_t
+                             # resolve_contacts_to_lists=[[0,1,3],[0,2,3]] →
+                             # planner LCS uses top-1 (n_ee_top_k=1),
+                             # cost-LCS uses top-2 (n_ee_top_k=2). Default
+                             # n_ee_top_k=1 preserves planner behavior.
+                             # Only applies to the always-on injection path
+                             # (fires when no EE-manipuland pair admits at
+                             # distance_threshold). When Drake auto-admits
+                             # ≥1 EE-manipuland pair at 2 mm, all admitted
+                             # pairs pass through regardless of n_ee_top_k.
+                             n_ee_top_k: int = 1,
+                             # §9 Option B faithful cost-LCS: when True,
+                             # unconditionally REPLACE the EE-manipuland
+                             # slice with the top-K (by phi) candidate
+                             # pairs — bypasses both the 2 mm auto-admit
+                             # and _always_on_ee_box gates. Mirrors the
+                             # reference's GetResolvedContactPairs
+                             # (sampling_based_c3_controller.cc:1582-1615):
+                             # each contact-group is resolved to its top-N
+                             # closest pairs. Used by inner_solve.py to
+                             # build the cost-LCS with EXACTLY n_ee_top_k
+                             # EE-manipuland rows regardless of setback
+                             # distance — the load-bearing piece for the
+                             # productive-face distinction (east vs north
+                             # on the T). Default False preserves the
+                             # planner LCS build byte-identically.
+                             force_top_k_ee_box: bool = False):
         """
         Find all geometry pairs within distance_threshold and compute
         gap, normal Jacobian, and quadhedron tangential Jacobians.
@@ -525,11 +598,11 @@ class LCSFormulator:
         # All other pairs (arm self-collision, arm-table, arm-base) stay
         # excluded.
         if self._manipuland_geom_ids and self._ee_geom_ids:
-            # When Stage 1 synthesis is active (knob > 0), suppress Drake's
-            # auto-admitted BOX-GND pair: the synthesized box-vertex contacts
-            # replace it (otherwise the single BOX-GND pair would be double-
-            # counted alongside the 4/8/12 synthesized rows).
-            _synth_active = self.lcs_explicit_box_ground_contacts > 0
+            # When Stage 1 / §9 Option A synthesis is active (knob > 0),
+            # suppress Drake's auto-admitted BOX-GND pair: the synthesized
+            # manipuland-vertex contacts replace it (otherwise the single
+            # Drake pair would be double-counted alongside the synth rows).
+            _synth_active = self.lcs_explicit_manipuland_ground_contacts > 0
             def _admit(sdp):
                 ee_box = ((sdp.id_A in self._manipuland_geom_ids and
                            sdp.id_B in self._ee_geom_ids)
@@ -546,11 +619,52 @@ class LCSFormulator:
 
             # §7.30 — Always-on EE-BOX admission. If the flag is set and
             # the 2 mm threshold did NOT admit an EE-BOX pair this step,
-            # inject the EE-BOX pair explicitly (regardless of phi) via
-            # the pair-specific Drake call which does NOT apply the
+            # inject the EE-manipuland pair explicitly (regardless of phi)
+            # via the pair-specific Drake call which does NOT apply the
             # threshold. Mirrors lcs_factory.cc:31-105 (every contact_geom
-            # iterated unconditionally) for the EE-BOX pair only.
-            if self._always_on_ee_box:
+            # iterated unconditionally) for the EE-manipuland pair only.
+            #
+            # Multi-collision-element bodies (e.g. T-shape: vertical_bar +
+            # horizontal_bar): admit the CLOSEST manipuland collision by phi.
+            # The prior version broke after the first iteration → for a T,
+            # picked whichever element came first in set order regardless of
+            # geometric proximity, producing a non-closing LCS row and
+            # λ_n = 0/NaN downstream. This iterates all pairs and picks the
+            # smallest-phi one.
+            #
+            # Open-gap fidelity note: the faithful reference fix is
+            # GetNClosestContactPairs (top-N by phi so the planner has
+            # multiple candidate contact modes). This single-closest patch
+            # unblocks the T; the N-closest port is the open item.
+            # §9 Option B (5-pair cost-LCS): faithful GetResolvedContactPairs
+            # for the EE-manipuland group — REPLACE all Drake-auto-admitted
+            # EE-manipuland pairs with the top-K closest candidates. This
+            # decouples the cost-LCS from the setback distance so the
+            # forward-sim sees EE-T contact rows for east-face samples
+            # that sit 30 mm outside 2 mm auto-admit, giving the productive-
+            # face distinction (east < north) the LCP needs.
+            if force_top_k_ee_box:
+                _n_to_admit = max(1, int(n_ee_top_k))
+                # Drop any auto-admitted EE-manipuland pairs (top-K will
+                # supersede them; keep BOX-GND and synthesized rows).
+                sd_pairs = [
+                    sdp for sdp in sd_pairs
+                    if not (
+                        (sdp.id_A in self._manipuland_geom_ids
+                         and sdp.id_B in self._ee_geom_ids)
+                        or (sdp.id_B in self._manipuland_geom_ids
+                            and sdp.id_A in self._ee_geom_ids))
+                ]
+                _all_candidates = []
+                for gid_ee in self._ee_geom_ids:
+                    for gid_box in self._manipuland_geom_ids:
+                        _all_candidates.append(
+                            query_obj.ComputeSignedDistancePairClosestPoints(
+                                gid_ee, gid_box))
+                _all_candidates.sort(key=lambda s: s.distance)
+                for _sdp_i in _all_candidates[:_n_to_admit]:
+                    sd_pairs.append(_sdp_i)
+            elif self._always_on_ee_box:
                 _has_ee_box = any(
                     ((sdp.id_A in self._manipuland_geom_ids
                       and sdp.id_B in self._ee_geom_ids)
@@ -559,14 +673,21 @@ class LCSFormulator:
                     for sdp in sd_pairs
                 )
                 if not _has_ee_box:
+                    # Gather all EE↔manipuland candidate pairs.
+                    _all_candidates = []
                     for gid_ee in self._ee_geom_ids:
                         for gid_box in self._manipuland_geom_ids:
-                            sdp_ee_box = (
+                            sdp_candidate = (
                                 query_obj.ComputeSignedDistancePairClosestPoints(
                                     gid_ee, gid_box))
-                            sd_pairs.append(sdp_ee_box)
-                            break
-                        break
+                            _all_candidates.append(sdp_candidate)
+                    # Sort by signed distance; admit top-N (N=n_ee_top_k).
+                    # §9 Option B: cost-LCS uses top-2 (reference
+                    # resolve_contacts_to_for_cost=[0,2,3] for push_t).
+                    _all_candidates.sort(key=lambda s: s.distance)
+                    _n_to_admit = max(1, int(n_ee_top_k))
+                    for _sdp_i in _all_candidates[:_n_to_admit]:
+                        sd_pairs.append(_sdp_i)
 
         n_filtered = len(sd_pairs)
         if n_filtered > 10:
@@ -626,8 +747,17 @@ class LCSFormulator:
                 _tag = "BOX-GND"
             else:
                 _tag = "OTHER"
+            # Geometry-element name identifies WHICH collision element on the
+            # manipuland was contacted (matters for multi-collision-element
+            # bodies like the T — 'vertical_bar' vs 'horizontal_bar'). For
+            # single-element bodies (box, sphere) it's the sole collision name.
+            _elem_A = inspector.GetName(sdp.id_A)
+            _elem_B = inspector.GetName(sdp.id_B)
+            _manip_elem = _elem_A if a_is_box else _elem_B
             self._last_contact_info.append({
                 "body_A": body_A.name(), "body_B": body_B.name(),
+                "elem_A": _elem_A, "elem_B": _elem_B,
+                "manipuland_element": _manip_elem,
                 "a_is_box": a_is_box,
                 "tag": _tag,
                 "nhat_BA_W": np.array(nhat),
@@ -636,6 +766,12 @@ class LCSFormulator:
                 "p_BCb": np.array(sdp.p_BCb),
                 "distance": float(sdp.distance),
             })
+            # One-line contact-mode log for the T port validation. Emits per
+            # EE-manipuland admission: which element was contacted + φ. Muted
+            # for non-EE-BOX pairs to avoid ground-contact spam.
+            if _tag == "EE-BOX":
+                print(f"[CONTACT-ELEM] step={self._diag_step_count} "
+                      f"element={_manip_elem} phi={float(sdp.distance):+.4f}m")
 
             # Rotation-bonus scorer needs (p_contact_W, nhat_onto_box) for
             # EE-BOX pairs only. Use the contact witness on the box body,
@@ -668,16 +804,15 @@ class LCSFormulator:
             for d in (t1, -t1, t2, -t2):
                 J_t_rows.append(d @ J_rel)  # (n_v,)
 
-        # === Stage 1 12-contact LCS: append synthesized box-vertex ↔ ground ===
-        # When self.lcs_explicit_box_ground_contacts > 0, append explicit box-
-        # vertex contact rows after the Drake-admitted ones. Drake's BOX-GND
-        # pair was already de-duplicated above (admit filter line 451-452).
-        # The synthesized rows share the polyhedral-pyramid layout (4 tangent
-        # dirs per contact) so downstream n_t = 4·n_c arithmetic in
-        # linearize_discrete (line ~742) holds without modification.
-        if self.lcs_explicit_box_ground_contacts > 0:
+        # === §9 Option A / Stage 1: append synthesized manipuland ↔ ground ===
+        # When self.lcs_explicit_manipuland_ground_contacts > 0, append
+        # explicit vertex-ground contact rows after the Drake-admitted ones.
+        # Drake's BOX-GND pair was already de-duplicated above. The synthesized
+        # rows share the polyhedral-pyramid layout (4 tangent dirs per contact)
+        # so downstream n_t = 4·n_c arithmetic holds without modification.
+        if self.lcs_explicit_manipuland_ground_contacts > 0:
             (phis_s, J_n_rows_s,
-             J_t_rows_s, ci_s) = self._synthesize_box_ground_contacts(
+             J_t_rows_s, ci_s) = self._synthesize_manipuland_ground_contacts(
                 context, query_obj,
             )
             phis.extend(phis_s)
@@ -1229,7 +1364,9 @@ class LCSFormulator:
     # planner-internal scaling, not a physical claim.
     _EE_MASS = 1.0   # kg
 
-    def linearize_discrete_ee_space(self, context, dt: float, u_lin=None):
+    def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
+                                    n_ee_top_k: int = 1,
+                                    force_top_k_ee_box: bool = False):
         """
         Paper-aligned low-dim LCS at (q*, v*, u*).
 
@@ -1371,7 +1508,9 @@ class LCSFormulator:
         # 3. Contacts: phi, Drake's J_n (n_c, n_v_full), nhat list. We then
         #    PROJECT to the new low-dim velocity space [box_v(6), v_ee(3)].
         # -----------------------------------------------------------------
-        phi, J_n_drake, J_t_drake, mu = self.extract_lcs_contacts(context)
+        phi, J_n_drake, J_t_drake, mu = self.extract_lcs_contacts(
+            context, n_ee_top_k=n_ee_top_k,
+            force_top_k_ee_box=force_top_k_ee_box)
         n_c = J_n_drake.shape[0]
         n_t = J_t_drake.shape[0]               # 4·n_c
         n_lam = 2 * n_c + n_t                  # 6·n_c — [γ; λ_n; λ_t]

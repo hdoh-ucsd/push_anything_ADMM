@@ -29,7 +29,7 @@ _LEGACY_PREPOSITIONED_ARM_Q = np.array([
 # Dedicated pusher body — spherical puck rigidly welded to panda_link8.
 # This is the single authoritative name for EE body and contact filter.
 EE_BODY_NAME  = "pusher"
-PUSHER_RADIUS = 0.025   # m — matches Dairlab C3 planar-pushing benchmark
+PUSHER_RADIUS = 0.0195  # m — matches DAIR push_t (end_effector_full.urdf sphere radius)
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +98,75 @@ def _sphere_sdf(cfg: dict) -> str:
       <visual name="visual">
         <geometry><sphere><radius>{rad}</radius></sphere></geometry>
         <material><diffuse>{cr} {cg} {cb} {ca}</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>"""
+
+
+def _tshape_sdf(cfg: dict) -> str:
+    """Reference push_t.sdf ported as a single-body-collapsed rigid.
+
+    The reference (examples/sampling_c3/urdf/push_t.sdf) uses two 0.16×0.04×0.04
+    box links (vertical_link + horizontal_link) joined by a fixed joint. A fixed
+    joint is a rigid connection, so a single link with two collision elements is
+    DYNAMICALLY EQUIVALENT to the two-body construction. This preserves the
+    port's single-body-obj assumption without any fidelity loss.
+
+    Link origin placed at the T's combined CoM (both links 0.5 kg, one at (0,0,0),
+    one at (-0.10,0,0) in the reference frame → combined CoM at (-0.05, 0, 0)).
+    In this LINK frame:
+      - vertical bar (crossbar) collision at pose (+0.05, 0, 0)
+      - horizontal bar (stem) collision at pose (-0.05, 0, 0, 0, 0, π/2)
+    Both bars 0.16×0.04×0.04. Total mass 1.0 kg. Principal inertias computed
+    about the combined CoM with parallel axis for each half (horizontal_link's
+    principal axes swap ixx↔iyy in the T frame after its 90° z-rotation):
+      ixx = 1.267e-3, iyy = 3.767e-3, izz = 4.767e-3 kg·m²
+    """
+    m  = cfg["mass"]
+    mu = cfg["friction"]
+    r, g, b, a = cfg["color_rgba"]
+    # Precomputed for the reference T geometry with mass 1.0 kg split 0.5/0.5.
+    # For arbitrary mass m, scale linearly (uniform density scales inertia ∝ m).
+    scale = m / 1.0
+    ixx = 1.267e-3 * scale
+    iyy = 3.767e-3 * scale
+    izz = 4.767e-3 * scale
+    return f"""<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="manipulated_object">
+    <link name="t_link">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>{m}</mass>
+        <inertia>
+          <ixx>{ixx:.6f}</ixx><iyy>{iyy:.6f}</iyy><izz>{izz:.6f}</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="vertical_bar">
+        <pose>0.05 0 0 0 0 0</pose>
+        <geometry><box><size>0.16 0.04 0.04</size></box></geometry>
+        <surface>
+          <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
+        </surface>
+      </collision>
+      <collision name="horizontal_bar">
+        <pose>-0.05 0 0 0 0 1.5708</pose>
+        <geometry><box><size>0.16 0.04 0.04</size></box></geometry>
+        <surface>
+          <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
+        </surface>
+      </collision>
+      <visual name="vertical_bar_visual">
+        <pose>0.05 0 0 0 0 0</pose>
+        <geometry><box><size>0.16 0.04 0.04</size></box></geometry>
+        <material><diffuse>{r} {g} {b} {a}</diffuse></material>
+      </visual>
+      <visual name="horizontal_bar_visual">
+        <pose>-0.05 0 0 0 0 1.5708</pose>
+        <geometry><box><size>0.16 0.04 0.04</size></box></geometry>
+        <material><diffuse>{r} {g} {b} {a}</diffuse></material>
       </visual>
     </link>
   </model>
@@ -185,12 +254,18 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         G_SP_E=ad.UnitInertia.SolidSphere(PUSHER_RADIUS),
     )
     pusher_body = plant.AddRigidBody(EE_BODY_NAME, panda_model, _pusher_inertia)
+    # Pusher-surface friction is task-configurable. Drake combines per-surface
+    # μ via harmonic mean: μ_eff = 2·μ_A·μ_B / (μ_A + μ_B). μ_eff = 1.0 requires
+    # BOTH surfaces at 1.0 (harmonic mean ≤ min). Reference push_t sets EE-T = 1.0
+    # per-pair; matching under Drake requires pusher_friction = 1.0 for T tasks
+    # and manipuland friction = 1.0. Box tasks keep 0.4 (regression-safe).
+    _pusher_mu = float(task_cfg.get("pusher_friction", 0.4))
     plant.RegisterCollisionGeometry(
         pusher_body,
         ad.RigidTransform(),
         ad.Sphere(PUSHER_RADIUS),
         "pusher_collision",
-        ad.CoulombFriction(static_friction=0.4, dynamic_friction=0.4),
+        ad.CoulombFriction(static_friction=_pusher_mu, dynamic_friction=_pusher_mu),
     )
     plant.RegisterVisualGeometry(
         pusher_body,
@@ -213,9 +288,12 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         sdf_str = _box_sdf(task_cfg)
     elif obj_type == "sphere":
         sdf_str = _sphere_sdf(task_cfg)
+    elif obj_type == "tshape":
+        sdf_str = _tshape_sdf(task_cfg)
     else:
         raise ValueError(
-            f"Unknown object_type '{obj_type}' in task config. Use 'box' or 'sphere'."
+            f"Unknown object_type '{obj_type}' in task config. "
+            "Use 'box', 'sphere', or 'tshape'."
         )
 
     object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
@@ -229,15 +307,43 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         if task_cfg["object_type"] == "box":
             _sx, _sy, _sz = task_cfg["size"]
             _ghost_shape = ad.Box(_sx, _sy, _sz)
+            plant.RegisterVisualGeometry(
+                plant.world_body(),
+                ad.RigidTransform([float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)]),
+                _ghost_shape,
+                "goal_ghost",
+                list(goal_ghost_rgba),
+            )
+        elif task_cfg["object_type"] == "tshape":
+            # Ghost T: two boxes at the T's collision poses. Yaw the goal ghost
+            # by task_cfg.get("goal_yaw", 0.0) so the operator sees the target
+            # orientation, not just position.
+            _goal_yaw = float(task_cfg.get("goal_yaw", 0.0))
+            _R_goal = ad.RotationMatrix.MakeZRotation(_goal_yaw)
+            _T_goal = ad.RigidTransform(_R_goal,
+                [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
+            for _local_x, _local_yaw, _tag in (
+                (+0.05, 0.0,    "goal_ghost_vbar"),
+                (-0.05, 1.5708, "goal_ghost_hbar"),
+            ):
+                _R_local = ad.RotationMatrix.MakeZRotation(_local_yaw)
+                _T_local = ad.RigidTransform(_R_local, [_local_x, 0.0, 0.0])
+                plant.RegisterVisualGeometry(
+                    plant.world_body(),
+                    _T_goal.multiply(_T_local),
+                    ad.Box(0.16, 0.04, 0.04),
+                    _tag,
+                    list(goal_ghost_rgba),
+                )
         else:
             _ghost_shape = ad.Sphere(task_cfg["radius"])
-        plant.RegisterVisualGeometry(
-            plant.world_body(),
-            ad.RigidTransform([float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)]),
-            _ghost_shape,
-            "goal_ghost",
-            list(goal_ghost_rgba),
-        )
+            plant.RegisterVisualGeometry(
+                plant.world_body(),
+                ad.RigidTransform([float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)]),
+                _ghost_shape,
+                "goal_ghost",
+                list(goal_ghost_rgba),
+            )
 
     plant.Finalize()
 
@@ -392,10 +498,18 @@ def compute_prepositioned_arm_q(plant,
         half_extent = abs(g_hat[0]) * sx / 2.0 + abs(g_hat[1]) * sy / 2.0
     elif obj_type == "sphere":
         half_extent = float(task_cfg["radius"])
+    elif obj_type == "tshape":
+        # Loose outward-bound: the T's max extent along g_hat is between the
+        # crossbar tip (link-frame +0.13 along x) and the stem back (-0.07).
+        # For a canonical West push (g_hat ≈ +x since goal is to -x → arm push
+        # from +x), 0.13 m is the outward face. Direction-agnostic upper bound
+        # = 0.13 m (worst case, over-approximate is safe: IK just seats a bit
+        # farther out).
+        half_extent = 0.13
     else:
         raise ValueError(
             f"compute_prepositioned_arm_q: unknown object_type '{obj_type}' "
-            "(expected 'box' or 'sphere')."
+            "(expected 'box', 'sphere', or 'tshape')."
         )
 
     contact_offset = half_extent + PUSHER_RADIUS + contact_clearance

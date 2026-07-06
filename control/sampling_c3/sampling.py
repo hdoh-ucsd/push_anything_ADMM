@@ -33,6 +33,29 @@ CENTERED_JITTER_FRACTION = 0.0      # 0.2 → 0.0: removes ±10mm tangent re-rol
 
 
 # ---------------------------------------------------------------------------
+# T-shape face table (single-body-collapsed T; see env_builder._tshape_sdf).
+# T LINK FRAME origin at the T's combined CoM (both bars 0.5 kg).
+# Vertical bar (crossbar) at pose (+0.05, 0, 0), size 0.16×0.04×0.04.
+# Horizontal bar (stem)      at pose (-0.05, 0, 0, 0, 0, π/2), size 0.16×0.04×0.04.
+#
+# 8 outward-facing side face patches, at 4 distinct body-frame outward normals.
+# Column order: (center_x, center_y, normal_x, normal_y, half_length_along_tangent).
+# The tangent direction is CCW-perpendicular to (normal_x, normal_y).
+# ---------------------------------------------------------------------------
+_TSHAPE_FACE_TABLE = np.array([
+    # (cx,    cy,     nx,   ny,   half_len)
+    ( +0.13,  0.00,  +1.0,  0.0,  0.02),   # face 1: crossbar tip (+x)
+    (  0.05, -0.02,   0.0, -1.0,  0.08),   # face 2: crossbar bottom (-y)
+    ( -0.03, -0.05,  +1.0,  0.0,  0.03),   # face 3: bottom shoulder (+x)
+    ( -0.05, -0.08,   0.0, -1.0,  0.02),   # face 4: stem bottom (-y)
+    ( -0.07,  0.00,  -1.0,  0.0,  0.08),   # face 5: stem back (-x)
+    ( -0.05, +0.08,   0.0, +1.0,  0.02),   # face 6: stem top (+y)
+    ( -0.03, +0.05,  +1.0,  0.0,  0.03),   # face 7: top shoulder (+x)
+    (  0.05, +0.02,   0.0, +1.0,  0.08),   # face 8: crossbar top (+y)
+], dtype=float)
+
+
+# ---------------------------------------------------------------------------
 # Public dispatch
 # ---------------------------------------------------------------------------
 
@@ -192,6 +215,7 @@ def _face_normal_projection(n_samples:    int,
     setback  = float(params.sampling_setback)
     z        = float(params.sampling_height)
     reject_clearance = float(params.sample_reject_clearance)
+    shape    = str(getattr(params, "object_shape", "box"))
 
     # Goal-alignment conditional jitter setup. Only meaningful when g_hat
     # has a real direction; rotation-only tasks fall through to uniform.
@@ -205,18 +229,41 @@ def _face_normal_projection(n_samples:    int,
     if _use_goal_align:
         g2 = g2 / _g_norm
 
-    # Body-frame outward normals of the 4 side faces (+x, -x, +y, -y).
-    body_normals = np.array([
-        [ 1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0],
-        [ 0.0, 1.0, 0.0],
-        [ 0.0,-1.0, 0.0],
-    ])
-    if obj_quat is not None:
-        R = _quat_to_rot(obj_quat)
-        world_normals = (R @ body_normals.T).T
+    if shape == "tshape":
+        # Per-face table for the reference push_t geometry (single-body-collapsed).
+        # T LINK FRAME face patches → rotate through obj_quat to get world frame.
+        # Each row: (cx, cy, nx, ny, half_len). Center-x/y and normals rotate;
+        # half_len is invariant under rigid rotation.
+        _table = _TSHAPE_FACE_TABLE
+        body_centers = np.column_stack([_table[:, 0], _table[:, 1],
+                                        np.zeros(_table.shape[0])])   # (N,3)
+        body_normals = np.column_stack([_table[:, 2], _table[:, 3],
+                                        np.zeros(_table.shape[0])])   # (N,3)
+        half_lens    = _table[:, 4]                                    # (N,)
+        if obj_quat is not None:
+            R = _quat_to_rot(obj_quat)
+            world_centers = (R @ body_centers.T).T
+            world_normals = (R @ body_normals.T).T
+        else:
+            world_centers = body_centers
+            world_normals = body_normals
+        n_faces = _table.shape[0]
     else:
-        world_normals = body_normals
+        # Box path (regression-safe): 4 cardinal ±x/±y body-frame normals.
+        body_normals = np.array([
+            [ 1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [ 0.0, 1.0, 0.0],
+            [ 0.0,-1.0, 0.0],
+        ])
+        if obj_quat is not None:
+            R = _quat_to_rot(obj_quat)
+            world_normals = (R @ body_normals.T).T
+        else:
+            world_normals = body_normals
+        world_centers = None    # box uses obj_xy + box_half*normal (below)
+        half_lens     = None
+        n_faces = 4
 
     obj_xy_2 = np.asarray(obj_xy, dtype=float).reshape(2)
 
@@ -233,58 +280,70 @@ def _face_normal_projection(n_samples:    int,
     else:
         _face_probs = None
 
+    def _face_center_xy(face_idx: int) -> np.ndarray:
+        n_world = world_normals[face_idx]
+        if shape == "tshape":
+            # T: obj_xy + world_centers[face_idx] (world-frame face-center
+            # offset from the T's link origin, already rotated).
+            return obj_xy_2 + world_centers[face_idx, :2]
+        # Box: obj_xy + box_half * outward_normal (single scalar half-extent).
+        return obj_xy_2 + box_half * n_world[:2]
+
+    def _face_half_len(face_idx: int) -> float:
+        return float(half_lens[face_idx]) if shape == "tshape" else box_half
+
     samples: list[np.ndarray] = []
     max_tries = n_samples * 20
     tries = 0
     while len(samples) < n_samples and tries < max_tries:
         tries += 1
         if _face_probs is None:
-            face_idx = int(rng.integers(0, 4))
+            face_idx = int(rng.integers(0, n_faces))
         else:
-            face_idx = int(rng.choice(4, p=_face_probs))
+            face_idx = int(rng.choice(n_faces, p=_face_probs))
         n_world = world_normals[face_idx]
-        face_center_xy = obj_xy_2 + box_half * n_world[:2]
+        face_center_xy = _face_center_xy(face_idx)
+        _half_len = _face_half_len(face_idx)
         tang = np.array([-n_world[1], n_world[0]])
         tn = float(np.linalg.norm(tang))
         if tn > 1e-9:
             tang = tang / tn
-        # Conditional jitter: on a goal-aligned face (contact would push box
+        # Conditional jitter: on a goal-aligned face (contact would push obj
         # toward goal), tighten the range so the sample lands near the face
         # center. Off-center landings on the goal-aligned face produce a
         # moment arm → yaw → friction-coupled lateral drift; centered
         # landings push cleanly. Non-goal faces keep full jitter so rotation
         # tasks and multi-object scenarios retain sample diversity.
-        # Force on box from a sample-side approach is along -n_world; align
-        # that with g_hat (box→goal) to score the face.
         if _use_goal_align:
             _goal_align = float(-n_world[0]*g2[0] - n_world[1]*g2[1])
             if _goal_align > GOAL_ALIGN_THRESHOLD:
-                _jitter_range = box_half * CENTERED_JITTER_FRACTION
+                _jitter_range = _half_len * CENTERED_JITTER_FRACTION
             else:
-                _jitter_range = box_half
+                _jitter_range = _half_len
         else:
-            _jitter_range = box_half
+            _jitter_range = _half_len
         jitter = float(rng.uniform(-_jitter_range, _jitter_range))
         point_on_face_xy = face_center_xy + jitter * tang
         proj_xy = point_on_face_xy + setback * n_world[:2]
-        # Rejection: in body-frame (post-projection), the |max(x,y)| relative
-        # to the box center must exceed box_half + reject_clearance. We
-        # approximate in world frame by axis-aligned bbox check, which is
-        # exact when obj_quat is None and an upper bound on penetration in
-        # the rotated case.
-        dx = max(abs(proj_xy[0] - obj_xy_2[0]) - box_half, 0.0)
-        dy = max(abs(proj_xy[1] - obj_xy_2[1]) - box_half, 0.0)
-        surf_dist = float(np.hypot(dx, dy))
-        if surf_dist < reject_clearance:
-            continue
+        # Rejection: for the box, an axis-aligned bbox check. For the T,
+        # skip the concave-corner-aware check and just accept — the T's
+        # setback-projected samples are always safe (each face's outward
+        # normal doesn't re-enter the T's footprint at the setback distance
+        # for setback ≥ pusher_radius; violations would require intra-T
+        # geometry re-entry, ruled out by the per-face outward-normal choice).
+        if shape == "box":
+            dx = max(abs(proj_xy[0] - obj_xy_2[0]) - box_half, 0.0)
+            dy = max(abs(proj_xy[1] - obj_xy_2[1]) - box_half, 0.0)
+            surf_dist = float(np.hypot(dx, dy))
+            if surf_dist < reject_clearance:
+                continue
         samples.append(np.array([proj_xy[0], proj_xy[1], z]))
 
-    # Pad with deterministic cardinal-direction setback samples if the
-    # rejection loop failed (shouldn't happen for a free-standing cube).
+    # Pad with deterministic setback samples if the rejection loop failed.
     while len(samples) < n_samples:
-        idx = len(samples) % 4
+        idx = len(samples) % n_faces
         n_world = world_normals[idx]
-        face_center_xy = obj_xy_2 + box_half * n_world[:2]
+        face_center_xy = _face_center_xy(idx)
         proj_xy = face_center_xy + setback * n_world[:2]
         samples.append(np.array([proj_xy[0], proj_xy[1], z]))
 

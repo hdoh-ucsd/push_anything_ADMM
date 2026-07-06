@@ -84,6 +84,54 @@ tasks:
       w_torque:         0.01
 
   # -----------------------------------------------------------------------
+  # Task: push_t — reference push_t.sdf T-shape, single-body-collapsed.
+  # Reference: examples/sampling_c3/urdf/push_t.sdf + push_t/parameters/.
+  # Two 0.16×0.04×0.04 box collision elements welded via fixed joint at
+  # (0,0,0) and (-0.10,0,0,0,0,π/2) in the reference frame; the port uses one
+  # rigid link with those two collision elements (dynamically equivalent to
+  # a fixed joint). Combined CoM at (-0.05,0,0) in the reference frame; the
+  # port re-parameterizes so the link origin sits AT the combined CoM, moving
+  # both bar collision poses by +0.05 along x.
+  #
+  # Friction: reference EE-T μ=1.0 (per-pair). Drake combines per-surface μ
+  # via harmonic mean (μ_eff = 2·μ_A·μ_B/(μ_A+μ_B)); to hit μ_eff=1.0 both
+  # surfaces must be 1.0. The pusher_friction override raises pusher μ to 1.0
+  # for this task only (box tasks stay at 0.4). Ground pairs approximated
+  # because per-surface μ can't independently match reference's per-pair
+  # μ_EE-ground=0.4165 + μ_T-ground=0.4615. Stability lever is EE-T; the ground
+  # pairs are a documented fidelity boundary.
+  #
+  # Goal is a POSE target (position + yaw) — this task demonstrates the
+  # paper's headline capability the cube literally cannot: pushing to a yaw
+  # target on a non-yaw-symmetric object. w_yaw is dominant.
+  push_t:
+    object_type: tshape
+    link_name: t_link
+    mass: 1.0             # kg — matches reference (2 × 0.5 kg links)
+    friction: 1.0         # μ_T; combined with pusher_friction=1.0 → μ_eff=1.0 (EE-T)
+    pusher_friction: 1.0  # μ_EE; task-scoped override of the 0.4 default
+    init_xyz: [0.0, 0.0, 0.02]     # link origin at combined CoM; T half-height 0.02 → base on ground
+    goal_xy:  [-0.2, 0.05]
+    goal_yaw: 0.7854      # +45° (moderate yaw target well within half-angle metric's monotonic range)
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    # Contact regime matched to reference push_t: sphere-center world-z = 34 mm
+    # (reference: world-z = 0.005 m with ground at world-z = -0.029 m; port
+    # ground at world-z = 0). Puts contact 14 mm above T CoM (T sits on ground
+    # at world-z = 0.02, top at 0.04).
+    sampling_height: 0.034
+    cost:
+      w_obj_xy:    100000.0
+      w_obj_z:         10.0
+      w_box_z:        100.0
+      w_box_rp:        50.0
+      w_yaw:          800.0   # DOMINANT — the headline of this task
+      w_terminal:       5.0
+      z_ee_target:      0.034
+      d_push:           0.05
+      w_ee_approach: 8000.0
+      w_torque:         0.01
+
+  # -----------------------------------------------------------------------
   # Task 4: Cube Turning (Jin & Posa eq. 40 analog)
   # -----------------------------------------------------------------------
   # Pure-rotation testbed. Translation weight w_obj_xy zeroed so the

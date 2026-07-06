@@ -639,7 +639,24 @@ class SamplingC3MPC:
         # don't push the leakage scale.
         converged = bool(getattr(self.base_mpc, "last_converged", True))
         if has_lam_n:
-            mag = float(np.sum(np.abs(lambda_n)))
+            # §9 Option A: filter λ_n to EE-BOX pairs only. With N T-GND
+            # synth rows in the LCS, the raw sum aggregates EE-manipuland +
+            # T-ground λ_n into the EE force intent — WRONG (ground λ_n is a
+            # reaction on the box, not on the EE). Use _last_contact_info tag
+            # to pick out EE-BOX indices. Same scan as ci_mpc_c3plus.py:328-335.
+            _cinfo_f = getattr(self.base_mpc.formulator,
+                               "_last_contact_info", None)
+            if _cinfo_f is not None and len(_cinfo_f) == lambda_n.size:
+                _ee_idxs = [i for i, info in enumerate(_cinfo_f)
+                            if isinstance(info, dict)
+                            and info.get("tag", "") == "EE-BOX"]
+                if _ee_idxs:
+                    mag = float(np.sum(np.abs(lambda_n[_ee_idxs])))
+                else:
+                    mag = 0.0
+            else:
+                # Fallback: no contact-info alignment; use full sum (legacy).
+                mag = float(np.sum(np.abs(lambda_n)))
             mag = max(mag, floor)
             if not converged:
                 mag = min(mag, nominal)
