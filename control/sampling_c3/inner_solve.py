@@ -35,6 +35,7 @@ plan" output when the wrapper delegates to base_mpc).
 from __future__ import annotations
 
 import io
+import os
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -189,6 +190,26 @@ def traj_cost(x_seq:  np.ndarray,
     return J
 
 
+def _object_only_cost_matrices_ee_space(Q, QN, R):
+    """Return copies of (Q, QN, R) with robot pos/vel/torque entries zeroed —
+    reference's C3CostComputationType::kSimImpedanceObjectCostOnly semantics
+    (sampling_based_c3_controller.cc:601-609). For the port's EE-space layout
+    x = [box_q (7), p_ee (3), box_v (6), v_ee (3)]:
+      - Q[7:10, 7:10]   = 0  (p_ee — was w_ee_approach)
+      - Q[16:19, 16:19] = 0  (v_ee)
+      - R                = 0
+    QN mirrors Q's zeroing. Object dims (box_q, box_v) retain their weights.
+    """
+    Q_obj  = Q.copy()
+    QN_obj = QN.copy()
+    R_obj  = np.zeros_like(R)
+    Q_obj[7:10, 7:10] = 0.0
+    Q_obj[16:19, 16:19] = 0.0
+    QN_obj[7:10, 7:10] = 0.0
+    QN_obj[16:19, 16:19] = 0.0
+    return Q_obj, QN_obj, R_obj
+
+
 def traj_cost_breakdown(x_seq, u_seq, Q, R, QN, x_ref,
                         n_arm_dofs: int,
                         obj_x_idx:  int,
@@ -256,8 +277,41 @@ class InnerSolver:
         self.base_admm_iter   = int(base_admm_iter)
         self.surrogate_iter   = int(params.surrogate_admm_iters)
         self.w_align          = float(params.w_align)
+
+        # Diag 2 fix — per-axis force bounds for EE-space surrogate solves.
+        # ci_mpc_c3plus.py:310-321 reads these env vars for the MAIN planner's
+        # solve() call so the QP installs a per-axis [±U_H, ±U_H, ±U_V] box
+        # instead of the scalar torque_limit uniform cap. But InnerSolver's
+        # per-sample surrogate solves at self.solver.solve(...) (lines below)
+        # bypass ci_mpc_c3plus.py and were passing u_lower=u_upper=None →
+        # admm_solver.py:1056 falls back to np.full(n_u, ±torque_limit) →
+        # uniform scalar cap (30 N in all 3 axes). Mirror the same read here
+        # so surrogate solves see the same per-axis box the main solve does.
+        import os as _os_env
+        self._u_lo = None
+        self._u_hi = None
+        _uh_s = _os_env.environ.get("PUSHA_STAGE5_U_HORIZONTAL", "")
+        _uv_s = _os_env.environ.get("PUSHA_STAGE5_U_VERTICAL", "")
+        if _uh_s and _uv_s:
+            try:
+                _uh = float(_uh_s)
+                _uv = float(_uv_s)
+                self._u_lo = np.array([-_uh, -_uh, -_uv])
+                self._u_hi = np.array([+_uh, +_uh, +_uv])
+            except ValueError:
+                pass
         self.w_travel         = float(params.w_travel)
         self.w_rot            = float(getattr(params, "w_rot", 0.0))
+        # §9 Option B (Stage 2) — cost-LCS forward-sim ranking
+        self._use_cost_lcs_ranking = bool(getattr(
+            params, "use_cost_lcs_ranking", False))
+        self._Kp_ee_pd_rollout = float(getattr(
+            params, "Kp_for_ee_pd_rollout", 100.0))
+        self._Kd_ee_pd_rollout = float(getattr(
+            params, "Kd_for_ee_pd_rollout", 0.5))
+        self._pgs_max_iter = int(getattr(params, "cost_lcs_pgs_max_iter", 50))
+        self._pgs_tol      = float(getattr(params, "cost_lcs_pgs_tol", 1.0e-6))
+        self._pgs_reg      = float(getattr(params, "cost_lcs_pgs_reg", 1.0e-8))
         self._box_half_extent = float(params.sampling_params.box_half_extent)
 
         self.n_u = plant.num_actuators()
@@ -350,6 +404,7 @@ class InnerSolver:
         u_seq = x_seq = None
         A = B = D = d = J_n = J_t = phi = mu = None
         Q = R = QN = x_ref = x0 = None
+        _cost_lcs_probe = None       # populated only when cost-LCS ranking active
 
         _buf = io.StringIO()
         ctx = redirect_stdout(_buf) if suppress_io else _NullContext()
@@ -399,6 +454,27 @@ class InnerSolver:
                     )
                     x0 = np.concatenate([q_seed, current_v])
 
+                # Diag 2: EE-space per-axis bounds (installed only for R^3
+                # planner with n_u=3; None for R^7 arm-torque). Mirrors
+                # ci_mpc_c3plus.py:310-321 for the surrogate-solve path.
+                _ee_space = (self.solver.n_u == 3)
+                _u_lo = self._u_lo if _ee_space else None
+                _u_hi = self._u_hi if _ee_space else None
+                # §7.67 — plumb _ee_box_pair_idx per-surrogate. Without this,
+                # the shared C3Solver instance uses whatever index the main
+                # planner set at the previous tick (or None on tick 0), so
+                # B1-A's final-iter G-weighting either skips or lands on the
+                # wrong pair — surrogate's ADMM under-solves the EE-BOX λ_n
+                # for its OWN LCS, making c_C3_raw non-informative for
+                # ranking. Same scan as ci_mpc_c3plus.py:328-335.
+                _ee_box_idx = None
+                _cinfo_s = getattr(self.formulator, "_last_contact_info", None)
+                if _cinfo_s:
+                    for _i_s, _info_s in enumerate(_cinfo_s):
+                        if _info_s.get("tag", "") == "EE-BOX":
+                            _ee_box_idx = _i_s
+                            break
+                self.solver._ee_box_pair_idx = _ee_box_idx
                 u_seq, x_seq = self.solver.solve(
                     x0, A, B, D, d, J_n, J_t, mu,
                     Q, R, QN, x_ref,
@@ -407,8 +483,166 @@ class InnerSolver:
                     torque_limit=self.torque_limit,
                     phi=phi,
                     E=E_lcs, F=F_lcs, H=H_lcs, c_lcs=c_lcs,
+                    u_lower=_u_lo, u_upper=_u_hi,
                 )
-            c_C3_raw = traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
+            # §9 Option B (Stage 1): reference-faithful ranking cost.
+            # Reference (sampling_based_c3_controller.cc:601-609, cost_type=5
+            # kSimImpedanceObjectCostOnly) evaluates the sample cost with
+            # robot pos/vel/torque entries of Q and R zeroed — only object
+            # tracking errors count. This decouples ranking from the port's
+            # w_ee_approach (which favors samples parked at the setback
+            # target with the arm in position, biasing dispatcher toward
+            # reposition every tick even when the c3 sample can actually
+            # push).
+            #
+            # STAGE 1 caveat: we use the planner's own x_seq (kUseC3Plan
+            # variant) rather than SimulatePDControlWithLCS(...) on a
+            # separate 5-pair cost-LCS. The full forward-sim (Stage 2) is
+            # left for a follow-up if Stage 1 doesn't unblock c3 dispatch.
+            if _ee_space:
+                Q_obj, QN_obj, R_obj = _object_only_cost_matrices_ee_space(
+                    Q, QN, R)
+                # §9 Option B (Stage 2): forward-simulate the plan on the LCS
+                # via PD-with-feedforward + PGS LCP per knot, then score the
+                # SIMULATED trajectory (kSimImpedanceObjectCostOnly).
+                # Reference: sampling_based_c3_controller.cc:571-590 + 601-609.
+                # When use_cost_lcs_ranking=False, fall back to Stage-1
+                # (planner's own x_seq).
+                if self._use_cost_lcs_ranking:
+                    from control.sampling_c3.lcs_simulator import (
+                        simulate_pd_control_with_lcs)
+                    # §9 Option B (faithful 5-pair cost-LCS): build a
+                    # SEPARATE LCS with top-2 EE-manipuland pairs (reference
+                    # push_t resolve_contacts_to_for_cost=[0,2,3] → 0
+                    # EE-ground + 2 EE-T + 3 T-GND = 5 pairs). With 1 EE-T
+                    # the forward-sim couldn't distinguish productive-face
+                    # (east) from dead-face (north) samples on the T; the
+                    # 2nd EE-T gives the sim two contact modes to resolve
+                    # between via LCP. force_top_k_ee_box=True forces the
+                    # top-K EE-manipuland injection unconditionally (bypasses
+                    # the 2 mm auto-admit / always-on gates) — mirrors the
+                    # reference's GetResolvedContactPairs.
+                    #
+                    # Delta-1 gap fix (per-sample plant-context update): the
+                    # reference's UpdateContext(plant, current_v,
+                    # candidate_states[i]) — sampling_based_c3_controller.cc:
+                    # 1628-1631 — places the plant at each sample's EE state
+                    # BEFORE the cost-LCS build. The port previously skipped
+                    # this in the EE-space path (line 371-378 above), so the
+                    # cost-LCS was linearized at CURRENT arm config and its
+                    # contact geometry was extrapolated ~15 cm to reach an
+                    # east-face sample — the wrong contact model. v10 evidence
+                    # (pathT_smoke_v10_5pair/CRUX_ANALYSIS.md) showed east
+                    # sample's forward-sim moved T 0.018 m in the WRONG
+                    # direction, scoring worse than north's near-zero motion.
+                    # This block solves per-sample IK, temporarily sets the
+                    # plant to the sample's arm config, builds the cost-LCS
+                    # at that state, and restores the plant afterward.
+                    _q_saved_for_cost_lcs = np.array(
+                        self.plant.GetPositions(plant_ctx), copy=True)
+                    _v_saved_for_cost_lcs = np.array(
+                        self.plant.GetVelocities(plant_ctx), copy=True)
+                    _cost_lcs_ik_err   = 0.0
+                    _cost_lcs_ik_iters = 0
+                    if not is_current_ee:
+                        try:
+                            _q_warm_cost = ik_seed_one_step(
+                                self.plant, self.ee_frame,
+                                _q_saved_for_cost_lcs, sample_pos, plant_ctx,
+                                n_arm_dofs=self.n_u,
+                            )
+                            _q_sample_arm, _cost_lcs_ik_err, \
+                                _cost_lcs_ik_iters = solve_ik_to_ee_pos(
+                                    self.plant, self.ee_frame,
+                                    p_target=sample_pos,
+                                    q_init=_q_warm_cost,
+                                    plant_ctx=plant_ctx,
+                                    n_arm_dofs=self.n_u,
+                                )
+                            # Keep box q/v from current — only arm moves.
+                            _q_for_cost_lcs = _q_saved_for_cost_lcs.copy()
+                            _q_for_cost_lcs[:self.n_u] = \
+                                _q_sample_arm[:self.n_u]
+                            self.plant.SetPositions(
+                                plant_ctx, _q_for_cost_lcs)
+                            self.plant.SetVelocities(
+                                plant_ctx, _v_saved_for_cost_lcs)
+                        except Exception:
+                            # If per-sample IK fails, fall back to current
+                            # arm config (matches v10 behavior).
+                            self.plant.SetPositions(
+                                plant_ctx, _q_saved_for_cost_lcs)
+                            self.plant.SetVelocities(
+                                plant_ctx, _v_saved_for_cost_lcs)
+                    try:
+                        (A_c, B_c, D_c, d_c,
+                         E_c, F_c, H_c, c_lcs_c,
+                         J_n_c, J_t_c, phi_c, mu_c) = \
+                            self.formulator.linearize_discrete_ee_space(
+                                plant_ctx, self.dt, n_ee_top_k=2,
+                                force_top_k_ee_box=True)
+                        # Cost-LCS admission audit for the crux instrumentation
+                        # (task 2): number of EE-manipuland rows in the actual
+                        # cost-LCS, and each EE-row's phi at build time.
+                        _cost_cinfo = list(getattr(
+                            self.formulator, "_last_contact_info", []))
+                        _n_ee_t_cost = sum(
+                            1 for info in _cost_cinfo
+                            if info.get("tag", "") == "EE-BOX")
+                        _ee_t_phi_cost = [
+                            float(phi_c[i])
+                            for i, info in enumerate(_cost_cinfo)
+                            if info.get("tag", "") == "EE-BOX"]
+                    except Exception:
+                        # Fall back to planner LCS if the top-2 build fails.
+                        A_c, B_c, D_c, d_c = A, B, D, d
+                        E_c, F_c, H_c, c_lcs_c = E_lcs, F_lcs, H_lcs, c_lcs
+                        _n_ee_t_cost = -1        # signals cost-LCS build failed
+                        _ee_t_phi_cost = []
+                    # Restore plant to the state expected by downstream
+                    # callers (matches the pre-existing R^7 path's convention
+                    # of leaving plant_ctx at current_q/current_v).
+                    self.plant.SetPositions(
+                        plant_ctx, _q_saved_for_cost_lcs)
+                    self.plant.SetVelocities(
+                        plant_ctx, _v_saved_for_cost_lcs)
+                    XX_sim, UU_sim = simulate_pd_control_with_lcs(
+                        x_plan=x_seq, u_plan=u_seq,
+                        A=A_c, B=B_c, D=D_c, d=d_c,
+                        E=E_c, F=F_c, H=H_c, c_lcs=c_lcs_c,
+                        Kp_ee=self._Kp_ee_pd_rollout,
+                        Kd_ee=self._Kd_ee_pd_rollout,
+                        x0_override=x0,
+                        lcp_max_iter=self._pgs_max_iter,
+                        lcp_tol=self._pgs_tol,
+                        lcp_reg=self._pgs_reg,
+                    )
+                    c_C3_raw = traj_cost(XX_sim, UU_sim,
+                                         Q_obj, R_obj, QN_obj, x_ref)
+                    # Stash sim-side motion for the [COST-LCS] trace
+                    # (printed after align_score is computed, below).
+                    # T motion direction: signed 2-vec end-to-end so we can
+                    # verify per-sample linearization redirects east's T
+                    # motion toward the goal (west/+y) vs v10's wrong dir.
+                    _dT_vec_xy = XX_sim[-1, 4:6] - XX_sim[0, 4:6]
+                    _cost_lcs_probe = {
+                        "n_ee_t":       _n_ee_t_cost,
+                        "ee_t_phi":     _ee_t_phi_cost,
+                        "dT_xy":        float(np.linalg.norm(_dT_vec_xy)),
+                        "dT_dx":        float(_dT_vec_xy[0]),   # signed +x
+                        "dT_dy":        float(_dT_vec_xy[1]),   # signed +y
+                        "dEE_xy":       float(np.linalg.norm(
+                                            XX_sim[-1, 7:9] - XX_sim[0, 7:9])),
+                        "box_v_peak":   float(np.max(np.linalg.norm(
+                                            XX_sim[:, 13:16], axis=1))),
+                        "ik_err":       float(_cost_lcs_ik_err),
+                        "ik_iters":     int(_cost_lcs_ik_iters),
+                    }
+                else:
+                    c_C3_raw = traj_cost(x_seq, u_seq,
+                                         Q_obj, R_obj, QN_obj, x_ref)
+            else:
+                c_C3_raw = traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
             feasible = True
             if admm_iter_k >= self.base_admm_iter:
                 self.full_solves += 1
@@ -462,6 +696,34 @@ class InnerSolver:
         align_bonus    = self.w_align  * align_score
         travel_dist    = float(np.linalg.norm(sample_pos - ee_pos_now))
         travel_penalty = self.w_travel * travel_dist
+
+        # Task 2 instrumentation — the productive-face distinction test.
+        # Emit one line per sample when the cost-LCS forward-sim ran, so
+        # the log records what the 5-pair cost-LCS actually saw at build
+        # time (n EE-manipuland admissions + their phi) and what the sim
+        # produced (dT_xy, box_v_peak). Gated on PUSHA_COST_LCS_TRACE=1
+        # to preserve the existing sample table when regression-checking.
+        if _cost_lcs_probe is not None and \
+                os.environ.get("PUSHA_COST_LCS_TRACE", ""):
+            _phi_str = ",".join(f"{p:+.4f}" for p in
+                                _cost_lcs_probe["ee_t_phi"])
+            print(f"[COST-LCS] sample_pos="
+                  f"({float(sample_pos[0]):+.4f},"
+                  f"{float(sample_pos[1]):+.4f},"
+                  f"{float(sample_pos[2]):+.4f}) "
+                  f"is_current={int(is_current_ee)} "
+                  f"n_ee_t={_cost_lcs_probe['n_ee_t']} "
+                  f"ee_t_phi=[{_phi_str}] "
+                  f"dT_xy={_cost_lcs_probe['dT_xy']:.4f}m "
+                  f"dT=(dx={_cost_lcs_probe['dT_dx']:+.4f},"
+                  f"dy={_cost_lcs_probe['dT_dy']:+.4f}) "
+                  f"box_v_peak={_cost_lcs_probe['box_v_peak']:.4f}m/s "
+                  f"dEE_xy={_cost_lcs_probe['dEE_xy']:.4f}m "
+                  f"align={align_score:.4f} "
+                  f"ik_err={_cost_lcs_probe['ik_err']:.4f}m "
+                  f"ik_iters={_cost_lcs_probe['ik_iters']} "
+                  f"c_C3_sim={c_C3_raw:.2f}",
+                  flush=True)
 
         # --- Layer 2.5: rotation-aware sample bonus (intent-based) ---
         # Reward samples whose PREDICTED EE-BOX contact would produce a
@@ -623,12 +885,17 @@ class InnerSolver:
         ctx = redirect_stdout(_buf) if suppress_io else _NullContext()
         try:
             with ctx:
+                # Diag 2: same per-axis-bounds plumbing as the surrogate path.
+                _ee_space = (self.solver.n_u == 3)
+                _u_lo = self._u_lo if _ee_space else None
+                _u_hi = self._u_hi if _ee_space else None
                 u_seq, x_seq = self.solver.solve(
                     r.x0, r.A, r.B, r.D, r.d, r.J_n, r.J_t, r.mu,
                     r.Q, r.R, r.QN, r.x_ref,
                     N=self.horizon,
                     admm_iter=self.base_admm_iter,
                     torque_limit=self.torque_limit,
+                    u_lower=_u_lo, u_upper=_u_hi,
                     phi=r.phi,
                 )
             c_C3_raw = traj_cost(x_seq, u_seq, r.Q, r.R, r.QN, r.x_ref)

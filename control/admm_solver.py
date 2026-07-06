@@ -1767,8 +1767,15 @@ class C3Solver:
             lam_n_max = float(lam_n_all.max()) if lam_n_all.size else 0.0
             eta_n_max = float(eta_n_all.max()) if eta_n_all.size else 0.0
             pr_last   = primal_hist[-1] if primal_hist else float('nan')
+            # |u[0]| is the L2 norm of the 3-vector [Fx,Fy,Fz] (EE-space mode)
+            # or a 1-vector norm (arm-torque mode). u_axis lists the components
+            # per axis for per-axis-cap diagnostics — the box constraint is
+            # per-axis, so L2 alone can be misleading (see path A diagnostic).
+            _u0 = np.atleast_1d(u_seq[0])
+            _axis_str = ",".join(f"{v:+.2f}" for v in _u0)
             print(f"[C3+] step={self._diag_step} "
                   f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}{self.u_unit_str} "
+                  f"u_axis=({_axis_str}){self.u_unit_str} "
                   f"λ_n_max={lam_n_max:.3f} η_n_max={eta_n_max:.3f} "
                   f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter} "
                   f"lcp_res_max={self._last_lcp_res_max:.2e}")

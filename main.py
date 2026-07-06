@@ -94,14 +94,33 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
     if task_cfg["object_type"] == "box":
         sx, sy, sz = task_cfg["size"]
         shape = ad.Box(sx, sy, sz)
+        meshcat.SetObject("/goal_marker", shape, ad.Rgba(0.1, 0.9, 0.1, 0.35))
+        meshcat.SetTransform(
+            "/goal_marker",
+            ad.RigidTransform(ad.RotationMatrix(), [target_xy[0], target_xy[1], init_z]),
+        )
+    elif task_cfg["object_type"] == "tshape":
+        # Two-box ghost, yawed to the goal orientation so operator sees the
+        # target POSE (not just position). Matches env_builder's Drake-VTK ghost.
+        _goal_yaw = float(task_cfg.get("goal_yaw", 0.0))
+        _R_goal = ad.RotationMatrix.MakeZRotation(_goal_yaw)
+        _T_goal = ad.RigidTransform(_R_goal, [target_xy[0], target_xy[1], init_z])
+        for _local_x, _local_yaw, _tag in (
+            (+0.05, 0.0,    "/goal_marker/vbar"),
+            (-0.05, 1.5708, "/goal_marker/hbar"),
+        ):
+            _R_local = ad.RotationMatrix.MakeZRotation(_local_yaw)
+            _T_local = ad.RigidTransform(_R_local, [_local_x, 0.0, 0.0])
+            meshcat.SetObject(_tag, ad.Box(0.16, 0.04, 0.04),
+                              ad.Rgba(0.1, 0.9, 0.1, 0.35))
+            meshcat.SetTransform(_tag, _T_goal.multiply(_T_local))
     else:
         shape = ad.Sphere(task_cfg["radius"])
-
-    meshcat.SetObject("/goal_marker", shape, ad.Rgba(0.1, 0.9, 0.1, 0.35))
-    meshcat.SetTransform(
-        "/goal_marker",
-        ad.RigidTransform(ad.RotationMatrix(), [target_xy[0], target_xy[1], init_z]),
-    )
+        meshcat.SetObject("/goal_marker", shape, ad.Rgba(0.1, 0.9, 0.1, 0.35))
+        meshcat.SetTransform(
+            "/goal_marker",
+            ad.RigidTransform(ad.RotationMatrix(), [target_xy[0], target_xy[1], init_z]),
+        )
 
 
 def _update_predicted_trajectory(
@@ -159,6 +178,11 @@ def load_task(task_name: str) -> dict:
 def _obj_size_from_cfg(task_cfg: dict) -> float:
     if task_cfg["object_type"] == "sphere":
         return float(task_cfg["radius"]) * 2.0
+    if task_cfg["object_type"] == "tshape":
+        # Rough T size: max linear extent (crossbar tip to stem back) = 0.20 m.
+        # Used only for meshcat camera framing / visual-only helpers, not
+        # dynamics — an approximation is fine.
+        return 0.20
     return float(task_cfg["size"][0])
 
 
@@ -173,7 +197,7 @@ def main():
     )
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "hard_pushing", "shepherding", "cube_turning"],
+        choices=["pushing", "hard_pushing", "shepherding", "cube_turning", "push_t"],
         help="Task to run (default: pushing)",
     )
     parser.add_argument(
@@ -499,8 +523,26 @@ def main():
     # ------------------------------------------------------------------
     # Controller pipeline
     # ------------------------------------------------------------------
-    formulator = LCSFormulator(plant, mu=task_cfg["friction"], obj_body=obj_body,
-                               plant_ad=plant_ad, context_ad=context_ad)
+    # §9 Option A: pre-read the sampling-c3 YAML to feed manipuland-ground
+    # contact count + object_shape into the LCSFormulator. Falls back to
+    # defaults when --sampling-c3 is not provided (env var
+    # LCS_EXPLICIT_MANIPULAND_GND overrides regardless).
+    _pre_manipuland_gnd = 0
+    if args.sampling_c3 is not None:
+        try:
+            import yaml as _yaml_pre
+            with open(args.sampling_c3) as _f_pre:
+                _raw_pre = _yaml_pre.safe_load(_f_pre) or {}
+            _pre_manipuland_gnd = int(_raw_pre.get(
+                "lcs_explicit_manipuland_ground_contacts", 0))
+        except Exception:
+            _pre_manipuland_gnd = 0
+    formulator = LCSFormulator(
+        plant, mu=task_cfg["friction"], obj_body=obj_body,
+        plant_ad=plant_ad, context_ad=context_ad,
+        lcs_explicit_manipuland_ground_contacts=_pre_manipuland_gnd,
+        object_shape=str(task_cfg.get("object_type", "box")),
+    )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
     # R^7 path remains the default unless --ee-space is passed.
@@ -628,6 +670,16 @@ def main():
         print(f"[GS]   reposition: traj_type={sc3_params.reposition_params.traj_type.name} "
               f"z_safe={sc3_params.reposition_params.pwl_waypoint_height}m "
               f"speed={sc3_params.reposition_params.speed}m/s")
+        if getattr(sc3_params, "use_cost_lcs_ranking", False):
+            print(f"[GS]   cost-LCS ranking: use_cost_lcs_ranking=True "
+                  f"n_ee_top_k=2 force_top_k_ee_box=True "
+                  f"Kp_ee_pd={sc3_params.Kp_for_ee_pd_rollout} "
+                  f"Kd_ee_pd={sc3_params.Kd_for_ee_pd_rollout} "
+                  f"per_sample_context=True "
+                  f"(reference push_t "
+                  f"resolve_contacts_to_for_cost=[0,2,3] → "
+                  f"2 EE-T + 3 T-GND cost-LCS, "
+                  f"reference UpdateContext per sample)")
 
     print(f"[C3] Goal: {target_xy}  |  Meshcat: {meshcat.web_url()}")
 
