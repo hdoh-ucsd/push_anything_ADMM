@@ -312,6 +312,12 @@ class InnerSolver:
         self._pgs_max_iter = int(getattr(params, "cost_lcs_pgs_max_iter", 50))
         self._pgs_tol      = float(getattr(params, "cost_lcs_pgs_tol", 1.0e-6))
         self._pgs_reg      = float(getattr(params, "cost_lcs_pgs_reg", 1.0e-8))
+        # §9-leak gate: object-only ranking cost + cost-LCS path apply ONLY to
+        # tshape (reference-faithful for push_t). Box path keeps the pre-§9
+        # w_ee_approach-weighted ranking (72 % closure banked at b23fa82;
+        # HEAD without this gate regressed to ~39 %).
+        self._object_shape = str(getattr(
+            params.sampling_params, "object_shape", "box"))
         self._box_half_extent = float(params.sampling_params.box_half_extent)
 
         self.n_u = plant.num_actuators()
@@ -457,9 +463,13 @@ class InnerSolver:
                 # Diag 2: EE-space per-axis bounds (installed only for R^3
                 # planner with n_u=3; None for R^7 arm-torque). Mirrors
                 # ci_mpc_c3plus.py:310-321 for the surrogate-solve path.
+                # §9-leak gate: these surrogate-side fixes were bundled with
+                # §9 and changed the surrogate solve behavior for the box
+                # path too (72 %→46 % closure at HEAD). Restrict to tshape.
                 _ee_space = (self.solver.n_u == 3)
-                _u_lo = self._u_lo if _ee_space else None
-                _u_hi = self._u_hi if _ee_space else None
+                _tshape_gate = _ee_space and self._object_shape == "tshape"
+                _u_lo = self._u_lo if _tshape_gate else None
+                _u_hi = self._u_hi if _tshape_gate else None
                 # §7.67 — plumb _ee_box_pair_idx per-surrogate. Without this,
                 # the shared C3Solver instance uses whatever index the main
                 # planner set at the previous tick (or None on tick 0), so
@@ -467,14 +477,15 @@ class InnerSolver:
                 # wrong pair — surrogate's ADMM under-solves the EE-BOX λ_n
                 # for its OWN LCS, making c_C3_raw non-informative for
                 # ranking. Same scan as ci_mpc_c3plus.py:328-335.
-                _ee_box_idx = None
-                _cinfo_s = getattr(self.formulator, "_last_contact_info", None)
-                if _cinfo_s:
-                    for _i_s, _info_s in enumerate(_cinfo_s):
-                        if _info_s.get("tag", "") == "EE-BOX":
-                            _ee_box_idx = _i_s
-                            break
-                self.solver._ee_box_pair_idx = _ee_box_idx
+                if _tshape_gate:
+                    _ee_box_idx = None
+                    _cinfo_s = getattr(self.formulator, "_last_contact_info", None)
+                    if _cinfo_s:
+                        for _i_s, _info_s in enumerate(_cinfo_s):
+                            if _info_s.get("tag", "") == "EE-BOX":
+                                _ee_box_idx = _i_s
+                                break
+                    self.solver._ee_box_pair_idx = _ee_box_idx
                 u_seq, x_seq = self.solver.solve(
                     x0, A, B, D, d, J_n, J_t, mu,
                     Q, R, QN, x_ref,
@@ -499,7 +510,7 @@ class InnerSolver:
             # variant) rather than SimulatePDControlWithLCS(...) on a
             # separate 5-pair cost-LCS. The full forward-sim (Stage 2) is
             # left for a follow-up if Stage 1 doesn't unblock c3 dispatch.
-            if _ee_space:
+            if _ee_space and self._object_shape == "tshape":
                 Q_obj, QN_obj, R_obj = _object_only_cost_matrices_ee_space(
                     Q, QN, R)
                 # §9 Option B (Stage 2): forward-simulate the plan on the LCS
@@ -886,9 +897,11 @@ class InnerSolver:
         try:
             with ctx:
                 # Diag 2: same per-axis-bounds plumbing as the surrogate path.
+                # §9-leak gate: tshape only (see evaluate_sample gate above).
                 _ee_space = (self.solver.n_u == 3)
-                _u_lo = self._u_lo if _ee_space else None
-                _u_hi = self._u_hi if _ee_space else None
+                _tshape_gate = _ee_space and self._object_shape == "tshape"
+                _u_lo = self._u_lo if _tshape_gate else None
+                _u_hi = self._u_hi if _tshape_gate else None
                 u_seq, x_seq = self.solver.solve(
                     r.x0, r.A, r.B, r.D, r.d, r.J_n, r.J_t, r.mu,
                     r.Q, r.R, r.QN, r.x_ref,

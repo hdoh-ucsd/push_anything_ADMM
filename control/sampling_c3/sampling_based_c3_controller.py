@@ -203,32 +203,17 @@ class SamplingC3MPC:
         _q_nominal = np.asarray(params.repos_ik_params.q_nominal,
                                 dtype=float)[:self.n_u]
 
-        # §7.31 — All-at-once reconciliation to the dairlib reference's
-        # contact-establishment path. Behind REF_RECONCILE_APPROACH env
-        # (default OFF = byte-identical). The flag atomically gates three
-        # coordinated changes: (a) surface EE desired-state (the OSC tracks
-        # the sampled face point at ~zero buffer, in both modes), (b)
-        # POSITION-tracking OSC (force-tracking disabled — no min-push-force
-        # floor; Kp_cart generates whatever torque reaches the target), (c)
-        # approach-cost proxy off (task_costs.py:build_ee_space skips the
-        # 100 mm-behind proxy block; the always-on row keeps D ≠ 0 so the
-        # proxy's anti-freeze role is no longer needed). Requires always-on
-        # (LCS_ALWAYS_ON_EE_BOX=1) for safety — without the always-on row,
-        # dropping the proxy would re-introduce the free-mode freeze trap.
+        # §7.31/§7.32 reference-faithful contact-establishment path (surface
+        # EE desired-state + planner-tracked velocity feedforward + skip the
+        # 100 mm-behind approach-cost proxy). Formerly gated by REF_RECONCILE_
+        # APPROACH; now always on. Requires always-on LCS row
+        # (LCS_ALWAYS_ON_EE_BOX=1) — without it the removed proxy re-opens
+        # the free-mode freeze trap.
         import os as _os_rec
-        _env_rec = _os_rec.environ.get("REF_RECONCILE_APPROACH", "")
-        self._reconcile_approach = bool(int(_env_rec)) if _env_rec else False
-        # §7.35 — feedforward-accel SUB-GATE. The §7.34 build coupled the
-        # feedforward leg into REF_RECONCILE_APPROACH directly, which made
-        # the §7.33 working state (pos + vel only, no a_ff) unreachable
-        # whenever REF_RECONCILE_APPROACH was set. The §7.34 OVER-DRIVES
-        # result rendered the feedforward source-conditional (re-enables
-        # IFF ADMM converges OR mitigation lands); to preserve the §7.33
-        # working state under reconcile, the feedforward leg is now
-        # GATED by a SEPARATE env flag, default OFF. The §7.34 OVER-DRIVES
-        # regime is reproducible by setting REF_RECONCILE_FEEDFORWARD_ACCEL=1.
-        # The pos + vel reconciliation (§7.31 a/b/c + §7.32 velocity) is
-        # unaffected; default REF_RECONCILE_APPROACH=1 now = §7.33 DISSOLVES.
+        # §7.35 — feedforward-accel SUB-GATE (§7.34 banked, default-OFF).
+        # Independent of the reconcile path; opts in to the a_ff leg of the
+        # OSC PD-plus-feedforward law once the source is clean (planner
+        # converges) or a mitigation lands.
         _env_ffa = _os_rec.environ.get("REF_RECONCILE_FEEDFORWARD_ACCEL", "")
         self._reconcile_feedforward_accel = (
             bool(int(_env_ffa)) if _env_ffa else False)
@@ -248,39 +233,12 @@ class SamplingC3MPC:
         self._disable_contact_loss_gate = (
             _os_rec.environ.get("PUSHA_DISABLE_CONTACT_LOSS_GATE", "0") == "1")
 
+        # Force-tracking follows params.use_force_tracking (True by default).
+        # The reconcile path no longer silently overrides it to False —
+        # historical §7.31 silent-off + §7.63 decouple-workaround retired
+        # with the flag removal.
         _use_force_tracking = bool(getattr(params, "use_force_tracking", True))
-        # §7.63 — decouple REF_RECONCILE_APPROACH's cost-gate / velocity /
-        # buffer effects from its use_force_tracking=False assignment. The
-        # §7.31 bundle silently disabled force-tracking mode, which
-        # dropped the λ_ext var + W_force cost from the QP — so the
-        # PUSHA_FORCE_ROUTING=u_sol routing was silently discarded and
-        # the reference's ExternalForceTracking mechanism was NEVER
-        # actually active in any §7.59/60/62 admission-unit run. Default-
-        # OFF preserves that legacy behavior byte-identically; when set,
-        # reconcile stays ON for its other legs (cost gate, velocity
-        # feedforward alpha=1, buffer surface handling) but force-tracking
-        # is left at params.use_force_tracking (True by default) so the
-        # QP builds λ_ext and W_force·‖λ_ext−λ_des‖² and lambda_des
-        # actually reaches it.
-        _decouple_ftrack = (
-            _os_rec.environ.get("PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING",
-                                "0") == "1")
-        if self._reconcile_approach and not _decouple_ftrack:
-            # Position-OSC only — matches reference osc_params.yaml:51-59
-            # (EndEffectorKp = 200, Kd = 20; no force floor). The port's
-            # Kp_cart = 400 (config/osc_franka.yaml) already exceeds the
-            # reference's 200, so position authority is structurally strong.
-            _use_force_tracking = False
-            print("[§7.31] REF_RECONCILE_APPROACH=1 → use_force_tracking=False "
-                  "(position-OSC only; no 2 N floor)", flush=True)
-        elif self._reconcile_approach and _decouple_ftrack:
-            print("[§7.63] PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING=1 → "
-                  "REF_RECONCILE_APPROACH kept for cost-gate / velocity / "
-                  "buffer legs; use_force_tracking left at params.use_force_"
-                  f"tracking={_use_force_tracking} (force-mode ACTIVE, "
-                  "λ_ext + W_force cost in QP, lambda_des reaches QP)",
-                  flush=True)
-        if self._reconcile_approach and self._reconcile_feedforward_accel:
+        if self._reconcile_feedforward_accel:
             print("[§7.35] REF_RECONCILE_FEEDFORWARD_ACCEL=1 → feedforward-"
                   "accel ENABLED (§7.34 OVER-DRIVES regime; source-conditional)",
                   flush=True)
@@ -542,8 +500,8 @@ class SamplingC3MPC:
                                   default_p_ee_des: np.ndarray,
                                   obj_xy: np.ndarray) -> np.ndarray:
         """§7.31 — Override the EE desired-state to the SAMPLED FACE POINT
-        (~zero buffer, surface) when REF_RECONCILE_APPROACH is set; pass
-        through otherwise.
+        (~zero buffer, surface). Formerly gated by REF_RECONCILE_APPROACH;
+        now always active.
 
         Matches the reference's `x_desired = c3_object->GetDesiredState()`
         (sampling_based_c3_controller.cc:500): the OSC tracks the sampled
@@ -558,8 +516,6 @@ class SamplingC3MPC:
           * `_current_repos_target` is None (no active sample), or
           * the sample is at the box centre (degenerate normal).
         """
-        if not self._reconcile_approach:
-            return default_p_ee_des
         sample = self._current_repos_target
         if sample is None or obj_xy is None:
             return default_p_ee_des
@@ -644,9 +600,14 @@ class SamplingC3MPC:
             # T-ground λ_n into the EE force intent — WRONG (ground λ_n is a
             # reaction on the box, not on the EE). Use _last_contact_info tag
             # to pick out EE-BOX indices. Same scan as ci_mpc_c3plus.py:328-335.
+            # §9-leak gate: this filter changed box-path mag (BOX-GND row
+            # excluded) and regressed the 72 % banked closure. Restrict to
+            # tshape only; box keeps the pre-§9 raw sum (b23fa82 behavior).
+            _shape = getattr(self.base_mpc.formulator, "_object_shape", "box")
             _cinfo_f = getattr(self.base_mpc.formulator,
                                "_last_contact_info", None)
-            if _cinfo_f is not None and len(_cinfo_f) == lambda_n.size:
+            if _shape == "tshape" and _cinfo_f is not None \
+                    and len(_cinfo_f) == lambda_n.size:
                 _ee_idxs = [i for i, info in enumerate(_cinfo_f)
                             if isinstance(info, dict)
                             and info.get("tag", "") == "EE-BOX"]
@@ -655,7 +616,7 @@ class SamplingC3MPC:
                 else:
                     mag = 0.0
             else:
-                # Fallback: no contact-info alignment; use full sum (legacy).
+                # Box path or fallback: legacy raw sum (b23fa82 behavior).
                 mag = float(np.sum(np.abs(lambda_n)))
             mag = max(mag, floor)
             if not converged:
@@ -727,18 +688,9 @@ class SamplingC3MPC:
           * planner has no last_x_seq (cold start, or free mode where
             the IK tracker — not the C3 solver — drives p_ee_des)
         """
-        # §7.32 — FAITHFUL-DESIRED-STATE: under REF_RECONCILE_APPROACH the
-        # planner's predicted velocity is fed undamped (alpha = 1.0) to
-        # match the reference's `ydot_des = traj.EvalDerivative(t, 1)`
-        # (osc_tracking_data.cc:87-111). Without v_des, the §7.31 sim ran
-        # v_des = 0 → Kd · v_err damps against zero → Kp_cart = 400 slammed
-        # the EE into the box, generating 231 N contact and diverging
-        # (obj_z → −78 m). The velocity feedforward closes the over-drive
-        # branch. Bypasses the use_velocity_feedforward gate (still
-        # honoured outside the reconcile flag).
-        if (not getattr(self.params, "use_velocity_feedforward", False)
-                and not getattr(self, "_reconcile_approach", False)):
-            return None
+        # §7.32 — FAITHFUL-DESIRED-STATE: the planner's predicted velocity
+        # is fed undamped (alpha = 1.0) to match the reference's
+        # `ydot_des = traj.EvalDerivative(t, 1)` (osc_tracking_data.cc:87-111).
         x_seq = getattr(self.base_mpc, "last_x_seq", None)
         if x_seq is None or x_seq.shape[0] < 2:
             return None
@@ -748,14 +700,11 @@ class SamplingC3MPC:
         if bool(getattr(self.base_mpc, "use_ee_space", False)):
             v_ee_raw = x_seq[1][16:19].copy()
             v_max = float(self.params.velocity_feedforward_v_max)
-            # Under reconcile, undamped (alpha = 1.0) to match the
-            # reference's raw EvalDerivative; the v_max clip stays as
-            # a defensive bound against numerical garbage (planner
-            # divergence, NaN, etc.).
-            alpha = (1.0 if getattr(self, "_reconcile_approach", False)
-                     else float(self.params.velocity_feedforward_alpha))
+            # Undamped (alpha = 1.0) to match the reference's raw
+            # EvalDerivative; v_max clip stays as a defensive bound
+            # against numerical garbage (planner divergence, NaN, etc.).
             v_clipped = np.clip(v_ee_raw, -v_max, v_max)
-            return alpha * v_clipped
+            return v_clipped
         # R^7 path (legacy): finite-difference + J · v on planner knot 1.
         n_q = self.base_mpc.formulator.n_q
         q_at_1 = current_q.copy()
@@ -811,19 +760,13 @@ class SamplingC3MPC:
           * REF_RECONCILE_FEEDFORWARD_ACCEL is OFF (default — §7.35 sub-gate;
             the §7.34 OVER-DRIVES verdict made the feedforward source-
             conditional, so it stays OFF unless explicitly opted-in; the
-            §7.33 working state (pos + vel only) is the default under
-            REF_RECONCILE_APPROACH=1)
-          * not under REF_RECONCILE_APPROACH (the velocity feedforward is
-            also gated on this; PD-plus-feedforward law is only active when
-            BOTH legs present)
+            §7.33 working state (pos + vel only) is the default)
           * planner has no last_x_seq, or x_seq has fewer than 3 knots
           * not running --ee-space (the R^7 path has no analytic accel
             source; finite-differencing q-space velocity is even noisier
             and the c3-mode over-drive failure was on the EE-space path)
         """
         if not getattr(self, "_reconcile_feedforward_accel", False):
-            return None
-        if not getattr(self, "_reconcile_approach", False):
             return None
         x_seq = getattr(self.base_mpc, "last_x_seq", None)
         if x_seq is None or x_seq.shape[0] < 3:
@@ -2828,8 +2771,8 @@ class SamplingC3MPC:
             # §7.34 — FAITHFUL-DESIRED-STATE FEEDFORWARD-ACCEL
             # Adds yddot_des leg to the OSC PD law so port matches the
             # reference's `yddot_command = yddot_des + Kp·error_y + Kd·error_ydot`.
-            # Returns None when REF_RECONCILE_APPROACH is OFF → byte-identical
-            # pre-§7.34 PD-only path.
+            # Returns None when REF_RECONCILE_FEEDFORWARD_ACCEL is OFF →
+            # byte-identical PD-only path.
             _a_ee_des = self._acceleration_feedforward_from_xseq()
             # Under --ee-space, the planner's J_n / J_t are in low-dim
             # velocity coords [box_v(6), v_ee(3)] — not n_v_full(13). The

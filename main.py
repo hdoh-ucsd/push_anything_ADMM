@@ -565,17 +565,32 @@ def main():
     print(f"[C3] Solver mode: {args.solver}  "
           f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'}, "
           f"c3+ projection: {_proj_label})")
+    # Geometry hints for PUSHA_BOX_DPUSH_FIX (default-OFF, box-shape only).
+    _obj_shape = str(task_cfg.get("object_type", ""))
+    if _obj_shape == "box":
+        _obj_half_extent = float(task_cfg["size"][0]) * 0.5
+    else:
+        _obj_half_extent = None
+    from sim.env_builder import PUSHER_RADIUS as _EFFECTIVE_PUSHER_RADIUS
     quad_cost  = QuadraticManipulationCost(
         plant, EE_BODY_NAME, obj_body, task_cfg["cost"], n_x, n_u,
         math_diag=args.math_diag,
         cost_bias=args.cost_bias,
+        object_shape=_obj_shape,
+        object_half_extent=_obj_half_extent,
+        pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
+    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", "20"))
+    if _c3plus_N != 20:
+        print(f"[HORIZON-PROBE] PUSHA_C3PLUS_N={_c3plus_N} → "
+              f"c3plus horizon override 20 → {_c3plus_N} "
+              f"(lookahead {_c3plus_N * 0.05:.2f}s at dt=0.05)", flush=True)
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
         quadratic_cost=quad_cost,
-        horizon=20,
+        horizon=_c3plus_N,
         dt=0.05,
         torque_limit=_torque_limit,
         admm_iter=args.admm_iter,
