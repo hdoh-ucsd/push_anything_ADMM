@@ -108,8 +108,11 @@ progress_params:
   track_c3_progress_via: kPosOnly
 
   # Number of control loops to wait before declaring "no progress" timeout.
-  num_control_loops_to_wait:           60
-  num_control_loops_to_wait_position:  30
+  # §9 reference alignment: push_t/parameters/progress_params_c3plus.yaml
+  #   uses 5 / 5 (not 60 / 30). Reference-verified divergence identified
+  #   during the T-push tier-2 checklist audit.
+  num_control_loops_to_wait:            5
+  num_control_loops_to_wait_position:   5
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
@@ -122,8 +125,10 @@ progress_params:
   pos_regression_threshold:            0.025
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
-  progress_enforced_cost_drop:    0.0
-  progress_enforced_over_n_loops: 30
+  # §9 reference alignment: push_t/parameters/progress_params_c3plus.yaml uses
+  # 0.01 (1% cost drop required) over 180 loops (not 0.0 over 30).
+  progress_enforced_cost_drop:    0.01
+  progress_enforced_over_n_loops: 180
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine

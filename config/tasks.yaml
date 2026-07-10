@@ -111,8 +111,16 @@ tasks:
     friction: 1.0         # μ_T; combined with pusher_friction=1.0 → μ_eff=1.0 (EE-T)
     pusher_friction: 1.0  # μ_EE; task-scoped override of the 0.4 default
     init_xyz: [0.0, 0.0, 0.02]     # link origin at combined CoM; T half-height 0.02 → base on ground
-    goal_xy:  [-0.2, 0.05]
-    goal_yaw: 0.7854      # +45° (moderate yaw target well within half-angle metric's monotonic range)
+    # Reference target — push_t/parameters/goal_params.yaml:30-31 frame-transformed.
+    # Reference init T pose (sim_params.yaml:15): q_init_object = [1,0,0,0, 0.5, 0, -0.009]
+    #   (identity orientation, world x=0.5, y=0, z=-0.009 with ref ground at z=-0.029).
+    # Reference target: fixed_target_position = [0.48199167, 0.18745379, -0.009],
+    #                   fixed_target_orientation = [-0.9327733, 0, 0, 0.36046353].
+    # Relative displacement in ref: (target - init) = (-0.01801, +0.18745, 0).
+    # Port init is at (0, 0, 0.02) with ground at z=0 → same relative displacement
+    # applies. Yaw = 2·atan2(0.36046353, -0.9327733) mod 2π = -0.73790 rad ≈ -42.28°.
+    goal_xy:  [-0.018, 0.187]
+    goal_yaw: -0.7379    # rad = -42.28°, from reference push_t target quaternion
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     # Contact regime matched to reference push_t: sphere-center world-z = 34 mm
     # (reference: world-z = 0.005 m with ground at world-z = -0.029 m; port
