@@ -779,6 +779,22 @@ class SamplingC3Params:
     use_commit_face_gate: bool = True
     commit_face_gate_threshold: float = 0.3
 
+    # ------------ T1a — EE_z altitude mode-switch gate --------------------
+    # Reference sampling_based_c3_controller.cc:1290-1293. Blocks c3 mode
+    # entry from free while the pusher is above the sampling-height ceiling
+    # (sampling_z + c3_min_clearance). Forces the pusher to descend before
+    # c3 dispatches, so the first c3-mode tick starts near the contact plane
+    # rather than dive-and-whack from 100+ mm above. Complementary to the
+    # port's per-tick ADMIT-GUARD (LCS admission latch) and ALT-GATE (descent
+    # permission) — those latch each tick; this is a one-shot mode-switch
+    # gate applied AFTER decide_mode returns, covering BOTH
+    # kToC3ReachedReposTarget (via finished_repos) and kToC3Cost (via cost
+    # hysteresis). The port's pre-decide gates only cover the first path.
+    #
+    # Defaults match reference: ee_z_close=True, c3_min_clearance=0.01 m.
+    ee_z_close: bool = True
+    c3_min_clearance: float = 0.01
+
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
     # rich-mode steps had no admitted EE-BOX pair. Conditioned on whether
@@ -964,6 +980,9 @@ class SamplingC3Params:
             entry_align_threshold          = float(raw.get("entry_align_threshold", 0.0)),
             use_commit_face_gate           = bool(raw.get("use_commit_face_gate", True)),
             commit_face_gate_threshold     = float(raw.get("commit_face_gate_threshold", 0.3)),
+            # T1a — EE_z altitude mode-switch gate (reference cc:1290-1293).
+            ee_z_close                     = bool(raw.get("ee_z_close", True)),
+            c3_min_clearance               = float(raw.get("c3_min_clearance", 0.01)),
             # 2026-06-25 reconciliation: tick-int → sim-time-float with
             # auto-conversion from old YAMLs. If the OLD int form is present
             # and the new _s float form is not, convert old × 0.01 (the
