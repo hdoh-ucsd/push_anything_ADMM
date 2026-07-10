@@ -263,6 +263,15 @@ sampling_params:
   # rescope).
   face_bias_strength:      0.0
 
+  # T1c — kMeshNormal area-weighted face pick (reference
+  # generate_samples.cc:454, barycentric_bias=1). When True, the face
+  # selection in _face_normal_projection uses a categorical distribution
+  # proportional to face area (large faces + top faces over-represented,
+  # small side faces under-represented) instead of uniform-across-faces.
+  # Uniform-within-face jitter is unchanged. Takes priority over
+  # face_bias_strength (goal-align becomes a no-op when this is True).
+  use_mesh_normal_area_weighting: true
+
   # Robot workspace bounds; samples failing this are pruned.
   # T-task: y_max raised to 0.30 to accommodate T-face samples on the +y stem
   # and crossbar-top faces once the T rotates (yaw target = +45° in this

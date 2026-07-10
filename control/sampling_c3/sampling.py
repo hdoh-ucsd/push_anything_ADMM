@@ -54,6 +54,34 @@ _TSHAPE_FACE_TABLE = np.array([
     (  0.05, +0.02,   0.0, +1.0,  0.08),   # face 8: crossbar top (+y)
 ], dtype=float)
 
+# §9 Option B (video-verified): TOP faces of the T for down-press samples.
+# The reference video (https://youtu.be/rv9n8Uyvoh0 t=155s "20 Goals") shows the
+# arm pressing DOWN on the T's top surface — a mode the port previously missed
+# because sampling_height=0.034 kept the sphere below the T top at z=0.040. Two
+# top patches match the T's two collision-body extents:
+#   crossbar_top: link_x ∈ [-0.03, +0.13], link_y ∈ [-0.02, +0.02] → center
+#                 (+0.05, 0), tangent half-extents (0.08, 0.02).
+#   stem_top:     link_x ∈ [-0.07, -0.03], link_y ∈ [-0.08, +0.08] → center
+#                 (-0.05, 0), tangent half-extents (0.02, 0.08).
+# Normal for both is +z (world frame; T only rotates about z, so top-face
+# world normal stays (0,0,+1) regardless of obj_quat). Column format:
+# (cx, cy, half_len_x, half_len_y) in T link frame.
+_TSHAPE_TOP_TABLE = np.array([
+    # (cx,    cy,    half_len_x, half_len_y)
+    (  0.05,  0.00,  0.08,       0.02),   # crossbar top face (spans crossbar)
+    ( -0.05,  0.00,  0.02,       0.08),   # stem top face (spans stem)
+], dtype=float)
+
+# T half-height (world-z half of the 0.04 m bar height). T sits on ground with
+# link origin at world-z = init_xyz[2] (0.020 by default), so T top is at
+# init_xyz[2] + _TSHAPE_HALF_HEIGHT = 0.040 m in the port frame.
+_TSHAPE_HALF_HEIGHT = 0.020
+# Vertical setback ABOVE the top face — sphere-center world-z. Analogous to
+# the horizontal sampling_setback (0.020 m) used for side faces. With
+# PUSHER_RADIUS=0.0195 the sphere lowest sits 0.5 mm above the top surface
+# at the setback point, mirroring the 0.5 mm side-face gap.
+_TSHAPE_TOP_SETBACK = 0.020
+
 
 # ---------------------------------------------------------------------------
 # Public dispatch
@@ -247,7 +275,22 @@ def _face_normal_projection(n_samples:    int,
         else:
             world_centers = body_centers
             world_normals = body_normals
-        n_faces = _table.shape[0]
+        n_side_faces = _table.shape[0]
+        # §9 Option B: TOP faces (video-verified missing contact mode). Two
+        # planar top patches; normal is +z regardless of obj_quat (T rotates
+        # only about z). Body-frame centers rotate through R for world-frame
+        # placement.
+        _top_table = _TSHAPE_TOP_TABLE
+        _top_body_centers = np.column_stack([
+            _top_table[:, 0], _top_table[:, 1],
+            np.zeros(_top_table.shape[0])])
+        if obj_quat is not None:
+            top_world_centers = (R @ _top_body_centers.T).T
+        else:
+            top_world_centers = _top_body_centers
+        top_half_lens_xy = _top_table[:, 2:4]           # (N_top, 2)
+        n_top_faces = _top_table.shape[0]
+        n_faces = n_side_faces + n_top_faces
     else:
         # Box path (regression-safe): 4 cardinal ±x/±y body-frame normals.
         body_normals = np.array([
@@ -267,30 +310,76 @@ def _face_normal_projection(n_samples:    int,
 
     obj_xy_2 = np.asarray(obj_xy, dtype=float).reshape(2)
 
-    # Stage 2B sampler bias: weight the face draw so the face whose outward
-    # normal points opposite g_hat (contact would push box toward goal) is
-    # over-represented. β = 0 -> uniform 1-of-4 (regression-safe identity).
+    # T1c — kMeshNormal area-weighted face pick (reference
+    # generate_samples.cc:454, barycentric_bias=1). Overrides uniform /
+    # goal-align face selection with a categorical distribution proportional
+    # to face area. Uniform-within-face is unchanged (already true for the
+    # port's rectangular jitter, matches barycentric_bias=1 semantics).
+    # See SamplingParams.use_mesh_normal_area_weighting docstring for
+    # per-face expected fractions.
+    _T_BAR_HEIGHT = 0.04  # matches env_builder._tshape_sdf T bar cross-section
+    _use_mesh_normal = bool(getattr(
+        params, "use_mesh_normal_area_weighting", False))
     _beta = float(getattr(params, "face_bias_strength", 0.0))
-    if _use_goal_align and _beta > 0.0:
-        # max(0, -n_world . g_hat) per face -> 0 on anti-goal & perpendicular,
-        # 1 on the perfectly goal-aligned face (downhill bias).
-        _aligns = np.maximum(0.0, -(world_normals[:, :2] @ g2))
-        _face_weights = 1.0 + _beta * _aligns
+    _n_horizontal = n_side_faces if shape == "tshape" else n_faces
+    if _use_mesh_normal and shape == "tshape":
+        # Side face area: 2 * half_len (tangent) * T_bar_height (fixed 0.04 m).
+        _side_areas = 2.0 * half_lens * _T_BAR_HEIGHT           # (n_side,)
+        # Top face area: 2 * hx * 2 * hy (rectangle).
+        _top_areas = 4.0 * (top_half_lens_xy[:, 0]
+                            * top_half_lens_xy[:, 1])            # (n_top,)
+        _face_areas = np.concatenate([_side_areas, _top_areas])
+        _face_probs = _face_areas / _face_areas.sum()
+    elif _use_mesh_normal and shape == "box":
+        # 4 identical square faces -> area-weighted == uniform. No-op.
+        _face_probs = None
+    elif _use_goal_align and _beta > 0.0:
+        # Stage 2B sampler bias: weight the face draw so the face whose
+        # outward normal points opposite g_hat (contact would push box
+        # toward goal) is over-represented. β = 0 -> uniform 1-of-4
+        # (regression-safe identity). §9 Option B: for the tshape, only
+        # SIDE faces have a horizontal normal for g_hat alignment; TOP
+        # faces (nz=+1) do not project onto the planar g_hat and get
+        # uniform weight.
+        # max(0, -n_world . g_hat) per SIDE face -> 0 on anti-goal &
+        # perpendicular, 1 on the perfectly goal-aligned face.
+        _aligns_side = np.maximum(
+            0.0, -(world_normals[:_n_horizontal, :2] @ g2))
+        _weights_side = 1.0 + _beta * _aligns_side
+        if shape == "tshape":
+            # TOP faces: uniform weight (goal_align doesn't discriminate them).
+            _weights_top = np.ones(n_top_faces, dtype=float)
+            _face_weights = np.concatenate([_weights_side, _weights_top])
+        else:
+            _face_weights = _weights_side
         _face_probs = _face_weights / _face_weights.sum()
     else:
         _face_probs = None
 
+    # T1c effect-check hook: track face-pick histogram per _face_normal_projection
+    # call. Emitted at end of loop as a single [SAMPLE-FACE-HIST] line — used by
+    # scripts/_t1c_effect_check.sh to verify the observed distribution matches
+    # area weights (not uniform). Cheap: ~1 line per call, ~800 calls per T sim.
+    _face_hist = np.zeros(n_faces, dtype=int) if shape == "tshape" else None
+
     def _face_center_xy(face_idx: int) -> np.ndarray:
-        n_world = world_normals[face_idx]
         if shape == "tshape":
-            # T: obj_xy + world_centers[face_idx] (world-frame face-center
-            # offset from the T's link origin, already rotated).
-            return obj_xy_2 + world_centers[face_idx, :2]
+            if face_idx < n_side_faces:
+                # SIDE face: obj_xy + world_centers[face_idx] (world-frame
+                # face-center offset from the T's link origin, already rotated).
+                return obj_xy_2 + world_centers[face_idx, :2]
+            # TOP face: obj_xy + top_world_centers (rotated body-frame center).
+            _t_idx = face_idx - n_side_faces
+            return obj_xy_2 + top_world_centers[_t_idx, :2]
+        n_world = world_normals[face_idx]
         # Box: obj_xy + box_half * outward_normal (single scalar half-extent).
         return obj_xy_2 + box_half * n_world[:2]
 
     def _face_half_len(face_idx: int) -> float:
         return float(half_lens[face_idx]) if shape == "tshape" else box_half
+
+    def _is_top_face(face_idx: int) -> bool:
+        return shape == "tshape" and face_idx >= n_side_faces
 
     samples: list[np.ndarray] = []
     max_tries = n_samples * 20
@@ -301,6 +390,42 @@ def _face_normal_projection(n_samples:    int,
             face_idx = int(rng.integers(0, n_faces))
         else:
             face_idx = int(rng.choice(n_faces, p=_face_probs))
+        if _face_hist is not None:
+            _face_hist[face_idx] += 1
+
+        # §9 Option B: TOP-face branch. Sphere descends onto the T's top
+        # surface (world +z normal). Sample xy inside the top patch and set
+        # sphere-center z = obj_z + T_half_height + top_setback (matches the
+        # 0.5 mm sphere-lowest-to-top-surface geometry of the side-face
+        # setback). obj_z here is assumed to be at the resting height
+        # (T half_height above ground) since only obj_xy is passed in; the
+        # setback margin absorbs small vertical drift.
+        if _is_top_face(face_idx):
+            _t_idx = face_idx - n_side_faces
+            hx, hy = float(top_half_lens_xy[_t_idx, 0]), \
+                     float(top_half_lens_xy[_t_idx, 1])
+            # Uniform jitter within the (2·hx × 2·hy) top patch, in world
+            # frame. Body-frame axes rotate through obj_quat; for the T's
+            # z-only rotation the top-patch tangents rotate as
+            # (cos θ, sin θ), (-sin θ, cos θ).
+            j_body = np.array([
+                float(rng.uniform(-hx, hx)),
+                float(rng.uniform(-hy, hy)),
+                0.0,
+            ])
+            if obj_quat is not None:
+                j_world = R @ j_body
+            else:
+                j_world = j_body
+            face_center_xy = _face_center_xy(face_idx)
+            _sample_xy = face_center_xy + j_world[:2]
+            _sample_z = (_TSHAPE_HALF_HEIGHT +          # obj_z at rest
+                         _TSHAPE_HALF_HEIGHT +          # T top offset from center
+                         _TSHAPE_TOP_SETBACK)           # +z setback above top
+            samples.append(
+                np.array([_sample_xy[0], _sample_xy[1], _sample_z]))
+            continue
+
         n_world = world_normals[face_idx]
         face_center_xy = _face_center_xy(face_idx)
         _half_len = _face_half_len(face_idx)
@@ -340,12 +465,21 @@ def _face_normal_projection(n_samples:    int,
         samples.append(np.array([proj_xy[0], proj_xy[1], z]))
 
     # Pad with deterministic setback samples if the rejection loop failed.
+    # (Side faces only; padding falls back to face 0 tangent.)
     while len(samples) < n_samples:
-        idx = len(samples) % n_faces
-        n_world = world_normals[idx]
-        face_center_xy = _face_center_xy(idx)
+        _pad_side_idx = len(samples) % n_side_faces if shape == "tshape" \
+                        else len(samples) % n_faces
+        n_world = world_normals[_pad_side_idx]
+        face_center_xy = _face_center_xy(_pad_side_idx)
         proj_xy = face_center_xy + setback * n_world[:2]
         samples.append(np.array([proj_xy[0], proj_xy[1], z]))
+
+    # T1c — emit per-call face-pick histogram for the effect check. Only
+    # for tshape (box's uniform-across-4-faces gives a boring histogram).
+    if _face_hist is not None and int(_face_hist.sum()) > 0:
+        print(f"[SAMPLE-FACE-HIST] n={int(_face_hist.sum())} "
+              f"hist={_face_hist.tolist()} shape={shape} "
+              f"mesh_normal={_use_mesh_normal}", flush=True)
 
     return samples
 
