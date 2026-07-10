@@ -324,6 +324,25 @@ class SamplingParams:
     # represented. 0.0 -> uniform 1-of-4 (regression-safe identity).
     face_bias_strength:                  float = 0.0
 
+    # T1c — kMeshNormal area-weighted face pick. Reference
+    # generate_samples.cc:454 draws faces proportional to face area
+    # (binary search into cumulative bins) and then uniform-within-face
+    # (barycentric_bias=1). When True, replaces the uniform (or goal-align-
+    # biased) face selection in _face_normal_projection with a categorical
+    # distribution proportional to face area. Uniform-within-face is
+    # unchanged (the port already samples uniformly on its rectangular
+    # patches — matches barycentric_bias=1 semantics for its geometry).
+    #
+    # For box: all 4 faces have equal area, so area-weighted == uniform
+    # (no-op).
+    # For T: small side faces (half_len 0.02) get 3.85 % each, medium
+    #        (half_len 0.03) get 5.77 %, large side + top faces (half_len
+    #        0.08, area 0.0064 m²) get 15.4 % each — vs the pre-T1c uniform
+    #        10 % per face across 10 faces.
+    # Orthogonal to face_bias_strength (goal-align): when True, area-weighting
+    # takes priority over goal-align; goal-align becomes a no-op.
+    use_mesh_normal_area_weighting:      bool  = False
+
     # Workspace bounds (kept here, not in a separate sampling_c3_options.yaml)
     workspace_xy_min:                    list  = field(default_factory=lambda: [-0.5, -0.7])
     # F3 ship 2026-05-14: y_max raised from 0.0 to 0.13 to match sampling_radius.
