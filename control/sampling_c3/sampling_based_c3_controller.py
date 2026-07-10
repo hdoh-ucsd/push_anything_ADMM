@@ -1365,6 +1365,47 @@ class SamplingC3MPC:
                       f"> threshold={_pos_reg_thr*1000:.1f}mm "
                       f"— forcing met_progress=False", flush=True)
 
+        # T1a — EE_z altitude gate (reference sampling_based_c3_controller.cc
+        # :1290-1293). Block c3 entry from free while EE_z is above the
+        # sampling-height ceiling (sampling_z + c3_min_clearance). Reference
+        # gates the auto-entry `else if` branch as an AND-condition, covering
+        # BOTH kToC3ReachedReposTarget AND kToC3Cost. Ported in-decision by
+        # passing ``ee_z_gate_pass`` into decide_mode (mode_switch.py:95) —
+        # decide_mode simply never returns c3 when the gate is closed, so
+        # no post-decide-revert side-effect risk (no mode-switch/hysteresis
+        # state latches from a c3 decision that then gets undone).
+        # Complementary to (not a replacement for) the per-tick ADMIT-GUARD
+        # (LCS-admission latch) and ALT-GATE (descent permission) — those
+        # latch each tick; this is one-shot at mode-switch.
+        #
+        # wall_offset (reference lines 1246-1264, +0.01 m near workspace
+        # walls) deferred as 0.0 for T1a — T-push at seed 0 doesn't push
+        # into walls; workspace-margin logic lands when the T pushes near
+        # a wall (T4 multi-seed).
+        _ee_z_gate_pass = True
+        if (self._prev_mode == "free"
+                and getattr(self.params, "ee_z_close", True)):
+            _sampling_z = float(self.params.sampling_params.sampling_height)
+            _c3_min_clearance = float(getattr(
+                self.params, "c3_min_clearance", 0.01))
+            _wall_offset = 0.0
+            _z_ceiling = _sampling_z + _c3_min_clearance + _wall_offset
+            _ee_z_now = float(ee_pos_now[2])
+            _ee_z_gate_pass = _ee_z_now <= _z_ceiling
+            if (not _ee_z_gate_pass) and self.log_diag:
+                # Emitted whenever the altitude gate is ACTIVE (prev_mode==free
+                # and ee_z above ceiling). Whether the gate actually SUPPRESSED
+                # a c3 entry that would otherwise have fired is decide_mode's
+                # concern — from the log it's verifiable that any [GS] mode=c3
+                # switch=kToC3* line coincides with [EEZ-GATE] absent for that
+                # step (dispatch-discipline effect check).
+                print(f"[EEZ-GATE] step={self._step} "
+                      f"ee_z={_ee_z_now*1000:.1f}mm "
+                      f"> ceiling={_z_ceiling*1000:.1f}mm "
+                      f"(sampling_z={_sampling_z*1000:.1f}mm + "
+                      f"clearance={_c3_min_clearance*1000:.1f}mm) "
+                      f"gate=BLOCK", flush=True)
+
         mode, reason = decide_mode(
             prev_mode          = self._prev_mode,
             c3_cost            = c_curr,
@@ -1374,6 +1415,7 @@ class SamplingC3MPC:
             near_goal          = near_goal,
             finished_repos     = finished_repos,
             params             = self.params.progress_params,
+            ee_z_gate_pass     = _ee_z_gate_pass,
         )
 
         # §7.56 Stage 1 — [COST-DECOMP] diagnostic. Gated by

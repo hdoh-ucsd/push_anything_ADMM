@@ -99,9 +99,24 @@ def decide_mode(prev_mode:          str,
                 met_progress:       bool,
                 near_goal:          bool,
                 finished_repos:     bool,
-                params:             ProgressParams) -> tuple[str, SwitchReason]:
+                params:             ProgressParams,
+                *,
+                ee_z_gate_pass:     bool = True,
+                ) -> tuple[str, SwitchReason]:
     """Return (next_mode, switch_reason). See module docstring for the
-    contract on each input."""
+    contract on each input.
+
+    T1a — ``ee_z_gate_pass`` (keyword-only, default True for backward
+    compatibility) mirrors the reference's in-branch altitude condition at
+    ``sampling_based_c3_controller.cc:1290-1293``. When False, both
+    ``free → c3`` transitions (``kToC3ReachedReposTarget`` and ``kToC3Cost``)
+    are suppressed inline — the code falls through to the repos re-target /
+    stay-in-repos branches, matching the reference's implicit stay-in-repos
+    behavior when the combined ``else if`` is false. This is the in-decision
+    placement (not a post-decide override): decide_mode never returns c3
+    when the gate is closed, so no mode-switch/hysteresis state ever latches
+    from a c3 decision that would then be undone.
+    """
     if prev_mode not in ("c3", "free"):
         raise ValueError(f"prev_mode must be 'c3' or 'free', got {prev_mode!r}")
 
@@ -119,8 +134,10 @@ def decide_mode(prev_mode:          str,
 
     # prev_mode == "free"
 
-    # 1. Reposition declared finished (e.g. cost below finished_reposition_cost)
-    if finished_repos:
+    # 1. Reposition declared finished (e.g. cost below finished_reposition_cost).
+    # T1a: gated by ee_z_gate_pass — mirrors reference cc:1290-1293's altitude
+    # AND-condition on the combined else-if branch.
+    if finished_repos and ee_z_gate_pass:
         return "c3", SwitchReason.kToC3ReachedReposTarget
 
     # 2. Cost-based switch back to C3. Skip when best_other_cost == inf:
@@ -129,7 +146,8 @@ def decide_mode(prev_mode:          str,
     # < inf is trivially true and the dispatcher snaps back into a dead
     # c3 push the tick after kToReposUnproductive fires (seed-3 wedge
     # re-entry trap, 7× in stage2_L2_seed3_16s/run.log).
-    if best_other_cost != float("inf"):
+    # T1a: also gated by ee_z_gate_pass (same reference AND-condition).
+    if best_other_cost != float("inf") and ee_z_gate_pass:
         gap_back = _hysteresis(params, "repos_to_c3", near_goal, c3_cost)
         if c3_cost + gap_back < best_other_cost:
             return "c3", SwitchReason.kToC3Cost
