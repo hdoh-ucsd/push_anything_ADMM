@@ -43,6 +43,16 @@ W_force: 1.0
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
 use_commit_face_gate: false
 
+# T1b — reference 3-leg high-waypoint reposition (reposition.cc:394,
+# RepositionPiecewiseLinear). Activates the Stage A `RepositionTrajectory`
+# eval-based path (lift → traverse → descend at z_safe), replacing the
+# legacy per-tick march. Matched pair with T1a's EE_z altitude gate:
+# T1a says "don't dispatch c3 above the ceiling"; T1b makes the arm
+# actually descend to below the ceiling so gated c3 dispatch can fire.
+# pwl_waypoint_height set to reference push_t value (0.0774 m) in the
+# reposition_params section below.
+use_reposition_pwl_trajectory: true
+
 # Rotation-aware sample bonus (L2.6 form):
 #   c_sample[i] -= w_rot * |yaw_err| * max(0, M_z * yaw_sign)
 # where M_z = (r x n_hat).z is the predicted contact moment about box CoM
@@ -286,13 +296,19 @@ reposition_params:
   # corrections.
   use_straight_line_traj_under_piecewise_linear: 0.008
 
-  # Safe-height for the kPiecewiseLinear lift phase. Sphere center at 0.15 m
-  # → sphere bottom at 0.125 m, i.e. 25 mm clearance over the 0.10 m box top
-  # (pusher_radius 0.025). Was 0.20 — the extra 50 mm lift + 50 mm descend
-  # made the lift-traverse-descend guide overrun the N·ds = 0.40 m horizon
-  # budget by ~100 mm for typical xy_dist ≈ 0.20 m repositions, so
-  # p_guide[:, -1] clamped short of p_target and finished_repos rarely fired.
-  pwl_waypoint_height: 0.15    # m
+  # Safe-height for the kPiecewiseLinear lift phase.
+  #
+  # T1b — reference push_t value (0.0774 m). Source:
+  #   dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml
+  #   reposition.cc:394 RepositionPiecewiseLinear pwl_waypoint_height=0.0774.
+  # Puts sphere-center at 77.4 mm above ground = 37.4 mm above T top
+  # (T half-height 0.02, T sits with base at ground so top at 0.04 m).
+  # Was 0.15 (kept for the box path where 0.15 = 25 mm clearance over the
+  # 0.10 m box top). The legacy horizon-budget note (0.40 m at N=20 × ds=0.02)
+  # applies to the legacy IK-guide path only; the Stage A `RepositionTrajectory`
+  # (activated by use_reposition_pwl_trajectory=true above) is eval-based
+  # (returns p_des, v_des at sim_t) with no per-step horizon budget.
+  pwl_waypoint_height: 0.0774   # m — reference push_t value
 
   # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
   # (Stage A, PUSHA_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
