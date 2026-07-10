@@ -137,7 +137,10 @@ class QuadraticManipulationCost:
 
     def __init__(self, plant, ee_frame_name: str, obj_body, cost_cfg: dict,
                  n_x: int, n_u: int, math_diag: bool = False,
-                 cost_bias: bool = False):
+                 cost_bias: bool = False,
+                 object_shape: str = None,
+                 object_half_extent: float = None,
+                 pusher_radius: float = None):
         import pydrake.all as ad
         self.plant       = plant
         self.ee_frame    = plant.GetFrameByName(ee_frame_name)
@@ -159,6 +162,16 @@ class QuadraticManipulationCost:
 
         c = cost_cfg
         self.w_obj_xy      = float(c.get("w_obj_xy",      1000.0))
+        # Path-C Pareto probe (2026-07-09): PUSHA_W_OBJ_XY_MULT scales w_obj_xy
+        # in-place after yaml load. Default 1.0 = byte-identical. Used to sweep
+        # closure recovery at N=5 without touching tasks.yaml.
+        import os as _os_woxm
+        _w_obj_xy_mult = float(_os_woxm.environ.get("PUSHA_W_OBJ_XY_MULT", "1.0"))
+        if _w_obj_xy_mult != 1.0:
+            _orig = self.w_obj_xy
+            self.w_obj_xy *= _w_obj_xy_mult
+            print(f"[PUSHA_W_OBJ_XY_MULT] w_obj_xy {_orig:.1f} → "
+                  f"{self.w_obj_xy:.1f} (×{_w_obj_xy_mult:.2f})", flush=True)
         self.w_obj_z       = float(c.get("w_obj_z",         10.0))
         self.w_box_z       = float(c.get("w_box_z",        100.0))
         self.w_box_rp      = float(c.get("w_box_rp",        50.0))
@@ -185,6 +198,16 @@ class QuadraticManipulationCost:
         # docs/superpowers/plans/2026-06-07-B-lateral-align-clamp-harden.md.
         self.lateral_align_full_scale = float(
             c.get("lateral_align_full_scale", 0.05))
+
+        # Geometry (used by PUSHA_BOX_DPUSH_FIX for the box face-target proxy).
+        # object_shape ∈ {"box", "sphere", "tshape", None}. Only "box" activates
+        # the geometry-derived d_push override. object_half_extent is the box's
+        # half-size along the push axis (task_cfg["size"][0]/2 for cubes).
+        # pusher_radius mirrors sim.env_builder.PUSHER_RADIUS (honors the
+        # PUSHA_PUSHER_RADIUS env override).
+        self._object_shape       = object_shape
+        self._object_half_extent = object_half_extent
+        self._pusher_radius      = pusher_radius
 
         self._math_diag = math_diag
         self._q_printed = False
@@ -710,10 +733,45 @@ class QuadraticManipulationCost:
                 ee_xy          = ee_pos[:2]
                 ee_to_box_dist = float(np.linalg.norm(ee_xy - obj_xy))
 
+                # PUSHA_BOX_DPUSH_FIX (2026-07-09) — d_push is a SPHERE-CENTER
+                # target, but the yaml value (0.05 for box tasks) equals the
+                # box half-extent, placing the sphere-CENTER on the box face
+                # plane → sphere-SURFACE penetrates INTO the box by the tip
+                # radius (25 mm for the box canonical) → Drake resists with a
+                # huge impulse → §7.31 hammer-blow tumble. Geometry-derived
+                # override: sphere-CENTER at box_half + pusher_radius + 0.5 mm
+                # so sphere-SURFACE sits 0.5 mm off the box face — mirroring
+                # the reference sample_projection_clearance=0.02 semantics
+                # (20 mm center offset − 19.5 mm tip radius = 0.5 mm surface
+                # gap). Default-OFF. Applies to object_shape="box" only —
+                # T-shape samples through _TSHAPE_FACE_TABLE + setback=0.020
+                # (already 0.5 mm gap on 19.5 mm interpretation) and is
+                # separately validated at 75.5 % closure.
+                import os as _os_dpush
+                _use_dpush_fix = (
+                    _os_dpush.environ.get("PUSHA_BOX_DPUSH_FIX", "0") == "1"
+                    and self._object_shape == "box"
+                    and self._object_half_extent is not None
+                    and self._pusher_radius is not None
+                )
+                if _use_dpush_fix:
+                    _d_push_eff = (float(self._object_half_extent)
+                                   + float(self._pusher_radius)
+                                   + 0.0005)
+                    if not getattr(self, "_dpush_fix_logged", False):
+                        print(f"[PUSHA_BOX_DPUSH_FIX] enabled: "
+                              f"d_push={self.d_push:.4f} → {_d_push_eff:.4f} m "
+                              f"(box_half={self._object_half_extent:.4f}, "
+                              f"pusher_r={self._pusher_radius:.4f}, "
+                              f"+0.5mm clearance)", flush=True)
+                        self._dpush_fix_logged = True
+                else:
+                    _d_push_eff = self.d_push
+
                 # Three-stage approach proxy (same as R^7 build()).
                 proxy_3d = np.array([
-                    obj_xy[0] - self.d_push * g_hat[0],
-                    obj_xy[1] - self.d_push * g_hat[1],
+                    obj_xy[0] - _d_push_eff * g_hat[0],
+                    obj_xy[1] - _d_push_eff * g_hat[1],
                     self.z_ref,
                 ])
                 pre_approach_3d = np.array([
@@ -779,23 +837,40 @@ class QuadraticManipulationCost:
                               f"shift_mm=({extra_shift[0]*1000:+.1f},"
                               f"{extra_shift[1]*1000:+.1f})", flush=True)
 
-                # DIRECT EE-approach cost on the p_ee state slot.
-                # No arm Jacobian, no J^T J block — paper-aligned.
-                # §7.31 — proxy off: when REF_RECONCILE_APPROACH is set
-                # AND the always-on EE-BOX row is enabled (LCS row keeps
-                # D ≠ 0 so the proxy's anti-freeze role is unnecessary),
-                # skip this block. The reference has no equivalent
-                # backward-pull cost (sampling_based_c3_controller.cc:500
+                # DIRECT EE-approach cost on the p_ee state slot — SKIPPED.
+                # §7.31: with the always-on EE-BOX row (LCS_ALWAYS_ON_EE_BOX=1)
+                # keeping D ≠ 0, the proxy's anti-freeze role is unnecessary
+                # and the reference (sampling_based_c3_controller.cc:500,
                 # x_desired = GetDesiredState — the sampled face point in
-                # both modes, NO 100 mm-behind term).
+                # both modes) has no equivalent backward-pull cost.
+                # Formerly gated by REF_RECONCILE_APPROACH; now always off.
                 import os as _os_rec
-                _skip_proxy = bool(int(_os_rec.environ.get(
-                    "REF_RECONCILE_APPROACH", "0") or "0"))
-                if not _skip_proxy:
-                    Q[self._NEW_PEE_SLOT, self._NEW_PEE_SLOT] = (
-                        self.w_ee_approach * np.eye(3)
-                    )
-                    x_ref[self._NEW_PEE_SLOT] = effective_proxy
+
+                # §7.76 (ii) — cost-side z-hold penalty on the plan's
+                # EE-z, default-OFF. Breaks the §7.75 tip→plan-z-rise→
+                # sphere-climb→more-tip loop plan-consistently: the plan
+                # naturally prefers a lower x_seq[k][9], so ADMM's inner
+                # solve discovers a lower-z push trajectory and the OSC
+                # receives a low z-target (no plan/OSC tension). Design
+                # in experiments/§7.75c_repro/REPORT.md:117-133.
+                # Target = sampling_height by default (contact-plane EE z).
+                _z_hold_on = _os_rec.environ.get("PUSHA_EE_Z_HOLD", "0") == "1"
+                if _z_hold_on:
+                    _w_zh = float(_os_rec.environ.get(
+                        "PUSHA_EE_Z_HOLD_W", "1000.0"))
+                    # Default target = self.z_ref (cost_cfg["z_ee_target"],
+                    # 0.05 m for cube; matches sampling_height contact-plane).
+                    _z_tgt = float(_os_rec.environ.get(
+                        "PUSHA_EE_Z_HOLD_TARGET", str(self.z_ref)))
+                    Q[9, 9] += _w_zh
+                    x_ref[9] = _z_tgt
+                    if not getattr(self, "_z_hold_logged", False):
+                        print(
+                            f"[§7.76-Z-HOLD] PUSHA_EE_Z_HOLD=1  "
+                            f"w_zh={_w_zh}  z_tgt={_z_tgt:.4f}m",
+                            flush=True,
+                        )
+                        self._z_hold_logged = True
 
             # --- Perpendicular box-velocity penalty ---
             # Penalize box linear velocity components orthogonal to g_hat.

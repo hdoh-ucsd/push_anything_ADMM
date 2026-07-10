@@ -29,6 +29,7 @@ milestones/
 # Run outputs
 results/
 profiling/results/
+experiments/
 # Step 8/9 transient probe scripts (one-shot diagnostics; on-disk only)
 scripts/probe_9_1_2_deflection.py
 scripts/probe_autodiff.py

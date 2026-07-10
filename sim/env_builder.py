@@ -29,7 +29,27 @@ _LEGACY_PREPOSITIONED_ARM_Q = np.array([
 # Dedicated pusher body — spherical puck rigidly welded to panda_link8.
 # This is the single authoritative name for EE body and contact filter.
 EE_BODY_NAME  = "pusher"
-PUSHER_RADIUS = 0.0195  # m — matches DAIR push_t (end_effector_full.urdf sphere radius)
+_PUSHER_RADIUS_DEFAULT = 0.025   # m — matches Dairlab C3 planar-pushing benchmark (box canonical).
+# NOTE: §9 attempted to globally shrink this to 0.0195 to match DAIR push_t's
+# end_effector_full.urdf, but that regressed the box's 72 % banked closure to
+# ~39 % (contact geometry / setback / sampling_setback all reference this
+# constant). If push_t needs 0.0195, plumb it as task-configurable via
+# task_cfg["pusher_radius"] rather than mutating the global.
+#
+# Runtime override — set env PUSHA_PUSHER_RADIUS=<meters> to change the pusher
+# tip radius for a single run without editing the source. Used by the STEP 3
+# reconcile-run in the d_push-fix arc (2026-07-09) to test whether the
+# 19.5 mm-sphere regression is a d_push-penetration interaction. Default-OFF.
+def _effective_pusher_radius() -> float:
+    import os as _os
+    v = _os.environ.get("PUSHA_PUSHER_RADIUS", "").strip()
+    if not v:
+        return _PUSHER_RADIUS_DEFAULT
+    try:
+        return float(v)
+    except ValueError:
+        return _PUSHER_RADIUS_DEFAULT
+PUSHER_RADIUS = _effective_pusher_radius()
 
 
 # ---------------------------------------------------------------------------
