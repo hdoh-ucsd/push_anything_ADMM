@@ -1383,8 +1383,20 @@ class SamplingC3MPC:
         # into walls; workspace-margin logic lands when the T pushes near
         # a wall (T4 multi-seed).
         _ee_z_gate_pass = True
+        # T1a-fix (2026-07-10) — retrofit tshape gate at the use site. The
+        # original T1a landing gated only on `params.ee_z_close` (default
+        # True), so the gate silently activated for the box path too and
+        # regressed box closure from 71.6 % → 59.6 % (measured 2026-07-10:
+        # pure-HEAD box W seed 0 vs P2 tripwire). Reference behavior for
+        # T remains identical (T yaml keeps default ee_z_close=True). Box
+        # yaml is byte-identical to the pre-T1a behavior — the gate is
+        # skipped when object_shape != "tshape". Same §9-leak discipline as
+        # T1b/T1c (both correctly gated at their use sites).
+        _obj_shape = getattr(
+            getattr(self.base_mpc, "formulator", None), "_object_shape", "box")
         if (self._prev_mode == "free"
-                and getattr(self.params, "ee_z_close", True)):
+                and getattr(self.params, "ee_z_close", True)
+                and _obj_shape == "tshape"):
             _sampling_z = float(self.params.sampling_params.sampling_height)
             _c3_min_clearance = float(getattr(
                 self.params, "c3_min_clearance", 0.01))
