@@ -56,7 +56,26 @@ class LCSFormulator:
                  plant_ad=None, context_ad=None,
                  box_ground_drag: float = 10.0,
                  lcs_explicit_manipuland_ground_contacts: int = 0,
-                 object_shape: str = "box"):
+                 object_shape: str = "box",
+                 ref_pair_admission_planner_lcs: bool = False):
+        # d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
+        # PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses a
+        # PRE-SPECIFIED pair list at construction (`resolve_contacts_to_lists`)
+        # via `multibody/geom_geom_collider.cc:86-88`
+        # `ComputeSignedDistancePairClosestPoints(A, B)` (singular pair). The
+        # port's default path uses `ComputeSignedDistancePairwiseClosestPoints`
+        # (plural) with a 2 mm threshold — pairs at φ > 2 mm are DROPPED, which
+        # produces the LCS↔Drake threshold-drop chatter the T's c3-chatter
+        # diagnosis pinned as the T-translation blocker. This flag routes the
+        # planner-LCS call in `linearize_discrete_ee_space` through the port's
+        # already-existing `force_top_k_ee_box=True, n_ee_top_k=1` mechanism
+        # (which mirrors the reference `GetResolvedContactPairs` per the
+        # comment at `lcs_formulator.py:550-555`), previously reserved for the
+        # cost-LCS only (inner_solve.py:593). Gated by object_shape=="tshape"
+        # AT THE USE SITE so the box path is byte-identical when this flag is
+        # True (only tshape opts in).
+        self._ref_pair_admission_planner_lcs = bool(
+            ref_pair_admission_planner_lcs)
         self.plant = plant
         self.mu    = float(mu)
         # Stage 1 / §9 Option A: manipuland-ground contact synthesis knob.
@@ -1367,6 +1386,22 @@ class LCSFormulator:
     def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
                                     force_top_k_ee_box: bool = False):
+        # d.1 — reference-conforming pair admission for the planner LCS.
+        # When the caller didn't already opt in (force_top_k_ee_box=False,
+        # the ci_mpc_c3plus.py planner default) AND the object is a tshape
+        # AND the class-level flag is on, promote to force_top_k=True with
+        # n_ee_top_k=1 (matches reference push_t planner's 1 EE-manipuland
+        # pair). Bypasses the 2 mm auto-discovery, keeping the pair in the
+        # LCS across the arm's off-face rise — the T-c3-chatter fix.
+        # Cost-LCS caller (inner_solve.py:593) sets force_top_k=True
+        # explicitly, so this override is a no-op there.
+        # Gated to tshape so the box planner path is byte-identical when the
+        # class flag is True.
+        if (not force_top_k_ee_box
+                and self._object_shape == "tshape"
+                and getattr(self, "_ref_pair_admission_planner_lcs", False)):
+            force_top_k_ee_box = True
+            n_ee_top_k = 1
         """
         Paper-aligned low-dim LCS at (q*, v*, u*).
 

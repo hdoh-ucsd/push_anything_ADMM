@@ -528,6 +528,9 @@ def main():
     # defaults when --sampling-c3 is not provided (env var
     # LCS_EXPLICIT_MANIPULAND_GND overrides regardless).
     _pre_manipuland_gnd = 0
+    # d.1 — reference-conforming EE-manipuland admission for the planner LCS.
+    # Pre-read from yaml so LCSFormulator gets it at construction.
+    _pre_ref_pair_admission_planner = False
     if args.sampling_c3 is not None:
         try:
             import yaml as _yaml_pre
@@ -535,6 +538,8 @@ def main():
                 _raw_pre = _yaml_pre.safe_load(_f_pre) or {}
             _pre_manipuland_gnd = int(_raw_pre.get(
                 "lcs_explicit_manipuland_ground_contacts", 0))
+            _pre_ref_pair_admission_planner = bool(_raw_pre.get(
+                "use_reference_pair_admission_planner_lcs", False))
         except Exception:
             _pre_manipuland_gnd = 0
     formulator = LCSFormulator(
@@ -542,6 +547,7 @@ def main():
         plant_ad=plant_ad, context_ad=context_ad,
         lcs_explicit_manipuland_ground_contacts=_pre_manipuland_gnd,
         object_shape=str(task_cfg.get("object_type", "box")),
+        ref_pair_admission_planner_lcs=_pre_ref_pair_admission_planner,
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
