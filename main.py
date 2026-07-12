@@ -981,6 +981,15 @@ def main():
     final_q      = plant.GetPositions(plant_ctx)
     final_obj_xy = np.array([final_q[obj_x_idx], final_q[obj_y_idx]])
     final_dist   = float(np.linalg.norm(final_obj_xy - target_xy))
+    # Geodesic orientation error vs goal: acos((tr(R_goal^T R_final)-1)/2).
+    # Reference success gate for push_t is position<0.02m AND orient<0.1 rad.
+    _final_quat = final_q[pos_start:pos_start + 4]  # [qw, qx, qy, qz]
+    _R_final = ad.RotationMatrix(ad.Quaternion(
+        _final_quat[0], _final_quat[1], _final_quat[2], _final_quat[3]
+    )).matrix()
+    _R_goal_mat = ad.RotationMatrix.MakeZRotation(target_yaw).matrix()
+    _tr = float(np.trace(_R_goal_mat.T @ _R_final))
+    orient_err = float(np.arccos(np.clip((_tr - 1.0) * 0.5, -1.0, 1.0)))
     if args.sampling_c3 is not None:
         _method = "sampling-c3"
     else:
@@ -988,7 +997,9 @@ def main():
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
           f"goal_dist={final_dist:.4f}m  "
-          f"success={'YES' if final_dist < 0.05 else 'NO'}")
+          f"orient_err={orient_err:.4f}rad  "
+          f"success={'YES' if final_dist < 0.05 else 'NO'}  "
+          f"ref_gate={'PASS' if (final_dist < 0.02 and orient_err < 0.1) else 'FAIL'}")
 
     if html_path:
         meshcat.StopRecording()
