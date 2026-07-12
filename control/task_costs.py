@@ -874,7 +874,11 @@ class QuadraticManipulationCost:
 
             # --- Perpendicular box-velocity penalty ---
             # Penalize box linear velocity components orthogonal to g_hat.
-            if dist > 1e-3:
+            # Skipped for tshape (push_t): reference sampling_c3plus_options.yaml
+            # has no analog — box linear velocity is weighted at 0.05·w_Q=50=2.5
+            # in the base q_vector, not amplified by a 10·w_obj_xy=1M term.
+            # Retained for box/sphere paths where the heuristic is load-bearing.
+            if dist > 1e-3 and self._object_shape != "tshape":
                 g_hat = v_goal / dist
                 g_perp = np.array([-g_hat[1], g_hat[0]])
                 w_perp = 10.0 * self.w_obj_xy
@@ -905,5 +909,14 @@ class QuadraticManipulationCost:
         else:
             R = self.w_torque * np.eye(n_u)
 
-        QN = self.w_terminal * Q
+        # Terminal weight: for tshape (push_t), match reference behavior. The
+        # reference (sampling_based_c3_controller.cc:1507-1515 UpdateCostMatrices
+        # with gamma=1.0) sets Q_[N] = Q_[N-1] — no horizon-endpoint amplifier.
+        # Port's w_terminal=5.0 (tasks.yaml:136) has no reference analog; force
+        # QN = Q on the tshape path. Other tasks (box/sphere/cube) retain the
+        # port's w_terminal scaling.
+        if self._object_shape == "tshape":
+            QN = Q.copy()
+        else:
+            QN = self.w_terminal * Q
         return Q, R, QN, x_ref
