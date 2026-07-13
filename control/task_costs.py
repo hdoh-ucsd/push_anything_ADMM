@@ -692,13 +692,44 @@ class QuadraticManipulationCost:
         n_x = self.N_X_EE_SPACE
         n_u = self.N_U_EE_SPACE
 
-        # --- Base Q (object xy/z, roll/pitch) ---
+        # --- Full-stack reference conformance: w_Q · diag(q_vector) ---
+        # Reference push_t/parameters/sampling_c3plus_options.yaml:73-78
+        #   w_Q = 50
+        #   q_vector (reference layout [EE_pos(3), box_quat(4), box_pos(3),
+        #                               EE_vel(3), box_omega(3), box_linvel(3)]) =
+        #     [0.01, 0.01, 0.01,     # EE position → port slots 7,8,9
+        #      0.1, 0.1, 0.1, 0.1,   # box quat    → port slots 0,1,2,3
+        #      200, 200, 120,        # box pos     → port slots 4,5,6
+        #      5, 5, 5,              # EE velocity → port slots 16,17,18
+        #      0.05, 0.05, 0.05,     # box angvel  → port slots 10,11,12
+        #      0.05, 0.05, 0.05]     # box linvel  → port slots 13,14,15
+        # Port state layout: [box_q(0-6)=[qw,qx,qy,qz,x,y,z], p_ee(7-9),
+        #                     box_v(10-15)=[ωx,ωy,ωz,vx,vy,vz], v_ee(16-18)]
+        # Replaces the port's w_obj_xy/w_obj_z/w_box_z/w_box_rp cost stack
+        # (which had w_obj_xy=100000 = 10× reference, w_obj_z=10 = 55× less
+        # than reference, w_box_rp=50 = 10× reference).
         Q = np.zeros((n_x, n_x))
-        Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy
-        Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy
-        Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = self.w_obj_z + self.w_box_z
-        Q[self._NEW_OBJ_QX, self._NEW_OBJ_QX] = self.w_box_rp   # roll
-        Q[self._NEW_OBJ_QY, self._NEW_OBJ_QY] = self.w_box_rp   # pitch
+        _wQ = 50.0
+        # box quaternion (qw, qx, qy, qz) — reference q_vector[3:7] = 0.1 each
+        for _i in range(4):
+            Q[_i, _i] = _wQ * 0.1
+        # box position (x, y, z) — reference q_vector[7:10] = [200, 200, 120]
+        Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = _wQ * 200.0
+        Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = _wQ * 200.0
+        Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = _wQ * 120.0
+        # EE position — reference q_vector[0:3] = 0.01 each
+        Q[7, 7] = _wQ * 0.01
+        Q[8, 8] = _wQ * 0.01
+        Q[9, 9] = _wQ * 0.01
+        # box angular velocity — reference q_vector[13:16] = 0.05 each
+        for _i in (10, 11, 12):
+            Q[_i, _i] = _wQ * 0.05
+        # box linear velocity — reference q_vector[16:19] = 0.05 each
+        for _i in (13, 14, 15):
+            Q[_i, _i] = _wQ * 0.05
+        # EE velocity — reference q_vector[10:13] = 5.0 each
+        for _i in (16, 17, 18):
+            Q[_i, _i] = _wQ * 5.0
 
         # --- x_ref base ---
         x_ref = np.zeros(n_x)
@@ -837,13 +868,15 @@ class QuadraticManipulationCost:
                               f"shift_mm=({extra_shift[0]*1000:+.1f},"
                               f"{extra_shift[1]*1000:+.1f})", flush=True)
 
-                # DIRECT EE-approach cost on the p_ee state slot — SKIPPED.
-                # §7.31: with the always-on EE-BOX row (LCS_ALWAYS_ON_EE_BOX=1)
-                # keeping D ≠ 0, the proxy's anti-freeze role is unnecessary
-                # and the reference (sampling_based_c3_controller.cc:500,
-                # x_desired = GetDesiredState — the sampled face point in
-                # both modes) has no equivalent backward-pull cost.
-                # Formerly gated by REF_RECONCILE_APPROACH; now always off.
+                # Full-stack conformance: x_ref[EE_pos] = effective_proxy
+                # (the sampled face target) — matches reference's x_desired
+                # from GetDesiredState (sampling_based_c3_controller.cc:500).
+                # Q[7:10] is already populated with w_Q·0.01 = 0.5 above.
+                x_ref[7] = effective_proxy[0]
+                x_ref[8] = effective_proxy[1]
+                x_ref[9] = effective_proxy[2]
+                # x_ref[16:19] stays zero (EE velocity target = 0).
+
                 import os as _os_rec
 
                 # §7.76 (ii) — cost-side z-hold penalty on the plan's
