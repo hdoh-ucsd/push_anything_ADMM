@@ -94,6 +94,7 @@ def generate_samples(strategy:    SamplingStrategy,
                      rng:         Optional[np.random.Generator] = None,
                      g_hat:       Optional[np.ndarray] = None,
                      obj_quat:    Optional[np.ndarray] = None,
+                     yaw_delta:   Optional[float] = None,
                      ) -> list[np.ndarray]:
     """
     Generate n_samples 3D EE target positions.
@@ -126,7 +127,8 @@ def generate_samples(strategy:    SamplingStrategy,
         raw = _radially_symmetric(n_samples, obj_xy, params, g_hat)
     elif strategy == SamplingStrategy.kFaceNormal:
         raw = _face_normal_projection(
-            n_samples, obj_xy, params, rng, g_hat, obj_quat)
+            n_samples, obj_xy, params, rng, g_hat, obj_quat,
+            yaw_delta=yaw_delta)
     elif strategy == SamplingStrategy.kFixed:
         raw = _fixed_samples(n_samples, params)
     else:
@@ -208,7 +210,9 @@ def _face_normal_projection(n_samples:    int,
                             params:       SamplingParams,
                             rng:          np.random.Generator,
                             g_hat:        Optional[np.ndarray],
-                            obj_quat:     Optional[np.ndarray]) -> list[np.ndarray]:
+                            obj_quat:     Optional[np.ndarray],
+                            yaw_delta:    Optional[float] = None,
+                            ) -> list[np.ndarray]:
     """Paper-faithful face-normal sampler — Push-Anything §IV-B1.
 
     For each sample:
@@ -404,6 +408,98 @@ def _face_normal_projection(n_samples:    int,
         _face_probs = _face_weights / _face_weights.sum()
     else:
         _face_probs = None
+
+    # D.3 (2026-07-13) — yaw-torque × translation-alignment face bias.
+    #
+    # For tasks with a rotation goal (T-push: goal_yaw = −0.7379 rad),
+    # the sphere's contact torque about world-z depends on WHICH side
+    # face it approaches. Two side faces with the same outward-normal
+    # direction can produce yaw torques of OPPOSITE sign if their body-
+    # frame centres sit on opposite sides of the object's z-axis.
+    #
+    # For a unit push force F = −n̂ (into the object) applied at
+    # world-frame face-centre offset r_w = (rx, ry, 0) from the CoM:
+    #     τ_z = (r_w × F)_z  =  rx·(−ny) − ry·(−nx)
+    #                       =  ry·nx − rx·ny        (per unit force)
+    #
+    # Combined bonus = translation-align × yaw-align:
+    #     trans_align = max(0, −n̂·g_hat)                (0..1, +ve when
+    #                                                     push is goal-aligned)
+    #     yaw_align   = max(0, sign(yaw_delta) · τ_z)   (goal-aligned yaw)
+    #     bonus       = trans_align · yaw_align         (nonzero only when
+    #                                                    BOTH match)
+    #
+    # This composition is critical: yaw-alone would reward faces whose
+    # normal points AWAY from the goal (e.g. crossbar TOP for the T
+    # seed 0 case with goal +y) if they happen to produce the right
+    # torque sign, even though a push there would translate the T away
+    # from the goal. Multiplying trans_align in eliminates that: face
+    # 8 (crossbar top) has −n̂·g_hat = −0.995 → trans_align = 0 →
+    # bonus = 0 regardless of yaw sign.
+    #
+    # Sanity check with T seed 0 (goal_yaw = −0.7379, goal_xy mostly
+    # +y so g_hat ≈ (0, +1)):
+    #   face 2 (crossbar bottom, r=(+0.05,−0.02), n=(0,−1)):
+    #     τ_z   = (−0.02)·0 − 0.05·(−1) = +0.05         → CCW (wrong yaw)
+    #     trans = max(0, −n̂·g_hat) = max(0, +0.995) ≈ 1.0
+    #     bonus = 1.0 · max(0, −1·0.05) = 0
+    #   face 4 (stem bottom,      r=(−0.05,−0.08), n=(0,−1)):
+    #     τ_z   = (−0.08)·0 − (−0.05)·(−1) = −0.05      → CW  (correct)
+    #     trans = 1.0
+    #     bonus = 1.0 · max(0, −1·(−0.05)) = 0.05        (rewarded)
+    #   face 8 (crossbar top,     r=(+0.05,+0.02), n=(0,+1)):
+    #     τ_z   = +0.02·0 − 0.05·1 = −0.05              → CW (correct)
+    #     trans = max(0, −n̂·g_hat) = max(0, −0.995) = 0  → zero-out
+    #     bonus = 0                                      (wrong translation)
+    # Face 4 alone gets the bonus.
+    #
+    # Universal safety:
+    #   - yaw_delta = None or |yaw_delta| < eps → skip the multiplier
+    #     entirely. Box has goal_yaw = 0 → yaw_delta stays near 0.
+    #   - g_hat = None or zero-norm → skip. Rotation-only tasks with no
+    #     translation goal don't benefit from this bias.
+    #   - Top faces (T only): n_z = +1, so trans_align uses only n_xy
+    #     component (0 for top faces) → bonus = 0. Top faces preserve
+    #     their current area-weighted probability.
+    #   - Box: for 4 cardinal side faces, (rx,ry) = box_half·(nx,ny),
+    #     so ry·nx − rx·ny = 0 identically. A single-face push cannot
+    #     yaw a cube. The bonus is null for the box shape regardless
+    #     of yaml value. Bit-identical for box.
+    _alpha = float(getattr(params, "yaw_face_bias_strength", 0.0))
+    if (yaw_delta is not None
+            and abs(float(yaw_delta)) > 1e-6
+            and _alpha > 0.0
+            and _use_goal_align
+            and shape == "tshape"):
+        # Box path never enters this block regardless of yaml value:
+        # box has 4 cardinal side faces with (rx,ry) = box_half·(nx,ny),
+        # so τ_z = ry·nx − rx·ny = 0 identically for every face — the
+        # bonus is null and the multiplier would be all-ones, but the
+        # renormalisation `_biased / _biased.sum()` still introduces a
+        # 1-ULP float perturbation on _face_probs that propagates through
+        # IK and Drake dynamics into macroscopic box divergence over
+        # ~300 steps (same failure mode caught by the BUG-2 tolerance
+        # guard). Gate on shape == "tshape" to keep box strictly
+        # bit-identical.
+        _sign = 1.0 if float(yaw_delta) > 0.0 else -1.0
+        _rx = world_centers[:_n_horizontal, 0]
+        _ry = world_centers[:_n_horizontal, 1]
+        _nx = world_normals[:_n_horizontal, 0]
+        _ny = world_normals[:_n_horizontal, 1]
+        _tau_z_side = _ry * _nx - _rx * _ny
+        _yaw_align_side = np.maximum(0.0, _sign * _tau_z_side)
+        _trans_align_side = np.maximum(
+            0.0, -(world_normals[:_n_horizontal, :2] @ g2))
+        _bonus_side = _trans_align_side * _yaw_align_side
+        _yaw_mult_side = 1.0 + _alpha * _bonus_side
+        _yaw_mult_top = np.ones(n_top_faces, dtype=float)
+        _yaw_mult = np.concatenate([_yaw_mult_side, _yaw_mult_top])
+
+        if _face_probs is None:
+            _face_probs = _yaw_mult / _yaw_mult.sum()
+        else:
+            _biased = _face_probs * _yaw_mult
+            _face_probs = _biased / _biased.sum()
 
     # T1c effect-check hook: track face-pick histogram per _face_normal_projection
     # call. Emitted at end of loop as a single [SAMPLE-FACE-HIST] line — used by

@@ -307,6 +307,27 @@ sampling_params:
   # face_bias_strength (goal-align becomes a no-op when this is True).
   use_mesh_normal_area_weighting: true
 
+  # D.3 (2026-07-13) — yaw-torque face bias (see params.py docstring).
+  # T-push cost is yaw-dominated (w_yaw=800, goal_yaw=−0.7379). Without
+  # a torque-alignment bias, area-weighting picks the crossbar-bottom
+  # face (large, half_len=0.08) more often than the stem-bottom face
+  # (small, half_len=0.02); the crossbar-bottom lever arm rx=+0.05
+  # produces CCW yaw under a +y push, but the T's goal yaw is CW —
+  # every c3 dispatch drives the T the wrong yaw direction and c3
+  # exits via kToReposUnproductive within ~5 ticks of the pos plateau.
+  #
+  # yaw_face_bias_strength=500 multiplies goal-aligned-torque side
+  # faces by (1 + 500·0.05) = 26× for the T's dominant faces (τ_z
+  # magnitude ~0.05 m per unit force). The 4× area disadvantage of the
+  # stem-bottom face vs the crossbar-bottom face needs to be strongly
+  # overcome — at alpha=100 the observed pick share was only 14 % for
+  # face 4 vs 25 % for face 2, and the sample kept flipping between
+  # faces every tick, resetting the reposition setpoint and blocking
+  # descent. At alpha=500 the expected pick share is ~50 % for face 4,
+  # enough for the reposition tracker to converge on it. Bit-identical
+  # for box (see D.3 block in sampling.py:_face_normal_projection).
+  yaw_face_bias_strength: 500.0
+
   # Robot workspace bounds; samples failing this are pruned.
   # T-task: y_max raised to 0.30 to accommodate T-face samples on the +y stem
   # and crossbar-top faces once the T rotates (yaw target = +45° in this
