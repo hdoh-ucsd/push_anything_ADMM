@@ -245,6 +245,46 @@ def _face_normal_projection(n_samples:    int,
     reject_clearance = float(params.sample_reject_clearance)
     shape    = str(getattr(params, "object_shape", "box"))
 
+    # BUG 2 fix (2026-07-13) — horizontal-setback compensation for the
+    # port's fatter pusher radius. This is a COMPENSATION, not a
+    # correction of a diverged setback value:
+    #
+    #   Reference push_t runs `end_effector_simple_model.urdf` sphere
+    #   r = 0.0195 m with sample_projection_clearance = 0.020 m; sphere
+    #   surface sits +0.5 mm OUTSIDE the object face at the setback
+    #   position (clean side-face contact).
+    #
+    #   The port carries a GLOBAL pusher radius of 0.025 m (see
+    #   sim/env_builder.py:PUSHER_RADIUS_DEFAULT — a known divergence
+    #   from the reference that also surfaced in the box arc). Inherit
+    #   the reference's 20 mm setback verbatim and the sphere surface
+    #   sits 5 mm INSIDE the T bar face — the vertical_bar phi≈−0.005 m
+    #   penetration observed at the SIDE-face setback target.
+    #
+    #   The fix: raise the effective setback to at least the port's
+    #   pusher radius + clearance so the SIDE-face intent works with
+    #   the port's sphere. This ADAPTS the setback to the port's
+    #   radius; it does NOT correct the sampling-setback yaml value.
+    #
+    # Bit-identical special cases:
+    #   - Box config (sampling_c3_kik.yaml:203) already ships
+    #     sampling_setback: 0.030 (pusher_radius + 5 mm), so the max()
+    #     is a no-op — box degenerates to its shipped setback and is
+    #     bit-identical.
+    #   - Any future config that already ships setback ≥ (r_pusher +
+    #     clearance) is bit-identical for the same reason.
+    #
+    # Clearance floor (5 mm): matches the port's box config's already-
+    # shipped 5 mm margin (sampling_c3_kik.yaml:203, setback = 0.030 =
+    # pusher_radius 0.025 + 0.005). So the port's SIDE-face intent for
+    # ANY object gets the same sphere-surface margin the box already
+    # relies on.
+    from sim.env_builder import PUSHER_RADIUS as _PUSHER_RADIUS
+    _MIN_CLEARANCE_ABOVE_R = 0.005
+    _min_setback = float(_PUSHER_RADIUS) + _MIN_CLEARANCE_ABOVE_R
+    if setback < _min_setback:
+        setback = _min_setback
+
     # Goal-alignment conditional jitter setup. Only meaningful when g_hat
     # has a real direction; rotation-only tasks fall through to uniform.
     if g_hat is not None:
