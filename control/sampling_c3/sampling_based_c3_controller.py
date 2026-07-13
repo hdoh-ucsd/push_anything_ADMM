@@ -418,7 +418,9 @@ class SamplingC3MPC:
                                 obj_quat:   Optional[np.ndarray] = None,
                                 obj_xy:     np.ndarray,
                                 g_hat:      np.ndarray,
-                                n_strategy: int) -> list[np.ndarray]:
+                                n_strategy: int,
+                                yaw_delta:  Optional[float] = None,
+                                ) -> list[np.ndarray]:
         """Return strategy samples, caching across loops per
         `sampling_params.sample_buffer_lifetime`.
 
@@ -447,6 +449,7 @@ class SamplingC3MPC:
                 rng       = self._rng,
                 g_hat     = g_hat,
                 obj_quat  = obj_quat,
+                yaw_delta = yaw_delta,
             )
 
         # Force refresh on mode-transition n_strategy change so the c3-mode
@@ -465,6 +468,7 @@ class SamplingC3MPC:
                 rng       = self._rng,
                 g_hat     = g_hat,
                 obj_quat  = obj_quat,
+                yaw_delta = yaw_delta,
             )
             self._sample_buffer_n_strategy = n_strategy
             self._sample_buffer_age = 0
@@ -792,6 +796,7 @@ class SamplingC3MPC:
                        g_hat:       np.ndarray,
                        prev_mode:   str,
                        obj_quat:    Optional[np.ndarray] = None,
+                       yaw_delta:   Optional[float]      = None,
                        ) -> tuple[list[np.ndarray], list[str]]:
         """Construct the per-loop sample list. Returns (positions, labels).
 
@@ -814,7 +819,7 @@ class SamplingC3MPC:
                       else sp.num_additional_samples_repos)
         strategy_samples = self._get_persistent_samples(
             obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
-            obj_quat=obj_quat)
+            obj_quat=obj_quat, yaw_delta=yaw_delta)
         for i, p in enumerate(strategy_samples):
             positions.append(p)
             labels.append(f"strat_{i}")
@@ -1137,10 +1142,20 @@ class SamplingC3MPC:
             plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
         ).flatten().copy()
 
+        # D.3 (2026-07-13) — shortest-angle yaw delta from current to
+        # target. Feeds the yaw-torque face-selection bias in the T
+        # sampler. For the box (target_yaw = 0 and box stays flat),
+        # yaw_delta stays near 0 and the sampler skips the bias entirely
+        # (see sampling.py:_face_normal_projection D.3 block).
+        _yaw_now_samp = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
+        _dy_samp = float(target_yaw) - _yaw_now_samp
+        yaw_delta_samp = float(
+            np.arctan2(np.sin(_dy_samp), np.cos(_dy_samp)))
+
         # 2. Build sample list (k=0 = current EE always first)
         samples, labels = self._build_samples(
             ee_pos_now, obj_xy, g_hat, self._prev_mode,
-            obj_quat=obj_quat)
+            obj_quat=obj_quat, yaw_delta=yaw_delta_samp)
 
         # 3. Evaluate every sample (per-sample C3 + alignment + travel)
         results = self.inner_solver.evaluate_samples(

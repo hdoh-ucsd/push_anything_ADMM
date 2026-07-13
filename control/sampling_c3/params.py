@@ -343,6 +343,24 @@ class SamplingParams:
     # takes priority over goal-align; goal-align becomes a no-op.
     use_mesh_normal_area_weighting:      bool  = False
 
+    # D.3 (2026-07-13) — yaw-torque alignment face bias. When > 0 AND
+    # the task has a nonzero yaw_delta (target_yaw − current_yaw), each
+    # face's draw probability is multiplied by
+    #   w_i = 1 + yaw_face_bias_strength * max(0, sign(yaw_delta) · τ_z_i)
+    # where τ_z_i = ry_i·nx_i − rx_i·ny_i is the per-unit-force z-torque
+    # induced by a normal push at that face's world-frame centre. Faces
+    # whose contact torque matches the goal-yaw direction are over-
+    # represented; anti-aligned faces get no bonus. Multiplies onto the
+    # existing area / goal-align weights (composes cleanly with either).
+    # Default 0.0 → regression-safe identity. Set on the T-config to
+    # break the seed-0 face-2/face-4 tie in favour of the goal-aligned
+    # torque face (see 2026-07-13 D.2/D.3 writeup).
+    # Box: box has 4 cardinal side faces with rx·ny − ry·nx = 0
+    # identically (a single-face push cannot yaw a cube about its z-axis),
+    # so the bias is a null identity for the box shape regardless of the
+    # yaml value. Bit-identical for box.
+    yaw_face_bias_strength:              float = 0.0
+
     # Workspace bounds (kept here, not in a separate sampling_c3_options.yaml)
     workspace_xy_min:                    list  = field(default_factory=lambda: [-0.5, -0.7])
     # F3 ship 2026-05-14: y_max raised from 0.0 to 0.13 to match sampling_radius.
