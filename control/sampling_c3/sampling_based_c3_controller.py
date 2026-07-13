@@ -1199,11 +1199,32 @@ class SamplingC3MPC:
         # equivalent for our pushing task)
         w_obj_xy = self._quad_cost.w_obj_xy
         config_cost_now = w_obj_xy * (goal_dist ** 2)
+
+        # D.2 fix (2026-07-13) — real yaw error for tasks with a rotation
+        # goal (T-push). Previously hardcoded rot_error=0, which is
+        # correct for the box (task has no yaw goal so goal_yaw defaults
+        # to 0) but silently discards the T's dominant progress signal
+        # (T cost is yaw-dominated per w_yaw=800 in the T config, while
+        # c3 exits are governed by ProgressTracker's rot/pos improve
+        # counters).
+        #
+        # Computed as the shortest angular distance from the object's
+        # current z-yaw to target_yaw. For the box, target_yaw defaults
+        # to 0 and the box stays flat, so rot_error stays at ~0 and the
+        # ProgressTracker's rot state is functionally unchanged.
+        # Additionally, box configs use track_c3_progress_via=kPosOnly
+        # which does NOT read rot_error at all (progress.py:195-198),
+        # so downstream met_progress is bit-identical for box. Only the
+        # T config that opts into kPosOrRotCost sees behavior change.
+        _yaw_now = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
+        _dy = _yaw_now - float(target_yaw)
+        rot_error_now = float(np.abs(np.arctan2(np.sin(_dy), np.cos(_dy))))
+
         self.progress.update(StepMetrics(
             c3_cost     = c_curr,
             config_cost = config_cost_now,
             pos_error   = goal_dist,
-            rot_error   = 0.0,   # no rotation goal in pushing task
+            rot_error   = rot_error_now,
         ))
 
         # 6. Mode-switch decision

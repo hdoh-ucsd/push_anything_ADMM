@@ -139,8 +139,18 @@ entry_align_threshold: 0.0
 progress_params:
   # Which progress metric drives the timeout decision.
   # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kPosOnly | kConfigCostDrop
-  # kPosOnly: pushing-task variant; avoids the rot=0 OR-mask in kPosOrRotCost.
-  track_c3_progress_via: kPosOnly
+  #
+  # D.2 fix (2026-07-13): kPosOrRotCost, NOT kPosOnly.
+  # T-push cost is yaw-dominated (w_yaw=800 vs w_obj_xy=100000·yaw² with
+  # yaw goal −0.7379 rad). c3 optimizes yaw, but kPosOnly only counts
+  # pos_error toward "progress" — c3 exits via kToReposUnproductive
+  # every ~5 ticks even while c3 is productively rotating the T. The
+  # port had rot_error hardcoded to 0 (see wrapper.py, progress-update
+  # site) so kPosOrRotCost previously degenerated to kPosOnly; that
+  # hardcode is now fixed to compute the real yaw residual, which lets
+  # kPosOrRotCost see rotational progress on the T.
+  # Box unaffected: box configs (sampling_c3_kik*.yaml) keep kPosOnly.
+  track_c3_progress_via: kPosOrRotCost
 
   # Number of control loops to wait before declaring "no progress" timeout.
   # §9 reference alignment: push_t/parameters/progress_params_c3plus.yaml
