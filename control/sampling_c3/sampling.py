@@ -279,10 +279,19 @@ def _face_normal_projection(n_samples:    int,
     # pusher_radius 0.025 + 0.005). So the port's SIDE-face intent for
     # ANY object gets the same sphere-surface margin the box already
     # relies on.
+    #
+    # Float-comparison tolerance (1 µm): the box's yaml `0.030` floats to
+    # exactly 0.03, but `PUSHER_RADIUS + 0.005` = 0.025 + 0.005 evaluates
+    # to 0.030000000000000002 in binary float. A naive `<` fires on that
+    # ULP gap and perturbs the box's downstream sample positions, IK, and
+    # Drake dynamics — the box tripwire broke on this on 2026-07-13. Only
+    # bump the setback when it's strictly less than min_setback minus 1 µm,
+    # so any yaml value at or above (pusher_r + clearance) is a strict
+    # no-op regardless of float representation.
     from sim.env_builder import PUSHER_RADIUS as _PUSHER_RADIUS
     _MIN_CLEARANCE_ABOVE_R = 0.005
     _min_setback = float(_PUSHER_RADIUS) + _MIN_CLEARANCE_ABOVE_R
-    if setback < _min_setback:
+    if setback + 1e-6 < _min_setback:
         setback = _min_setback
 
     # Goal-alignment conditional jitter setup. Only meaningful when g_hat
