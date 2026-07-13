@@ -1224,7 +1224,21 @@ class SamplingC3MPC:
         finished_repos = self._last_repos_finished
         # Stage A — when PWL trajectory is active, derive finished_repos
         # from the trajectory's is_finished (BOTH t ≥ t_end AND EE within
-        # 5 mm of p_target) instead of the legacy tracker's diag.
+        # ``tol`` of p_target) instead of the legacy tracker's diag.
+        #
+        # BUG 1 wiring fix (2026-07-13): tolerance widened from 5 mm to
+        # 20 mm to match the IK tracker's euclidean predicate at
+        # reposition_ik.py:1465 (‖p_target − ee_now‖ ≤ 20 mm). The 5 mm
+        # here was preventing Path 1 (kToC3ReachedReposTarget) from ever
+        # firing for T: the T-shape setback is inside the vertical bar's
+        # sphere-swept envelope (BUG 2), so physical descent stalls with
+        # ‖p_target − ee_now‖ ≈ 20 mm rather than 5 mm — the trajectory
+        # is effectively arrived but the physical residual holds above
+        # 5 mm indefinitely. 20 mm matches the reference-conformant IK
+        # tracker predicate and closes the mode-switch wiring gap.
+        # Box path unaffected: use_reposition_pwl_trajectory defaults to
+        # False (only T config sets it True), so line 1224's tracker.finished
+        # remains the box's authoritative finished signal.
         if self._use_pwl_traj and self._pwl_traj is not None:
             _sim_t_fin = float(self._step) * float(self._dt_ctrl)
             try:
@@ -1235,7 +1249,7 @@ class SamplingC3MPC:
             except Exception:
                 _ee_now_fin = np.zeros(3)
             finished_repos = self._pwl_traj.is_finished(
-                _sim_t_fin, _ee_now_fin, tol=0.005)
+                _sim_t_fin, _ee_now_fin, tol=0.020)
 
         # Contact-proximity entry gate: don't fire kToC3ReachedReposTarget
         # just because the IK arrived at the setback target — require the
