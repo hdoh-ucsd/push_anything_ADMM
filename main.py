@@ -984,6 +984,10 @@ def main():
     # Geodesic orientation error vs goal: acos((tr(R_goal^T R_final)-1)/2).
     # Reference success gate for push_t is position<0.02m AND orient<0.1 rad.
     _final_quat = final_q[pos_start:pos_start + 4]  # [qw, qx, qy, qz]
+    # Drake plant state drifts slightly off unit norm; ad.Quaternion(w,x,y,z)
+    # rejects non-normalized input, so renormalize here.
+    _qn = float(np.linalg.norm(_final_quat))
+    _final_quat = _final_quat / _qn if _qn > 0 else np.array([1.0, 0.0, 0.0, 0.0])
     _R_final = ad.RotationMatrix(ad.Quaternion(
         _final_quat[0], _final_quat[1], _final_quat[2], _final_quat[3]
     )).matrix()
