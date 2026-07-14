@@ -813,30 +813,6 @@ def main():
         # double-counted gravity (see audit_output/wire_probe/
         # CLIMB_SOURCE_REPORT.md).
         total_torque = tau_g[:n_u] + u_opt
-        # Tier-2 executor diagnostic (docs/conformance-map.md §1.d):
-        # LOG-ONLY, env-gated PUSHA_EXEC_T2_DIAG=1. Checks whether the
-        # plant sees an OVER-CAP torque because port clamps task-only u
-        # inside the QP and then ADDS tau_g here — reference clamps a
-        # u that already includes gravity comp against the same cap.
-        # No behavioral change (pure print + arithmetic on locals).
-        if os.environ.get("PUSHA_EXEC_T2_DIAG", "0") == "1" and (step < 5 or step % 200 == 0):
-            _cap = np.array([87., 87., 87., 87., 12., 12., 12.])
-            _u_abs = np.abs(u_opt)
-            _tot_abs = np.abs(total_torque)
-            _task_over = int((_u_abs > _cap + 1e-6).sum())
-            _plant_over = int((_tot_abs > _cap + 1e-6).sum())
-            _plant_over_joints = np.where(_tot_abs > _cap + 1e-6)[0].tolist()
-            _worst_j = int(np.argmax(_tot_abs - _cap))
-            _headroom = float(_cap[_worst_j] - _tot_abs[_worst_j])
-            print(f"[EXEC-T2] step={step} t={sim_time:.2f}s "
-                  f"u_task={np.round(u_opt, 2).tolist()} "
-                  f"tau_g={np.round(tau_g[:n_u], 2).tolist()} "
-                  f"total_plant={np.round(total_torque, 2).tolist()} "
-                  f"cap={_cap.tolist()} "
-                  f"task_over={_task_over} plant_over={_plant_over} "
-                  f"plant_over_joints={_plant_over_joints} "
-                  f"worst_j={_worst_j} worst_headroom_Nm={_headroom:+.2f}",
-                  flush=True)
         plant.get_actuation_input_port().FixValue(plant_ctx, total_torque)
 
         ee_pos = plant.CalcPointsPositions(

@@ -324,48 +324,6 @@ class OperationalSpaceController:
             print(f"[OSC-INIT]   q_nominal={np.round(self.q_nominal, 4).tolist()}")
             print(f"[OSC-INIT]   use_force_tracking={self.use_force_tracking}  "
                   f"W_force={self.gains.W_force}")
-            # Tier-2 executor diagnostic (docs/conformance-map.md §1.e/1.f):
-            # LOG-ONLY, env-gated PUSHA_EXEC_T2_DIAG=1. Discloses the
-            # effective gains + frame identity that the QP actually uses,
-            # after the _load_osc_gains YAML+envvar precedence and the
-            # §7.43 / §7.70 override flags. No behavioral change.
-            import os as _os_t2
-            if _os_t2.environ.get("PUSHA_EXEC_T2_DIAG", "0") == "1":
-                try:
-                    _body_name = self.ee_frame.body().name()
-                except Exception:
-                    _body_name = "<query-failed>"
-                _offset = None
-                try:
-                    # RigidTransform of the ee_frame origin in the body frame
-                    _X = self.ee_frame.GetFixedPoseInBodyFrame()
-                    _offset = _X.translation().tolist()
-                except Exception:
-                    _offset = "<query-failed>"
-                print(f"[EXEC-T2] ee_frame body='{_body_name}' offset={_offset} "
-                      f"(reference target: 'end_effector_tip' + Vector3d::Zero())",
-                      flush=True)
-                print(f"[EXEC-T2] gains_effective_at_init: "
-                      f"Kp_cart={self.gains.Kp_cart.tolist()} "
-                      f"Kd_cart={self.gains.Kd_cart.tolist()} "
-                      f"W_track={self.gains.W_track} "
-                      f"W_force={self.gains.W_force} "
-                      f"W_torque={self.gains.W_torque} "
-                      f"W_acc={self.gains.W_acc}", flush=True)
-                print(f"[EXEC-T2] compound_authority: "
-                      f"pos={self.gains.W_track * float(self.gains.Kp_cart[0]):.1f} "
-                      f"force={self.gains.W_force:.1f} "
-                      f"ratio(pos:force)={self.gains.W_track * float(self.gains.Kp_cart[0]) / max(self.gains.W_force, 1e-9):.1f}:1",
-                      flush=True)
-                print(f"[EXEC-T2] c3_ref_gains_flag={self._c3_ref_gains_flag} "
-                      f"env_PUSHA_REF_OSC_ALIGN={_os_t2.environ.get('PUSHA_REF_OSC_ALIGN', '0')} "
-                      f"env_PUSHA_OSC_C3_MODE_REFERENCE_GAINS={_os_t2.environ.get('PUSHA_OSC_C3_MODE_REFERENCE_GAINS', '0')}",
-                      flush=True)
-                if self._c3_ref_gains_flag:
-                    print(f"[EXEC-T2] c3_mode_override_gains: "
-                          f"Kp_cart={self.gains_c3.Kp_cart.tolist()} "
-                          f"Kd_cart={self.gains_c3.Kd_cart.tolist()} "
-                          f"W_track={self.gains_c3.W_track}", flush=True)
 
         # τ_ff diagnostic — the EE-arm slice of the feedforward force,
         # signed so it represents the joint torque needed to counter the
