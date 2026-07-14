@@ -1,46 +1,37 @@
-# Reference-aligned OSC gains for T-shape pushing (push_t task).
+# Tshape OSC yaml: matches config/osc_franka.yaml (port-tuned, stable)
+# with W_joint2=1 (reference elbow pin) as the ONLY divergence.
 #
-# Sourced from dairlib push_anything_dev @ 257e3ed:
-#   examples/sampling_c3/shared_parameters/osc_params.yaml
-#
-# Box tasks (pushing/hard_pushing/shepherding/cube_turning) continue to
-# use config/osc_franka.yaml (port-tuned values). Shape-dispatched at
-# construction in main.py.
+# The reference-alignment attempts (Kp=200, W_track=1, W_rot=10)
+# destabilized the arm because they depend on a coupled cost stack the
+# port doesn't fully replicate. This file preserves the port's known-
+# good gains; the T-specific work happens at the c3-mode target level
+# (geometric contact target in sampling_based_c3_controller.py) with
+# W_force=0 override (main.py) to let position tracking drive contact.
 osc:
-  # Reference EndEffectorKp=[200,200,200] EndEffectorKd=[20,20,20].
-  Kp_cart: [200.0, 200.0, 200.0]
-  Kd_cart: [20.0,  20.0,  20.0]
-
-  # Posture nullspace (unchanged from port — reference doesn't ship separate
-  # per-joint arm posture gains for push_anything; the joint-2 pin below is
-  # the dominant posture term).
+  # Port-tuned values from config/osc_franka.yaml.
+  Kp_cart: [400.0, 400.0, 400.0]
+  Kd_cart: [40.0,  40.0,  40.0]
   Kp_null: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
   Kd_null: [3.0,  3.0,  3.0,  3.0,  3.0,  3.0,  3.0]
 
-  # Reference w_elbow=1, elbow_kp=200, elbow_kd=10, target=1.1 rad.
+  # W_joint2 kept OFF per memory
+  # `project_reproduce_dairlib_restored_main_joint2_flag.md`: at W=1 the pin
+  # yanks EE from z=95mm to z=711mm in 1s during c3 mode — exactly the
+  # runaway seen at root_cause_fix_v5 (EE flew to z=+0.437).
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  W_joint2:            1.0
+  W_joint2:            0.0
   joint2_target_rad:   1.1
   joint2_idx:            1
 
-  # Reference EndEffectorW = diag(1,1,1) → W_track scalar 1.
-  W_track:   1.0
-  W_posture: 1.0
+  W_track:   100.0
+  W_posture:   1.0
+  W_torque:  0.001
+  W_acc:     0.001
 
-  # Reference w_input=0 → no input regularization.
-  W_torque: 0.0
-  # Reference w_accel·W_accel = 1e-5 · 0.01 = 1e-7 per axis.
-  W_acc:    0.0000001
-
-  # Reference values scaffolded but rotation cost DISABLED (W_rot=0). At
-  # reference authority (W_rot·Kp_rot = 8000/axis vs W_track·Kp_cart = 200)
-  # rotation dominates 40:1 and saturates arm joints. Reference works
-  # against its own coupled cost stack + Anitescu contact model that the
-  # port doesn't fully replicate here.
+  # Rotation tracking scaffolded but off (see osc_franka.yaml comment).
   Kp_rot: [800.0, 800.0, 800.0]
   Kd_rot: [40.0,  40.0,  40.0]
   W_rot:  0.0
 
-  # Per-joint torque limits (Franka URDF spec) — unchanged from port.
   tau_max: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]

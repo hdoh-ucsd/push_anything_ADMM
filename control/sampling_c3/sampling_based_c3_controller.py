@@ -2403,6 +2403,70 @@ class SamplingC3MPC:
                     ).flatten()
                     self.plant.SetPositions(plant_ctx, current_q)
                     self.plant.SetVelocities(plant_ctx, current_v)
+                # ROOT-CAUSE DIAGNOSTIC (tshape-only, env-gated):
+                # `FK(x_seq[1][:7])` is a phantom target in the port's
+                # non-converged C3+ regime. Trace evidence
+                # (results/trace_p_ee/tshape.log) shows dot(Δp_ee, g_hat)
+                # < 0 for every traced c3 step: planner's arm-state
+                # prediction is physically inconsistent with its
+                # box-motion prediction because the LCS's ADMM projection
+                # doesn't converge on λ, and the box moves via "phantom
+                # contact force" that has no corresponding arm-state
+                # trajectory.
+                #
+                # ATTEMPTED FIX: replace with geometric contact target
+                # `box_center - g_hat·(face_offset + pusher_radius)`.
+                # This gives the correct Cartesian direction (dot > 0)
+                # but lacks joint-space guidance — the arm null space
+                # (4-DOF for a 3-DOF Cartesian target) drifts wildly,
+                # producing arm runaway that leaves EE 40-90 cm from
+                # start within a few seconds even with port-stable OSC
+                # gains and W_force=0.
+                #
+                # Real fix requires either: MIQP planner (not available
+                # in port), or IK-projected joint-space guidance per tick
+                # (adds solve time). Gated behind PUSHA_TSHAPE_C3_GEOM=1
+                # for future research; default OFF preserves the
+                # baseline (T doesn't move, but arm stays stable).
+                _shape_c3 = getattr(self.base_mpc.formulator,
+                                    "_object_shape", "box")
+                import os as _os_tg
+                _tshape_geom_on = (_shape_c3 == "tshape"
+                                   and _os_tg.environ.get(
+                                       "PUSHA_TSHAPE_C3_GEOM", "0") == "1")
+                if _tshape_geom_on:
+                    _delta_fk = _p_ee_des - ee_pos_now
+                    _dot_g = float(np.dot(_delta_fk[:2], g_hat_3d[:2]))
+                    if _dot_g < 0.0:
+                        _box_xy_now = np.array([
+                            current_q[self._obj_x_idx],
+                            current_q[self._obj_y_idx],
+                        ])
+                        _face_offset = (abs(g_hat_3d[0]) * 0.13
+                                        + abs(g_hat_3d[1]) * 0.08)
+                        _contact_offset = (_face_offset
+                                           + float(getattr(self, "_pusher_radius", 0.0195)))
+                        _p_ee_des = np.array([
+                            _box_xy_now[0] - g_hat_3d[0] * _contact_offset,
+                            _box_xy_now[1] - g_hat_3d[1] * _contact_offset,
+                            float(_p_ee_des[2]),
+                        ])
+                # DIAG: trace p_ee_des vs current EE to isolate OSC-target bug.
+                import os as _os_pd
+                if _os_pd.environ.get("PUSHA_TRACE_P_EE_DES", "0") == "1":
+                    _dp = _p_ee_des - ee_pos_now
+                    _arm_now = current_q[:self.n_u]
+                    _arm_pred = _x_seq[1][:self.n_u]
+                    _darm = _arm_pred - _arm_now
+                    print(f"[TRACE-P_EE_DES] step={self._step} "
+                          f"ee_now=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}) "
+                          f"p_ee_des=({_p_ee_des[0]:+.4f},{_p_ee_des[1]:+.4f},{_p_ee_des[2]:+.4f}) "
+                          f"delta_ee=({_dp[0]:+.4f},{_dp[1]:+.4f},{_dp[2]:+.4f}) "
+                          f"|delta|={float(np.linalg.norm(_dp)):.4f} "
+                          f"g_hat=({g_hat_3d[0]:+.3f},{g_hat_3d[1]:+.3f},{g_hat_3d[2]:+.3f}) "
+                          f"dot(delta,g_hat)={float(np.dot(_dp[:2], g_hat_3d[:2])):+.4f} "
+                          f"|darm|={float(np.linalg.norm(_darm)):.4f}",
+                          flush=True)
             else:
                 _p_ee_des = ee_pos_now
             # Stage 2b: index into the planner's λ-horizon by elapsed time
