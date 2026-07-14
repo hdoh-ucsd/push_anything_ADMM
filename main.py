@@ -528,21 +528,34 @@ def main():
     # contact count + object_shape into the LCSFormulator. Falls back to
     # defaults when --sampling-c3 is not provided (env var
     # LCS_EXPLICIT_MANIPULAND_GND overrides regardless).
-    # Tune-2: back to 0 (port default). Explicit ground synthesis was
-    # coupled to the Anitescu swap; both reverted.
-    _pre_manipuland_gnd = 0
-    _pre_ref_pair_admission_planner = False
+    #
+    # SHAPE-GATED DEFAULTS (T-only tune, box path byte-identical):
+    #   box     : 0 explicit ground witnesses + ref-pair-admission OFF
+    #             (port's proven baseline; drag=10 band-aid handles ground)
+    #   tshape  : 3 explicit ground witnesses (matches reference push_t
+    #             sphere-witness layout) + ref-pair-admission ON. The port
+    #             already gates `use_reference_pair_admission_planner_lcs`
+    #             on shape=="tshape" at the LCSFormulator use site.
+    _obj_shape_for_defaults = str(task_cfg.get("object_type", "box"))
+    if _obj_shape_for_defaults == "tshape":
+        _pre_manipuland_gnd = 3
+        _pre_ref_pair_admission_planner = True
+    else:
+        _pre_manipuland_gnd = 0
+        _pre_ref_pair_admission_planner = False
     if args.sampling_c3 is not None:
         try:
             import yaml as _yaml_pre
             with open(args.sampling_c3) as _f_pre:
                 _raw_pre = _yaml_pre.safe_load(_f_pre) or {}
             _pre_manipuland_gnd = int(_raw_pre.get(
-                "lcs_explicit_manipuland_ground_contacts", 0))
+                "lcs_explicit_manipuland_ground_contacts",
+                _pre_manipuland_gnd))
             _pre_ref_pair_admission_planner = bool(_raw_pre.get(
-                "use_reference_pair_admission_planner_lcs", False))
+                "use_reference_pair_admission_planner_lcs",
+                _pre_ref_pair_admission_planner))
         except Exception:
-            _pre_manipuland_gnd = 0
+            pass
     formulator = LCSFormulator(
         plant, mu=task_cfg["friction"], obj_body=obj_body,
         plant_ad=plant_ad, context_ad=context_ad,

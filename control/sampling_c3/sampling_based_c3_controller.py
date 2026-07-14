@@ -2449,21 +2449,33 @@ class SamplingC3MPC:
             _Jn    = self.base_mpc.formulator._last_J_n
             _Jt    = self.base_mpc.formulator._last_J_t
             # SIGN-BUG FIX: only issue a force-tracking command when the
-            # planner actually predicts contact force on the EE-BOX pair.
-            # Without this gate, `_derive_force_command` returned
-            # `nominal_push_force · (−g_hat)` even at 10 cm separation, so
-            # the OSC generated joint torques to compensate for a fictional
-            # environment force — the arm accelerated as if pushing against
-            # a wall that wasn't there, and its actual EE motion diverged
-            # from the sample-driven `p_ee_desired`. Now: if the LCS
-            # admitted an EE-BOX pair AND predicted a non-trivial λ_n,
-            # execute the recoil-tracking command; otherwise pass 0 so the
-            # QP falls back to pure position tracking.
-            _lam_n_mag = (float(np.sum(np.abs(_lam_n)))
-                          if (_lam_n is not None
-                              and hasattr(_lam_n, "size")
-                              and _lam_n.size > 0)
-                          else 0.0)
+            # planner actually predicts contact force on the EE-manipuland
+            # pair specifically. Ground-contact λ_n (T-witness reactions,
+            # BOX-GND friction) can be ~2 N even without EE contact, which
+            # would spuriously trigger `_derive_force_command` and re-open
+            # the fictional-force drift.
+            #
+            # Filter by pair-type using formulator._last_contact_info
+            # (same mechanism `_derive_force_command` uses at line 611+).
+            # Falls back to the raw sum when contact_info is unavailable.
+            _cinfo_gate = getattr(self.base_mpc.formulator,
+                                   "_last_contact_info", None)
+            if (_lam_n is not None
+                    and hasattr(_lam_n, "size")
+                    and _lam_n.size > 0):
+                if (_cinfo_gate is not None
+                        and len(_cinfo_gate) == _lam_n.size):
+                    _ee_idxs_gate = [i for i, info in enumerate(_cinfo_gate)
+                                     if isinstance(info, dict)
+                                     and info.get("tag", "") == "EE-BOX"]
+                    if _ee_idxs_gate:
+                        _lam_n_mag = float(np.sum(np.abs(_lam_n[_ee_idxs_gate])))
+                    else:
+                        _lam_n_mag = 0.0
+                else:
+                    _lam_n_mag = float(np.sum(np.abs(_lam_n)))
+            else:
+                _lam_n_mag = 0.0
             if _lam_n_mag > 0.05:
                 _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
             else:
