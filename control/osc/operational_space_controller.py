@@ -193,6 +193,26 @@ class OperationalSpaceController:
         # identity-quaternion trajectory in its own frame convention).
         self._R_target = None
 
+        # QP-signature dump hook. Env-gated, byte-identical when unset.
+        # PUSHA_QP_SIG_DUMP=1 → capture the full input tuple to the QP at
+        # compute_torque call index PUSHA_QP_SIG_STEP (default 60). Written
+        # to PUSHA_QP_SIG_DIR (default audit_output/exec_qp_sig/) as
+        # dump_call{N}.{npz,txt}. Consumed by
+        # scripts/_qp_sig_reference_emulator.py to produce a same-input
+        # τ diff against a reference-formula Python emulator.
+        if _os_ref.environ.get("PUSHA_QP_SIG_DUMP", "0") == "1":
+            self._sig_dump_step = int(
+                _os_ref.environ.get("PUSHA_QP_SIG_STEP", "60"))
+            self._sig_dump_dir = _os_ref.environ.get(
+                "PUSHA_QP_SIG_DIR", "audit_output/exec_qp_sig")
+            self._sig_dump_done = False
+            print(f"[QP-SIG] enabled: will capture compute_torque call "
+                  f"idx={self._sig_dump_step} → {self._sig_dump_dir}/",
+                  flush=True)
+        else:
+            self._sig_dump_step = None
+            self._sig_dump_done = False
+
     # ------------------------------------------------------------------
     def compute_torque(self,
                        current_q:    np.ndarray,
@@ -322,6 +342,87 @@ class OperationalSpaceController:
         else:
             _gains_active = self.gains
 
+        # --- QP-signature dump hook (env-gated, byte-identical when off) ---
+        _sig_do_dump = (self._sig_dump_step is not None
+                        and not self._sig_dump_done
+                        and self._n_calls == self._sig_dump_step)
+        if _sig_do_dump:
+            _sig_inputs = dict(
+                n_calls_idx=int(self._n_calls),
+                mode=str(mode),
+                use_force_tracking=bool(self.use_force_tracking),
+                c3_ref_gains_active=bool(
+                    self._c3_ref_gains_flag and mode == "c3"),
+                # State
+                q=np.asarray(current_q, dtype=float).copy(),
+                v=np.asarray(current_v, dtype=float).copy(),
+                p_ee_now=p_ee_now.astype(float).copy(),
+                v_ee_now=v_ee_now.astype(float).copy(),
+                # Desired
+                p_ee_desired=np.asarray(p_ee_desired, dtype=float).reshape(3).copy(),
+                v_ee_desired=(np.zeros(3) if v_ee_desired is None
+                              else np.asarray(v_ee_desired, dtype=float).reshape(3).copy()),
+                a_ee_desired=(np.zeros(3) if a_ee_desired is None
+                              else np.asarray(a_ee_desired, dtype=float).reshape(3).copy()),
+                lambda_des=(np.zeros(3) if lambda_des is None
+                            else np.asarray(lambda_des, dtype=float).reshape(3).copy()),
+                v_ee_desired_present=(v_ee_desired is not None),
+                a_ee_desired_present=(a_ee_desired is not None),
+                lambda_des_present=(lambda_des is not None),
+                # Errors
+                p_err=p_err.astype(float).copy(),
+                v_err=v_err.astype(float).copy(),
+                q_arm_err=q_arm_err.astype(float).copy(),
+                v_arm_err=v_arm_err.astype(float).copy(),
+                q_arm=q_arm.astype(float).copy(),
+                v_arm=v_arm.astype(float).copy(),
+                # Dynamics tuple (Drake queries)
+                M=M.astype(float).copy(),
+                Cv=Cv.astype(float).copy(),
+                gravity=g.astype(float).copy(),
+                bias=bias.astype(float).copy(),
+                B=self._B.astype(float).copy(),
+                J_v=J_v.astype(float).copy(),
+                Jdot_v_v=Jdot_v_v.astype(float).copy(),
+                # Planner feedforward
+                F_ff=F_ff.astype(float).copy(),
+                F_ff_for_qp=F_ff_for_qp.astype(float).copy(),
+                had_lam_n=bool(had_lam_n),
+                had_lam_t=bool(had_lam_t),
+                # Gains (from _gains_active — what the QP actually consumes)
+                Kp_cart=np.asarray(_gains_active.Kp_cart, dtype=float).copy(),
+                Kd_cart=np.asarray(_gains_active.Kd_cart, dtype=float).copy(),
+                Kp_null=np.asarray(_gains_active.Kp_null, dtype=float).copy(),
+                Kd_null=np.asarray(_gains_active.Kd_null, dtype=float).copy(),
+                W_track=float(_gains_active.W_track),
+                W_posture=float(_gains_active.W_posture),
+                W_torque=float(_gains_active.W_torque),
+                W_acc=float(_gains_active.W_acc),
+                W_force=float(_gains_active.W_force),
+                Kp_joint2=float(getattr(_gains_active, "Kp_joint2", 0.0)),
+                Kd_joint2=float(getattr(_gains_active, "Kd_joint2", 0.0)),
+                W_joint2=float(getattr(_gains_active, "W_joint2", 0.0)),
+                joint2_target_rad=float(
+                    getattr(_gains_active, "joint2_target_rad", 0.0)),
+                joint2_idx=int(getattr(_gains_active, "joint2_idx", -1)),
+                # Rotation tracking (2.k) — cost fires when W_rot>0 in port,
+                # matches reference EndEffectorRotW·Rot{Kp,Kd}.
+                W_rot=float(getattr(_gains_active, "W_rot", 0.0)),
+                Kp_rot=(np.zeros(3) if getattr(_gains_active, "Kp_rot", None) is None
+                        else np.asarray(_gains_active.Kp_rot, dtype=float).copy()),
+                Kd_rot=(np.zeros(3) if getattr(_gains_active, "Kd_rot", None) is None
+                        else np.asarray(_gains_active.Kd_rot, dtype=float).copy()),
+                J_w=(np.zeros((3, n_v)) if J_w is None else J_w.astype(float).copy()),
+                Jdot_w_v=(np.zeros(3) if Jdot_w_v is None else Jdot_w_v.astype(float).copy()),
+                w_err=(np.zeros(3) if w_err is None else np.asarray(w_err, dtype=float).copy()),
+                w_ee_now=(np.zeros(3) if w_ee_now is None else np.asarray(w_ee_now, dtype=float).copy()),
+                rot_active=bool(_use_rot),
+                tau_max=self.limits.tau_max.astype(float).copy(),
+                # Meta
+                n_arm=int(n_arm),
+                n_v=int(n_v),
+            )
+
         # --- Build & solve QP ---
         t0 = time.perf_counter()
         u_opt, vdot_opt, success, result_str, lam_ext_opt = build_and_solve_qp(
@@ -345,6 +446,18 @@ class OperationalSpaceController:
         if not success:
             self._qp_failures += 1
 
+        # --- QP-signature dump: outputs + write ---
+        if _sig_do_dump:
+            _sig_outputs = dict(
+                u_opt=np.asarray(u_opt, dtype=float).copy(),
+                vdot_opt=np.asarray(vdot_opt, dtype=float).copy(),
+                lam_ext_opt=np.asarray(lam_ext_opt, dtype=float).copy(),
+                qp_success=bool(success),
+                qp_result=str(result_str),
+                solve_ms=float(solve_ms),
+            )
+            self._write_qp_sig_dump(_sig_inputs, _sig_outputs)
+            self._sig_dump_done = True
 
         # Saturation = any joint hit its box constraint within tolerance
         saturated = bool(np.any(
@@ -479,3 +592,66 @@ class OperationalSpaceController:
               f"saturation={self._saturation_events} "
               f"({100.0*self._saturation_events/self._n_calls:.2f}%)  "
               f"avg_solve_ms={avg_ms:.2f}")
+
+    # ------------------------------------------------------------------
+    def _write_qp_sig_dump(self, inp: dict, out: dict) -> None:
+        """Write the QP input+output snapshot for offline signature diff."""
+        import os as _os
+        _os.makedirs(self._sig_dump_dir, exist_ok=True)
+        n = int(inp["n_calls_idx"])
+        npz_path = _os.path.join(self._sig_dump_dir, f"dump_call{n}.npz")
+        txt_path = _os.path.join(self._sig_dump_dir, f"dump_call{n}.txt")
+        payload = {}
+        for k, v in inp.items():
+            payload[f"in_{k}"] = v
+        for k, v in out.items():
+            payload[f"out_{k}"] = v
+        np.savez(npz_path, **payload)
+        with open(txt_path, "w") as f:
+            f.write(f"# QP signature dump — compute_torque call idx={n}\n")
+            f.write(f"# ee_frame body={self.ee_frame.body().name()!r} "
+                    f"offset=[0,0,0]  n_arm={inp['n_arm']} n_v={inp['n_v']}\n")
+            f.write(f"# mode={inp['mode']} use_force_tracking={inp['use_force_tracking']} "
+                    f"c3_ref_gains_active={inp['c3_ref_gains_active']}\n")
+            f.write("# --- gains (as consumed by QP) ---\n")
+            for k in ("Kp_cart", "Kd_cart", "W_track", "W_posture", "W_torque",
+                      "W_acc", "W_force", "Kp_null", "Kd_null",
+                      "Kp_joint2", "Kd_joint2", "W_joint2",
+                      "joint2_target_rad", "joint2_idx", "tau_max"):
+                f.write(f"  {k} = {inp[k]!r}\n")
+            f.write("# --- state ---\n")
+            f.write(f"  q       = {np.round(inp['q'], 6).tolist()}\n")
+            f.write(f"  v       = {np.round(inp['v'], 6).tolist()}\n")
+            f.write(f"  p_ee_now= {np.round(inp['p_ee_now'], 6).tolist()}\n")
+            f.write(f"  v_ee_now= {np.round(inp['v_ee_now'], 6).tolist()}\n")
+            f.write("# --- desired / errors ---\n")
+            f.write(f"  p_ee_desired = {np.round(inp['p_ee_desired'], 6).tolist()}  "
+                    f"(present={inp['v_ee_desired_present']})\n")
+            f.write(f"  v_ee_desired = {np.round(inp['v_ee_desired'], 6).tolist()}  "
+                    f"(present={inp['v_ee_desired_present']})\n")
+            f.write(f"  a_ee_desired = {np.round(inp['a_ee_desired'], 6).tolist()}  "
+                    f"(present={inp['a_ee_desired_present']})\n")
+            f.write(f"  lambda_des   = {np.round(inp['lambda_des'], 6).tolist()}  "
+                    f"(present={inp['lambda_des_present']})\n")
+            f.write(f"  p_err        = {np.round(inp['p_err'], 6).tolist()}\n")
+            f.write(f"  v_err        = {np.round(inp['v_err'], 6).tolist()}\n")
+            f.write(f"  q_arm_err    = {np.round(inp['q_arm_err'], 6).tolist()}\n")
+            f.write(f"  v_arm_err    = {np.round(inp['v_arm_err'], 6).tolist()}\n")
+            f.write("# --- dynamics tuple summary ---\n")
+            f.write(f"  Cv[:n_arm]      = {np.round(inp['Cv'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  gravity[:n_arm] = {np.round(inp['gravity'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  bias[:n_arm]    = {np.round(inp['bias'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  F_ff[:n_arm]    = {np.round(inp['F_ff'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  F_ff_for_qp[:n_arm]={np.round(inp['F_ff_for_qp'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  had_lam_n={inp['had_lam_n']}  had_lam_t={inp['had_lam_t']}\n")
+            f.write("# --- QP outputs (port) ---\n")
+            f.write(f"  u_opt       = {np.round(out['u_opt'], 4).tolist()}\n")
+            f.write(f"  vdot_opt[:n_arm] = {np.round(out['vdot_opt'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  lam_ext_opt = {np.round(out['lam_ext_opt'], 4).tolist()}\n")
+            f.write(f"  qp_success  = {out['qp_success']}  ({out['qp_result']})\n")
+            f.write(f"  solve_ms    = {out['solve_ms']:.3f}\n")
+            f.write("# --- plant-side torque (u_opt + tau_g[:n_arm]) ---\n")
+            _tau_plant = out['u_opt'] + (-inp['gravity'][:inp['n_arm']])
+            f.write(f"  tau_g[:n_arm]      = {np.round(-inp['gravity'][:inp['n_arm']], 4).tolist()}\n")
+            f.write(f"  tau_plant (u+tau_g)= {np.round(_tau_plant, 4).tolist()}\n")
+        print(f"[QP-SIG] captured call idx={n} → {npz_path}", flush=True)
