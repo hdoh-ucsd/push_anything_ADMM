@@ -1,0 +1,316 @@
+[STAGE-A-PWL] PUSHA_REPOSITION_PWL=1 → using RepositionTrajectory + OSC position-tracking (Stage A path).
+[STAGE-A-PWL] dispatcher: use_reposition_pwl_trajectory=True
+[REPOS-T2] tracker=PiecewiseLinearTracker traj_type=kPiecewiseLinear use_pwl_traj=True env_PUSHA_REPOSITION_PWL=1
+[REPOS-T2] params: speed=0.4 pwl_speed=0.18 pwl_waypoint_height=0.15 use_straight_line_traj_under_piecewise_linear=0.008
+[REPOS-T2] reference: traj_type=kPiecewiseLinear speed=0.18 pwl_waypoint_height=0.06-0.077 straight_line_thresh=0.008
+[REPOS-T2] free_mode_v_ee_desired_wired=True  (legacy path passes v_ee_desired=None; PWL path passes v_des)
+[ADMIT-GUARD] step=1 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=1 target_stable=0/0 allow_descent=1
+[STAGE-A-PWL] step=1 sim_t=0.010 build p_start=(+0.0001,-0.0005,+0.2001) p_target=(-0.0230,-0.0800,+0.0300) K=4 t_end=1.415
+[OSC-INIT] n_arm=7 n_v=13
+[OSC-INIT]   Kp_cart=[400.0, 400.0, 400.0]  Kd_cart=[40.0, 40.0, 40.0]
+[OSC-INIT]   Kp_null=[10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+[OSC-INIT]   Kd_null=[3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+[OSC-INIT]   W_track=100.0  W_posture=1.0  W_torque=0.001  W_acc=0.001
+[OSC-INIT]   tau_max=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
+[OSC-INIT]   q_nominal=[0.5522, 0.325, 0.9763, -2.2462, -0.189, 3.0447, 0.785]
+[OSC-INIT]   use_force_tracking=True  W_force=1.0
+[STAGE-A-TRACE] step=1 sim_t=0.010 mode=free phi=0.07508 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00000 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=2 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=2 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=2 sim_t=0.020 mode=free phi=0.07473 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00002 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=3 admit_active=0 latch=0/0 ee_z=0.199 gate_cap=0
+[ALT-GATE] step=3 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=3 sim_t=0.030 mode=free phi=0.07382 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=4 admit_active=0 latch=0/0 ee_z=0.198 gate_cap=0
+[ALT-GATE] step=4 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=4 sim_t=0.040 mode=free phi=0.07252 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=5 admit_active=0 latch=0/0 ee_z=0.196 gate_cap=0
+[ALT-GATE] step=5 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=5 sim_t=0.050 mode=free phi=0.07096 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=6 admit_active=0 latch=0/0 ee_z=0.194 gate_cap=0
+[ALT-GATE] step=6 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=6 sim_t=0.060 mode=free phi=0.06921 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=7 admit_active=0 latch=0/0 ee_z=0.192 gate_cap=0
+[ALT-GATE] step=7 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=7 sim_t=0.070 mode=free phi=0.06716 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=8 admit_active=0 latch=0/0 ee_z=0.190 gate_cap=0
+[ALT-GATE] step=8 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=8 sim_t=0.080 mode=free phi=0.06541 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=9 admit_active=0 latch=0/0 ee_z=0.188 gate_cap=0
+[ALT-GATE] step=9 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=9 sim_t=0.090 mode=free phi=0.06343 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=10 admit_active=0 latch=0/0 ee_z=0.186 gate_cap=0
+[ALT-GATE] step=10 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=10 sim_t=0.100 mode=free phi=0.06143 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=11 admit_active=0 latch=0/0 ee_z=0.184 gate_cap=0
+[ALT-GATE] step=11 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=11 sim_t=0.110 mode=free phi=0.05942 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=12 admit_active=0 latch=0/0 ee_z=0.182 gate_cap=0
+[ALT-GATE] step=12 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=12 sim_t=0.120 mode=free phi=0.05742 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=13 admit_active=0 latch=0/0 ee_z=0.180 gate_cap=0
+[ALT-GATE] step=13 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=13 sim_t=0.130 mode=free phi=0.05542 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=14 admit_active=0 latch=0/0 ee_z=0.178 gate_cap=0
+[ALT-GATE] step=14 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=14 sim_t=0.140 mode=free phi=0.05343 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=15 admit_active=0 latch=0/0 ee_z=0.176 gate_cap=0
+[ALT-GATE] step=15 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=15 sim_t=0.150 mode=free phi=0.05147 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=16 admit_active=0 latch=0/0 ee_z=0.175 gate_cap=0
+[ALT-GATE] step=16 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=16 sim_t=0.160 mode=free phi=0.04951 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=17 admit_active=0 latch=0/0 ee_z=0.173 gate_cap=0
+[ALT-GATE] step=17 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=17 sim_t=0.170 mode=free phi=0.04758 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=18 admit_active=0 latch=0/0 ee_z=0.171 gate_cap=0
+[ALT-GATE] step=18 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=18 sim_t=0.180 mode=free phi=0.04565 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=19 admit_active=0 latch=0/0 ee_z=0.169 gate_cap=0
+[ALT-GATE] step=19 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=19 sim_t=0.190 mode=free phi=0.04356 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=20 admit_active=0 latch=0/0 ee_z=0.167 gate_cap=0
+[ALT-GATE] step=20 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=20 sim_t=0.200 mode=free phi=0.04167 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=21 admit_active=0 latch=0/0 ee_z=0.165 gate_cap=0
+[ALT-GATE] step=21 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=21 sim_t=0.210 mode=free phi=0.03980 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=22 admit_active=0 latch=0/0 ee_z=0.163 gate_cap=0
+[ALT-GATE] step=22 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=22 sim_t=0.220 mode=free phi=0.03794 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=23 admit_active=0 latch=0/0 ee_z=0.161 gate_cap=0
+[ALT-GATE] step=23 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=23 sim_t=0.230 mode=free phi=0.03610 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=24 admit_active=0 latch=0/0 ee_z=0.159 gate_cap=0
+[ALT-GATE] step=24 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=24 sim_t=0.240 mode=free phi=0.03426 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=25 admit_active=0 latch=0/0 ee_z=0.157 gate_cap=0
+[ALT-GATE] step=25 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=25 sim_t=0.250 mode=free phi=0.03243 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=26 admit_active=0 latch=0/0 ee_z=0.156 gate_cap=0
+[ALT-GATE] step=26 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=26 sim_t=0.260 mode=free phi=0.03061 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=27 admit_active=0 latch=0/0 ee_z=0.154 gate_cap=0
+[ALT-GATE] step=27 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=27 sim_t=0.270 mode=free phi=0.02879 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=28 admit_active=0 latch=0/0 ee_z=0.152 gate_cap=0
+[ALT-GATE] step=28 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=28 sim_t=0.280 mode=free phi=0.02698 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=29 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=29 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=29 sim_t=0.290 mode=free phi=0.02517 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=30 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=30 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=30 sim_t=0.300 mode=free phi=0.02370 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=31 admit_active=0 latch=0/0 ee_z=0.148 gate_cap=0
+[ALT-GATE] step=31 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=31 sim_t=0.310 mode=free phi=0.02277 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=32 admit_active=0 latch=0/0 ee_z=0.147 gate_cap=0
+[ALT-GATE] step=32 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=32 sim_t=0.320 mode=free phi=0.02222 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=33 admit_active=0 latch=0/0 ee_z=0.147 gate_cap=0
+[ALT-GATE] step=33 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=33 sim_t=0.330 mode=free phi=0.02196 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=34 admit_active=0 latch=0/0 ee_z=0.147 gate_cap=0
+[ALT-GATE] step=34 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=34 sim_t=0.340 mode=free phi=0.02188 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=35 admit_active=0 latch=0/0 ee_z=0.147 gate_cap=0
+[ALT-GATE] step=35 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=35 sim_t=0.350 mode=free phi=0.02195 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=36 admit_active=0 latch=0/0 ee_z=0.147 gate_cap=0
+[ALT-GATE] step=36 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=36 sim_t=0.360 mode=free phi=0.02210 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=37 admit_active=0 latch=0/0 ee_z=0.147 gate_cap=0
+[ALT-GATE] step=37 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=37 sim_t=0.370 mode=free phi=0.02230 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=38 admit_active=0 latch=0/0 ee_z=0.148 gate_cap=0
+[ALT-GATE] step=38 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=38 sim_t=0.380 mode=free phi=0.02254 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=39 admit_active=0 latch=0/0 ee_z=0.148 gate_cap=0
+[ALT-GATE] step=39 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=39 sim_t=0.390 mode=free phi=0.02279 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=40 admit_active=0 latch=0/0 ee_z=0.148 gate_cap=0
+[ALT-GATE] step=40 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=40 sim_t=0.400 mode=free phi=0.02304 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=41 admit_active=0 latch=0/0 ee_z=0.148 gate_cap=0
+[ALT-GATE] step=41 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=41 sim_t=0.410 mode=free phi=0.02328 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=42 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=42 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=42 sim_t=0.420 mode=free phi=0.02351 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=43 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=43 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=43 sim_t=0.430 mode=free phi=0.02372 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=44 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=44 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=44 sim_t=0.440 mode=free phi=0.02391 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=45 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=45 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=45 sim_t=0.450 mode=free phi=0.02409 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=46 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=46 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=46 sim_t=0.460 mode=free phi=0.02424 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=47 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=47 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=47 sim_t=0.470 mode=free phi=0.02438 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=48 admit_active=0 latch=0/0 ee_z=0.149 gate_cap=0
+[ALT-GATE] step=48 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=48 sim_t=0.480 mode=free phi=0.02450 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=49 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=49 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=49 sim_t=0.490 mode=free phi=0.02461 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=50 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=50 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=50 sim_t=0.500 mode=free phi=0.02470 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=51 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=51 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=51 sim_t=0.510 mode=free phi=0.02477 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=52 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=52 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=52 sim_t=0.520 mode=free phi=0.02484 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=53 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=53 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=53 sim_t=0.530 mode=free phi=0.02490 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=54 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=54 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=54 sim_t=0.540 mode=free phi=0.02494 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=55 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=55 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=55 sim_t=0.550 mode=free phi=0.02498 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=56 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=56 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=56 sim_t=0.560 mode=free phi=0.02502 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=57 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=57 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=57 sim_t=0.570 mode=free phi=0.02504 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=58 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=58 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=58 sim_t=0.580 mode=free phi=0.02507 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=59 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=59 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=59 sim_t=0.590 mode=free phi=0.02515 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=60 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=60 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=60 sim_t=0.600 mode=free phi=0.02528 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=61 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=61 target_stable=0/0 allow_descent=1
+[STAGE-A-PWL] step=61 sim_t=0.610 build p_start=(-0.0160,-0.0561,+0.1501) p_target=(+0.0800,+0.0000,+0.0300) K=3 t_end=1.894
+[STAGE-A-TRACE] step=61 sim_t=0.610 mode=free phi=0.02547 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=62 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=62 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=62 sim_t=0.620 mode=free phi=0.02569 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=63 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=63 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=63 sim_t=0.630 mode=free phi=0.02587 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=64 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=64 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=64 sim_t=0.640 mode=free phi=0.02598 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=65 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=65 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=65 sim_t=0.650 mode=free phi=0.02603 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=66 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=66 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=66 sim_t=0.660 mode=free phi=0.02602 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=67 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=67 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=67 sim_t=0.670 mode=free phi=0.02598 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=68 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=68 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=68 sim_t=0.680 mode=free phi=0.02593 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=69 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=69 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=69 sim_t=0.690 mode=free phi=0.02588 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=70 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=70 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=70 sim_t=0.700 mode=free phi=0.02583 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=71 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=71 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=71 sim_t=0.710 mode=free phi=0.02580 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[ADMIT-GUARD] step=72 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=72 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=72 sim_t=0.720 mode=free phi=0.02578 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=73 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=73 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=73 sim_t=0.730 mode=free phi=0.02575 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=74 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=74 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=74 sim_t=0.740 mode=free phi=0.02572 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=75 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=75 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=75 sim_t=0.750 mode=free phi=0.02568 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=76 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=76 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=76 sim_t=0.760 mode=free phi=0.02565 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=77 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=77 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=77 sim_t=0.770 mode=free phi=0.02561 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=78 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=78 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=78 sim_t=0.780 mode=free phi=0.02558 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=79 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=79 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=79 sim_t=0.790 mode=free phi=0.02555 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=80 admit_active=0 latch=0/0 ee_z=0.151 gate_cap=0
+[ALT-GATE] step=80 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=80 sim_t=0.800 mode=free phi=0.02552 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=81 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=81 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=81 sim_t=0.810 mode=free phi=0.02550 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=82 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=82 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=82 sim_t=0.820 mode=free phi=0.02547 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=83 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=83 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=83 sim_t=0.830 mode=free phi=0.02545 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=84 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=84 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=84 sim_t=0.840 mode=free phi=0.02544 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=85 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=85 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=85 sim_t=0.850 mode=free phi=0.02542 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=86 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=86 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=86 sim_t=0.860 mode=free phi=0.02541 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=87 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=87 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=87 sim_t=0.870 mode=free phi=0.02540 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=88 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=88 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=88 sim_t=0.880 mode=free phi=0.02539 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=89 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=89 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=89 sim_t=0.890 mode=free phi=0.02539 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=90 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=90 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=90 sim_t=0.900 mode=free phi=0.02538 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=91 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=91 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=91 sim_t=0.910 mode=free phi=0.02538 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=92 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=92 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=92 sim_t=0.920 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=93 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=93 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=93 sim_t=0.930 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=94 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=94 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=94 sim_t=0.940 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=95 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=95 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=95 sim_t=0.950 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=96 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=96 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=96 sim_t=0.960 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=97 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=97 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=97 sim_t=0.970 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=98 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=98 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=98 sim_t=0.980 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=99 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=99 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=99 sim_t=0.990 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[ADMIT-GUARD] step=100 admit_active=0 latch=0/0 ee_z=0.150 gate_cap=0
+[ALT-GATE] step=100 target_stable=0/0 allow_descent=1
+[STAGE-A-TRACE] step=100 sim_t=1.000 mode=free phi=0.02537 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
