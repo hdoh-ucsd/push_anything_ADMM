@@ -1,0 +1,11 @@
+[ENV]  Directional task: id=4 name=west
+[ENV]  Goal coords: [-0.3, 0.0]
+[ENV]  Description: Push box 30cm west. Arm prepositioned on west face: contact normal anti-aligned with goal direction. Pusher would have to go through the box -- impossible without contact mode switch.
+[ENV]  Mass: 0.2 kg   Friction mu: 0.4
+[ENV]  INITIAL_ARM_Q: DEFAULT
+[SIM-T2] pusher_radius=0.025 (reference: end_effector_full.urdf sphere r=0.0195; env_PUSHA_PUSHER_RADIUS=<unset>)
+[SIM-T2] pusher_mu=0.4 (reference: end_effector_full.urdf mu_static=1.0 mu_dynamic=1.0)
+[SIM-T2] pusher_body='pusher' weld_parent='panda_link8' weld_offset=[0,0,0.05] (reference: end_effector_flange welded to panda_link7 at kToolAttachmentFrame=[0,0,0.107] + 180deg x-rotation)
+[SIM-T2] robot_base_xyz=[0.0, -0.6, 0.0] (reference: Identity() = [0,0,0])
+[SIM-T2] table_size=(2.0, 2.0, 0.1) origin=[0,0,-0.05] table_mu=(static=0.6, dynamic=0.5) (reference: ground.urdf box=(5.0, 0.91, 0.1) origin=[0,0,-0.05] mu=1.0 static+dynamic; welded via kFrankaToGroundOffset=[0,0,-0.029])
+[SIM-T2] time_step=0.001 (reference sim_params.yaml: dt=0.001 — CONFORMANT)

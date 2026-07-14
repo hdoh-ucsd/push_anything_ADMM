@@ -1052,12 +1052,305 @@ Verified the "inert" areas individually:
 
 ---
 
-# Subsystem (5)
+# Subsystem (5) — Sim / env-builder / URDF geometry
 
-Pending user re-authorization after Planner Tier-2 review. Order:
+## Sources read
 
-- (5) Sim / env-builder / URDF geometry (holds the 3-mm sphere-radius divergence, reference sphere-witness URDF bodies for 3.d, per-body friction coefficients for 3.i, pusher weld offset for 1.f).
+- **Reference** (`dairlib_sampling_c3 @ push_anything_dev 257e3ed`):
+  `examples/sampling_c3/sampling_c3_utils.{h,cc}` (`AddFrankaToPlant`, `AddWallsToPlant`, `AddObjectToPlant`, `AddLCSModelToPlant`, `kFrankaModel`, `kEndEffectorModel`, `kToolAttachmentFrame`, `kFrankaToGroundOffset`, `kWallLengthX/Y/etc`);
+  `examples/sampling_c3/urdf/end_effector_full.urdf` (flange + peg + tip chain, tip sphere r=0.0195 μ=1.0);
+  `examples/sampling_c3/urdf/ground.urdf` (5×0.91×0.1 μ=1.0 point-contact);
+  `examples/sampling_c3/urdf/push_t.sdf` (sim: 2 boxes with `compliant_hydroelastic`);
+  `examples/sampling_c3/urdf/push_t_control.sdf` (LCS: same + 3 sphere witnesses r=0.001);
+  `examples/sampling_c3/urdf/expo_box/expo_box.sdf` + `expo_box_controller.sdf` (mesh convex decomposition);
+  `examples/sampling_c3/anything/parameters/sim_params.yaml` (`dt: 0.001`);
+  `examples/sampling_c3/franka_sim.cc:79-80` (`AddMultibodyPlantSceneGraph(&builder, sim_dt)`);
+  `examples/sampling_c3/franka_sampling_c3_controller.cc:103` (LCS plant `dt=0.0` continuous).
+- **Port** (`push_anything_ADMM @ main dd2294d + ... + 043f378`):
+  `sim/env_builder.py:1-590` (`build_environment`, `_box_sdf`, `_sphere_sdf`, `_tshape_sdf`, `PUSHER_RADIUS`, `ROBOT_BASE_XYZ`, `INITIAL_ARM_Q`);
+  `config/tasks.yaml` (`pushing`, `hard_pushing`, `shepherding`, `push_t` task_cfg values).
 
-Same two-tier discipline + 2.k caution.
+**Sim/URDF scope:** the Drake plant assembly + object/table URDFs + sim time_step + Drake contact model. Excludes the LCS admission filter (subsystem 3) and the OSC frame identity (subsystem 1, already resolved).
+
+## Index table
+
+| # | Divergence | Tier-1 tag | Tier-2 |
+|---|---|---|---|
+| 5.a | Franka URDF choice + base pose | LOAD-BEARING | CONFIRMED — same URDF (`panda_arm.urdf`); DIFFERENT world pose (port `[0, −0.6, 0]` vs reference Identity) |
+| 5.b | End-effector attachment mechanism | LOAD-BEARING | CONFIRMED — port programmatic pusher body welded to panda_link8+[0,0,0.05]; reference URDF-parsed end_effector_full welded to panda_link7+kToolAttachmentFrame+180deg |
+| 5.c | Pusher tip radius | LOAD-BEARING (from executor 1.f) | CONFIRMED runtime — port 0.025 m vs reference 0.0195 m (**3 mm** larger tip) |
+| 5.d | Pusher friction μ | LOAD-BEARING | CONFIRMED runtime — port 0.4 (pushing task_cfg) vs reference URDF μ=1.0 |
+| 5.e | Manipuland SDF/URDF construction | LOAD-BEARING (structure) | CONFIRMED — port programmatic (`_box_sdf`, `_tshape_sdf`) single-body single-collision; reference URDF-file multi-body multi-collision (push_t: 2 boxes; expo_box: mesh convex decomposition) |
+| 5.f | Manipuland friction μ | LOAD-BEARING | CONFIRMED runtime — port task_cfg (pushing 0.4, push_t 1.0); reference URDF `mu_dynamic=0.3` (push_t + expo_box, hydroelastic) |
+| 5.g | Manipuland Drake contact model | LOAD-BEARING | CONFIRMED — port POINT contact + Coulomb; reference COMPLIANT HYDROELASTIC (modulus 3e7, mesh resolution 0.18) + Hunt-Crossley dissipation 10 |
+| 5.h | Ground / table geometry + friction | LOAD-BEARING | CONFIRMED runtime — port `(2, 2, 0.1)` μ=(static 0.6, dynamic 0.5) on world_body; reference `(5, 0.91, 0.1)` μ=1.0 welded via `kFrankaToGroundOffset=[0,0,-0.029]` |
+| 5.i | LCS-vs-Sim URDF split | LOAD-BEARING (structure) | NEW STRUCTURAL — reference has SEPARATE `*.sdf` (sim, hydroelastic) and `*_control.sdf` (LCS, adds sphere witnesses); port uses SAME plant for sim + LCS |
+| 5.j | Sphere-witness positions for T-ground contact | LOAD-BEARING (T-task) | CONFIRMED-DIVERGENT — port synthesized (`_tshape_vertex_set_body_frame(3)`) at (+0.13, 0, -0.02), (-0.05, ±0.08, -0.02) vs reference URDF spheres at (-0.12, ±0.08, -0.02), (+0.08, 0, -0.02). **Coordinate origin differs (port t_link at combined-CoM; reference vertical_link at link origin)** — positions are STRUCTURALLY DIFFERENT triangles |
+| 5.k | Walls (workspace bin) | LOAD-BEARING iff enabled | INERT — reference `include_walls=false` for anything+push_t default; port has no wall mechanism |
+| 5.l | Sim time_step | LOAD-BEARING | CONFIRMED CONFORMANT — port 0.001 s; reference `sim_params.yaml: dt=0.001` |
+| 5.m | LCS plant discretization | LOAD-BEARING | NEW DIVERGENCE — reference LCS plant `AddMultibodyPlantSceneGraph(&builder, 0.0)` = **continuous plant** (dt=0); port LCS uses SAME plant as sim (dt=0.001, discrete). LCS `linearize_discrete` applies its own `dt` on top of the sim plant. |
+
+## 5.a — Franka URDF choice + base pose
+
+- **Reference:** `sampling_c3_utils.h:12` `kFrankaModel = "package://drake_models/franka_description/urdf/panda_arm.urdf"`. Welded at `X_WI = Identity` (line 24-26).
+- **Port:** `env_builder.py:257` — same URDF (`drake_models/franka_description/urdf/panda_arm.urdf`). Welded at `ROBOT_BASE_XYZ = [0.0, -0.6, 0.0]` (60 cm along -y from world origin).
+- **Tag:** URDF CONFORMANT; base pose LOAD-BEARING (changes workspace coordinates by 60 cm along -y).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via `[SIM-T2] robot_base_xyz=[0.0, -0.6, 0.0] (reference: Identity() = [0,0,0])`. Reference workspace and port workspace live in DIFFERENT world-frame coordinates. This means comparing runtime positions requires a coordinate transform of 60 cm along -y. Not directly observable as a "bug" (both are internally consistent), but ALL other constants in the port that use world-frame positions are implicitly offset by this base pose (e.g., box init_xyz, goal_xy, ROBOT_BASE-relative positions).
+
+## 5.b — End-effector attachment mechanism
+
+- **Reference:** `sampling_c3_utils.cc:28-36` — `parser.AddModels(kEndEffectorModel)` parses `end_effector_full.urdf` (3-link chain: flange + peg + tip). Welded via `plant->WeldFrames(panda_link7, end_effector_flange, RigidTransform(RollPitchYaw(π, 0, 0), kToolAttachmentFrame=[0, 0, 0.107]))`. **URDF-based, 3-link kinematic chain, welded to panda_link7 with 180° x-rotation + 10.7 cm tool offset.**
+- **Port:** `env_builder.py:270-301` — programmatic. `pusher_body = plant.AddRigidBody("pusher", ...)`, register sphere collision, weld to `panda_link8` at `RigidTransform([0.0, 0.0, 0.05])` — no rotation, 5 cm along +z from link8.
+- **Tag:** LOAD-BEARING (different attachment link — 7 vs 8; different offset; different rotation).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via `[SIM-T2] pusher_body='pusher' weld_parent='panda_link8' weld_offset=[0,0,0.05] (reference: end_effector_flange welded to panda_link7 at kToolAttachmentFrame=[0,0,0.107] + 180deg x-rotation)`. Note: panda_link7 is the LAST ACTUATED link before the end-effector; panda_link8 is a FIXED link 8.8 cm beyond link7 (per Franka URDF). Both agents end up with an EE somewhere PAST the last actuated link, but via different intermediate structure. The port's simpler weld may skip the URDF's tool-offset semantics. **Coupled to executor 1.f frame identity divergence** (already resolved).
+
+## 5.c — Pusher tip radius
+
+- **Reference:** `end_effector_full.urdf:66, 73` — sphere r=0.0195 m at `end_effector_tip`.
+- **Port:** `env_builder.py:32` — `_PUSHER_RADIUS_DEFAULT = 0.025` m. Env-override `PUSHA_PUSHER_RADIUS` (default unset).
+- **Tag:** LOAD-BEARING (kicked here from executor 1.f).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[SIM-T2] pusher_radius=0.025 (reference: end_effector_full.urdf sphere r=0.0195; env_PUSHA_PUSHER_RADIUS=<unset>)`. **3-mm larger tip in port.** Previously fought over in memory `project_S9_leaked_to_box_stage_e_blocked.md` — port tried globalizing to 0.0195 during T-work but regressed box closure, reverted. Load-bearing for both box and T tasks (changes contact geometry, wrist-load distance, LCS phi values, sample_reject_clearance-vs-radius interaction).
+
+## 5.d — Pusher friction μ
+
+- **Reference:** `end_effector_full.urdf:76-77` — `drake:mu_static value="1"`, `drake:mu_dynamic value="1"`. **Reference pusher tip μ=1.0 always.**
+- **Port:** `env_builder.py:282` — `_pusher_mu = float(task_cfg.get("pusher_friction", 0.4))`. Pushing task default = 0.4; push_t task sets to 1.0.
+- **Tag:** LOAD-BEARING (Drake harmonic-mean μ_eff = 2·μ_A·μ_B/(μ_A+μ_B); port pushing μ_eff = 0.4 vs reference μ_eff = 2·1·0.3/(1+0.3) = 0.462 for pusher-box).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[SIM-T2] pusher_mu=0.4 (reference: end_effector_full.urdf mu_static=1.0 mu_dynamic=1.0)`. **Port pusher-side μ=0.4 vs reference 1.0.** For push_t, port sets both sides to 1.0 → μ_eff=1.0 (matches reference). For box (pushing), port 0.4 vs reference 1.0. **Divergent by task**: push_t is reference-conformant, pushing is NOT.
+
+## 5.e — Manipuland SDF/URDF construction
+
+- **Reference:** URDF/SDF files. `push_t.sdf` = 2 links (vertical + horizontal), each with `compliant_hydroelastic` box collision. `expo_box.sdf` = mesh convex decomposition (~9 pieces via `expo_box_convex_N.obj`).
+- **Port:** `env_builder.py:59-198` — programmatic SDF strings generated per task_cfg. `_box_sdf`: single box_link with 1 collision box. `_sphere_sdf`: single ball_link. `_tshape_sdf`: single t_link with 2 box collision elements (single-body-collapsed rigid — see docstring line 128-144). All point-contact μ from task_cfg (single scalar).
+- **Tag:** LOAD-BEARING (structure of the manipuland — number of bodies, collision geometry type, hydroelastic vs point).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED-DIVERGENT. Structurally: port t_link (1 body, 2 box collisions) vs reference push_t (2 bodies fixed-joined, each 1 box collision). The port's docstring at line 130-134 notes "A fixed joint is a rigid connection, so a single link with two collision elements is DYNAMICALLY EQUIVALENT" — TRUE for dynamics but the COLLISION GEOMETRY sets are separate objects with different GeometryIds → affects `sd_pairs` iteration order in the LCS admission (3.a). Port `_tshape_sdf` NAMES the collision `manipulated_object::collision`; reference names them `vertical_link_volume` and `horizontal_link_volume` — different names, different SortedPair matching downstream.
+
+## 5.f — Manipuland friction μ
+
+- **Reference:** URDF `drake:mu_dynamic=0.3` for push_t + expo_box. Hydroelastic doesn't use separate mu_static.
+- **Port:** task_cfg `friction`. Pushing: 0.4. Push_t: 1.0.
+- **Tag:** LOAD-BEARING (different μ per task; combined with 5.d).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED. **Pushing task-side μ=0.4 vs reference 0.3.** Push_t task-side μ=1.0 vs reference 0.3 (port intentionally boosted for T-stability per source comment at env_builder.py:279-281). **Port push_t μ is intentionally divergent-from-reference by design** (the reference values fail T stability in the port setup — a port-level workaround per prior arc work).
+
+## 5.g — Manipuland Drake contact model
+
+- **Reference:** `<drake:proximity_properties>` with `<drake:compliant_hydroelastic/>`, `hydroelastic_modulus=3.0e7`, `mesh_resolution_hint=0.18`, `hunt_crossley_dissipation=10`. **Compliant hydroelastic contact model with Hunt-Crossley damping.**
+- **Port:** Coulomb friction only (no `<drake:compliant_hydroelastic/>` in port's SDF generators). Point contact (Drake default when no hydroelastic tag).
+- **Tag:** LOAD-BEARING (very different contact-force computation regime).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via port SDF generators + reference URDF read. **Reference uses hydroelastic (soft-body force distribution over mesh) with dissipation damping; port uses rigid point contact.** Different contact-force profiles at impact (hydroelastic dissipates energy over contact area; point-contact impulses are near-instantaneous). Affects box tumble behavior, T-stability, contact-force smoothness. This is INDEPENDENT of the LCS contact model (3.g) — the LCS contact model is what the PLANNER predicts; this is what Drake SIM applies.
+
+## 5.h — Ground / table geometry + friction
+
+- **Reference:** `ground.urdf` — rigid box 5×0.91×0.1 m, origin at [0, 0, -0.05] in ground frame → top surface at ground-z=0. Welded to Franka's `panda_link0` at `kFrankaToGroundOffset=[0, 0, -0.029]` → **top surface at Franka-frame z = −0.029** (2.9 cm below Franka base). μ=1.0 static+dynamic.
+- **Port:** `env_builder.py:238-245` — Drake `plant.RegisterCollisionGeometry(plant.world_body(), RigidTransform([0.0, 0.0, -0.05]), Box(2.0, 2.0, 0.1), "table_collision", CoulombFriction(0.6, 0.5))`. Table welded to world_body (not to Franka). Top surface at world-z=0.
+- **Tag:** LOAD-BEARING per geometry, per friction.
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[SIM-T2] table_size=(2.0, 2.0, 0.1) origin=[0,0,-0.05] table_mu=(static=0.6, dynamic=0.5) (reference: ground.urdf box=(5.0, 0.91, 0.1) origin=[0,0,-0.05] mu=1.0 static+dynamic; welded via kFrankaToGroundOffset=[0,0,-0.029])`. Both agents place table top at their world-z=0, but port's Franka is at world y=-0.6 (5.a) so the RELATIVE position differs. Table friction VERY DIFFERENT: port (0.6/0.5) vs reference (1.0/1.0). This affects the μ_eff computation for BOX-GND contact — port harmonic 2·0.4·0.5/(0.4+0.5) = 0.444 vs reference 2·0.3·1.0/(0.3+1.0) = 0.462 (harmonic of manipuland URDF μ + table URDF μ).
+
+## 5.i — LCS-vs-Sim URDF split
+
+- **Reference:** TWO separate plants:
+  - SIM plant: `franka_sim.cc:80 AddMultibodyPlantSceneGraph(&builder, sim_dt=0.001)` — uses `push_t.sdf` (hydroelastic, no sphere witnesses).
+  - LCS plant: `franka_sampling_c3_controller.cc:103 AddMultibodyPlantSceneGraph(&plant_lcs_builder, 0.0)` — uses `push_t_control.sdf` (adds sphere witnesses for LCS admission).
+- **Port:** SINGLE plant used for both sim and LCS (via `LCSFormulator(plant, plant_ad=plant_ad, ...)`). Same URDF, same collision geometries.
+- **Tag:** LOAD-BEARING (structural).
+- **Confidence:** high.
+- **Tier 2:** NEW STRUCTURAL DIVERGENCE surfaced. Reference decouples the "what does the plant do" (sim) from "what does the LCS see" (control) by using two different URDFs. Port collapses to one. Consequence: reference can add TINY sphere witnesses to the LCS URDF without affecting sim dynamics (r=0.001 spheres would be immaterial in sim but crucial for LCS pair-admission at exact witness positions). Port cannot do this — any collision geometry added for LCS admission would ALSO participate in sim. This is exactly why port has `_synthesize_manipuland_ground_contacts` (3.o): a programmatic LCS-only witness synthesis path that doesn't affect Drake sim.
+
+## 5.j — Sphere-witness positions for T-ground contact
+
+- **Reference `push_t_control.sdf:43-66`**: 3 sphere witnesses on `vertical_link` (frame origin at (0,0,0) of vertical bar):
+  - `top_left_sphere` at (−0.12, +0.08, −0.02)
+  - `top_right_sphere` at (−0.12, −0.08, −0.02)
+  - `bottom_sphere` at (+0.08, 0.0, −0.02)
+  Triangle spans link-x ∈ [−0.12, +0.08], link-y ∈ [±0.08], link-z = −0.02 (below vertical bar's bottom face).
+- **Port `_tshape_vertex_set_body_frame(3)` at `lcs_formulator.py:452-456`**: 3 witnesses in port's `t_link` frame (origin at combined CoM ≈ (−0.05, 0, 0) relative to reference's vertical_link origin):
+  - (+0.13, 0.00, −0.02) crossbar +x tip
+  - (−0.05, +0.08, −0.02) stem +y tip
+  - (−0.05, −0.08, −0.02) stem −y tip
+- **Tag:** LOAD-BEARING for T-task; INERT for box.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED-DIVERGENT. Port and reference use 3-point triangles but at DIFFERENT relative positions. In world-frame terms, applying the CoM shift (port `t_link` origin ≈ reference `vertical_link` origin + (−0.05, 0, 0)):
+  - Port witness 1 (+0.13, 0.00, -0.02) → reference-equivalent world = (+0.08, 0.00, -0.02) ≡ reference `bottom_sphere` ✓
+  - Port witness 2 (-0.05, +0.08, -0.02) → reference-equivalent world = (-0.10, +0.08, -0.02) ≠ reference top_left_sphere at (-0.12, +0.08, -0.02) (**2-cm mismatch along x**)
+  - Port witness 3 (-0.05, -0.08, -0.02) → reference-equivalent world = (-0.10, -0.08, -0.02) ≠ reference top_right_sphere at (-0.12, -0.08, -0.02) (**2-cm mismatch along x**)
+- **Applied 2.k caution**: verified by CHECKING NUMBERS not just structure. Both use 3 witnesses (matches) but positions differ by 2 cm on 2 of 3 points. Not exact match. Would need port to shift stem witnesses by −0.02 along local-x to match reference exactly, OR port could re-derive from reference frame conventions.
+
+## 5.k — Walls
+
+- **Reference:** `sampling_c3_utils.cc:60-91 AddWallsToPlant` — 3-4 wall boxes (left, right, front, [back]) welded via `include_walls=true` argument to `AddFrankaToPlant`. Default: `include_walls=false` for anything+push_t.
+- **Port:** No wall mechanism.
+- **Tag:** LOAD-BEARING iff `include_walls=true`.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED-INERT via anything+push_t YAML defaults (no walls enabled). Belongs also to 3.e (object-wall LCS admission — same inert-by-config).
+
+## 5.l — Sim time_step
+
+- **Reference:** `sim_params.yaml: dt: 0.001` → `AddMultibodyPlantSceneGraph(&builder, 0.001)`.
+- **Port:** `env_builder.py:200` `time_step: float = 0.001` default arg.
+- **Tag:** LOAD-BEARING (Drake plant discretization step).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[SIM-T2] time_step=0.001 (reference sim_params.yaml: dt=0.001 — CONFORMANT)`. **CONFORMANT.**
+
+## 5.m — LCS plant discretization
+
+- **Reference:** `franka_sampling_c3_controller.cc:103` — LCS plant built with `AddMultibodyPlantSceneGraph(&plant_lcs_builder, 0.0)` → **CONTINUOUS plant** (dt=0). LCS's Aydinoglu-8 first-order linearization derives dt from the LCS `options_.dt` (0.1 s planner cadence), NOT from the plant's discretization.
+- **Port:** Uses the SAME plant as sim (`time_step=0.001` discrete). LCS's `linearize_discrete` applies its own `dt=0.05` on top. So the LCS effectively runs a 50-tick discretization over each planning step (0.05 s = 50 × 1 ms).
+- **Tag:** LOAD-BEARING (LCS linearization from continuous vs discrete plant).
+- **Confidence:** high.
+- **Tier 2:** NEW DIVERGENCE surfaced by reference read. Reference LCS derives from a CONTINUOUS plant (uses autodiff on continuous dynamics). Port LCS derives from a DISCRETE plant (autodiff on Drake's stepped dynamics). Under Drake's semi-implicit Euler discretization at dt=0.001, the discrete plant's autodiff dynamics may differ from the continuous plant's by O(dt) terms. **May explain some of the "small tick-cadence-dependent drift" observations from prior arc work.** Belongs also in coupling with (4) — reference's continuous-plant + planning_dt=0.1 vs port's discrete-plant + planning_dt=0.05.
+
+## Coupling observed (from code + Tier-2 evidence)
+
+- **5.a ↔ 5.b ↔ 5.c ↔ 5.d ↔ 1.f** — end-effector chain. Franka base at [0,-0.6,0] (5.a) + pusher on link8+[0,0,0.05] (5.b) + sphere r=0.025 (5.c) + μ=0.4 (5.d) all compose into "port EE geometry." Reference: Franka at identity + tool-flange chain to link7 + sphere r=0.0195 + μ=1.0. **Cluster: five constants that together define the EE's physical form.** Executor 1.f resolved the structural equivalence (both zero-offset body Jacobians); the geometric values (5.c/5.d) still diverge.
+- **5.h ↔ 5.g ↔ 3.j (box_ground_drag)** — ground friction (5.h port 0.5-0.6 vs reference 1.0) × manipuland friction (5.g port 0.3-0.4 vs reference 0.3) compose into μ_eff for BOX-GND. Port μ_eff ≈ 0.444; reference μ_eff ≈ 0.462. Small NUMERIC divergence in isolation. Coupled to 3.j: the BOX-GND single-pair admission (3.d) + weak friction (5.g/5.h) + ADMM non-convergence (4.l) = box-coasting predictions requiring drag band-aid.
+- **5.g ↔ 3.g** — Drake sim contact model (hydroelastic reference vs point-contact port) mirrors the LCS contact model divergence (Anitescu vs Stewart-Trinkle) at a DIFFERENT LEVEL. **Both agents' SIM plant is what the executor applies torque against**. Reference sim is soft-body compliant; port sim is rigid point. This means the actual physical response the OSC counteracts differs between agents, INDEPENDENT of the LCS prediction divergence.
+- **5.i ↔ 5.j ↔ 3.o** — the "reference has separate LCS URDF with sphere witnesses" cluster. Reference achieves 3-pair T-ground via URDF-defined tiny spheres (5.j positions) in a separate LCS URDF (5.i). Port achieves same via programmatic witness synthesis (3.o with different positions 5.j). Same functional goal, different implementations, DIFFERENT numeric witness triangle. Not-conforming-to-reference-values within a conforming-to-reference-structure.
+- **5.l ↔ 5.m ↔ 4.e** — plant discretization × planning dt. Port: sim 1ms, plant discrete, LCS `linearize_discrete` at 0.05. Reference: sim 1ms, plant continuous for LCS, LCS `dt=0.1`. Two-agents' dt cascade differs in structure not just value.
+- **5.c pusher radius ↔ box init_xyz ↔ contact_offset** — pusher radius (0.025 vs 0.0195) directly changes the effective push-point (contact-witness distance from EE body origin). Contact_offset computation at `env_builder.py:535` uses `PUSHER_RADIUS` — affects reachability + LCS phi (via the actual contact witness world position).
+
+## Deferred / cross-subsystem items surfaced
+
+- The reference's `end_effector_full.urdf` also has `end_effector_flange` (cylinder r=0.0315) + `end_effector_peg` (r=0.0127) collision geometries. These COULD participate in sim contacts (arm-table hits, arm-manipuland hits) if the arm swings into them. Port has NO analog — the port's pusher is JUST the tip sphere. If reference's flange/peg collide with the table during reposition, that's a divergent sim behavior. **Sub-scope: verify the reference's flange/peg collision geometries are NOT filtered out of the sim contact set.** Not verified in this pass — belongs in future sim-behavior audit if needed.
+- Port ROBOT_BASE_XYZ=[0, -0.6, 0] means Franka is offset from world origin. Reference is at world origin. This affects ALL world-frame coordinates — box init_xyz [0, 0, 0.05] in port world = [0, 0.6, 0.05] in Franka-frame; reference `push_t` init pose likely uses Franka-frame directly. **Comparing box positions between agents requires the +0.6 y-shift** (or equivalent).
+
+## Sim/URDF Tier-2 verdict roll-up
+
+| # | Divergence | Tier-1 | Tier-2 |
+|---|---|---|---|
+| 5.a | Franka URDF + base pose | LOAD-BEARING (base pose only) | **CONFIRMED** — URDF match; base pose [0,-0.6,0] vs Identity |
+| 5.b | EE attachment mechanism | LOAD-BEARING | **CONFIRMED** — programmatic pusher vs URDF chain |
+| 5.c | Pusher tip radius | LOAD-BEARING | **CONFIRMED runtime** — 0.025 vs 0.0195 |
+| 5.d | Pusher friction μ | LOAD-BEARING | **CONFIRMED runtime** — 0.4 (pushing) vs URDF 1.0 |
+| 5.e | Manipuland SDF construction | LOAD-BEARING | **CONFIRMED-DIVERGENT** — port programmatic vs reference URDF |
+| 5.f | Manipuland friction | LOAD-BEARING | **CONFIRMED-DIVERGENT** — port pushing 0.4 vs reference 0.3 |
+| 5.g | Drake sim contact model | LOAD-BEARING | **CONFIRMED-DIVERGENT** — point vs hydroelastic |
+| 5.h | Ground geometry + friction | LOAD-BEARING | **CONFIRMED runtime** — (2,2,0.1) μ=(0.6, 0.5) vs (5,0.91,0.1) μ=1.0 |
+| 5.i | LCS-vs-Sim URDF split | LOAD-BEARING structure | **NEW STRUCTURAL** — port single plant vs reference two-URDF split |
+| 5.j | T-witness positions | LOAD-BEARING (T-task) | **CONFIRMED-DIVERGENT** — 2-cm mismatch on 2 of 3 witnesses |
+| 5.k | Walls | LOAD-BEARING iff enabled | **CONFIRMED-INERT** for anything+push_t default |
+| 5.l | Sim time_step | LOAD-BEARING | **CONFIRMED CONFORMANT** — both 0.001 |
+| 5.m | LCS plant discretization | LOAD-BEARING | **NEW DIVERGENCE** — reference continuous plant vs port discrete |
+
+13 entries → 8 CONFIRMED-DIVERGENT + 2 NEW DIVERGENCE + 1 CONFIRMED-INERT + 1 CONFIRMED CONFORMANT + 1 partial (5.d divergent-for-pushing-only, conformant-for-push_t). Zero UNKNOWNs.
+
+## 2.k caution result
+
+Verified individually per mechanism, especially where "same structure" could mask "different values":
+- 5.j T-witness positions — port and reference BOTH have 3 witnesses. If I stopped at "same count" that would mask the 2-cm position mismatch. VERIFIED numerically that positions differ.
+- 5.h ground friction — port has static=0.6 + dynamic=0.5 (2 numbers); reference has 1.0 (single number). Verified separately not as "same friction structure."
+- 5.d pusher friction is TASK-DEPENDENT (port pushing=0.4 divergent, push_t=1.0 conformant). Verified per-task rather than a single "port μ" claim.
+- 5.a Franka URDF conformant BUT base pose divergent. Verified two separate mechanisms in the same setup step.
+- 5.b weld mechanism differs (programmatic vs URDF chain) AND weld target link differs (link8 vs link7) AND rotation differs (identity vs 180°). Three separate divergences in one entry.
+
+No "same overall thing" masking of an underlying divergent value. **2.k caution passed.**
+
+## Sim/URDF Tier-2 evidence artefacts
+
+- Diagnostic commit: `043f378` (`diag(sim-tier2): PUSHA_SIM_T2_DIAG log-only sim/URDF disclosure`).
+- Instrumentation guard: `PUSHA_SIM_T2_DIAG=1` — default OFF, byte-identical.
+- Filtered run log: `audit_output/sim_tier2/run_default.log`
+- Summary + reference URDF deep reads: `audit_output/sim_tier2/SUMMARY.md`
+
+---
+
+# CONFORMANCE MAP — COMPLETE (all 5 subsystems, 2026-07-14)
+
+## The central finding — contact-model cluster
+
+**One structural root, cascading compensations:**
+
+The port's Stewart-Trinkle contact model (3.g) has a rank-deficient F[γ,γ] block by construction (c3 lib clone confirmed via `c3/multibody/lcs_factory.cc:438-494`). The reference uses Anitescu (single PSD F block). This ONE choice cascades into:
+
+- **4.l** — ADMM non-convergence (runtime `iters=25/25 primal~3.87`). Rank-deficient F can't converge on λ_n_gnd.
+- **3.j** — `box_ground_drag=10.0` band-aid added to compensate for LCS predicting box-coasts (because λ_n_gnd doesn't reach m·g).
+- **3.n** — three normal-row patches (COMPLIANCE_K, VELOCITY_LEVEL, PHI_CLAMP) — all ST-specific, all no-ops under Anitescu.
+- **4.b** — port uses 25 ADMM iters (vs reference 3) trying to force convergence — 8.3× more iters.
+- **4.d/4.e** — port horizon 20×0.05s vs reference 5×0.1s — ~33× more solve work per tick.
+
+**Flipping the contact model (3.g) to Anitescu obsoletes ALL FOUR downstream compensations simultaneously.** This is the LCS↔Drake mismatch the whole arc kept circling — proven, not inferred.
+
+## Second cluster — executor over-drive + rotation-hold
+
+- **1.e/1.f** — port compound authority `W_track · Kp_cart = 100 · 400 = 40 000` vs reference `1 · 200 = 200` (200× over-drive on position).
+- **2.k** — reference OSC also holds identity-quaternion with `W_rot · Kp_rot = 10 · 800 = 8 000` per axis; port QP has ZERO rotation cost.
+- **1.d** — port's task-only u-clamp lets `tau_g + u_clamped` exceed URDF cap (confirmed 97.44 Nm at joint 1 vs cap 87 Nm).
+- **2.h/2.i** — port reposition speed=0.4 m/s vs reference 0.18, waypoint height 0.15 vs 0.06-0.077.
+
+These are LOAD-BEARING and COUPLED to each other. Would not obviously be resolved by flipping the contact model alone.
+
+## Third cluster — geometry/friction (5)
+
+- **5.c** pusher radius 0.025 vs 0.0195
+- **5.d** pusher μ 0.4 vs 1.0 (task-dependent)
+- **5.g** Drake sim contact model point vs hydroelastic
+- **5.h** ground μ (0.6/0.5) vs 1.0
+- **5.a** Franka base pose [0,-0.6,0] vs Identity (world-frame coordinate shift)
+
+Mostly INDEPENDENT constants. Some (5.g contact model) are load-bearing structurally; others (5.h ground μ) are small numeric offsets composing into small μ_eff differences.
+
+## Coupling graph — consolidation-decision guide
+
+| Cluster | Mechanisms | Consolidation flag |
+|---|---|---|
+| **Contact-model cluster** | 3.g/3.h/3.n/3.p/3.j, 4.b/4.c/4.d/4.e/4.l | COUPLED — flip together (Anitescu → all patches obsolete) — HOLD for coupled re-tune |
+| **Executor over-drive** | 1.e/1.f, 1.d/1.h, 2.h/2.i/2.j, 2.k | COUPLED — cascading gains + rotation-hold — HOLD for coupled re-tune |
+| **Reposition Stage-A** | 2.a/2.b/2.c/2.j (PUSHA_REPOSITION_PWL path) | COUPLED to executor over-drive via v_ee_desired handshake — HOLD |
+| **kIK reposition** | 2.e/2.f/2.g (traj_type=kIK subset) | COUPLED but INDEPENDENT of reference (port-only) — **SAFE to REMOVE wholesale** |
+| **Port-only opt-in flags** | 3.k/3.m/3.n (already OFF), 4.r Stage-5 | INDEPENDENT, INERT — **SAFE to REMOVE** (delete-the-flag) |
+| **Geometry constants** | 5.c/5.d/5.h (small numeric divergences) | INDEPENDENT — **SAFE to default-to-reference + tripwire** |
+| **Ground URDF split** | 5.i/5.j (reference sphere-witnesses vs port synthesis) | INDEPENDENT if reference-conformant admission path enabled — depends on contact-model cluster decision |
+
+## Answer to "is the coupled re-tune tractable?"
+
+Before the audit: "the port has 50 divergences, all coupled, intractable."
+
+After the audit: TWO major coupled clusters (contact-model + executor over-drive) with NAMED roots and PREDICTED cascade of simplifications, plus a small set of INDEPENDENT constants and INERT opt-ins. Not a hairball — a graph with structure.
+
+- **Contact-model cluster**: single decision (Anitescu vs ST). If flipped, ~10 downstream compensations vanish or become no-ops. That's a HIGH-LEVERAGE decision.
+- **Executor over-drive cluster**: 4 gain values compose. Flipping to reference values (W_track=1, Kp_cart=200, plus adding rotation-hold, plus adjusting reposition speed/height) requires COORDINATED change to keep IK→c3 handoff working. That's the "coupled re-tune" that failed once in prior arc work.
+- **The two clusters are LARGELY SEPARABLE**: flipping the contact model doesn't require changing executor gains; changing executor gains doesn't require the contact model swap. Neither cluster necessarily forces the other. Materially different from "everything depends on everything."
+
+## Total map size
+
+- **5 subsystems, 75 entries total**:
+  - (1) Executor: 16 entries (1.a-1.p, plus 2.k retro-correction)
+  - (2) Reposition: 14 entries (2.a-2.n)
+  - (3) Admission: 17 entries (3.a-3.q)
+  - (4) Planner/ADMM/mode-switch: 18 entries (4.a-4.r)
+  - (5) Sim/URDF: 13 entries (5.a-5.m)
+- All UNKNOWNs resolved (0 remaining). c3 lib clone completed 3.b, 3.q, and enabled 4.k line-by-line reference-source verification.
+- 4 stale prior-memory findings corrected in-map:
+  - executor 1.p — orientation NOT inert (2.k identity-hold at 8000 authority)
+  - reposition 2.k — new load-bearing rotation cost surfaced
+  - planner 4.h — cross-tick warm-start is CONFORMANT (both OFF), not divergent
+  - planner 4.k — port projection MATCHES reference exactly (not a divergence)
+- 6 diagnostic commits (all env-gated + labeled + default-OFF byte-identical):
+  - `ce29c9f`, `bde8d64` — executor
+  - `64ffdee` — reposition
+  - `98f5e94` — admission
+  - `67232d7` — planner
+  - `043f378` — sim/URDF
+
+## Next moves (per user directive)
+
+The audit is complete. Two next-move directions, gated by the map's coupling graph:
+
+1. **Atanasov scope conversation** — informed by the two-cluster structure. The question "flip contact model?" is high-leverage AND bounded. The question "coupled re-tune of executor gains?" is a larger commitment. Whether either or both are tractable is now a research-direction call with concrete predicted cascades.
+
+2. **Consolidation pass** — start with SAFE-INDEPENDENT + INERT-OPT-IN subset:
+   - Remove kIK reposition subsystem (2.e/2.f/2.g cluster — port-only, no reference analog)
+   - Delete inert opt-in flags (3.k, 3.m, LCS_NORMAL_* patches under 3.n, 4.r Stage-5 env-defaults if not exercised)
+   - Default-to-reference on INDEPENDENT constants (5.c pusher radius, 5.d pusher μ, 5.h ground μ) with box tripwire per change
+   - HOLD the coupled clusters (contact-model + executor over-drive) pending the Atanasov decision
+
+No more CC probes required until the Atanasov decision or a specific consolidation flag needs verification.
 
 Same two-tier discipline + apply the 2.k caution for any "inert" verdict.
