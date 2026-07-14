@@ -1,0 +1,4 @@
+HEAD=dacba48d7ae908f68b4e6f1ea7309746d16422f1
+branch=reproduce-dairlib
+date=2026-07-13T16:29:39-07:00
+invocation=T canonical (_phase2_completion_sweep.sh envvar bundle), seed=0, max-time=8
