@@ -1,0 +1,5 @@
+HEAD=05046c9bd6292b63be6aada9306f943062732b8f
+branch=main
+date=2026-07-13T21:37:01-07:00
+invocation=Restored-main box seed=0, p2_tripwire port env bundle, --max-time 8
+expected_target=~75.3% closure (matches clean 687b8a6 baseline)

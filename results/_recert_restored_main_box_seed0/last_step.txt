@@ -1,0 +1,1 @@
+[STEP] step=801 mode=c3 t=8.010s ee=(-0.059,+0.072,+0.140) obj=(-0.230,+0.091,+0.050) goal_dist=0.114m switch=kStayInC3 c3_cost=69080.52 lam_n=0.000 lam_t=0.250 contact=Y productive=Y f_cmd=(-38.82,+3.66,+3.00)
