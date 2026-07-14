@@ -265,6 +265,51 @@ class LCSFormulator:
         print(f"[FILTER INIT] Ground geom IDs     : {len(self._ground_geom_ids)}  "
               f"(world_body collision geoms)")
 
+        # Tier-2 subsystem-(3) admission diagnostic (docs/conformance-map.md §3.*):
+        # LOG-ONLY, env-gated PUSHA_ADMIT_T2_DIAG=1. One-shot init disclosure of
+        # all admission mechanisms + defaults. Default OFF = byte-identical.
+        if os.environ.get("PUSHA_ADMIT_T2_DIAG", "0") == "1":
+            print(f"[ADMIT-T2] contact_model={self._contact_model!r} "
+                  f"(reference default='anitescu'; port default='stewart_trinkle'; "
+                  f"env_LCS_CONTACT_MODEL="
+                  f"{os.environ.get('LCS_CONTACT_MODEL', '<unset>')})",
+                  flush=True)
+            print(f"[ADMIT-T2] mu={self.mu} (single scalar; reference uses "
+                  f"mu_per_pair_type array)",
+                  flush=True)
+            print(f"[ADMIT-T2] box_ground_drag={self._box_drag_c} "
+                  f"(port-only viscous A-matrix modification; reference has no "
+                  f"analog — LCS λ_n_gnd tracking is the reference mechanism)",
+                  flush=True)
+            print(f"[ADMIT-T2] lcs_explicit_manipuland_ground_contacts="
+                  f"{self.lcs_explicit_manipuland_ground_contacts} "
+                  f"object_shape={self._object_shape!r} "
+                  f"(port-only vertex synthesis; reference uses URDF-defined "
+                  f"sphere witness points on the manipuland)",
+                  flush=True)
+            print(f"[ADMIT-T2] ref_pair_admission_planner_lcs="
+                  f"{self._ref_pair_admission_planner_lcs} "
+                  f"(port-only partial reference-conformance flag; tshape-only "
+                  f"opt-in at use site)",
+                  flush=True)
+            print(f"[ADMIT-T2] always_on_ee_box={self._always_on_ee_box} "
+                  f"(env_LCS_ALWAYS_ON_EE_BOX="
+                  f"{os.environ.get('LCS_ALWAYS_ON_EE_BOX', '<unset>')}; "
+                  f"port-only always-on EE-BOX injection when 2mm filter drops)",
+                  flush=True)
+            print(f"[ADMIT-T2] normal_compliance_k={self._normal_compliance_k} "
+                  f"normal_velocity_level={self._normal_velocity_level} "
+                  f"normal_phi_clamp={self._normal_phi_clamp_v_cap} "
+                  f"(port-only diagnostic normal-row patches — ALL default OFF)",
+                  flush=True)
+            print(f"[ADMIT-T2] distance_threshold=0.002 m "
+                  f"(hardcoded default in extract_lcs_contacts; reference uses "
+                  f"top-N ranking, no threshold)",
+                  flush=True)
+            self._admit_t2_diag = True
+        else:
+            self._admit_t2_diag = False
+
         # Contact-pair diagnostic (off by default; enabled via --contacts-diag)
         self._diag_contacts      = False
         self._diag_contacts_step = 0
@@ -879,6 +924,29 @@ class LCSFormulator:
                          f"A={info['body_A']} B={info['body_B']} "
                          f"a_is_box={info['a_is_box']}")
             print(line, flush=True)
+
+        # Tier-2 subsystem-(3) per-tick admission audit
+        # (docs/conformance-map.md §3.*). LOG-ONLY, env-gated. Discloses tag +
+        # phi + n_c for the actual per-tick admission decision. Subsampled to
+        # first 5 calls + every 200 to avoid spam. Default OFF byte-identical.
+        if getattr(self, "_admit_t2_diag", False):
+            _call_i = int(getattr(self, "_admit_call_i", 0))
+            self._admit_call_i = _call_i + 1
+            if _call_i < 5 or _call_i % 200 == 0:
+                _tags = [ci.get("tag", "?") for ci in self._last_contact_info]
+                _phis_str = [f"{p:+.4f}" for p in phis]
+                _n_ee_box = sum(1 for t in _tags if t == "EE-BOX")
+                _n_box_gnd = sum(1 for t in _tags if t == "BOX-GND")
+                _n_synth = sum(1 for t in _tags if t.startswith("BOX-VERT")
+                               or t.startswith("T-VERT"))
+                _n_other = sum(1 for t in _tags if t == "OTHER")
+                print(f"[ADMIT-T2] call={_call_i} n_c={len(phis)} "
+                      f"tags={_tags} phi={_phis_str} "
+                      f"n_ee_box={_n_ee_box} n_box_gnd={_n_box_gnd} "
+                      f"n_synth={_n_synth} n_other={_n_other} "
+                      f"n_lambda_ST={6*len(phis)} n_lambda_Anitescu_ref="
+                      f"{2*2*len(phis) if self._contact_model == 'anitescu' else 6*len(phis)}",
+                      flush=True)
 
         if not phis:
             return (
