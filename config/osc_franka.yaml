@@ -9,9 +9,9 @@
 
 osc:
   # ----- Cartesian PD on EE position (3D) -----
-  # Reference osc_params.yaml (EndEffectorKp=[200,200,200], EndEffectorKd=[20,20,20]).
-  Kp_cart: [200.0, 200.0, 200.0]   # N/m per axis
-  Kd_cart: [20.0,  20.0,  20.0]    # N·s/m per axis
+  # Tune-4: mid ground Kp=300 W_track=30 (between port 40000 and ref 200).
+  Kp_cart: [300.0, 300.0, 300.0]   # N/m per axis
+  Kd_cart: [30.0,  30.0,  30.0]    # N·s/m per axis
 
   # ----- Posture (nullspace) gains, per arm joint -----
   # Same as impedance's defaults. Joint-7 is gentlest because its 12 Nm
@@ -38,21 +38,25 @@ osc:
   # Piecewise adoption is what the recert falsified.
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  # Reference w_elbow=1 (osc_params.yaml:42).
-  W_joint2:            1.0
+  # Tune-1: back to 0 per memory `project_reproduce_dairlib_main_honest_option_a.md`.
+  W_joint2:            0.0
   joint2_target_rad:   1.1
   joint2_idx:            1
 
   # ----- QP cost weights -----
-  # Reference: EndEffectorW=diag(1,1,1), w_input=0, w_input_reg=0, w_accel=1e-5,
-  # W_accel=[0.01]*7 → effective per-axis accel weight = w_accel·W_accel = 1e-7.
-  W_track:   1.0
-  W_posture: 1.0
+  # Tune-4: W_track=30 (Kp·W_track = 9000, halfway between 40000 and 200).
+  W_track:   30.0
+  W_posture:   1.0
+  W_torque: 0.001
+  W_acc:    0.001
 
-  # Reference: w_input=0 → no input regularization cost.
-  W_torque: 0.0
-  # Reference: w_accel·W_accel = 1e-5 · 0.01 = 1e-7 per axis.
-  W_acc:    0.0000001
+  # ----- 2.k Rotation tracking (identity-quaternion hold) -----
+  # Reference osc_params.yaml EndEffectorRotW=10, EndEffectorRotKp=800,
+  # EndEffectorRotKd=40 → compound authority 8000/axis.
+  # Set W_rot > 0 to activate. Off by default while diagnosing perf.
+  Kp_rot: [800.0, 800.0, 800.0]
+  Kd_rot: [40.0,  40.0,  40.0]
+  W_rot:  0.0
 
   # ----- Per-joint torque limits (Franka URDF spec) -----
   # 87 Nm on joints 1-4 (shoulder/elbow), 12 Nm on joints 5-7 (wrist).

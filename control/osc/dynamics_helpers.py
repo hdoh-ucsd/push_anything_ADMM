@@ -63,6 +63,38 @@ def ee_jacobian_bias(plant, plant_ctx, ee_frame) -> np.ndarray:
     return bias_spatial.translational()
 
 
+def ee_jacobian_angular(plant, plant_ctx, ee_frame) -> np.ndarray:
+    """Returns J_w ∈ ℝ^{3 × n_v} (angular EE-frame velocity Jacobian, world).
+
+    Reference: `osc_tracking_data.cc` RotTaskSpaceTrackingData analog.
+    """
+    world_frame = plant.world_frame()
+    J_spatial = plant.CalcJacobianSpatialVelocity(
+        plant_ctx, ad.JacobianWrtVariable.kV,
+        ee_frame, np.zeros(3),
+        world_frame, world_frame,
+    )
+    return J_spatial[:3, :]  # rows 0-2 are angular; 3-5 translational
+
+
+def ee_jacobian_angular_bias(plant, plant_ctx, ee_frame) -> np.ndarray:
+    """Returns J̇_w · v ∈ ℝ³ (angular bias acceleration of EE)."""
+    world_frame = plant.world_frame()
+    bias_spatial = plant.CalcBiasSpatialAcceleration(
+        plant_ctx, ad.JacobianWrtVariable.kV,
+        ee_frame, np.zeros(3),
+        world_frame, world_frame,
+    )
+    return bias_spatial.rotational()
+
+
+def ee_rotation(plant, plant_ctx, ee_frame):
+    """Returns the EE-frame rotation matrix R_WE ∈ ℝ^{3×3} in world frame."""
+    return plant.CalcRelativeTransform(
+        plant_ctx, plant.world_frame(), ee_frame,
+    ).rotation()
+
+
 def ee_position(plant, plant_ctx, ee_frame) -> np.ndarray:
     """Returns the EE origin in world frame (3,)."""
     return plant.CalcPointsPositions(

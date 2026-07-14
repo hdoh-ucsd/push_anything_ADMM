@@ -54,10 +54,10 @@ class LCSFormulator:
 
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
-                 box_ground_drag: float = 0.0,
-                 lcs_explicit_manipuland_ground_contacts: int = 4,
+                 box_ground_drag: float = 10.0,
+                 lcs_explicit_manipuland_ground_contacts: int = 0,
                  object_shape: str = "box",
-                 ref_pair_admission_planner_lcs: bool = True):
+                 ref_pair_admission_planner_lcs: bool = False):
         # d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
         # PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses a
         # PRE-SPECIFIED pair list at construction (`resolve_contacts_to_lists`)
@@ -184,11 +184,15 @@ class LCSFormulator:
         # row patches are ST-specific and become NO-OPs under Anitescu (no
         # separate normal row to patch); they stay banked as ST-diagnostics.
         _env_cm = os.environ.get("LCS_CONTACT_MODEL", "").strip().lower()
-        if _env_cm in ("stewart_trinkle", "stewart_and_trinkle", "st"):
-            self._contact_model = "stewart_trinkle"
-        else:
-            # default + any unrecognized value → Anitescu (reference default)
+        if _env_cm in ("anitescu", "kanitescu"):
             self._contact_model = "anitescu"
+        else:
+            # Tune-2: revert to Stewart-Trinkle. Anitescu path had a sign
+            # inversion producing wrong-direction box prediction that
+            # confused the c3 planner (box velocity computed +x when EE
+            # pushed −x). Port's ST path is what the cost stack is tuned
+            # for.
+            self._contact_model = "stewart_trinkle"
 
         # §7.30 — Always-on EE-BOX admission. Mirrors the reference's
         # LCSFactory::LinearizePlantToLCS scheme (lcs_factory.cc:31-105,
@@ -206,10 +210,9 @@ class LCSFormulator:
         # that loosening the threshold to 40 mm admits partial / garbage
         # pairs that break the dispatcher cost-gap; always-on for the
         # EE-BOX row only avoids that).
-        # Reference always includes the pre-specified EE-manipuland pair
-        # (no distance threshold) — default ON.
+        # Tune-2: back to False (port default). Always-on wasn't the blocker.
         _env_ao = os.environ.get("LCS_ALWAYS_ON_EE_BOX", "")
-        self._always_on_ee_box = bool(int(_env_ao)) if _env_ao else True
+        self._always_on_ee_box = bool(int(_env_ao)) if _env_ao else False
 
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()

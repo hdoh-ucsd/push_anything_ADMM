@@ -116,6 +116,26 @@ class C3Solver:
         # so √(u_λ/u_η) = 1 — the cleanest projection.
         self._u_lambda           = 1.0
         self._u_eta              = 1.0
+        # 4.j — reference penalize_changes_in_u_across_solves. When True,
+        # the R-block cost becomes ‖u_k − u_prev_k‖²_R (matches c3.cc:302-310).
+        # Reference `anything` YAML sets this true.
+        self._penalize_input_change = True
+        # Cache the previous solve's u_seq for the delta penalty. Shape (N, n_u)
+        # after the first solve; None (or first-call sentinel) means "use u=0
+        # as u_prev on the first call".
+        self._u_prev_solve = None
+        # 4.c — reference rho_scale (c3.cc:389-390). Reference default 3
+        # applied per-iter over admm_iter=3 iters (total 27× growth).
+        # DISABLED by default: the per-iter P-diagonal update was cheap but
+        # the QP solve time itself grew hugely under the resulting large ρ.
+        # Opt in via `solver._rho_scale = 3.0`.
+        self._rho_scale = 1.0
+        # 4.g — reference end_on_qp_step=false → do an LCS rollout of x from
+        # x0 using solved (u, λ) after the ADMM loop, so the returned x_seq
+        # is LCS-feasible even under non-convergence. Default OFF while
+        # diagnosing perf; opt in via `solver._end_on_qp_step = False`
+        # (yes, that's the "true" reference setting; True means skip rollout).
+        self._end_on_qp_step = True
         # Bui §IV-B.2 final paragraph: large G-weight on EE-object contact
         # components in the final QP step. NOT applied here yet (would
         # require knowing which contact is EE↔box; see TODO in _solve_c3plus).
@@ -979,6 +999,16 @@ class C3Solver:
                 ui = i * TOT + SU
                 P[ui:ui+n_u, ui:ui+n_u] += 2.0 * R
 
+            # 4.j — penalize_input_change: cost becomes ‖u_k − u_prev_k‖²_R
+            # = u_k^T R u_k − 2·u_prev_k^T R u_k + const. Add the linear term
+            # (−2·R·u_prev_k) to q_ref for each u slot when a previous solve
+            # exists. The Hessian block above is unchanged (still 2·R).
+            if self._penalize_input_change and self._u_prev_solve is not None:
+                _u_prev = self._u_prev_solve      # shape (N, n_u)
+                for i in range(N):
+                    ui = i * TOT + SU
+                    q_ref[ui:ui+n_u] += -2.0 * (R @ _u_prev[i])
+
             # ===== C3+ NEW: NO soft-complementarity penalty here =====
             # The η = E x + F λ + H u + c equality below replaces the
             # `q_ref[λ_n] += w_comp · phi_gap` hack used by C3.
@@ -1376,7 +1406,20 @@ class C3Solver:
                 dual_hist.append(dr)
                 rho_hist.append(float(rho))
 
-                if (it + 1) % 10 == 0:
+                # 4.c — reference rho_scale (c3.cc:389-390): multiply ρ each
+                # iter and shrink ω to keep the dual gradient ρ·ω consistent.
+                # Update P_sym in place by scaling the ρ·I diagonal delta
+                # (adds ~n operations instead of ~n² for a full rebuild).
+                _rs = float(self._rho_scale)
+                if _rs > 1.0 and admm_iter > 0 and rho * _rs < 1e6:
+                    _delta_rho = rho * (_rs - 1.0)
+                    rho   *= _rs
+                    omega /= _rs
+                    np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_rho)
+                    cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+                elif (it + 1) % 10 == 0:
+                    # Legacy Boyd §3.4.1 primal/dual balance step (rho_scale
+                    # disabled → fall back to this).
                     if pr > 10.0 * dr and rho < 1000.0:
                         rho   *= 2.0
                         omega /= 2.0
@@ -1457,6 +1500,24 @@ class C3Solver:
             x_seq[i] = z_sol[i * TOT : i * TOT + n_x]
             u_seq[i] = z_sol[i * TOT + SU : i * TOT + SU + n_u]
         x_seq[N] = z_sol[N * TOT : N * TOT + n_x]
+
+        # 4.g — end_on_qp_step=False (reference default): re-roll x forward
+        # from x_0 using solved (u, λ) so the returned x_seq is LCS-feasible
+        # even under ADMM non-convergence. Mirrors c3.cc:336-347.
+        if not self._end_on_qp_step and n_lambda > 0:
+            _x_roll = np.zeros((N + 1, n_x))
+            _x_roll[0] = x0
+            for i in range(N):
+                lam_i = z_sol[i * TOT + SL : i * TOT + SL + n_lambda]
+                _x_roll[i + 1] = (A @ _x_roll[i]
+                                  + B_ctrl @ u_seq[i]
+                                  + D @ lam_i
+                                  + d)
+            x_seq = _x_roll
+
+        # 4.j — cache u_seq for the next solve's `‖u − u_prev‖²_R` cost.
+        if self._penalize_input_change:
+            self._u_prev_solve = u_seq.copy()
 
         # First-horizon contact force for Aydinoglu eq. 36 τ_ff feedforward.
         # λ = [γ; λ_n; λ_t] under Stewart-Trinkle; we expose only the physical
