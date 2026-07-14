@@ -63,6 +63,17 @@ class OscGains:
     # Mirrors the reference's `W_ee_lambda` (osc_params.W_ee_lambda).
     W_force:   float = 0.0
 
+    # Joint-2 posture (dairlib `panda_joint2_target` analog). Reference:
+    # franka_osc_controller.cc:159-165 (Kp=200, Kd=10, W=1, target=1.1 rad).
+    # Cost: W_joint2·‖v̇[joint2_idx] − a_j2‖² where
+    #   a_j2 = Kp_joint2·(target − q_arm[j2]) + Kd_joint2·(−v_arm[j2]).
+    # Reproduce-dairlib Phase 1.
+    Kp_joint2:         float = 0.0
+    Kd_joint2:         float = 0.0
+    W_joint2:          float = 0.0
+    joint2_target_rad: float = 1.1
+    joint2_idx:        int   = 1
+
 
 @dataclass
 class OscLimits:
@@ -89,6 +100,8 @@ def build_and_solve_qp(
     use_force_tracking: bool = False,
     lambda_des:     Optional[np.ndarray] = None,   # (3,) Cartesian force command for λ_ext tracking
     a_ff:           Optional[np.ndarray] = None,   # (3,) Cartesian feedforward acceleration (yddot_des analog)
+    q_arm:          Optional[np.ndarray] = None,   # (n_arm,) arm joint positions (for joint-2 posture)
+    v_arm:          Optional[np.ndarray] = None,   # (n_arm,) arm joint velocities
 ) -> Tuple[np.ndarray, np.ndarray, bool, str]:
     """Build and solve the OSC QP for one control tick.
 
@@ -191,6 +204,26 @@ def build_and_solve_qp(
         b_force = -gains.W_force * lambda_des_v
         prog.AddQuadraticCost(2.0 * Q_force, 2.0 * b_force, lam_ext,
                               is_convex=True)
+
+    # --- Cost 6 (optional): Joint-2 posture ---
+    # Mirrors dairlib's JointSpaceTrackingData("panda_joint2_target")
+    # at franka_osc_controller.cc:159-165. Cost:
+    #   W_joint2 · ‖v̇[joint2_idx] − a_j2‖²
+    # with a_j2 = Kp_joint2·(target − q_arm[j2]) + Kd_joint2·(−v_arm[j2]).
+    # Skipped when W_joint2 == 0 or q_arm/v_arm are None (byte-identical
+    # to pre-Phase-1 behavior).
+    if gains.W_joint2 > 0.0 and q_arm is not None and v_arm is not None:
+        j2 = int(gains.joint2_idx)
+        q_j2 = float(np.asarray(q_arm, dtype=float).reshape(-1)[j2])
+        v_j2 = float(np.asarray(v_arm, dtype=float).reshape(-1)[j2])
+        a_j2 = (gains.Kp_joint2 * (gains.joint2_target_rad - q_j2)
+                + gains.Kd_joint2 * (-v_j2))
+        e_j2 = np.zeros(n_v)
+        e_j2[j2] = 1.0
+        # ‖e_j2^T v̇ − a_j2‖² = v̇^T (e_j2 e_j2^T) v̇ − 2 a_j2 (e_j2^T v̇) + const
+        Q_j2 = gains.W_joint2 * np.outer(e_j2, e_j2)
+        b_j2 = -gains.W_joint2 * a_j2 * e_j2
+        prog.AddQuadraticCost(2.0 * Q_j2, 2.0 * b_j2, vdot, is_convex=True)
 
     # --- Solve ---
     if solver is None:
