@@ -1179,7 +1179,17 @@ class LCSFormulator:
         # Phase 1 — autodiff Jacobian of f at (q*, v*, u_lin).
         M, Cv, tau_g, B, J_f, f_eval = self.extract_dynamics_with_jacobian(
             context, u_lin)
-        phi, J_n, J_t, mu = self.extract_lcs_contacts(context)
+        # T-only: force top-K EE-manipuland admission for the R^7 planner LCS
+        # (same gate that already exists in linearize_discrete_ee_space at
+        # line 1405-1409). Bypasses the 2 mm distance threshold so the LCS
+        # keeps an EE-T pair even during the arm's lift-traverse-descend,
+        # preventing c3-chatter. Box path unchanged (gate requires tshape).
+        if (self._object_shape == "tshape"
+                and getattr(self, "_ref_pair_admission_planner_lcs", False)):
+            phi, J_n, J_t, mu = self.extract_lcs_contacts(
+                context, force_top_k_ee_box=True, n_ee_top_k=1)
+        else:
+            phi, J_n, J_t, mu = self.extract_lcs_contacts(context)
 
         n_q, n_v, n_u = self.n_q, self.n_v, self.n_u
         n_x = n_q + n_v
