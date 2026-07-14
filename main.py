@@ -337,30 +337,8 @@ def main():
         parser.error("--sampling-c3 and --cost-bias are mutually exclusive. "
                      "Use one or the other.")
 
-    # §7.42 — PUSHA_REF_OSC_ALIGN: bundle four matched-reference defaults
-    # behind one default-OFF env flag. When set, activates (via setdefault, so
-    # individual env vars still override for surgical tests):
-    #   * PUSHA_FORCE_ROUTING=u_sol         — route planner u_sol → OSC λ_des
-    #     (sampling_based_c3_controller.py:562)
-    #   * PUSHA_STAGE5_U_HORIZONTAL=10      — per-axis Fx,Fy bound (admm_solver.py:1054,
-    #     ci_mpc_c3plus.py:308; matches anything/sampling_c3plus_options.yaml:34)
-    #   * PUSHA_STAGE5_U_VERTICAL=3         — per-axis Fz bound (matches yaml:35)
-    #   * PUSHA_STAGE5_R_VECTOR=0.1,0.1,10  — planner R cost = w_R_position·diag(r_vector_position)
-    #     = 10·diag(0.01,0.01,1)  (task_costs.py:796, matches yaml:120,125)
-    # W_force=1.0 is read at sampling_based_c3_controller.py:258 (construction
-    # time) when this flag is set, matching osc_params.yaml LambdaEndEffectorW.
-    # Default-OFF preserves all prior behaviour byte-identically.  ORTHOGONAL
-    # to LCS_CONTACT_MODEL / LCS_SAMPLE_AWARE_EE / LCS_NORMAL_* / REF_RECONCILE_*.
-    if os.environ.get("PUSHA_REF_OSC_ALIGN", "0") == "1":
-        os.environ.setdefault("PUSHA_FORCE_ROUTING",       "u_sol")
-        os.environ.setdefault("PUSHA_STAGE5_U_HORIZONTAL", "10")
-        os.environ.setdefault("PUSHA_STAGE5_U_VERTICAL",   "3")
-        os.environ.setdefault("PUSHA_STAGE5_R_VECTOR",     "0.1,0.1,10")
-        print("[§7.42] PUSHA_REF_OSC_ALIGN=1 active — "
-              "FORCE_ROUTING=u_sol, u_bounds=±10/±3, R=diag(0.1,0.1,10), "
-              "W_force→1.0 (matched to dairlib anything/sampling_c3plus_options.yaml + "
-              "shared_parameters/osc_params.yaml)",
-              flush=True)
+    # (Reference-alignment env bundle removed; all downstream reference
+    # settings are now unconditional defaults.)
 
     task_name   = args.task
     reset_every = args.reset_every
@@ -439,9 +417,8 @@ def main():
     _cost = task_cfg.get("cost", {})
     print(f"[ENV]  Mass: {task_cfg.get('mass', '?')} kg   "
           f"Friction mu: {task_cfg.get('friction', '?')}")
-    print(f"[MPC]  Horizon: {os.environ.get('PUSHA_C3PLUS_N', '5')}   "
-          f"dt: {os.environ.get('PUSHA_C3PLUS_DT', '0.1')} s")
-    print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: 100.0")
+    print(f"[MPC]  Horizon: 5   dt: 0.1 s   ADMM max iters: {args.admm_iter}"
+          f"   rho_init: 100.0")
     print(f"[MPC]  Force limit: 30.0 Nm")
     print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
     print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
@@ -524,44 +501,14 @@ def main():
     # ------------------------------------------------------------------
     # Controller pipeline
     # ------------------------------------------------------------------
-    # §9 Option A: pre-read the sampling-c3 YAML to feed manipuland-ground
-    # contact count + object_shape into the LCSFormulator. Falls back to
-    # defaults when --sampling-c3 is not provided (env var
-    # LCS_EXPLICIT_MANIPULAND_GND overrides regardless).
-    #
-    # SHAPE-GATED DEFAULTS (T-only tune, box path byte-identical):
-    #   box     : 0 explicit ground witnesses + ref-pair-admission OFF
-    #             (port's proven baseline; drag=10 band-aid handles ground)
-    #   tshape  : 3 explicit ground witnesses (matches reference push_t
-    #             sphere-witness layout) + ref-pair-admission ON. The port
-    #             already gates `use_reference_pair_admission_planner_lcs`
-    #             on shape=="tshape" at the LCSFormulator use site.
+    # Reference-conformant LCS: Anitescu contact model + always-on
+    # EE-manipuland pair + shape-appropriate manipuland-ground witnesses
+    # (3 for tshape, 4 for box). All configured by LCSFormulator defaults.
     _obj_shape_for_defaults = str(task_cfg.get("object_type", "box"))
-    if _obj_shape_for_defaults == "tshape":
-        _pre_manipuland_gnd = 3
-        _pre_ref_pair_admission_planner = True
-    else:
-        _pre_manipuland_gnd = 0
-        _pre_ref_pair_admission_planner = False
-    if args.sampling_c3 is not None:
-        try:
-            import yaml as _yaml_pre
-            with open(args.sampling_c3) as _f_pre:
-                _raw_pre = _yaml_pre.safe_load(_f_pre) or {}
-            _pre_manipuland_gnd = int(_raw_pre.get(
-                "lcs_explicit_manipuland_ground_contacts",
-                _pre_manipuland_gnd))
-            _pre_ref_pair_admission_planner = bool(_raw_pre.get(
-                "use_reference_pair_admission_planner_lcs",
-                _pre_ref_pair_admission_planner))
-        except Exception:
-            pass
     formulator = LCSFormulator(
         plant, mu=task_cfg["friction"], obj_body=obj_body,
         plant_ad=plant_ad, context_ad=context_ad,
-        lcs_explicit_manipuland_ground_contacts=_pre_manipuland_gnd,
-        object_shape=str(task_cfg.get("object_type", "box")),
-        ref_pair_admission_planner_lcs=_pre_ref_pair_admission_planner,
+        object_shape=_obj_shape_for_defaults,
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
@@ -576,7 +523,9 @@ def main():
     else:
         _solver_n_x, _solver_n_u = n_x, n_u
         _torque_limit = 30.0    # Nm under R^7 (joint-torque cap)
-    # Tune-1: back to rho=100 (port's C3+ tuning).
+    # Reference rho_scale=3 (adaptive per iter, applied in _solve_c3plus).
+    # Initial rho matches port's tuned C3+ constant; adaptive schedule
+    # multiplies over the 3 admm iterations.
     solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
                           math_diag=args.math_diag,
                           mode=args.solver,
@@ -602,18 +551,9 @@ def main():
         pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
-    # Shape-gated planner cadence (T-only reference alignment):
-    #   tshape → N=5, dt=0.1 (reference anything/sampling_c3_options.yaml)
-    #   box    → N=20, dt=0.05 (port's proven dd2294d @ 75% closure)
-    if _obj_shape_for_defaults == "tshape":
-        _default_N, _default_dt = 5, 0.1
-    else:
-        _default_N, _default_dt = 20, 0.05
-    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", str(_default_N)))
-    _c3plus_dt = float(os.environ.get("PUSHA_C3PLUS_DT", str(_default_dt)))
-    if _c3plus_N != 5 or _c3plus_dt != 0.1:
-        print(f"[HORIZON-PROBE] N={_c3plus_N} dt={_c3plus_dt}  "
-              f"(lookahead {_c3plus_N * _c3plus_dt:.2f}s)", flush=True)
+    # Reference anything/sampling_c3_options.yaml: N=5, dt=0.1 s.
+    _c3plus_N = 5
+    _c3plus_dt = 0.1
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
@@ -657,67 +597,16 @@ def main():
         # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
         # under its own cost differential. Forcing the initial mode would
         # mask whether the pose actually does what we want.
-        # Stage A — Reposition PWL trajectory port (alignment plan §3).
-        # Env var PUSHA_REPOSITION_PWL=1 flips the dispatcher to the new
-        # full-N-knot Cartesian PWL trajectory path (fed to existing OSC
-        # position-tracking). Default OFF → legacy per-tick march path.
-        _env_pwl = os.environ.get("PUSHA_REPOSITION_PWL", None)
-        if _env_pwl == "1":
-            sc3_params.use_reposition_pwl_trajectory = True
-            print("[STAGE-A-PWL] PUSHA_REPOSITION_PWL=1 → using "
-                  "RepositionTrajectory + OSC position-tracking "
-                  "(Stage A path).", flush=True)
-        elif _env_pwl == "0":
-            sc3_params.use_reposition_pwl_trajectory = False
-            print("[STAGE-A-PWL] PUSHA_REPOSITION_PWL=0 → legacy "
-                  "per-tick reposition path", flush=True)
+        # Reposition PWL trajectory is the reference path (LcmTrajectoryReceiver
+        # + FirstOrderHold PP → OSC position tracking with velocity feedforward).
+        # Default True in SamplingC3Params.
         _rng = np.random.default_rng(args.seed) if args.seed is not None else None
         if args.seed is not None:
             print(f"[OVERRIDE] seed={args.seed} (rng=np.random.default_rng)")
-        # Stage C cadence discriminator — PUSHA_CONTROL_HZ env gate.
-        # Default 100 → dt_ctrl=0.01 (baseline); set to 1000 → dt_ctrl=0.001
-        # to measure whether the ADMM converges when the state moves ~10×
-        # less per control tick (reference's actual cadence). Override
-        # sc3_params.dt_osc/dt_mpc BEFORE wrapper construction so the
-        # wrapper's _dt_osc/_dt_mpc fields pick up the new rate. The PWL
-        # reposition is sim-t-parameterized (eval(sim_t)) → naturally lands
-        # the EE the same way at 1 kHz; only the control/ADMM cadence
-        # changes (Stage A reposition isolation guard preserved).
-        import os as _os_cad
-        _ctrl_hz = float(_os_cad.environ.get("PUSHA_CONTROL_HZ", "100"))
-        _dt_ctrl_pass = 1.0 / _ctrl_hz
-        if abs(_ctrl_hz - 100.0) > 1e-9:
-            sc3_params.dt_osc = _dt_ctrl_pass
-            sc3_params.dt_mpc = _dt_ctrl_pass
-            print(f"[ENV]  PUSHA_CONTROL_HZ={_ctrl_hz} → "
-                  f"dt_ctrl={_dt_ctrl_pass:.4f}s, "
-                  f"sc3_params.dt_osc={sc3_params.dt_osc:.4f}s, "
-                  f"sc3_params.dt_mpc={sc3_params.dt_mpc:.4f}s")
-        # Shape-gated OSC gain selection: tshape uses the reference-aligned
-        # yaml (Kp=200, W_track=1, W_rot=10, W_joint2=1, W_torque=0,
-        # W_acc=1e-7); box tasks keep the port's tuned yaml unchanged.
-        # Also override sc3_params.W_force to reference value (1.0) since the
-        # yaml default (100.0) would otherwise dominate the QP against the
-        # reference-scaled position/rotation terms.
-        if _obj_shape_for_defaults == "tshape":
-            _tshape_osc_yaml = "config/osc_franka_tshape.yaml"
-            if sc3_params.osc_gains_yaml == "config/osc_franka.yaml":
-                print(f"[OVERRIDE] tshape-only OSC yaml swap: "
-                      f"{sc3_params.osc_gains_yaml} → {_tshape_osc_yaml}",
-                      flush=True)
-                sc3_params.osc_gains_yaml = _tshape_osc_yaml
-            # W_force override coupled to PUSHA_TSHAPE_C3_GEOM env var
-            # (see sampling_based_c3_controller.py c3-mode branch). When
-            # geometric-target diagnostic is ON, disable force-tracking so
-            # position tracking drives contact. Default OFF preserves
-            # baseline W_force from yaml (100).
-            import os as _os_wf
-            if _os_wf.environ.get("PUSHA_TSHAPE_C3_GEOM", "0") == "1":
-                _prev_wf = sc3_params.W_force
-                if _prev_wf != 0.0:
-                    sc3_params.W_force = 0.0
-                    print(f"[OVERRIDE] tshape-only W_force: {_prev_wf} → 0.0 "
-                          f"(paired with PUSHA_TSHAPE_C3_GEOM=1)", flush=True)
+        # Control cadence: 100 Hz (dt_ctrl = 0.01 s, port and reference match).
+        _dt_ctrl_pass = 0.01
+        # W_force reference value (LambdaEndEffectorW = I_3, scalar 1.0).
+        sc3_params.W_force = 1.0
         mpc = SamplingC3MPC(
             base_mpc=mpc,
             plant=plant,
@@ -728,7 +617,7 @@ def main():
             log_diag=True,
             start_in_c3_mode=False,
             rng=_rng,
-            diagram=diagram,   # required if reposition_params.traj_type==kIK
+            diagram=diagram,
         )
         print(f"[GS] SamplingC3MPC enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
@@ -769,11 +658,7 @@ def main():
     # Main simulation loop
     # ------------------------------------------------------------------
     sim_time      = 0.0
-    # Stage C cadence discriminator — read PUSHA_CONTROL_HZ AGAIN here for
-    # the simulator loop period. The same gate was applied above (before
-    # the SamplingC3MPC construction) to set sc3_params.dt_osc/dt_mpc.
-    import os as _os_cad2
-    dt_ctrl       = 1.0 / float(_os_cad2.environ.get("PUSHA_CONTROL_HZ", "100"))
+    dt_ctrl       = 0.01  # 100 Hz control cadence.
     max_time      = args.max_time if args.max_time is not None else 8.0
     step          = 0
     # §7.74 goal-reach-then-settle: on first tick with goal_dist <=
@@ -819,26 +704,16 @@ def main():
         # Negated: Drake returns generalized gravity force (the force gravity
         # exerts), we want compensation torque. See scripts/test_gravity_sign.py.
         tau_g = -plant.CalcGravityGeneralizedForces(plant_ctx)
-        # === Stage 2: lookahead sub-goal (env-gated PUSHA_LOOKAHEAD_STEP) ===
-        # Reference: dairlib_sampling_c3 goal_generator.cc:401-407 +
-        # anything/parameters/goal_params.yaml:19 (lookahead_step_size: 0.15).
-        # Plans toward a REACHABLE 15cm sub-goal each tick rather than the
-        # distant final goal. When PUSHA_LOOKAHEAD_STEP is unset / 0, this is
-        # a no-op (passes target_xy unchanged — preserves current behavior).
-        _lookahead = float(os.environ.get("PUSHA_LOOKAHEAD_STEP", "0") or "0")
-        if _lookahead > 0.0:
-            _obj_xy_now = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
-            _delta_vec  = target_xy - _obj_xy_now
-            _dist       = float(np.linalg.norm(_delta_vec))
-            if _dist > 1e-9:
-                _step   = min(_lookahead, _dist)
-                _effective_target_xy = _obj_xy_now + (_delta_vec / _dist) * _step
-            else:
-                _effective_target_xy = target_xy
-            if step % 50 == 0:
-                print(f"[LOOKAHEAD] step={step} obj=({_obj_xy_now[0]:+.3f},{_obj_xy_now[1]:+.3f}) "
-                      f"sub_goal=({_effective_target_xy[0]:+.3f},{_effective_target_xy[1]:+.3f}) "
-                      f"step_size={_step:.3f}m dist_remaining={_dist:.3f}m", flush=True)
+        # Lookahead sub-goal (reference anything/goal_params.yaml:19
+        # lookahead_step_size: 0.15). Plans toward a REACHABLE 15 cm
+        # sub-goal each tick rather than the distant final goal.
+        _lookahead = 0.15
+        _obj_xy_now = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
+        _delta_vec  = target_xy - _obj_xy_now
+        _dist       = float(np.linalg.norm(_delta_vec))
+        if _dist > 1e-9:
+            _step   = min(_lookahead, _dist)
+            _effective_target_xy = _obj_xy_now + (_delta_vec / _dist) * _step
         else:
             _effective_target_xy = target_xy
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx,

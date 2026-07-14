@@ -1,66 +1,44 @@
-# Operational Space Controller — gains for the Franka Panda arm.
+# Operational Space Controller — reference-aligned gains.
 #
-# Drop-in replacement for the Aydinoglu impedance controller. The OSC
-# solves a per-tick QP minimizing weighted (task tracking + posture +
-# torque/accel regularization) subject to per-joint URDF torque limits.
+# Sourced from dairlib push_anything_dev @ 257e3ed:
+#   examples/sampling_c3/shared_parameters/osc_params.yaml
 #
-# See control/osc/qp_builder.py for the cost/constraint definition,
-# control/osc/operational_space_controller.py for the integration.
-
+# All tasks (pushing, hard_pushing, shepherding, push_t, cube_turning)
+# use these gains. Legacy port-tuned alternates (Kp=400/W_track=100) were
+# removed as part of the reference-only cleanup.
 osc:
-  # ----- Cartesian PD on EE position (3D) -----
-  # Tune-4: mid ground Kp=300 W_track=30 (between port 40000 and ref 200).
-  Kp_cart: [300.0, 300.0, 300.0]   # N/m per axis
-  Kd_cart: [30.0,  30.0,  30.0]    # N·s/m per axis
+  # Reference EndEffectorKp / EndEffectorKd.
+  Kp_cart: [200.0, 200.0, 200.0]
+  Kd_cart: [20.0,  20.0,  20.0]
 
-  # ----- Posture (nullspace) gains, per arm joint -----
-  # Same as impedance's defaults. Joint-7 is gentlest because its 12 Nm
-  # effort limit (vs 87 Nm on joints 1-4) saturates earlier; OSC's box
-  # constraint handles this naturally so the values don't need joint-7
-  # tapering as severely as the joint-PD law required.
+  # Nullspace posture gains (reference relies on task + rotation-hold +
+  # joint-2 pin for authority; nullspace posture is a weak anchor).
   Kp_null: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
   Kd_null: [3.0,  3.0,  3.0,  3.0,  3.0,  3.0,  3.0]
 
-  # ----- Joint-2 posture (dairlib parity — DEFAULT OFF post-recert) -----
-  # Reference: franka_osc_controller.cc:159-165, osc_params.yaml:42-44 (weight 1).
-  # Kp=200 / Kd=10 at target 1.1 rad, joint2_idx=1 = Franka joint 2.
-  #
-  # W_joint2 SET TO 0.0 on 2026-07-13 after the restored-main re-cert
-  # (results/_recert_restored_main_box_seed0/VERDICT.md) showed that at
-  # W=1 the pin yanks the EE from z=95mm to z=711mm in 1s during c3-mode
-  # contact posture (a_j2 ≈ 200·(1.1 − q_j2) ≈ 120 rad/s² demanded → QP
-  # satisfies via EE-upward accel → box translation halts).
-  #
-  # The code scaffolding STAYS available (qp_builder.py:215 gates on
-  # W_joint2 > 0.0 so cost term is byte-inert here). Turn back on ONLY
-  # inside a coupled cost-stack + executor re-tune conversation, where
-  # the port's Q is being reshaped to work with reference-shaped OSC.
-  # Piecewise adoption is what the recert falsified.
+  # Reference w_elbow=1, elbow_kp=200, elbow_kd=10, target=1.1 rad
+  # (osc_params.yaml:42-44 / franka_osc_controller.cc:159-165).
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  # Tune-1: back to 0 per memory `project_reproduce_dairlib_main_honest_option_a.md`.
-  W_joint2:            0.0
+  W_joint2:            1.0
   joint2_target_rad:   1.1
   joint2_idx:            1
 
-  # ----- QP cost weights -----
-  # Tune-4: W_track=30 (Kp·W_track = 9000, halfway between 40000 and 200).
-  W_track:   30.0
-  W_posture:   1.0
-  W_torque: 0.001
-  W_acc:    0.001
+  # Reference EndEffectorW = diag(1,1,1).
+  W_track:   1.0
+  W_posture: 1.0
 
-  # ----- 2.k Rotation tracking (identity-quaternion hold) -----
-  # Reference osc_params.yaml EndEffectorRotW=10, EndEffectorRotKp=800,
-  # EndEffectorRotKd=40 → compound authority 8000/axis.
-  # Set W_rot > 0 to activate. Off by default while diagnosing perf.
+  # Reference w_input = 0 → no input regularization.
+  W_torque: 0.0
+  # Reference w_accel · W_accel = 1e-5 · 0.01 = 1e-7 per axis.
+  W_acc:    0.0000001
+
+  # Reference EndEffectorRotW=10, EndEffectorRotKp=800, EndEffectorRotKd=40
+  # → compound rotational authority 8000 per axis. Tracks identity-quaternion
+  # (or snapshot at t=0 per operational_space_controller.py).
   Kp_rot: [800.0, 800.0, 800.0]
   Kd_rot: [40.0,  40.0,  40.0]
-  W_rot:  0.0
+  W_rot:  10.0
 
-  # ----- Per-joint torque limits (Franka URDF spec) -----
-  # 87 Nm on joints 1-4 (shoulder/elbow), 12 Nm on joints 5-7 (wrist).
-  # The impedance controller's uniform 30 Nm clip leaves joints 1-4
-  # under-utilized AND joints 5-7 over-budget. URDF spec is the actual
-  # hardware constraint.
+  # Per-joint torque limits (Franka URDF spec).
   tau_max: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]

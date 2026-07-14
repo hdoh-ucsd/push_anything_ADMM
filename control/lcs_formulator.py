@@ -54,165 +54,37 @@ class LCSFormulator:
 
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
-                 box_ground_drag: float = 10.0,
-                 lcs_explicit_manipuland_ground_contacts: int = 0,
-                 object_shape: str = "box",
-                 ref_pair_admission_planner_lcs: bool = False):
-        # d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
-        # PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses a
-        # PRE-SPECIFIED pair list at construction (`resolve_contacts_to_lists`)
-        # via `multibody/geom_geom_collider.cc:86-88`
-        # `ComputeSignedDistancePairClosestPoints(A, B)` (singular pair). The
-        # port's default path uses `ComputeSignedDistancePairwiseClosestPoints`
-        # (plural) with a 2 mm threshold — pairs at φ > 2 mm are DROPPED, which
-        # produces the LCS↔Drake threshold-drop chatter the T's c3-chatter
-        # diagnosis pinned as the T-translation blocker. This flag routes the
-        # planner-LCS call in `linearize_discrete_ee_space` through the port's
-        # already-existing `force_top_k_ee_box=True, n_ee_top_k=1` mechanism
-        # (which mirrors the reference `GetResolvedContactPairs` per the
-        # comment at `lcs_formulator.py:550-555`), previously reserved for the
-        # cost-LCS only (inner_solve.py:593). Gated by object_shape=="tshape"
-        # AT THE USE SITE so the box path is byte-identical when this flag is
-        # True (only tshape opts in).
-        self._ref_pair_admission_planner_lcs = bool(
-            ref_pair_admission_planner_lcs)
+                 object_shape: str = "box"):
         self.plant = plant
         self.mu    = float(mu)
-        # Stage 1 / §9 Option A: manipuland-ground contact synthesis knob.
-        # When > 0, extract_lcs_contacts appends N explicit manipuland-vertex
-        # ↔ ground contact rows (in addition to Drake's EE-manipuland admits;
-        # Drake's auto-admitted BOX-GND pair is DE-DUPLICATED to avoid double-
-        # counting). Reference push_t uses resolve_contacts_to=[0,1,3] → 3
-        # T-ground pairs; jacktoy uses 12 for its shape. For our cube the
-        # natural choices are 4/8/12. Default 0 preserves prior Drake-driven
-        # behavior exactly. Env-var override LCS_EXPLICIT_MANIPULAND_GND (or
-        # legacy LCS_EXPLICIT_BOX_GND) takes precedence.
-        _env_synth = os.environ.get("LCS_EXPLICIT_MANIPULAND_GND", "")
-        if not _env_synth:
-            _env_synth = os.environ.get("LCS_EXPLICIT_BOX_GND", "")  # legacy alias
-        if _env_synth:
-            try:
-                self.lcs_explicit_manipuland_ground_contacts = int(_env_synth)
-            except ValueError:
-                self.lcs_explicit_manipuland_ground_contacts = int(
-                    lcs_explicit_manipuland_ground_contacts)
-        else:
-            self.lcs_explicit_manipuland_ground_contacts = int(
-                lcs_explicit_manipuland_ground_contacts)
-        # Manipuland shape: dispatch tag for _synthesize_manipuland_ground_contacts.
-        # Valid: "box" (existing 4/8/12-vertex enumeration) or "tshape"
-        # (3-witness bottom-face set matching reference push_t).
+        self._obj_body = obj_body
         self._object_shape = str(object_shape)
+
+        # Reference dairlib push_anything_dev@257e3ed:
+        #   contact_model = 'anitescu' (sampling_c3_options.yaml:9)
+        #   always-on pair admission (LCSFactory::LinearizePlantToLCS, no
+        #     distance threshold)
+        #   3 T-ground / 4 box-vertex-ground witnesses (per shape)
+        #   no box_ground_drag (Anitescu holds λ_n_gnd on its own)
+        #   no normal-row patches (Stewart-Trinkle-specific, dead here)
+        self._contact_model = "anitescu"
+        self._always_on_ee_box = True
+        self._ref_pair_admission_planner_lcs = True
+        self._box_drag_c = 0.0
+        self.lcs_explicit_manipuland_ground_contacts = (
+            3 if object_shape == "tshape" else 4)
+
+        # Legacy Stewart-Trinkle normal-row patches: all no-ops under
+        # Anitescu (no separate normal row). Kept as dead defaults so
+        # downstream code doesn't need conditional guards.
+        self._normal_compliance_k = 0.0
+        self._normal_velocity_level = False
+        self._normal_phi_clamp_v_cap = None
+
         # Lazy-initialized box half-extents (queried from geometry inspector
         # on the first synthesis call; needs a context, not available here).
-        self._box_half_extents: "Optional[np.ndarray]" = None
-        # Hard-coded for the probe: world-frame ground plane z (matches
-        # env_builder.py table-top). Synthesis computes phi = vertex_z - GROUND_Z.
+        self._box_half_extents = None
         self._ground_z = 0.0
-        # Effective viscous damping coefficient applied to the manipuland's
-        # translational velocity in the LCS-prediction A matrix. Approximates
-        # box-ground Coulomb drag, which the LCS complementarity machinery
-        # cannot reliably enforce over the horizon (λ_n_gnd collapses to ~0
-        # in the ADMM projection, so μ·λ_n_gnd ≈ 0 and the box is predicted
-        # to coast frictionlessly even with BOX-GND admitted). Tuned so that
-        # at sliding speed v ≈ 0.4 m/s, c·v ≈ μ·g ≈ 3.9 m/s² (μ=0.4, g=9.81).
-        # Set 0 to disable.
-        self._box_drag_c = float(box_ground_drag)
-        self._obj_body   = obj_body
-
-        # §7.24 Candidate A — soft-LCP compliance on the EE-BOX normal contact
-        # only (NOT the floor / BOX-VERT contacts, which would re-break the
-        # §7.9-§7.12 vertical fix). Default 0.0 = OFF (pure rigid Stewart-
-        # Trinkle, byte-identical to pre-§7.24 behaviour). When > 0, an
-        # additive k·I term is appended to F_lcs at the SLN+ee_box_idx
-        # diagonal in linearize_discrete_ee_space (mirrored in the R^7 path
-        # only if trivial — see :1025). Env override
-        # LCS_NORMAL_COMPLIANCE_K takes precedence over the constructor arg
-        # so offline validation can sweep k without main.py edits.
-        _env_kn = os.environ.get("LCS_NORMAL_COMPLIANCE_K", "")
-        if _env_kn:
-            try:
-                self._normal_compliance_k = float(_env_kn)
-            except ValueError:
-                self._normal_compliance_k = 0.0
-        else:
-            self._normal_compliance_k = 0.0
-
-        # §7.26 Candidate C — velocity-level normal formulation (Anitescu-
-        # Potra style) on the EE-BOX contact only: DROP the φ/dt position-
-        # forcing term from c_lcs[SLN+ee_box_idx], leaving only the J_n·v
-        # velocity contributions. Equivalent to enforcing η_n = J_n·v_post
-        # − v_target with v_target = 0 (Stewart-Trinkle's φ/dt is the
-        # position-stabilization that drives rigid resolution). Default
-        # OFF (byte-identical pre-§7.26 behaviour). Not mutually exclusive
-        # with A's LCS_NORMAL_COMPLIANCE_K (the two flags compose).
-        _env_vl = os.environ.get("LCS_NORMAL_VELOCITY_LEVEL", "")
-        self._normal_velocity_level = bool(int(_env_vl)) if _env_vl else False
-
-        # §7.27 Candidate E — clamped-φ/dt saturating-stiffness on EE-BOX
-        # only: cap the penetration-rate magnitude |phi|/dt at v_cap. For
-        # shallow contact (|phi|/dt ≤ v_cap), unchanged (rigid). For deep
-        # contact, the rigid LCP drive is reduced to -v_cap, allowing
-        # partial penetration to persist (depth-asymmetric saturation —
-        # NOT a β-scaling, dodges the §7.25-(5)(ii) β-trap). In the
-        # signed-distance convention used here phi < 0 at penetration,
-        # so |phi|/dt ≤ v_cap is equivalent to phi/dt ≥ -v_cap, and the
-        # clamp is phi_eff/dt = max(phi/dt, -v_cap). Env LCS_NORMAL_PHI_CLAMP
-        # = v_cap in m/s; default unset / non-positive = OFF (byte-identical
-        # pre-§7.27 behaviour). Independent diagnostic from A and C — only
-        # one should be enabled at a time during validation.
-        _env_pc = os.environ.get("LCS_NORMAL_PHI_CLAMP", "")
-        self._normal_phi_clamp_v_cap = None
-        if _env_pc:
-            try:
-                v = float(_env_pc)
-                if v > 0.0:
-                    self._normal_phi_clamp_v_cap = v
-            except ValueError:
-                pass
-
-        # §7.36 — Anitescu friction-folded LCS (Bui 2026 reference's pushing
-        # contact_model). Mirrors lcs_factory.cc:235-275 (kAnitescu branch):
-        # single λ block of size 2·n_c·num_friction_directions = 4·n_c
-        # (no γ slack, no λ_n/λ_t split). Friction folded into J_c =
-        # E_t^T·J_n + diag(μ)·J_t; F = dt·J_c·M^{-1}·J_c^T is a single PSD
-        # block (vs ST's 3-block partitioned F, whose γ-γ block is rank-
-        # deficient by construction). Env LCS_CONTACT_MODEL ∈
-        # {"stewart_trinkle", "anitescu"}; default "stewart_trinkle" = byte-
-        # identical pre-§7.36. ORTHOGONAL to all other flags (REF_RECONCILE_*,
-        # LCS_ALWAYS_ON_EE_BOX, LCS_NORMAL_*); the §7.24/§7.26/§7.27 normal-
-        # row patches are ST-specific and become NO-OPs under Anitescu (no
-        # separate normal row to patch); they stay banked as ST-diagnostics.
-        _env_cm = os.environ.get("LCS_CONTACT_MODEL", "").strip().lower()
-        if _env_cm in ("anitescu", "kanitescu"):
-            self._contact_model = "anitescu"
-        else:
-            # Tune-2: revert to Stewart-Trinkle. Anitescu path had a sign
-            # inversion producing wrong-direction box prediction that
-            # confused the c3 planner (box velocity computed +x when EE
-            # pushed −x). Port's ST path is what the cost stack is tuned
-            # for.
-            self._contact_model = "stewart_trinkle"
-
-        # §7.30 — Always-on EE-BOX admission. Mirrors the reference's
-        # LCSFactory::LinearizePlantToLCS scheme (lcs_factory.cc:31-105,
-        # pre-specified contact_geoms with NO distance threshold): the
-        # EE-BOX pair is included in the LCS at EVERY step regardless of
-        # phi. At separation (phi >= 0) the row is present with λ_n = 0
-        # trivially satisfying complementarity (exact + harmless — no
-        # spurious force), giving the planner visibility on the EE-BOX
-        # constraint at ALL distances so it can PLAN u to drive phi
-        # through zero (the port's filtered admission at 2 mm only lets
-        # the planner REACT once contact is already imminent). Default
-        # OFF (= the existing 2 mm filter, byte-identical pre-§7.30).
-        # NOTE: applies to the EE-BOX pair SPECIFICALLY — NOT a blanket
-        # no-filter (the lcs_formulator.py:443-450 ablation note records
-        # that loosening the threshold to 40 mm admits partial / garbage
-        # pairs that break the dispatcher cost-gap; always-on for the
-        # EE-BOX row only avoids that).
-        # Tune-2: back to False (port default). Always-on wasn't the blocker.
-        _env_ao = os.environ.get("LCS_ALWAYS_ON_EE_BOX", "")
-        self._always_on_ee_box = bool(int(_env_ao)) if _env_ao else False
 
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
