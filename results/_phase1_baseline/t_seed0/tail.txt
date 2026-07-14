@@ -1,0 +1,30 @@
+  k=1 (prev_repos) pos=(-0.100,+0.055,+0.034) c_C3=28462400593945.85 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.122m(pen=  0.00) c_sample=28462400593945.85 feas=Y ik_err=0.0000m
+  k=2 (strat_0   ) pos=(-0.100,+0.055,+0.034) c_C3=28462400593945.85 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.122m(pen=  0.00) c_sample=28462400593945.85 feas=Y ik_err=0.0000m
+[DRAKE-CONTACT] step=800 n_pairs=2 ee_box_normal=0.000
+[GATE-CONTACT] step=800 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00001,-0.00007,+0.00002,-0.01085) box_p=(-0.00120,+0.00511,+0.01998) ee_p=(-0.05197,-0.04784,+0.07750)
+[CONTACT-ELEM] step=4816 element=manipulated_object::horizontal_bar phi=+0.0125m
+[LATERAL] perp=56.0mm scale=50.0mm strength=1.00 shift_mm=(+55.8,+5.2)
+[ADMM-C3+] primal: 44.1639->32.6106  dual: 5445.1746->0.0000  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=32.6106 dr=0.0000 tol=1e-03
+[C3+] step=2411 |u[0]|=2.30N u_axis=(-0.04,+2.27,-0.42)N λ_n_max=10.098 η_n_max=2.237 primal=32.611 iters=25/25 lcp_res_max=4.96e-06
+[CONTACT-ELEM] step=4817 element=manipulated_object::horizontal_bar phi=+0.0125m
+[CONTACT-ELEM] step=4817 element=manipulated_object::vertical_bar phi=+0.0286m
+[CONTACT-ELEM] step=4819 element=manipulated_object::horizontal_bar phi=+0.0050m
+[CONTACT-ELEM] step=4819 element=manipulated_object::vertical_bar phi=+0.0504m
+[CONTACT-ELEM] step=4821 element=manipulated_object::horizontal_bar phi=+0.0050m
+[CONTACT-ELEM] step=4821 element=manipulated_object::vertical_bar phi=+0.0504m
+[EEZ-GATE] step=801 ee_z=77.5mm > ceiling=44.0mm (sampling_z=34.0mm + clearance=10.0mm) gate=BLOCK
+[ADMIT-GUARD] step=801 admit_active=1 latch=0/0 ee_z=0.078 gate_cap=0
+[ALT-GATE] step=801 target_stable=0/0 allow_descent=1
+[GS-tgt] step=801 ee=(-0.053,-0.046,+0.078) p_repos=(-0.100,+0.055,+0.034) ee_to_target=0.120m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=801 mode=free switch=kToBetterRepos best_k=0 best_src=prev_repos curr_cost=54885.04 repos_cost=28782068.83 best_other=28782068.83 met_progress=N steps_since_improve=271 switches=2
+[STEP] step=801 mode=free t=8.010s ee=(-0.053,-0.046,+0.078) obj=(-0.001,+0.005,+0.020) goal_dist=0.183m switch=kToBetterRepos target=(-0.053,-0.046,+0.077) ee_stride=0.000m ee_to_ptarget=0.120m landing_err=0.0632m ik_ok=Y ik_resid=0.0003m q_max_resid_deg=10.92 target_changed=Y retgt=N held_idx=1 held_cost=28782068.83 won_cost=28782068.83 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1202m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=801 curr=54885.04 best_other=28782068.83 ratio=0.0019 ee_to_optimal=0.0776m phi=0.0125m
+[STAGE-A-TRACE] step=801 sim_t=8.010 mode=free phi=0.01252 box_xy=-0.00120,+0.00511 lam_n_ee_box=nan qy=-0.00001 qz=-0.01085 finished_repos=0
+  t=8.00s | ee=(-0.053, -0.046, 0.078) | obj=(-0.001, 0.005, 0.020) | |u|=0.28 Nm | goal_dist=0.183 m
+[DRAKE-CONTACT] step=801 n_pairs=2 ee_box_normal=0.000
+[GATE-CONTACT] step=801 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00001,-0.00004,-0.00001,-0.01085) box_p=(-0.00120,+0.00511,+0.01998) ee_p=(-0.05272,-0.04618,+0.07750)
+[C3] Simulation complete.
+[GS-perf] avg_per_step_ms=3952.7  full_solves=801  cheap_solves=1608  switches=2
+[OSC-SUMMARY] calls=801  qp_failures=0 (0.00%)  saturation=0 (0.00%)  avg_solve_ms=0.36
+[RESULT] method=sampling-c3  final_obj_xy=(-0.0012, 0.0051)  goal_dist=0.1827m  orient_err=0.7162rad  success=NO  ref_gate=FAIL
