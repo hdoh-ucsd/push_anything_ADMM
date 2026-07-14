@@ -14,12 +14,17 @@ from control.osc.operational_space_controller import (
 )
 
 
-def test_default_yaml_provides_joint2_gains():
-    """Task 3 (kept): joint-2 posture gains from osc_franka.yaml."""
+def test_default_yaml_provides_joint2_gains_but_weight_off():
+    """Task 3 scaffolding kept, W_joint2 set to 0.0 post-recert.
+
+    The Kp/Kd/target/idx values remain reference-aligned so a future
+    coupled cost/executor re-tune can turn W back on without editing
+    the YAML. Post-2026-07-13-recert default: W=0 (cost term inert).
+    """
     gains, _ = _load_osc_gains(Path("config/osc_franka.yaml"), n_arm=7)
     assert gains.Kp_joint2 == 200.0
     assert gains.Kd_joint2 == 10.0
-    assert gains.W_joint2 == 1.0
+    assert gains.W_joint2 == 0.0     # default-OFF: see YAML comment for context
     assert gains.joint2_target_rad == 1.1
     assert gains.joint2_idx == 1
 
