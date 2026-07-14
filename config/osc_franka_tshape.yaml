@@ -11,8 +11,13 @@ osc:
   # Port-tuned values from config/osc_franka.yaml.
   Kp_cart: [400.0, 400.0, 400.0]
   Kd_cart: [40.0,  40.0,  40.0]
-  Kp_null: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
-  Kd_null: [3.0,  3.0,  3.0,  3.0,  3.0,  3.0,  3.0]
+  # Posture gains boosted for IK-projected null-space guidance
+  # (PUSHA_TSHAPE_C3_GEOM=1). At default Kp_null=10 the posture cost is
+  # 4000× weaker than task tracking; boosting to 100 gives posture
+  # authority in the 4-DOF null space of the 3-DOF Cartesian task, so
+  # the arm converges to the IK-solved q rather than drifting.
+  Kp_null: [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+  Kd_null: [10.0,  10.0,  10.0,  10.0,  10.0,  10.0,  10.0]
 
   # W_joint2 kept OFF per memory
   # `project_reproduce_dairlib_restored_main_joint2_flag.md`: at W=1 the pin
@@ -25,7 +30,10 @@ osc:
   joint2_idx:            1
 
   W_track:   100.0
-  W_posture:   1.0
+  # W_posture boosted from reference/port 1.0 → 10.0 for tshape IK-guided
+  # null-space constraint (task 4000× dominance → 400× is enough for
+  # null-space to be governed by the IK-projected q_arm target).
+  W_posture: 10.0
   W_torque:  0.001
   W_acc:     0.001
 

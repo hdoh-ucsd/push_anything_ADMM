@@ -2434,10 +2434,16 @@ class SamplingC3MPC:
                 _tshape_geom_on = (_shape_c3 == "tshape"
                                    and _os_tg.environ.get(
                                        "PUSHA_TSHAPE_C3_GEOM", "0") == "1")
+                _q_arm_ik = None  # populated by IK-projection below
                 if _tshape_geom_on:
                     _delta_fk = _p_ee_des - ee_pos_now
                     _dot_g = float(np.dot(_delta_fk[:2], g_hat_3d[:2]))
-                    if _dot_g < 0.0:
+                    # Apply IK-projected geometric target when planner's
+                    # FK either points away from goal (dot<0) OR z-error
+                    # is large (planner suggesting a climb). Both signal
+                    # phantom target.
+                    _z_err_planner = abs(_p_ee_des[2] - ee_pos_now[2])
+                    if _dot_g < 0.0 or _z_err_planner > 0.02:
                         _box_xy_now = np.array([
                             current_q[self._obj_x_idx],
                             current_q[self._obj_y_idx],
@@ -2446,11 +2452,52 @@ class SamplingC3MPC:
                                         + abs(g_hat_3d[1]) * 0.08)
                         _contact_offset = (_face_offset
                                            + float(getattr(self, "_pusher_radius", 0.0195)))
-                        _p_ee_des = np.array([
+                        # z target: fix at the initial EE z (contact plane
+                        # set by --prepositioned or sampling_height).
+                        # Planner's z suggestion is phantom and would send
+                        # EE flying above T.
+                        if getattr(self, "_c3_geom_z_target", None) is None:
+                            self._c3_geom_z_target = float(ee_pos_now[2])
+                        _p_ee_geom = np.array([
                             _box_xy_now[0] - g_hat_3d[0] * _contact_offset,
                             _box_xy_now[1] - g_hat_3d[1] * _contact_offset,
-                            float(_p_ee_des[2]),
+                            float(self._c3_geom_z_target),
                         ])
+                        # IK-PROJECTED JOINT-SPACE GUIDANCE:
+                        # DLS IK from geometric target with current_q as
+                        # warm start (fast convergence, ~10 iters). The
+                        # solved q_arm_ik is passed to the OSC as
+                        # q_nominal_override so the null-space posture
+                        # cost pulls the arm toward the IK solution.
+                        # p_ee_desired is set to FK of the IK solution
+                        # (guaranteed reachable — prevents 90cm runaway).
+                        from control.sampling_c3.ik import solve_ik_to_ee_pos
+                        _q_lo_full = self.plant.GetPositionLowerLimits()
+                        _q_hi_full = self.plant.GetPositionUpperLimits()
+                        _q_ik_full, _ik_err, _ik_it = solve_ik_to_ee_pos(
+                            self.plant, self.ee_frame,
+                            _p_ee_geom, current_q, plant_ctx,
+                            n_arm_dofs=self.n_u,
+                            max_iter=10, tol=2e-3, damping=0.05,
+                            q_lo=_q_lo_full, q_hi=_q_hi_full,
+                        )
+                        # Restore plant context to actual current state
+                        # (solve_ik_to_ee_pos mutates it).
+                        self.plant.SetPositions(plant_ctx, current_q)
+                        self.plant.SetVelocities(plant_ctx, current_v)
+                        _q_arm_ik = _q_ik_full[:self.n_u].copy()
+                        # p_ee_desired = FK of the IK-solved arm state,
+                        # which by construction is close to _p_ee_geom
+                        # (within tolerance) AND reachable.
+                        _q_full_ik = current_q.copy()
+                        _q_full_ik[:self.n_u] = _q_arm_ik
+                        self.plant.SetPositions(plant_ctx, _q_full_ik)
+                        _p_ee_des = self.plant.CalcPointsPositions(
+                            plant_ctx, self.ee_frame, np.zeros(3),
+                            self.world_frame,
+                        ).flatten()
+                        self.plant.SetPositions(plant_ctx, current_q)
+                        self.plant.SetVelocities(plant_ctx, current_v)
                 # DIAG: trace p_ee_des vs current EE to isolate OSC-target bug.
                 import os as _os_pd
                 if _os_pd.environ.get("PUSHA_TRACE_P_EE_DES", "0") == "1":
@@ -3033,6 +3080,10 @@ class SamplingC3MPC:
                 lambda_des   = _lam_des,
                 a_ee_desired = _a_ee_des,
                 mode         = "c3",  # §7.70 — reference-gain swap gate (now default)
+                # IK-projected joint-space guidance for tshape c3 mode
+                # (set only when PUSHA_TSHAPE_C3_GEOM=1 fires); None
+                # otherwise → OSC falls back to constructor's q_nominal.
+                q_nominal_override = _q_arm_ik,
             )
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
             # the alpha=0 / disabled run has parsable rows for the baseline
