@@ -1,0 +1,4 @@
+HEAD=aa42789cf2f7692eaac42d2b9d68a2595f7142fb
+branch=reproduce-dairlib
+date=2026-07-13T17:47:42-07:00
+invocation=Phase-1 box seed=0 (Cartesian-force OSC default; §7.51 chain minus stale c3-gains flag)
