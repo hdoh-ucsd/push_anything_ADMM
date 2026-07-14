@@ -21,9 +21,12 @@ import yaml
 from control.osc.dynamics_helpers import (
     actuation_matrix,
     bias_term,
+    ee_jacobian_angular,
+    ee_jacobian_angular_bias,
     ee_jacobian_bias,
     ee_jacobian_translational,
     ee_position,
+    ee_rotation,
     franka_effort_limits,
     gravity_forces,
     mass_matrix,
@@ -55,6 +58,11 @@ def _load_osc_gains(yaml_path: str | Path, n_arm: int) -> tuple[OscGains, np.nda
         W_joint2  = float(osc.get("W_joint2", 0.0)),
         joint2_target_rad = float(osc.get("joint2_target_rad", 1.1)),
         joint2_idx = int(osc.get("joint2_idx", 1)),
+        Kp_rot    = (np.asarray(osc["Kp_rot"], dtype=float).reshape(3)
+                     if "Kp_rot" in osc else None),
+        Kd_rot    = (np.asarray(osc["Kd_rot"], dtype=float).reshape(3)
+                     if "Kd_rot" in osc else None),
+        W_rot     = float(osc.get("W_rot", 0.0)),
     )
     tau_max = osc.get("tau_max", None)
     if tau_max is not None:
@@ -180,6 +188,10 @@ class OperationalSpaceController:
         self._n_calls = 0
         self._total_solve_ms = 0.0
         self._printed_setup = False
+        # 2.k — rotation-hold target R_WE_target. Snapshot on first call so
+        # the hold is against the starting orientation (mirrors reference's
+        # identity-quaternion trajectory in its own frame convention).
+        self._R_target = None
 
     # ------------------------------------------------------------------
     def compute_torque(self,
@@ -221,17 +233,37 @@ class OperationalSpaceController:
         Jdot_v_v= ee_jacobian_bias(plant, plant_ctx,
                                    self.ee_frame)                # (3,)
 
-        # Reference (inverse_dynamics_qp.cc:213-225) with
-        # `with_gravity_compensation_=true` subtracts gravity from the bias:
-        # bias = Cv − g. QP-solved u then INCLUDES gravity comp and is
-        # clamped INSIDE the URDF effort cap. main.py must NOT add tau_g on
-        # top of u_opt (which would double-count). See 1.d in
-        # docs/conformance-map.md.
-        bias = Cv - g
+        # Tune-3: back to port's task-only bias (Cv only). main.py's
+        # `tau_g[:n_u] + u_opt` universal-add owns gravity comp. Restores
+        # dd2294d proven closure. 1.d divergence stays deferred.
+        bias = Cv
 
         # --- EE Cartesian state ---
         p_ee_now = ee_position(plant, plant_ctx, self.ee_frame)  # (3,)
         v_ee_now = J_v @ current_v                                # (3,)
+
+        # --- 2.k rotation state (only assembled when W_rot > 0) ---
+        _use_rot = float(getattr(self.gains, "W_rot", 0.0)) > 0.0
+        if _use_rot:
+            J_w      = ee_jacobian_angular(plant, plant_ctx, self.ee_frame)   # (3, n_v)
+            Jdot_w_v = ee_jacobian_angular_bias(plant, plant_ctx, self.ee_frame)
+            R_now    = ee_rotation(plant, plant_ctx, self.ee_frame)
+            if self._R_target is None:
+                # Snapshot the starting orientation as the hold target.
+                self._R_target = R_now
+            # Small-angle rotation-error vector: 0.5·(R_target·R_now^T -
+            # R_now·R_target^T) has axis-angle form; use Drake's log map
+            # via the difference rotation R_err = R_target · R_now^T.
+            R_err_mat = self._R_target.matrix() @ R_now.matrix().T
+            # skew(w) = 0.5·(R − R^T); extract axis-angle via ½·[R32−R23, R13−R31, R21−R12]
+            w_err = 0.5 * np.array([
+                R_err_mat[2, 1] - R_err_mat[1, 2],
+                R_err_mat[0, 2] - R_err_mat[2, 0],
+                R_err_mat[1, 0] - R_err_mat[0, 1],
+            ])
+            w_ee_now = J_w @ current_v
+        else:
+            J_w = Jdot_w_v = w_err = w_ee_now = None
 
         # --- Errors ---
         p_err = np.asarray(p_ee_desired, dtype=float).reshape(3) - p_ee_now
@@ -294,6 +326,8 @@ class OperationalSpaceController:
             use_force_tracking=self.use_force_tracking,
             lambda_des=lambda_des,
             a_ff=a_ee_desired,
+            J_w=J_w, Jdot_w_v=Jdot_w_v,
+            w_err=w_err, w_ee_now=w_ee_now,
             q_arm=q_arm,
             v_arm=v_arm,
         )

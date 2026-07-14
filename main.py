@@ -441,7 +441,7 @@ def main():
           f"Friction mu: {task_cfg.get('friction', '?')}")
     print(f"[MPC]  Horizon: {os.environ.get('PUSHA_C3PLUS_N', '5')}   "
           f"dt: {os.environ.get('PUSHA_C3PLUS_DT', '0.1')} s")
-    print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: 3.0")
+    print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: 100.0")
     print(f"[MPC]  Force limit: 30.0 Nm")
     print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
     print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
@@ -528,24 +528,21 @@ def main():
     # contact count + object_shape into the LCSFormulator. Falls back to
     # defaults when --sampling-c3 is not provided (env var
     # LCS_EXPLICIT_MANIPULAND_GND overrides regardless).
-    # Reference-conformant defaults per manipuland type: reference push_t
-    # ships 3 sphere-witness ground contacts; the port's box synthesis
-    # accepts {4,8,12}. Default 3 for T, 4 for box (nearest supported count).
-    _obj_shape_str = str(task_cfg.get("object_type", "box"))
-    _default_n_gnd = 3 if _obj_shape_str == "tshape" else 4
-    _pre_manipuland_gnd = _default_n_gnd
-    _pre_ref_pair_admission_planner = True
+    # Tune-2: back to 0 (port default). Explicit ground synthesis was
+    # coupled to the Anitescu swap; both reverted.
+    _pre_manipuland_gnd = 0
+    _pre_ref_pair_admission_planner = False
     if args.sampling_c3 is not None:
         try:
             import yaml as _yaml_pre
             with open(args.sampling_c3) as _f_pre:
                 _raw_pre = _yaml_pre.safe_load(_f_pre) or {}
             _pre_manipuland_gnd = int(_raw_pre.get(
-                "lcs_explicit_manipuland_ground_contacts", _default_n_gnd))
+                "lcs_explicit_manipuland_ground_contacts", 0))
             _pre_ref_pair_admission_planner = bool(_raw_pre.get(
-                "use_reference_pair_admission_planner_lcs", True))
+                "use_reference_pair_admission_planner_lcs", False))
         except Exception:
-            _pre_manipuland_gnd = _default_n_gnd
+            _pre_manipuland_gnd = 0
     formulator = LCSFormulator(
         plant, mu=task_cfg["friction"], obj_body=obj_body,
         plant_ad=plant_ad, context_ad=context_ad,
@@ -566,9 +563,8 @@ def main():
     else:
         _solver_n_x, _solver_n_u = n_x, n_u
         _torque_limit = 30.0    # Nm under R^7 (joint-torque cap)
-    # Reference rho_scale=3 (adaptive); adopt as fixed initial rho for the
-    # port's C3Solver until adaptive-scaling code is wired.
-    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=3.0,
+    # Tune-1: back to rho=100 (port's C3+ tuning).
+    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
                           math_diag=args.math_diag,
                           mode=args.solver,
                           c3plus_projection=args.c3plus_projection)
@@ -593,9 +589,9 @@ def main():
         pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
-    # Reference: N=5, planning_dt_position=0.1 s (sampling_c3_options.yaml).
-    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", "5"))
-    _c3plus_dt = float(os.environ.get("PUSHA_C3PLUS_DT", "0.1"))
+    # Tune-3: back to port's proven N=20, dt=0.05 (dd2294d @ 75% closure).
+    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", "20"))
+    _c3plus_dt = float(os.environ.get("PUSHA_C3PLUS_DT", "0.05"))
     if _c3plus_N != 5 or _c3plus_dt != 0.1:
         print(f"[HORIZON-PROBE] N={_c3plus_N} dt={_c3plus_dt}  "
               f"(lookahead {_c3plus_N * _c3plus_dt:.2f}s)", flush=True)
@@ -811,17 +807,10 @@ def main():
                 meshcat, mpc.last_x_seq, obj_x_idx, obj_y_idx, obj_z_idx
             )
 
-        # Reference-conformant: OSC now solves gravity comp INSIDE the QP
-        # (bias = Cv − g), so u_opt already includes it and is clamped
-        # within URDF effort limits. Do NOT add tau_g again on top —
-        # would double-count and re-open the 1.d over-cap event at
-        # joint 1. If mpc is a raw C3PlusMPC without OSC (rare direct
-        # path), gravity IS still needed; guard on isinstance(mpc,
-        # SamplingC3MPC) for the reference-conformant OSC path.
-        if isinstance(mpc, SamplingC3MPC):
-            total_torque = u_opt
-        else:
-            total_torque = tau_g[:n_u] + u_opt
+        # Tune-3: back to universal-add. OSC bias=Cv only, so gravity comp
+        # comes from main.py's tau_g addition. Matches dd2294d proven
+        # closure.
+        total_torque = tau_g[:n_u] + u_opt
         plant.get_actuation_input_port().FixValue(plant_ctx, total_torque)
 
         ee_pos = plant.CalcPointsPositions(

@@ -74,6 +74,16 @@ class OscGains:
     joint2_target_rad: float = 1.1
     joint2_idx:        int   = 1
 
+    # 2.k — Rotation tracking (identity-quaternion hold). Reference:
+    # osc_params.yaml EndEffectorRotW=diag(10), EndEffectorRotKp=diag(800),
+    # EndEffectorRotKd=diag(40). Cost:
+    #   W_rot·‖J_w·v̇ + J̇_w·v − a_rot‖², a_rot = Kp_rot·w_err + Kd_rot·(−w_now)
+    # where w_err is the small-angle vector representation of the orientation
+    # error between R_WE and R_WE_target. Skipped when W_rot == 0.
+    Kp_rot:            np.ndarray = None
+    Kd_rot:            np.ndarray = None
+    W_rot:             float = 0.0
+
 
 @dataclass
 class OscLimits:
@@ -102,6 +112,10 @@ def build_and_solve_qp(
     a_ff:           Optional[np.ndarray] = None,   # (3,) Cartesian feedforward acceleration (yddot_des analog)
     q_arm:          Optional[np.ndarray] = None,   # (n_arm,) arm joint positions (for joint-2 posture)
     v_arm:          Optional[np.ndarray] = None,   # (n_arm,) arm joint velocities
+    J_w:            Optional[np.ndarray] = None,   # (3, n_v) EE angular Jacobian (world)
+    Jdot_w_v:       Optional[np.ndarray] = None,   # (3,) angular bias accel
+    w_err:          Optional[np.ndarray] = None,   # (3,) orientation error (small-angle vec)
+    w_ee_now:       Optional[np.ndarray] = None,   # (3,) EE angular velocity in world
 ) -> Tuple[np.ndarray, np.ndarray, bool, str]:
     """Build and solve the OSC QP for one control tick.
 
@@ -224,6 +238,24 @@ def build_and_solve_qp(
         Q_j2 = gains.W_joint2 * np.outer(e_j2, e_j2)
         b_j2 = -gains.W_joint2 * a_j2 * e_j2
         prog.AddQuadraticCost(2.0 * Q_j2, 2.0 * b_j2, vdot, is_convex=True)
+
+    # --- Cost 7 (optional): Rotation tracking (identity-quaternion hold) ---
+    # Reference osc_tracking_data.cc RotTaskSpaceTrackingData with the
+    # yaml gains EndEffectorRotW=10·I, EndEffectorRotKp=800·I,
+    # EndEffectorRotKd=40·I → compound rotational authority 8000/axis.
+    # Cost: W_rot·‖J_w·v̇ + J̇_w·v − a_rot‖²
+    # a_rot = Kp_rot·w_err + Kd_rot·(−w_ee_now)
+    if (gains.W_rot > 0.0
+            and J_w is not None and Jdot_w_v is not None
+            and w_err is not None and w_ee_now is not None
+            and gains.Kp_rot is not None and gains.Kd_rot is not None):
+        _kp_rot = np.asarray(gains.Kp_rot, dtype=float).reshape(3)
+        _kd_rot = np.asarray(gains.Kd_rot, dtype=float).reshape(3)
+        a_rot = _kp_rot * np.asarray(w_err, dtype=float).reshape(3) \
+                + _kd_rot * (-np.asarray(w_ee_now, dtype=float).reshape(3))
+        Q_rot = gains.W_rot * (J_w.T @ J_w)
+        b_rot = gains.W_rot * (J_w.T @ (np.asarray(Jdot_w_v).reshape(3) - a_rot))
+        prog.AddQuadraticCost(2.0 * Q_rot, 2.0 * b_rot, vdot, is_convex=True)
 
     # --- Solve ---
     if solver is None:
