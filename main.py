@@ -706,11 +706,18 @@ def main():
                       f"{sc3_params.osc_gains_yaml} → {_tshape_osc_yaml}",
                       flush=True)
                 sc3_params.osc_gains_yaml = _tshape_osc_yaml
-            _prev_wf = sc3_params.W_force
-            if _prev_wf != 1.0:
-                sc3_params.W_force = 1.0
-                print(f"[OVERRIDE] tshape-only W_force: {_prev_wf} → 1.0 "
-                      f"(reference LambdaEndEffectorW)", flush=True)
+            # W_force override coupled to PUSHA_TSHAPE_C3_GEOM env var
+            # (see sampling_based_c3_controller.py c3-mode branch). When
+            # geometric-target diagnostic is ON, disable force-tracking so
+            # position tracking drives contact. Default OFF preserves
+            # baseline W_force from yaml (100).
+            import os as _os_wf
+            if _os_wf.environ.get("PUSHA_TSHAPE_C3_GEOM", "0") == "1":
+                _prev_wf = sc3_params.W_force
+                if _prev_wf != 0.0:
+                    sc3_params.W_force = 0.0
+                    print(f"[OVERRIDE] tshape-only W_force: {_prev_wf} → 0.0 "
+                          f"(paired with PUSHA_TSHAPE_C3_GEOM=1)", flush=True)
         mpc = SamplingC3MPC(
             base_mpc=mpc,
             plant=plant,
