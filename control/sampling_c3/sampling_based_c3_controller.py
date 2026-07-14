@@ -366,6 +366,15 @@ class SamplingC3MPC:
         self.last_winning_sample_idx:  Optional[int]        = None
         self.last_mode:                str                  = self._prev_mode
 
+        # Cache of the last OSC/tracker call kwargs, populated at the end of
+        # `compute_control` in each dispatch branch. Consumed by
+        # `compute_control_osc_only` to replay the OSC at 1 kHz between
+        # planner ticks (mirrors dairlib's LcmDrivenLoop where the OSC
+        # subscribes to the planner's last-published trajectory).
+        # Shape: (kind, kwargs) where kind ∈ {"c3_traj", "osc_direct",
+        # "tracker"}.
+        self._last_osc_call: Optional[tuple] = None
+
         print(f"[GS] start_mode={'c3' if start_in_c3_mode else 'free'} "
               f"(--prepositioned={start_in_c3_mode})")
 
@@ -2182,6 +2191,13 @@ class SamplingC3MPC:
                     dt_osc=self._dt_osc,
                     admit_active=_admit_active,
                 )
+                # 1 kHz OSC decoupling: cache tracker call args for replay in
+                # sub-tick. p_target is stable across the planner tick.
+                self._last_osc_call = ("tracker", dict(
+                    p_target=np.asarray(p_repos, dtype=float).reshape(3).copy(),
+                    dt_osc=self._dt_osc,
+                    admit_active=_admit_active,
+                ))
                 # Diagnostic: emit one-line [ADMIT-GUARD] per step the latch
                 # is decrementing or active so post-fix logs can verify SC1
                 # (target_z holds) and SC6 (no chatter at boundary).
@@ -2985,6 +3001,19 @@ class SamplingC3MPC:
                 # otherwise → OSC falls back to constructor's q_nominal.
                 q_nominal_override = _q_arm_ik,
             )
+            # 1 kHz OSC decoupling: cache trajectory + planner-tick kwargs so
+            # sub-tick `compute_control_osc_only` can re-evaluate the OSC on
+            # fresh state without re-running the planner.
+            self._last_osc_call = ("c3_traj", dict(
+                traj=_traj_c3,
+                v_ee_desired=_v_ee_des,
+                lambda_n=_exec_lam_n, lambda_t=_exec_lam_t,
+                J_n=_exec_Jn, J_t=_exec_Jt,
+                lambda_des=_lam_des,
+                a_ee_desired=_a_ee_des,
+                mode="c3",
+                q_nominal_override=_q_arm_ik,
+            ))
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
             # the alpha=0 / disabled run has parsable rows for the baseline
             # comparison (None → 0-vector for the log; the actual semantics
@@ -3182,6 +3211,12 @@ class SamplingC3MPC:
                     lambda_des   = None,
                     mode         = "free",  # §7.70 — keep port Kp/W_track
                 )
+                # 1 kHz OSC decoupling: cache PWL traj object so sub-tick can
+                # re-evaluate the SAME piecewise-linear path at fresh t_sim.
+                self._last_osc_call = ("osc_pwl_free", dict(
+                    pwl_traj=self._pwl_traj,
+                    mode="free",
+                ))
             else:
                 # Legacy free-mode path (unchanged).
                 _p_des_wp = (free_diag.get("p_des")
@@ -3209,6 +3244,14 @@ class SamplingC3MPC:
                     J_t          = None,
                     mode         = "free",  # §7.70 — keep port Kp/W_track
                 )
+                # 1 kHz OSC decoupling: legacy path has a static p_ee_des set
+                # by the wrapper (last IK-tracker waypoint or ee_pos_now).
+                # Cached verbatim; sub-tick replays with fresh state.
+                self._last_osc_call = ("osc_direct_free", dict(
+                    p_ee_desired=np.asarray(_p_ee_des, dtype=float).reshape(3).copy(),
+                    v_ee_desired=None,
+                    mode="free",
+                ))
         u_opt = u_imp
 
         # --- λ_planned per-step trace ---------------------------------
@@ -3425,6 +3468,73 @@ class SamplingC3MPC:
         self._step_times_ms.append((time.perf_counter() - t_step_start) * 1e3)
 
         return u_opt
+
+    # ------------------------------------------------------------------
+    # 1 kHz OSC decoupling — replay the executor on fresh state without
+    # re-running the planner. Called from main.py between planner ticks.
+    # Mirrors dairlib's LcmDrivenLoop where the OSC ticks at 1 kHz on the
+    # latest planner-published trajectory. If the wrapper hasn't cached a
+    # planner output yet (cold start), returns zeros.
+    # ------------------------------------------------------------------
+    def compute_control_osc_only(self,
+                                 current_q: np.ndarray,
+                                 current_v: np.ndarray,
+                                 plant_ctx,
+                                 t_sim: float) -> np.ndarray:
+        if self._last_osc_call is None:
+            n_u = int(getattr(self.executor, "n_arm", 7))
+            return np.zeros(n_u)
+        kind, kw = self._last_osc_call
+        if kind == "c3_traj":
+            u_opt, _ = self.executor.compute_torque_from_trajectory(
+                traj=kw["traj"], t_sim=float(t_sim),
+                current_q=current_q, current_v=current_v,
+                plant_ctx=plant_ctx,
+                v_ee_desired=kw["v_ee_desired"],
+                lambda_n=kw["lambda_n"], lambda_t=kw["lambda_t"],
+                J_n=kw["J_n"], J_t=kw["J_t"],
+                lambda_des=kw["lambda_des"],
+                a_ee_desired=kw["a_ee_desired"],
+                mode=kw["mode"],
+                q_nominal_override=kw["q_nominal_override"],
+            )
+            return u_opt
+        if kind == "osc_pwl_free":
+            _pwl = kw["pwl_traj"]
+            if _pwl is None:
+                n_u = int(getattr(self.executor, "n_arm", 7))
+                return np.zeros(n_u)
+            _p_des, _v_des, _done = _pwl.eval(float(t_sim))
+            u_opt, _ = self.executor.compute_torque(
+                current_q, current_v, plant_ctx,
+                p_ee_desired=_p_des,
+                v_ee_desired=_v_des,
+                lambda_n=None, lambda_t=None, J_n=None, J_t=None,
+                lambda_des=None,
+                mode=kw["mode"],
+            )
+            return u_opt
+        if kind == "osc_direct_free":
+            u_opt, _ = self.executor.compute_torque(
+                current_q, current_v, plant_ctx,
+                p_ee_desired=kw["p_ee_desired"],
+                v_ee_desired=kw["v_ee_desired"],
+                lambda_n=None, lambda_t=None, J_n=None, J_t=None,
+                lambda_des=None,
+                mode=kw["mode"],
+            )
+            return u_opt
+        if kind == "tracker":
+            u_opt, _ = self.tracker.compute_torque(
+                current_q=current_q, current_v=current_v,
+                plant_ctx=plant_ctx,
+                p_target=kw["p_target"],
+                dt_osc=kw["dt_osc"],
+                admit_active=kw["admit_active"],
+            )
+            return u_opt
+        n_u = int(getattr(self.executor, "n_arm", 7))
+        return np.zeros(n_u)
 
     # ------------------------------------------------------------------
     # Diagnostics

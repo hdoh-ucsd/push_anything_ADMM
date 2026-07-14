@@ -29,13 +29,16 @@ stem as the _Tee log (results/<stem>.txt). The stem is BASENAME when
 
 Visualisation: Meshcat at http://127.0.0.1:7000
 
-MPC parameters:
-    horizon    = 20    steps  (20 × 0.05 s = 1.0 s lookahead)
-    admm_iter  = 3     ADMM iterations per control step (override with --admm-iter)
-    dt         = 0.05  s  planning timestep
-    dt_ctrl    = 0.01  s  real sim control rate
-    torque_lim = 30    Nm
-    rho        = 100   ADMM penalty (initial; adaptive every 10 iters)
+MPC parameters (reference-conformant defaults, dairlib push_anything_dev@257e3ed):
+    horizon    = 7     steps (c3plus; c3 uses 5)   sampling_c3plus_options.yaml:20
+    admm_iter  = 3     ADMM iters per solve (override with --admm-iter)
+    dt         = 0.075 s planning timestep (c3plus; c3 uses 0.1)
+                       sampling_c3plus_options.yaml:62 (planning_dt_position/pose)
+    dt_ctrl    = 0.075 s planner cadence (=dt) → 13.3 Hz outer loop
+    dt_osc     = 0.001 s OSC cadence            → 1000 Hz inner loop
+                       matches osc_params.yaml:2 controller_frequency
+    torque_lim = URDF per-joint effort limits (87/87/87/87/12/12/12 Nm)
+    rho        = 3     ADMM penalty init (sampling_c3plus_options.yaml rho_init)
 """
 import argparse
 import os
@@ -551,9 +554,16 @@ def main():
         pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
-    # Reference anything/sampling_c3_options.yaml: N=5, dt=0.1 s.
-    _c3plus_N = 5
-    _c3plus_dt = 0.1
+    # Reference-conformant horizon+dt per solver:
+    #   c3plus: anything/parameters/sampling_c3plus_options.yaml:20,62
+    #           N=7, planning_dt_position=planning_dt_pose=0.075
+    #   c3    : anything/parameters/sampling_c3_options.yaml (N=5, dt=0.1)
+    if args.solver == "c3plus":
+        _c3plus_N  = 7
+        _c3plus_dt = 0.075
+    else:
+        _c3plus_N  = 5
+        _c3plus_dt = 0.1
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
@@ -603,8 +613,12 @@ def main():
         _rng = np.random.default_rng(args.seed) if args.seed is not None else None
         if args.seed is not None:
             print(f"[OVERRIDE] seed={args.seed} (rng=np.random.default_rng)")
-        # Control cadence: 100 Hz (dt_ctrl = 0.01 s, port and reference match).
-        _dt_ctrl_pass = 0.01
+        # Planner cadence: 1/planning_dt Hz (matches reference — dairlib's C3
+        # planner is LCM-driven at 1 kHz but effectively bounded by ADMM solve
+        # time; here we tick the port planner once per planning_dt of sim time
+        # so each planner tick corresponds to one LCS horizon step forward).
+        # OSC runs at 1 kHz between planner ticks (compute_control_osc_only).
+        _dt_ctrl_pass = _c3plus_dt if args.solver == "c3plus" else 0.1
         # W_force reference value (LambdaEndEffectorW = I_3, scalar 1.0).
         sc3_params.W_force = 1.0
         mpc = SamplingC3MPC(
@@ -658,7 +672,18 @@ def main():
     # Main simulation loop
     # ------------------------------------------------------------------
     sim_time      = 0.0
-    dt_ctrl       = 0.01  # 100 Hz control cadence.
+    # Planner cadence set from _dt_ctrl_pass above so a single source-of-truth
+    # (_c3plus_dt) drives both the LCS discretization step and the outer loop.
+    # For c3plus: 0.075 s → planner ticks ~13.3 Hz (matches reference
+    # sampling_c3plus_options.yaml planning_dt_position/pose = 0.075).
+    dt_ctrl       = float(_dt_ctrl_pass)
+    # 1 kHz OSC decoupling — mirror dairlib's LcmDrivenLoop where the OSC
+    # subscribes to the last-published planner trajectory and ticks at
+    # osc_params.yaml:2 `controller_frequency: 1000`. Every outer iteration
+    # runs planner + OSC once, then the OSC-only inner loop advances the sim
+    # in 1 ms sub-steps using the cached planner output.
+    _DT_OSC         = 0.001                              # 1 kHz OSC
+    _N_OSC_PER_OUTER = int(round(dt_ctrl / _DT_OSC))     # 75 for c3plus
     max_time      = args.max_time if args.max_time is not None else 8.0
     step          = 0
     # §7.74 goal-reach-then-settle: on first tick with goal_dist <=
@@ -770,9 +795,25 @@ def main():
             mode_timeline_fp.write(
                 f"{step},{sim_time:.4f},{_mode},{_switch_name}\n")
 
-        sim_time += dt_ctrl
+        # 1 kHz OSC inner loop. Sub-step 0 uses the u_opt just computed by
+        # the full planner+OSC path (still applied via FixValue above); each
+        # subsequent sub-step re-reads the plant state, calls
+        # mpc.compute_control_osc_only using the cached planner output, and
+        # re-applies torque. This mirrors dairlib's decoupled OSC ticking at
+        # osc_params.yaml `controller_frequency: 1000`.
+        for _osc_i in range(_N_OSC_PER_OUTER):
+            sim_time += _DT_OSC
+            simulator.AdvanceTo(sim_time)
+            if _osc_i == _N_OSC_PER_OUTER - 1:
+                break
+            _cur_q = plant.GetPositions(plant_ctx)
+            _cur_v = plant.GetVelocities(plant_ctx)
+            _tau_g_i = -plant.CalcGravityGeneralizedForces(plant_ctx)
+            _u_osc = mpc.compute_control_osc_only(
+                _cur_q, _cur_v, plant_ctx, sim_time)
+            _total_i = _tau_g_i[:n_u] + _u_osc
+            plant.get_actuation_input_port().FixValue(plant_ctx, _total_i)
         step     += 1
-        simulator.AdvanceTo(sim_time)
 
         # Sink 3 vs Sink 4 diagnostic: Drake-realized contact force on the
         # EE-box pair. Filters out box-ground using LCS formulator's geom IDs.
