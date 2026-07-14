@@ -439,8 +439,9 @@ def main():
     _cost = task_cfg.get("cost", {})
     print(f"[ENV]  Mass: {task_cfg.get('mass', '?')} kg   "
           f"Friction mu: {task_cfg.get('friction', '?')}")
-    print(f"[MPC]  Horizon: 20   dt: 0.05 s")
-    print(f"[MPC]  ADMM max iters: 3   rho_init: 100.0")
+    print(f"[MPC]  Horizon: {os.environ.get('PUSHA_C3PLUS_N', '5')}   "
+          f"dt: {os.environ.get('PUSHA_C3PLUS_DT', '0.1')} s")
+    print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: 3.0")
     print(f"[MPC]  Force limit: 30.0 Nm")
     print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
     print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
@@ -527,21 +528,24 @@ def main():
     # contact count + object_shape into the LCSFormulator. Falls back to
     # defaults when --sampling-c3 is not provided (env var
     # LCS_EXPLICIT_MANIPULAND_GND overrides regardless).
-    _pre_manipuland_gnd = 0
-    # d.1 — reference-conforming EE-manipuland admission for the planner LCS.
-    # Pre-read from yaml so LCSFormulator gets it at construction.
-    _pre_ref_pair_admission_planner = False
+    # Reference-conformant defaults per manipuland type: reference push_t
+    # ships 3 sphere-witness ground contacts; the port's box synthesis
+    # accepts {4,8,12}. Default 3 for T, 4 for box (nearest supported count).
+    _obj_shape_str = str(task_cfg.get("object_type", "box"))
+    _default_n_gnd = 3 if _obj_shape_str == "tshape" else 4
+    _pre_manipuland_gnd = _default_n_gnd
+    _pre_ref_pair_admission_planner = True
     if args.sampling_c3 is not None:
         try:
             import yaml as _yaml_pre
             with open(args.sampling_c3) as _f_pre:
                 _raw_pre = _yaml_pre.safe_load(_f_pre) or {}
             _pre_manipuland_gnd = int(_raw_pre.get(
-                "lcs_explicit_manipuland_ground_contacts", 0))
+                "lcs_explicit_manipuland_ground_contacts", _default_n_gnd))
             _pre_ref_pair_admission_planner = bool(_raw_pre.get(
-                "use_reference_pair_admission_planner_lcs", False))
+                "use_reference_pair_admission_planner_lcs", True))
         except Exception:
-            _pre_manipuland_gnd = 0
+            _pre_manipuland_gnd = _default_n_gnd
     formulator = LCSFormulator(
         plant, mu=task_cfg["friction"], obj_body=obj_body,
         plant_ad=plant_ad, context_ad=context_ad,
@@ -562,7 +566,9 @@ def main():
     else:
         _solver_n_x, _solver_n_u = n_x, n_u
         _torque_limit = 30.0    # Nm under R^7 (joint-torque cap)
-    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
+    # Reference rho_scale=3 (adaptive); adopt as fixed initial rho for the
+    # port's C3Solver until adaptive-scaling code is wired.
+    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=3.0,
                           math_diag=args.math_diag,
                           mode=args.solver,
                           c3plus_projection=args.c3plus_projection)
@@ -587,17 +593,18 @@ def main():
         pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
-    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", "20"))
-    if _c3plus_N != 20:
-        print(f"[HORIZON-PROBE] PUSHA_C3PLUS_N={_c3plus_N} → "
-              f"c3plus horizon override 20 → {_c3plus_N} "
-              f"(lookahead {_c3plus_N * 0.05:.2f}s at dt=0.05)", flush=True)
+    # Reference: N=5, planning_dt_position=0.1 s (sampling_c3_options.yaml).
+    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", "5"))
+    _c3plus_dt = float(os.environ.get("PUSHA_C3PLUS_DT", "0.1"))
+    if _c3plus_N != 5 or _c3plus_dt != 0.1:
+        print(f"[HORIZON-PROBE] N={_c3plus_N} dt={_c3plus_dt}  "
+              f"(lookahead {_c3plus_N * _c3plus_dt:.2f}s)", flush=True)
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
         quadratic_cost=quad_cost,
         horizon=_c3plus_N,
-        dt=0.05,
+        dt=_c3plus_dt,
         torque_limit=_torque_limit,
         admm_iter=args.admm_iter,
         math_diag=args.math_diag,
@@ -804,15 +811,17 @@ def main():
                 meshcat, mpc.last_x_seq, obj_x_idx, obj_y_idx, obj_z_idx
             )
 
-        # Singular gravity-comp ownership: the main loop always applies
-        # tau_g[:n_u] + u_opt. Executors/trackers strip their internal
-        # gravity-comp (OSC: bias = Cv only; PWL: u_raw = u_pd only).
-        # Replaces the stale free-vs-c3 conditional, which assumed only
-        # the FREE-mode tracker was self-contained — but the OSC executor
-        # was also self-contained in c3 mode, and the old else-branch
-        # double-counted gravity (see audit_output/wire_probe/
-        # CLIMB_SOURCE_REPORT.md).
-        total_torque = tau_g[:n_u] + u_opt
+        # Reference-conformant: OSC now solves gravity comp INSIDE the QP
+        # (bias = Cv − g), so u_opt already includes it and is clamped
+        # within URDF effort limits. Do NOT add tau_g again on top —
+        # would double-count and re-open the 1.d over-cap event at
+        # joint 1. If mpc is a raw C3PlusMPC without OSC (rare direct
+        # path), gravity IS still needed; guard on isinstance(mpc,
+        # SamplingC3MPC) for the reference-conformant OSC path.
+        if isinstance(mpc, SamplingC3MPC):
+            total_torque = u_opt
+        else:
+            total_torque = tau_g[:n_u] + u_opt
         plant.get_actuation_input_port().FixValue(plant_ctx, total_torque)
 
         ee_pos = plant.CalcPointsPositions(

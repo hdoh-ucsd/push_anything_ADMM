@@ -29,7 +29,7 @@ _LEGACY_PREPOSITIONED_ARM_Q = np.array([
 # Dedicated pusher body — spherical puck rigidly welded to panda_link8.
 # This is the single authoritative name for EE body and contact filter.
 EE_BODY_NAME  = "pusher"
-_PUSHER_RADIUS_DEFAULT = 0.025   # m — matches Dairlab C3 planar-pushing benchmark (box canonical).
+_PUSHER_RADIUS_DEFAULT = 0.0195  # m — matches reference end_effector_full.urdf sphere radius (push_anything_dev@257e3ed).
 # NOTE: §9 attempted to globally shrink this to 0.0195 to match DAIR push_t's
 # end_effector_full.urdf, but that regressed the box's 72 % banked closure to
 # ~39 % (contact geometry / setback / sampling_setback all reference this
@@ -81,6 +81,13 @@ def _box_sdf(cfg: dict) -> str:
         <surface>
           <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
         </surface>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="visual">
         <geometry><box><size>{sx} {sy} {sz}</size></box></geometry>
@@ -114,6 +121,13 @@ def _sphere_sdf(cfg: dict) -> str:
         <surface>
           <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
         </surface>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="visual">
         <geometry><sphere><radius>{rad}</radius></sphere></geometry>
@@ -170,6 +184,13 @@ def _tshape_sdf(cfg: dict) -> str:
         <surface>
           <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
         </surface>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <collision name="horizontal_bar">
         <pose>-0.05 0 0 0 0 1.5708</pose>
@@ -177,6 +198,13 @@ def _tshape_sdf(cfg: dict) -> str:
         <surface>
           <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
         </surface>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="vertical_bar_visual">
         <pose>0.05 0 0 0 0 0</pose>
@@ -235,18 +263,19 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
     # ------------------------------------------------------------------
     # Table — a thin static box providing the collision ground plane
     # ------------------------------------------------------------------
-    table_friction = ad.CoulombFriction(static_friction=0.6, dynamic_friction=0.5)
+    # Reference ground.urdf: box 5×0.91×0.1 m, μ_static=μ_dynamic=1.0.
+    table_friction = ad.CoulombFriction(static_friction=1.0, dynamic_friction=1.0)
     plant.RegisterCollisionGeometry(
         plant.world_body(),
         ad.RigidTransform([0.0, 0.0, -0.05]),
-        ad.Box(2.0, 2.0, 0.1),
+        ad.Box(5.0, 0.91, 0.1),
         "table_collision",
         table_friction,
     )
     plant.RegisterVisualGeometry(
         plant.world_body(),
         ad.RigidTransform([0.0, 0.0, -0.05]),
-        ad.Box(2.0, 2.0, 0.1),
+        ad.Box(5.0, 0.91, 0.1),
         "table_visual",
         [0.85, 0.80, 0.65, 1.0],
     )
@@ -279,7 +308,8 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
     # BOTH surfaces at 1.0 (harmonic mean ≤ min). Reference push_t sets EE-T = 1.0
     # per-pair; matching under Drake requires pusher_friction = 1.0 for T tasks
     # and manipuland friction = 1.0. Box tasks keep 0.4 (regression-safe).
-    _pusher_mu = float(task_cfg.get("pusher_friction", 0.4))
+    # Reference end_effector_full.urdf: pusher μ_static=μ_dynamic=1.0.
+    _pusher_mu = float(task_cfg.get("pusher_friction", 1.0))
     plant.RegisterCollisionGeometry(
         pusher_body,
         ad.RigidTransform(),

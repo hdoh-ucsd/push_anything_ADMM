@@ -6,7 +6,8 @@ tasks:
     object_type: box
     link_name: box_link
     mass: 0.2
-    friction: 0.4
+    friction: 0.3            # reference push_t.sdf mu_dynamic
+    pusher_friction: 1.0     # reference end_effector_full.urdf mu
     size: [0.1, 0.1, 0.1]
     init_xyz: [0.0, 0.0, 0.05]
     goal_xy:  [0.3, 0.0]
@@ -38,7 +39,8 @@ tasks:
     object_type: box
     link_name: box_link
     mass: 1.5
-    friction: 0.8
+    friction: 0.3
+    pusher_friction: 1.0
     size: [0.1, 0.1, 0.1]
     init_xyz: [0.0, 0.0, 0.05]
     goal_xy:  [0.3, 0.0]
@@ -65,7 +67,8 @@ tasks:
     object_type: sphere
     link_name: ball_link
     mass: 0.15
-    friction: 0.2
+    friction: 0.3
+    pusher_friction: 1.0
     radius: 0.06
     init_xyz: [0.0, 0.0, 0.06]
     goal_xy:  [0.3, 0.0]
@@ -150,7 +153,8 @@ tasks:
     object_type: box
     link_name: box_link
     mass: 0.2
-    friction: 0.4
+    friction: 0.3
+    pusher_friction: 1.0
     size: [0.1, 0.1, 0.1]
     init_xyz: [0.0, 0.0, 0.05]
     goal_xy:  [0.0, 0.0]

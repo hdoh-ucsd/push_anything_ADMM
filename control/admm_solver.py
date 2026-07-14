@@ -1077,6 +1077,12 @@ class C3Solver:
         omega      = np.zeros(total_dim)
         delta_prev = np.zeros(total_dim)
 
+        # Reference delta_option=1 (c3.cc:312-316) — bias-initialize
+        # delta.head=x0 for every knot's state slot.
+        for i in range(N + 1):
+            base = i * TOT if i < N else N * TOT
+            delta[base : base + n_x] = x0
+
         z_sol = np.zeros(total_dim)
         for i in range(N):
             z_sol[i * TOT : i * TOT + n_x] = x0
