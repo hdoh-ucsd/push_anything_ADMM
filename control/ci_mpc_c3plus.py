@@ -107,33 +107,6 @@ class C3PlusMPC:
               f"solver.n_x={solver.n_x} solver.n_u={solver.n_u}  "
               f"({'EE force (Newtons)' if self.use_ee_space else 'joint torque (Nm)'})",
               flush=True)
-        # Tier-2 subsystem-(4) planner diagnostic (docs/conformance-map.md §4.*):
-        # LOG-ONLY, env-gated PUSHA_PLAN_T2_DIAG=1. One-shot init disclosure of
-        # planner/ADMM configuration for reference-comparison. Default OFF =
-        # byte-identical.
-        import os as _os_t2p
-        if _os_t2p.environ.get("PUSHA_PLAN_T2_DIAG", "0") == "1":
-            print(f"[PLAN-T2] planner_class={type(self).__name__} "
-                  f"solver_class={type(solver).__name__} "
-                  f"solver_mode={getattr(solver, 'mode', '?')!r} "
-                  f"projection={getattr(solver, 'c3plus_projection', 'n/a')!r} "
-                  f"(reference default: 'MIQP' via C3MIQP class)",
-                  flush=True)
-            print(f"[PLAN-T2] horizon N={self.horizon} dt={self.dt} "
-                  f"horizon_time={self.horizon * self.dt:.3f}s "
-                  f"admm_iter={self.admm_iter} "
-                  f"(reference: N=5 dt=0.1 horizon_time=0.5s admm_iter=3 for anything+push_t)",
-                  flush=True)
-            print(f"[PLAN-T2] torque_limit={self.torque_limit} "
-                  f"use_ee_space={self.use_ee_space} "
-                  f"warm_start_across_ticks=False "
-                  f"(reference: warm_start=false in YAML — matches port cold-start)",
-                  flush=True)
-            # rho params live on the solver
-            _rho = getattr(solver, 'rho', None)
-            print(f"[PLAN-T2] solver.rho_init={_rho} "
-                  f"(reference: rho_scale=3 adaptive per iter)",
-                  flush=True)
         self._math_diag        = math_diag
         self._mpc_step         = 0
         self._math_setup_done  = False
