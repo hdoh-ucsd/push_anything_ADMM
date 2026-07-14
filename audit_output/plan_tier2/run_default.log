@@ -1,0 +1,122 @@
+[C3] Log: results/plan_t2_default.txt
+[C3] Task: pushing
+[MPC]  Horizon: 20   dt: 0.05 s
+[MPC]  ADMM max iters: 3   rho_init: 100.0
+[MPC]  Force limit: 30.0 Nm
+[C3] Building Drake environment ...
+[C3] DOFs: n_q=14, n_v=13, n_u=7, n_x=27
+[C3] 'box_link': q[11]=x, q[12]=y
+[C3] Solver mode: c3plus  (planner: R^7 joint torque, c3+ projection: componentwise)
+[C3+] planner construction verified: use_ee_space=False solver.n_x=27 solver.n_u=7  (joint torque (Nm))
+[PLAN-T2] planner_class=C3PlusMPC solver_class=C3Solver solver_mode='c3plus' projection='componentwise' (reference default: 'MIQP' via C3MIQP class)
+[PLAN-T2] horizon N=20 dt=0.05 horizon_time=1.000s admm_iter=25 (reference: N=5 dt=0.1 horizon_time=0.5s admm_iter=3 for anything+push_t)
+[PLAN-T2] torque_limit=30.0 use_ee_space=False warm_start_across_ticks=False (reference: warm_start=false in YAML — matches port cold-start)
+[PLAN-T2] solver.rho_init=100.0 (reference: rho_scale=3 adaptive per iter)
+[GS] start_mode=free (--prepositioned=False)
+[GS] SamplingC3MPC enabled (config: config/sampling_c3_kik.yaml)
+[GS]   strategy=kFaceNormal num_add_c3=3 num_add_repos=1
+[GS]   w_align=30000.0  w_travel=200.0
+[GS]   reposition: traj_type=kPiecewiseLinear z_safe=0.15m speed=0.4m/s
+[C3] Goal: [-0.3  0. ]  |  Meshcat: http://localhost:7000
+[C3] Running simulation ...
+[C3+] step=1 |u[0]|=34.28Nm u_axis=(+10.22,-26.29,-0.84,+15.92,+3.40,-10.63,-0.76)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.933 iters=25/25 lcp_res_max=nan
+[GS] step=1 mode=free switch=kStayInRepos best_k=0 best_src=strat_0 curr_cost=133952.57 repos_cost=195929.76 best_other=195929.76 met_progress=Y steps_since_improve=0 switches=0
+[C3+] step=3 |u[0]|=34.29Nm u_axis=(+10.16,-26.16,-0.96,+16.21,+3.43,-10.59,-0.76)Nm λ_n_max=0.000 η_n_max=0.742 primal=3.872 iters=25/25 lcp_res_max=nan
+[GS] step=2 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156901.18 repos_cost=214633.15 best_other=214633.15 met_progress=Y steps_since_improve=0 switches=0
+[C3+] step=6 |u[0]|=34.38Nm u_axis=(+10.16,-26.01,-1.20,+16.65,+3.48,-10.51,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=3 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156747.50 repos_cost=214051.63 best_other=214051.63 met_progress=Y steps_since_improve=1 switches=0
+[C3+] step=9 |u[0]|=34.49Nm u_axis=(+10.13,-25.80,-1.51,+17.25,+3.54,-10.41,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=4 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156763.61 repos_cost=213601.37 best_other=213601.37 met_progress=Y steps_since_improve=2 switches=0
+[C3+] step=12 |u[0]|=34.67Nm u_axis=(+10.14,-25.61,-1.91,+17.90,+3.64,-10.28,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=5 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156783.72 repos_cost=213140.26 best_other=213140.26 met_progress=Y steps_since_improve=3 switches=0
+[C3+] step=15 |u[0]|=34.90Nm u_axis=(+10.12,-25.41,-2.37,+18.61,+3.74,-10.15,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=6 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156810.40 repos_cost=212692.44 best_other=212692.44 met_progress=Y steps_since_improve=4 switches=0
+[C3+] step=18 |u[0]|=35.22Nm u_axis=(+10.06,-25.25,-2.95,+19.42,+3.90,-9.98,-0.77)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=7 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=134129.73 repos_cost=193453.53 best_other=193453.53 met_progress=Y steps_since_improve=5 switches=0
+[C3+] step=21 |u[0]|=35.47Nm u_axis=(+10.00,-25.10,-3.44,+20.07,+4.04,-9.83,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=8 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156880.89 repos_cost=211921.89 best_other=211921.89 met_progress=Y steps_since_improve=6 switches=0
+[C3+] step=24 |u[0]|=35.84Nm u_axis=(+9.93,-24.98,-4.06,+20.83,+4.21,-9.65,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=9 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156927.21 repos_cost=211600.33 best_other=211600.33 met_progress=Y steps_since_improve=7 switches=0
+[C3+] step=27 |u[0]|=36.24Nm u_axis=(+9.83,-24.90,-4.71,+21.57,+4.39,-9.44,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=10 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156981.29 repos_cost=211320.95 best_other=211320.95 met_progress=Y steps_since_improve=8 switches=0
+[C3+] step=30 |u[0]|=36.70Nm u_axis=(+9.72,-24.89,-5.39,+22.31,+4.59,-9.20,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=11 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157043.64 repos_cost=211085.34 best_other=211085.34 met_progress=Y steps_since_improve=9 switches=0
+[C3+] step=33 |u[0]|=37.20Nm u_axis=(+9.60,-24.90,-6.11,+23.04,+4.79,-8.94,-0.76)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=12 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157115.89 repos_cost=210890.06 best_other=210890.06 met_progress=Y steps_since_improve=10 switches=0
+[C3+] step=36 |u[0]|=37.74Nm u_axis=(+9.49,-24.94,-6.86,+23.77,+5.00,-8.66,-0.76)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=13 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157199.19 repos_cost=210730.82 best_other=210730.82 met_progress=Y steps_since_improve=11 switches=0
+[C3+] step=39 |u[0]|=38.04Nm u_axis=(+9.35,-24.59,-7.62,+24.49,+5.22,-8.34,-0.75)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=14 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157294.00 repos_cost=210603.04 best_other=210603.04 met_progress=Y steps_since_improve=12 switches=0
+[C3+] step=42 |u[0]|=38.23Nm u_axis=(+9.21,-24.01,-8.40,+25.21,+5.45,-8.00,-0.75)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=15 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157402.13 repos_cost=210502.25 best_other=210502.25 met_progress=Y steps_since_improve=13 switches=0
+[C3+] step=45 |u[0]|=38.49Nm u_axis=(+9.08,-23.45,-9.20,+25.95,+5.69,-7.63,-0.74)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=16 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157525.73 repos_cost=210424.35 best_other=210424.35 met_progress=Y steps_since_improve=14 switches=0
+[C3+] step=48 |u[0]|=38.81Nm u_axis=(+8.95,-22.90,-10.02,+26.70,+5.93,-7.25,-0.73)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=17 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157666.65 repos_cost=210365.71 best_other=210365.71 met_progress=Y steps_since_improve=15 switches=0
+[C3+] step=51 |u[0]|=39.20Nm u_axis=(+8.82,-22.37,-10.86,+27.47,+6.17,-6.85,-0.72)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[GS] step=18 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157826.93 repos_cost=210323.24 best_other=210323.24 met_progress=Y steps_since_improve=16 switches=0
+[C3+] step=54 |u[0]|=39.71Nm u_axis=(+8.69,-21.81,-11.80,+28.35,+6.44,-6.40,-0.71)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=19 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=135312.19 repos_cost=191519.89 best_other=191519.89 met_progress=Y steps_since_improve=17 switches=0
+[C3+] step=57 |u[0]|=40.24Nm u_axis=(+8.58,-21.33,-12.65,+29.15,+6.68,-5.98,-0.70)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=20 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=135519.54 repos_cost=191508.53 best_other=191508.53 met_progress=Y steps_since_improve=18 switches=0
+[C3+] step=60 |u[0]|=40.84Nm u_axis=(+8.46,-20.85,-13.51,+29.99,+6.94,-5.55,-0.69)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=21 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=135753.46 repos_cost=191504.91 best_other=191504.91 met_progress=Y steps_since_improve=19 switches=0
+[C3+] step=63 |u[0]|=40.95Nm u_axis=(+8.33,-20.78,-14.15,+30.00,+7.13,-4.88,-0.68)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=22 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136014.95 repos_cost=191491.17 best_other=191491.17 met_progress=Y steps_since_improve=20 switches=0
+[C3+] step=66 |u[0]|=41.15Nm u_axis=(+8.09,-21.14,-14.48,+30.00,+7.27,-4.16,-0.65)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=23 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136254.14 repos_cost=191503.53 best_other=191503.53 met_progress=Y steps_since_improve=21 switches=0
+[C3+] step=69 |u[0]|=41.42Nm u_axis=(+7.70,-21.85,-14.55,+30.00,+7.36,-3.51,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=24 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136436.06 repos_cost=191677.80 best_other=191677.80 met_progress=Y steps_since_improve=22 switches=0
+[C3+] step=72 |u[0]|=41.75Nm u_axis=(+7.27,-22.77,-14.43,+30.00,+7.42,-2.89,-0.61)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=25 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136596.29 repos_cost=192080.26 best_other=192080.26 met_progress=Y steps_since_improve=23 switches=0
+[C3+] step=75 |u[0]|=42.14Nm u_axis=(+6.83,-23.82,-14.15,+30.00,+7.45,-2.30,-0.59)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=26 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136732.73 repos_cost=192733.17 best_other=192733.17 met_progress=Y steps_since_improve=24 switches=0
+[C3+] step=78 |u[0]|=42.46Nm u_axis=(+6.39,-24.96,-13.77,+29.83,+7.45,-1.76,-0.58)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=27 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136847.65 repos_cost=193665.77 best_other=193665.77 met_progress=Y steps_since_improve=25 switches=0
+[C3+] step=81 |u[0]|=42.68Nm u_axis=(+5.99,-26.14,-13.32,+29.46,+7.42,-1.24,-0.57)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=28 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136940.92 repos_cost=194767.33 best_other=194767.33 met_progress=Y steps_since_improve=26 switches=0
+[C3+] step=84 |u[0]|=42.62Nm u_axis=(+5.58,-26.80,-12.82,+29.11,+7.37,-0.76,-0.56)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=29 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137006.07 repos_cost=195962.31 best_other=195962.31 met_progress=Y steps_since_improve=27 switches=0
+[C3+] step=87 |u[0]|=42.21Nm u_axis=(+5.17,-26.85,-12.28,+28.80,+7.33,-0.31,-0.55)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=30 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137043.97 repos_cost=197194.96 best_other=197194.96 met_progress=Y steps_since_improve=28 switches=0
+[C3+] step=90 |u[0]|=41.85Nm u_axis=(+4.80,-26.92,-11.75,+28.52,+7.26,+0.11,-0.55)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=31 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137058.32 repos_cost=198463.00 best_other=198463.00 met_progress=Y steps_since_improve=29 switches=0
+[C3+] step=93 |u[0]|=41.60Nm u_axis=(+4.38,-27.07,-11.23,+28.29,+7.20,+0.52,-0.55)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=32 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137048.39 repos_cost=199662.06 best_other=199662.06 met_progress=Y steps_since_improve=30 switches=0
+[C3+] step=96 |u[0]|=41.40Nm u_axis=(+4.00,-27.24,-10.72,+28.09,+7.12,+0.91,-0.56)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=33 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137021.24 repos_cost=200779.83 best_other=200779.83 met_progress=Y steps_since_improve=31 switches=0
+[C3+] step=99 |u[0]|=41.27Nm u_axis=(+3.62,-27.45,-10.24,+27.93,+7.03,+1.30,-0.56)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=34 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136978.98 repos_cost=201801.92 best_other=201801.92 met_progress=Y steps_since_improve=32 switches=0
+[C3+] step=102 |u[0]|=41.21Nm u_axis=(+3.21,-27.69,-9.80,+27.82,+6.95,+1.69,-0.57)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=35 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136922.61 repos_cost=202720.68 best_other=202720.68 met_progress=Y steps_since_improve=33 switches=0
+[C3+] step=105 |u[0]|=41.18Nm u_axis=(+2.85,-27.92,-9.38,+27.72,+6.84,+2.08,-0.58)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=36 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136859.55 repos_cost=203533.55 best_other=203533.55 met_progress=Y steps_since_improve=34 switches=0
+[C3+] step=108 |u[0]|=41.21Nm u_axis=(+2.48,-28.17,-8.99,+27.67,+6.73,+2.48,-0.59)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=37 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136788.26 repos_cost=204241.84 best_other=204241.84 met_progress=Y steps_since_improve=35 switches=0
+[C3+] step=111 |u[0]|=41.24Nm u_axis=(+2.10,-28.42,-8.59,+27.61,+6.61,+2.88,-0.59)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=38 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136716.09 repos_cost=204849.88 best_other=204849.88 met_progress=Y steps_since_improve=36 switches=0
+[C3+] step=114 |u[0]|=41.33Nm u_axis=(+1.76,-28.67,-8.24,+27.60,+6.47,+3.29,-0.60)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=39 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136638.70 repos_cost=205364.21 best_other=205364.21 met_progress=Y steps_since_improve=37 switches=0
+[C3+] step=117 |u[0]|=41.41Nm u_axis=(+1.43,-28.90,-7.89,+27.59,+6.33,+3.70,-0.61)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=40 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136561.89 repos_cost=205792.92 best_other=205792.92 met_progress=Y steps_since_improve=38 switches=0
+[C3+] step=120 |u[0]|=41.52Nm u_axis=(+1.07,-29.14,-7.53,+27.59,+6.18,+4.09,-0.62)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=41 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136486.90 repos_cost=206164.14 best_other=206164.14 met_progress=Y steps_since_improve=39 switches=0
+[C3+] step=123 |u[0]|=41.65Nm u_axis=(+0.74,-29.37,-7.20,+27.62,+6.04,+4.50,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=42 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136410.50 repos_cost=206469.09 best_other=206469.09 met_progress=Y steps_since_improve=40 switches=0
+[C3+] step=126 |u[0]|=41.66Nm u_axis=(+0.41,-29.56,-6.72,+27.54,+5.84,+4.85,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=43 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136354.82 repos_cost=206711.25 best_other=206711.25 met_progress=Y steps_since_improve=41 switches=0
+[C3+] step=129 |u[0]|=41.68Nm u_axis=(+0.10,-29.75,-6.23,+27.47,+5.64,+5.19,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=44 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136302.65 repos_cost=206902.06 best_other=206902.06 met_progress=Y steps_since_improve=42 switches=0
+[C3+] step=132 |u[0]|=41.94Nm u_axis=(-0.20,-29.93,-6.09,+27.63,+5.52,+5.63,-0.65)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=45 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136215.90 repos_cost=207050.28 best_other=207050.28 met_progress=Y steps_since_improve=43 switches=0
+[C3+] step=135 |u[0]|=41.91Nm u_axis=(-0.55,-29.99,-5.65,+27.57,+5.36,+5.97,-0.66)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=46 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136163.50 repos_cost=207008.68 best_other=207008.68 met_progress=Y steps_since_improve=44 switches=0
+[C3+] step=138 |u[0]|=41.48Nm u_axis=(-0.90,-30.00,-4.69,+27.12,+5.06,+6.01,-0.66)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=47 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136173.80 repos_cost=207117.83 best_other=207117.83 met_progress=Y steps_since_improve=45 switches=0
+[C3+] step=141 |u[0]|=41.29Nm u_axis=(-1.18,-29.99,-4.13,+26.93,+4.84,+6.15,-0.67)Nm λ_n_max=1.059 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=48 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136152.06 repos_cost=207202.77 best_other=207202.77 met_progress=Y steps_since_improve=46 switches=0
+[C3+] step=144 |u[0]|=41.54Nm u_axis=(-1.43,-30.00,-4.00,+27.23,+4.72,+6.55,-0.67)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=49 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136073.38 repos_cost=207269.07 best_other=207269.07 met_progress=Y steps_since_improve=47 switches=0
+[C3+] step=147 |u[0]|=40.74Nm u_axis=(-1.73,-30.00,-2.57,+26.34,+4.35,+6.06,-0.68)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[GS] step=50 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136161.27 repos_cost=207321.48 best_other=207321.48 met_progress=Y steps_since_improve=48 switches=0
+[C3] Simulation complete.
