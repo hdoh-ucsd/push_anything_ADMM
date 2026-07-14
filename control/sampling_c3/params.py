@@ -723,7 +723,9 @@ class SamplingC3Params:
     # (p_des, v_des) to the OSC at each control tick. Default False →
     # legacy path. Read from env var PUSHA_REPOSITION_PWL=1 in main.py
     # at controller construction. See alignment plan §3 Stage A.
-    use_reposition_pwl_trajectory: bool = False
+    # Reference uses derivative-carrying PWL trajectory (LcmTrajectoryReceiver
+    # → FirstOrderHold PP) so OSC gets (p_des, v_des). Default ON.
+    use_reposition_pwl_trajectory: bool = True
 
     # ------------ Contact-proximity entry-gate knobs ----------------------
     # When True, the kToC3ReachedReposTarget trigger requires both
@@ -1009,7 +1011,7 @@ class SamplingC3Params:
             nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
             min_push_force       = float(raw.get("min_push_force", 2.0)),
             use_reposition_pwl_trajectory = bool(raw.get(
-                "use_reposition_pwl_trajectory", False)),
+                "use_reposition_pwl_trajectory", True)),
             use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),

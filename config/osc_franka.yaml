@@ -9,13 +9,9 @@
 
 osc:
   # ----- Cartesian PD on EE position (3D) -----
-  # Mirrors the impedance controller's tuned values (Kp_cart=400 N/m,
-  # Kd_cart=40 N·s/m per axis). 1 cm error → 4 N task force request.
-  # For the pusher's ~0.4 kg effective inertia, ~10 m/s² desired accel.
-  # Critical damping at Kp=400 needs Kd ≈ 2·√(400·0.4) ≈ 25; 40 gives
-  # a slight overdamping margin matching impedance's choice.
-  Kp_cart: [400.0, 400.0, 400.0]   # N/m per axis
-  Kd_cart: [40.0,  40.0,  40.0]    # N·s/m per axis
+  # Reference osc_params.yaml (EndEffectorKp=[200,200,200], EndEffectorKd=[20,20,20]).
+  Kp_cart: [200.0, 200.0, 200.0]   # N/m per axis
+  Kd_cart: [20.0,  20.0,  20.0]    # N·s/m per axis
 
   # ----- Posture (nullspace) gains, per arm joint -----
   # Same as impedance's defaults. Joint-7 is gentlest because its 12 Nm
@@ -42,21 +38,21 @@ osc:
   # Piecewise adoption is what the recert falsified.
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  W_joint2:            0.0
+  # Reference w_elbow=1 (osc_params.yaml:42).
+  W_joint2:            1.0
   joint2_target_rad:   1.1
   joint2_idx:            1
 
   # ----- QP cost weights -----
-  # Task tracking dominates posture by 100× — the posture cost behaves as
-  # a true null-space pull rather than fighting the task.
-  W_track:   100.0
-  W_posture:   1.0
+  # Reference: EndEffectorW=diag(1,1,1), w_input=0, w_input_reg=0, w_accel=1e-5,
+  # W_accel=[0.01]*7 → effective per-axis accel weight = w_accel·W_accel = 1e-7.
+  W_track:   1.0
+  W_posture: 1.0
 
-  # Torque and accel regularization: tie-breakers in the QP's null space.
-  # Keep small so they don't bias the solution; ensure the QP is strictly
-  # convex (avoid OSQP "primal-dual infeasible" on degenerate problems).
-  W_torque: 0.001
-  W_acc:    0.001
+  # Reference: w_input=0 → no input regularization cost.
+  W_torque: 0.0
+  # Reference: w_accel·W_accel = 1e-5 · 0.01 = 1e-7 per axis.
+  W_acc:    0.0000001
 
   # ----- Per-joint torque limits (Franka URDF spec) -----
   # 87 Nm on joints 1-4 (shoulder/elbow), 12 Nm on joints 5-7 (wrist).

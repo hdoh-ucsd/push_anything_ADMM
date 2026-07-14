@@ -243,7 +243,8 @@ reposition_params:
   traj_type: kPiecewiseLinear
 
   # Cartesian speed during reposition (translation rate of the EE).
-  speed: 0.40    # m/s
+  # Reference anything/reposition_params.yaml: speed=0.18 m/s.
+  speed: 0.18    # m/s
 
   # Below this end-to-end Cartesian distance, skip the lift+traverse+descend
   # and run a direct straight-line in joint space. Avoids over-shoot for tiny
@@ -256,7 +257,8 @@ reposition_params:
   # made the lift-traverse-descend guide overrun the N·ds = 0.40 m horizon
   # budget by ~100 mm for typical xy_dist ≈ 0.20 m repositions, so
   # p_guide[:, -1] clamped short of p_target and finished_repos rarely fired.
-  pwl_waypoint_height: 0.15    # m
+  # Reference anything/reposition_params.yaml: pwl_waypoint_height=0.07738005.
+  pwl_waypoint_height: 0.07738005    # m
 
   # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
   # (Stage A, PUSHA_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s

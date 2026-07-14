@@ -221,12 +221,13 @@ class OperationalSpaceController:
         Jdot_v_v= ee_jacobian_bias(plant, plant_ctx,
                                    self.ee_frame)                # (3,)
 
-        # Singular gravity-comp ownership: the main loop adds tau_g to the
-        # actuation port (see main.py around the FixValue call), so the QP
-        # treats gravity as cancelled. bias = Cv (no -g term). Dynamics
-        # constraint then becomes M v̇ + Cv = B u + F_external, and u is
-        # the task-only torque (no implicit gravity-comp).
-        bias = Cv
+        # Reference (inverse_dynamics_qp.cc:213-225) with
+        # `with_gravity_compensation_=true` subtracts gravity from the bias:
+        # bias = Cv − g. QP-solved u then INCLUDES gravity comp and is
+        # clamped INSIDE the URDF effort cap. main.py must NOT add tau_g on
+        # top of u_opt (which would double-count). See 1.d in
+        # docs/conformance-map.md.
+        bias = Cv - g
 
         # --- EE Cartesian state ---
         p_ee_now = ee_position(plant, plant_ctx, self.ee_frame)  # (3,)
@@ -392,6 +393,21 @@ class OperationalSpaceController:
         changing the executor's signature.
         """
         p_ee_desired = np.asarray(traj.value(t_sim)).reshape(3)
+        # Reference osc_tracking_data.cc:88-108 evaluates y, ẏ, ÿ from the
+        # traj every tick. Extract derivatives if the caller hasn't
+        # explicitly overridden them.
+        if v_ee_desired is None:
+            try:
+                v_ee_desired = np.asarray(
+                    traj.EvalDerivative(t_sim, 1)).reshape(3)
+            except Exception:
+                v_ee_desired = None
+        if a_ee_desired is None:
+            try:
+                a_ee_desired = np.asarray(
+                    traj.EvalDerivative(t_sim, 2)).reshape(3)
+            except Exception:
+                a_ee_desired = None
         return self.compute_torque(
             current_q=current_q,
             current_v=current_v,
