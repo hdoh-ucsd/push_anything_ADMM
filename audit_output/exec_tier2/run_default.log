@@ -1,0 +1,24 @@
+[OSC-INIT] n_arm=7 n_v=13
+[OSC-INIT]   Kp_cart=[400.0, 400.0, 400.0]  Kd_cart=[40.0, 40.0, 40.0]
+[OSC-INIT]   Kp_null=[10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+[OSC-INIT]   Kd_null=[3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+[OSC-INIT]   W_track=100.0  W_posture=1.0  W_torque=0.001  W_acc=0.001
+[OSC-INIT]   tau_max=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
+[OSC-INIT]   q_nominal=[0.5522, 0.325, 0.9763, -2.2462, -0.189, 3.0447, 0.785]
+[OSC-INIT]   use_force_tracking=True  W_force=1.0
+[EXEC-T2] ee_frame body='pusher' offset=[0.0, 0.0, 0.0] (reference target: 'end_effector_tip' + Vector3d::Zero())
+[EXEC-T2] gains_effective_at_init: Kp_cart=[400.0, 400.0, 400.0] Kd_cart=[40.0, 40.0, 40.0] W_track=100.0 W_force=1.0 W_torque=0.001 W_acc=0.001
+[EXEC-T2] compound_authority: pos=40000.0 force=1.0 ratio(pos:force)=40000.0:1
+[EXEC-T2] c3_ref_gains_flag=False env_PUSHA_REF_OSC_ALIGN=0 env_PUSHA_OSC_C3_MODE_REFERENCE_GAINS=0
+[EXEC-T2] step=0 t=0.00s u_task=[0.98, -5.3, 1.75, -3.28, -0.27, -0.17, 0.01] tau_g=[0.0, -24.93, 12.81, 10.93, 0.13, 1.15, -0.03] total_plant=[0.98, -30.23, 14.56, 7.65, -0.14, 0.98, -0.03] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+11.02
+[EXEC-T2] step=1 t=0.01s u_task=[0.7, -7.39, 2.73, -5.25, -0.43, -0.23, 0.01] tau_g=[0.0, -24.93, 12.81, 10.94, 0.13, 1.15, -0.03] total_plant=[0.7, -32.32, 15.54, 5.69, -0.3, 0.92, -0.02] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+11.08
+[EXEC-T2] step=2 t=0.02s u_task=[0.46, -8.73, 3.33, -6.37, -0.53, -0.26, 0.01] tau_g=[0.0, -24.9, 12.79, 10.94, 0.13, 1.15, -0.03] total_plant=[0.46, -33.63, 16.13, 4.57, -0.4, 0.89, -0.02] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+11.11
+[EXEC-T2] step=3 t=0.03s u_task=[0.3, -9.47, 3.67, -6.89, -0.57, -0.26, 0.02] tau_g=[0.0, -24.86, 12.77, 10.94, 0.13, 1.15, -0.03] total_plant=[0.3, -34.33, 16.43, 4.05, -0.44, 0.89, -0.02] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+11.11
+[EXEC-T2] step=4 t=0.04s u_task=[0.21, -9.76, 3.81, -6.99, -0.59, -0.25, 0.02] tau_g=[0.0, -24.8, 12.73, 10.94, 0.13, 1.15, -0.03] total_plant=[0.21, -34.56, 16.54, 3.95, -0.46, 0.9, -0.02] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+11.10
+[EXEC-T2] step=50 t=0.50s u_task=[0.58, -0.58, 0.6, -0.03, -0.08, 0.12, 0.0] tau_g=[0.0, -24.58, 11.32, 8.9, -0.07, 1.19, -0.01] total_plant=[0.58, -25.16, 11.93, 8.87, -0.15, 1.31, -0.01] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+10.69
+[EXEC-T2] step=60 t=0.60s u_task=[-3.36, -70.24, 34.04, -1.71, -2.23, 1.91, -0.04] tau_g=[0.0, -27.2, 12.19, 7.86, -0.2, 1.16, -0.01] total_plant=[-3.36, -97.44, 46.23, 6.15, -2.43, 3.07, -0.05] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=1 plant_over_joints=[1] worst_j=1 worst_headroom_Nm=-10.44
+[EXEC-T2] step=100 t=1.00s u_task=[-0.31, 2.7, -1.03, 0.78, 0.08, 0.04, -0.0] tau_g=[0.0, -25.19, 9.97, 10.65, 0.15, 1.24, -0.02] total_plant=[-0.31, -22.49, 8.94, 11.43, 0.23, 1.28, -0.02] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+10.72
+[§7.67 B1-A PLUMB] first-solve mpc_step=1 n_contact_info=1  n_J_n=1  tags=['BOX-GND']  ee_box_idx=None
+[EXEC-T2] step=150 t=1.50s u_task=[0.78, 0.73, 0.15, 1.78, 0.08, 0.08, -0.01] tau_g=[0.0, -22.93, 8.81, 7.61, -0.14, 1.21, -0.0] total_plant=[0.78, -22.21, 8.96, 9.38, -0.05, 1.29, -0.01] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+10.71
+[EXEC-T2] step=200 t=2.00s u_task=[3.13, -16.93, 8.55, -0.52, -0.63, 0.44, -0.01] tau_g=[0.0, -16.24, 5.82, 5.85, -0.22, 1.15, 0.02] total_plant=[3.13, -33.18, 14.37, 5.32, -0.85, 1.59, 0.01] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+10.41
+[EXEC-T2] step=250 t=2.50s u_task=[2.16, 3.17, -1.41, 0.18, 0.01, 0.0, -0.0] tau_g=[0.0, -8.07, 1.98, 10.38, 0.39, 1.3, -0.0] total_plant=[2.16, -4.9, 0.57, 10.55, 0.39, 1.3, -0.01] cap=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] task_over=0 plant_over=0 plant_over_joints=[] worst_j=5 worst_headroom_Nm=+10.70
