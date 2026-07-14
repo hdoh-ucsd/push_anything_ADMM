@@ -1,8 +1,7 @@
 """Verify the default osc_franka.yaml provides joint-2 posture gains
-and (Task 4) that OperationalSpaceController defaults to reference
-c3-mode gains.
-
-Reproduce-dairlib Phase 1.
+(Task 3 — kept) and the opt-in semantics of the §7.70 reference c3-gains
+flag (restored after Phase-1 re-cert on 2026-07-13 — see
+memory/project_reproduce_dairlib_phase1_recert_false_positive.md).
 """
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -16,6 +15,7 @@ from control.osc.operational_space_controller import (
 
 
 def test_default_yaml_provides_joint2_gains():
+    """Task 3 (kept): joint-2 posture gains from osc_franka.yaml."""
     gains, _ = _load_osc_gains(Path("config/osc_franka.yaml"), n_arm=7)
     assert gains.Kp_joint2 == 200.0
     assert gains.Kd_joint2 == 10.0
@@ -31,10 +31,31 @@ def _stub_plant(n_v=8):
     return plant
 
 
-def test_default_c3_mode_uses_reference_gains(monkeypatch):
-    """Task 4: no env vars → reference c3-gains are default."""
-    monkeypatch.delenv("PUSHA_OSC_C3_MODE_LEGACY_GAINS", raising=False)
+def test_default_c3_mode_uses_port_gains(monkeypatch):
+    """§7.70 semantics restored: reference c3-gains are OPT-IN, not default.
+
+    Post-recert (2026-07-13): the 18498c1 flip that made reference c3-gains
+    the default was reverted because it was 200× too gentle for the port's
+    clean Q (66.5% closure vs the clean 75.3% baseline on the same stack).
+    """
     monkeypatch.delenv("PUSHA_OSC_C3_MODE_REFERENCE_GAINS", raising=False)
+    monkeypatch.delenv("PUSHA_REF_OSC_ALIGN", raising=False)
+    plant = _stub_plant()
+    ee_frame = MagicMock()
+    osc = OperationalSpaceController(
+        plant=plant, ee_frame=ee_frame, n_arm_dofs=7,
+        q_nominal=np.zeros(7), gains_yaml="config/osc_franka.yaml",
+        use_force_tracking=True, W_force=1.0,
+    )
+    # No env var → port gains everywhere.
+    assert osc._c3_ref_gains_flag is False
+    assert osc.gains.Kp_cart.tolist() == [400.0, 400.0, 400.0]
+    assert osc.gains.W_track == 100.0
+
+
+def test_opt_in_env_var_enables_reference_c3_gains(monkeypatch):
+    """PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 activates reference gains in c3 mode."""
+    monkeypatch.setenv("PUSHA_OSC_C3_MODE_REFERENCE_GAINS", "1")
     monkeypatch.delenv("PUSHA_REF_OSC_ALIGN", raising=False)
     plant = _stub_plant()
     ee_frame = MagicMock()
@@ -47,19 +68,6 @@ def test_default_c3_mode_uses_reference_gains(monkeypatch):
     assert osc.gains_c3.Kp_cart.tolist() == [200.0, 200.0, 200.0]
     assert osc.gains_c3.Kd_cart.tolist() == [20.0, 20.0, 20.0]
     assert osc.gains_c3.W_track == 1.0
-    # Free-mode gains still port defaults from YAML.
+    # Free-mode gains untouched (port defaults from YAML).
     assert osc.gains.Kp_cart.tolist() == [400.0, 400.0, 400.0]
     assert osc.gains.W_track == 100.0
-
-
-def test_legacy_env_var_disables_reference_c3_gains(monkeypatch):
-    """Task 4: PUSHA_OSC_C3_MODE_LEGACY_GAINS=1 opts out."""
-    monkeypatch.setenv("PUSHA_OSC_C3_MODE_LEGACY_GAINS", "1")
-    plant = _stub_plant()
-    ee_frame = MagicMock()
-    osc = OperationalSpaceController(
-        plant=plant, ee_frame=ee_frame, n_arm_dofs=7,
-        q_nominal=np.zeros(7), gains_yaml="config/osc_franka.yaml",
-        use_force_tracking=True, W_force=1.0,
-    )
-    assert osc._c3_ref_gains_flag is False
