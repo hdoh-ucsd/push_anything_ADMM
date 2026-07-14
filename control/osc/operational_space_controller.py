@@ -128,28 +128,26 @@ class OperationalSpaceController:
             tau_max = franka_effort_limits(plant)[:self.n_arm]
         self.limits = OscLimits(tau_max=tau_max)
 
-        # c3-mode reference-gains — the DEFAULT in reproduce-dairlib Phase 1.
+        # §7.70 — c3-mode reference-gains variant (default-OFF).
+        # PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 activates a swap where
         # compute_torque(mode="c3") uses reference-aligned gains:
         #   Kp_cart = [200, 200, 200]   (ref EndEffectorKp:  osc_params.yaml:51-54)
         #   Kd_cart = [ 20,  20,  20]   (ref EndEffectorKd:  osc_params.yaml:55-58)
         #   W_track = 1.0               (ref EndEffectorW:   osc_params.yaml:47-50)
         # Reposition/free calls (mode="free") keep the port gains
         # (Kp=400/W_track=100) so §7.47 IK→c3 handoff is untouched.
-        # Escape hatch: PUSHA_OSC_C3_MODE_LEGACY_GAINS=1 opts out (uses
-        # port gains everywhere) — preserved for A/B regression checks.
-        # The old PUSHA_OSC_C3_MODE_REFERENCE_GAINS flag is now inert +
-        # emits a deprecation warning if set.
+        # W_force unchanged (matches reference at 1.0 already).
+        # Falsified §7.69's "position task swapped off" — reference keeps
+        # the position task ACTIVE, just weighted 1:1 with force. The gap
+        # is COMPOUND POSITION AUTHORITY: port W_track·Kp = 100·400 =
+        # 40 000 vs reference 1·200 = 200 (200× over-drive at any
+        # nonzero p_err). This fix imports the reference's numbers only
+        # during c3, leaving free-mode Kp/W_track intact.
         import os as _os_ref
-        _legacy = (_os_ref.environ.get(
-            "PUSHA_OSC_C3_MODE_LEGACY_GAINS", "0") == "1")
-        self._c3_ref_gains_flag = not _legacy
-        if _os_ref.environ.get("PUSHA_OSC_C3_MODE_REFERENCE_GAINS") is not None:
-            print("[Phase 1] PUSHA_OSC_C3_MODE_REFERENCE_GAINS is deprecated — "
-                  "reference c3-gains are now the default. Use "
-                  "PUSHA_OSC_C3_MODE_LEGACY_GAINS=1 to opt out.",
-                  flush=True)
-        # Deep-copy the port gains to a c3 override, keeping joint-2 posture
-        # + W_force + W_posture / W_torque / W_acc from the loaded YAML.
+        self._c3_ref_gains_flag = (_os_ref.environ.get(
+            "PUSHA_OSC_C3_MODE_REFERENCE_GAINS", "0") == "1")
+        # Deep-copy the port gains to a c3 override that gets swapped in
+        # at compute_torque(mode="c3") when the flag is set.
         self.gains_c3 = OscGains(
             Kp_cart   = np.array([200.0, 200.0, 200.0]),
             Kd_cart   = np.array([ 20.0,  20.0,  20.0]),
@@ -160,21 +158,12 @@ class OperationalSpaceController:
             W_torque  = self.gains.W_torque,
             W_acc     = self.gains.W_acc,
             W_force   = self.gains.W_force,
-            Kp_joint2 = self.gains.Kp_joint2,
-            Kd_joint2 = self.gains.Kd_joint2,
-            W_joint2  = self.gains.W_joint2,
-            joint2_target_rad = self.gains.joint2_target_rad,
-            joint2_idx = self.gains.joint2_idx,
         )
         if self._c3_ref_gains_flag:
-            print("[Phase 1] c3-mode uses reference-aligned OSC gains "
-                  "(Kp=[200,200,200], Kd=[20,20,20], W_track=1.0); "
-                  "free/repos keeps port gains (Kp=[400,400,400], W_track=100).",
-                  flush=True)
-        else:
-            print("[Phase 1] PUSHA_OSC_C3_MODE_LEGACY_GAINS=1 → c3-mode "
-                  "uses port gains (Kp=[400,400,400], W_track=100). Escape "
-                  "hatch for A/B regression only; reference default is preferred.",
+            print("[§7.70] PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 — c3-mode "
+                  "gains (Kp=[200,200,200], Kd=[20,20,20], W_track=1.0) "
+                  "will be used for compute_torque(mode=\"c3\"); free/repos "
+                  "keeps port gains (Kp=[400,400,400], W_track=100).",
                   flush=True)
 
         # Cache constant B matrix
