@@ -207,6 +207,7 @@ class OperationalSpaceController:
                        lambda_des:   Optional[np.ndarray] = None,
                        a_ee_desired: Optional[np.ndarray] = None,
                        mode:         str = "free",
+                       q_nominal_override: Optional[np.ndarray] = None,
                        ) -> Tuple[np.ndarray, dict]:
         """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict).
 
@@ -274,7 +275,14 @@ class OperationalSpaceController:
 
         q_arm = current_q[:n_arm]
         v_arm = current_v[:n_arm]
-        q_arm_err = self.q_nominal - q_arm
+        # Posture target: `q_nominal_override` (per-tick, from IK-projected
+        # geometric guidance) takes precedence over the constructor's
+        # `q_nominal`. Falls back to self.q_nominal when not supplied.
+        if q_nominal_override is not None:
+            _q_post = np.asarray(q_nominal_override, dtype=float).reshape(n_arm)
+        else:
+            _q_post = self.q_nominal
+        q_arm_err = _q_post - q_arm
         v_arm_err = -v_arm
 
         # --- Feedforward contact force from planner ---
@@ -413,6 +421,7 @@ class OperationalSpaceController:
             lambda_des:   Optional[np.ndarray] = None,
             a_ee_desired: Optional[np.ndarray] = None,
             mode:         str = "free",
+            q_nominal_override: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, dict]:
         """Trajectory-shaped variant of compute_torque.
 
@@ -455,6 +464,7 @@ class OperationalSpaceController:
             lambda_des=lambda_des,
             a_ee_desired=a_ee_desired,
             mode=mode,
+            q_nominal_override=q_nominal_override,
         )
 
     # ------------------------------------------------------------------
