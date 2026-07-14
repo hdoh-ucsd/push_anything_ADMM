@@ -483,12 +483,277 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 
 ---
 
-# Subsystems (3)–(5)
+# Subsystem (3) — LCS admission / contact pair filter
 
-Pending user re-authorization after Reposition Tier-2 review. Order:
+## Sources read
 
-- (3) LCS admission / contact pair filter
-- (4) Planner / ADMM C3+ solver + mode-switch dispatcher (consumes 2.l/2.m)
-- (5) Sim / env-builder / URDF geometry (holds the 3-mm sphere-radius divergence)
+- **Reference** (`dairlib_sampling_c3 @ push_anything_dev 257e3ed`):
+  `systems/controllers/sampling_based_c3_controller.cc:128-133, 1580-1615, 1617-1670, 2537-2555, 2777-2795`;
+  `systems/controllers/sampling_based_c3_controller.h:233`;
+  `examples/sampling_c3/parameter_headers/sampling_c3_options.h:12-137, 224-267, 309-428`;
+  `examples/sampling_c3/anything/parameters/sampling_c3_options.yaml`;
+  `examples/sampling_c3/push_t/parameters/sampling_c3_options.yaml`;
+  `examples/sampling_c3/franka_sampling_c3_controller.cc:120-269` (pair-list construction).
+  **NOT accessible**: the external `c3::multibody::LCSFactory` implementation lives in `github.com/DAIRLab/c3.git @ 5c08cb2e14b1ab10e024cb46e8504970cffcd5ea` (pinned via `MODULE.bazel:88-95`). Local clone was **denied** — reference-side verification limited to usage-site inference. Deep-read of LCSFactory internals (exact `GetNClosestContactPairs` algorithm, `GenerateLCS` matrix construction, `GetContactModelMap`, `GetNumContactVariables`) would require permission to clone the c3 lib.
+- **Port** (`push_anything_ADMM @ main dd2294d + ce29c9f/bde8d64/94774fe/64ffdee/c5f51ab/98f5e94`):
+  `control/lcs_formulator.py:43-940` (constructor + `_synthesize_manipuland_ground_contacts` + `extract_lcs_contacts`);
+  `main.py:525-551` (`LCSFormulator` construction + yaml pre-read of `lcs_explicit_manipuland_ground_contacts` and `use_reference_pair_admission_planner_lcs`);
+  `config/sampling_c3_kik.yaml` (no admission-side keys → all admission knobs take code defaults).
 
-Same two-tier discipline. Consolidation directive registered: apply AFTER the full map + coupling graph is complete, per-flag with box-tripwire, on the COSMETIC + INDEPENDENT subset only; the COUPLED subset (2.a/2.b/2.c/2.h/2.i/2.j/2.k/1.e/1.f and any (3)/(4)/(5) coupling neighbors) stays as-is pending a coupled-re-tune decision.
+**Admission scope:** what happens between "here is the current Drake plant state" and "here is the LCS's per-tick `(phi, J_n, J_t, mu)` contact snapshot handed to `linearize_discrete` for the ADMM solve." Excludes the LCS matrix construction proper (subsystem 4) and the manipuland URDF geometry itself (subsystem 5).
+
+## Index table
+
+| # | Divergence | Tier-1 tag | Tier-2 |
+|---|---|---|---|
+| 3.a | Pair-selection algorithm (2 mm threshold vs top-N ranking) | LOAD-BEARING | CONFIRMED port default = 2 mm hardcoded (`extract_lcs_contacts` distance_threshold arg) |
+| 3.b | Pair-list specification (implicit geometry-set filter vs explicit `contact_pairs_`) | LOAD-BEARING | REFERENCE-CONFIRMED explicit; UNKNOWN internals of `GetNClosestContactPairs` |
+| 3.c | EE-manipuland admission | COSMETIC (both admit) | CONFIRMED (port `EE-BOX` tag; reference `EE-{VERTICAL,HORIZONTAL}` etc.) |
+| 3.d | Manipuland-ground admission (count + method) | LOAD-BEARING | CONFIRMED port 1 auto pair vs reference 3 pre-specified sphere-witnesses |
+| 3.e | Object-wall admission | LOAD-BEARING | CONFIRMED — reference `anything` admits 2 wall pairs; port has NONE |
+| 3.f | Arm-self / arm-table exclusion | COSMETIC (both exclude) | CONFIRMED |
+| 3.g | Contact model (Stewart-Trinkle vs Anitescu) | LOAD-BEARING | **CONFIRMED at runtime** — port default `stewart_trinkle` vs reference `anitescu` |
+| 3.h | num_friction_directions | LOAD-BEARING (ties to 3.g) | CONFIRMED — port 4-edge polyhedral pyramid (ST) vs reference `num_friction_directions=2` (Anitescu) |
+| 3.i | μ per-pair vs uniform | LOAD-BEARING | CONFIRMED runtime — port `mu=0.4` single scalar; reference `mu_per_pair_type=[0.583, 0.42, 0.375, 0.3, 0.375]` for `anything` |
+| 3.j | `box_ground_drag` viscous A-mod (port-only) | LOAD-BEARING | **CONFIRMED at runtime** — 10.0 active by default |
+| 3.k | `LCS_ALWAYS_ON_EE_BOX` (port-only) | LOAD-BEARING iff enabled | CONFIRMED-INERT (env unset → False) |
+| 3.l | `force_top_k_ee_box` (partial ref-conformance) | LOAD-BEARING (planner ⟂ cost) | CONFIRMED — planner LCS: False (default arg); cost-LCS: True (inner_solve.py, but this touches subsystem 4) |
+| 3.m | `ref_pair_admission_planner_lcs` (port-only tshape-only) | LOAD-BEARING iff enabled | CONFIRMED-INERT (yaml unset → False) |
+| 3.n | Normal-row patches (COMPLIANCE_K, VELOCITY_LEVEL, PHI_CLAMP) — 3 mechanisms | LOAD-BEARING iff any enabled | **CONFIRMED-INERT all 3 individually** (2.k caution applied) |
+| 3.o | `LCS_EXPLICIT_MANIPULAND_GND` synthesis (port-only) | LOAD-BEARING iff knob > 0 | CONFIRMED-INERT (default 0; box path) |
+| 3.p | LCS λ-dimension formula | LOAD-BEARING | CONFIRMED — n_lambda = 6·n_c (port ST) vs 4·n_c (reference Anitescu w/ num_friction=2) |
+| 3.q | Tangential-Jacobian basis construction | UNKNOWN | UNKNOWN — deep-read requires c3 lib clone (denied) |
+
+## 3.a — Pair-selection algorithm
+
+- **Reference:** `sampling_based_c3_controller.cc:1580-1615` — `GetResolvedContactPairs` loops each pair-type group and calls `LCSFactory::GetNClosestContactPairs(plant, context, contact_geoms[i], num_to_select)`. **Selects the N closest pairs by phi from each group**. Deterministic count (n_c is fixed at construction via `resolve_contacts_to`), phi threshold is INTERNAL to `GetNClosestContactPairs` (unknown — needs c3 lib clone).
+- **Port:** `lcs_formulator.py:596-601` — `query_obj.ComputeSignedDistancePairwiseClosestPoints(distance_threshold=0.002)`. **Drake filters at 2 mm gap**; pairs with `phi > 2 mm` are DROPPED entirely. Then port applies a geometry-set filter (EE-manipuland OR manipuland-ground). Count varies per tick.
+- **Tag:** LOAD-BEARING. Different algorithms with different semantics: reference has a **constant-count** LCS (n_lambda_ = fixed at construction); port has a **variable-count** LCS (n_c changes tick-to-tick as gaps open/close).
+- **Confidence (Tier 1):** high.
+- **Tier 2 — port-side runtime capture:**
+  ```
+  [ADMIT-T2] distance_threshold=0.002 m (hardcoded default in extract_lcs_contacts;
+             reference uses top-N ranking, no threshold)
+  [ADMIT-T2] call=0 n_c=1 tags=['BOX-GND'] phi=['+0.0000']
+  [ADMIT-T2] call=2 n_c=1 tags=['BOX-GND'] phi=['-0.0000']
+  [ADMIT-T2] call=200 n_c=1 tags=['BOX-GND'] phi=['-0.0000']
+  ```
+  Port maintains `n_c = 1` (BOX-GND only, EE too far at z=0.2 vs box top z=0.10) throughout the first 2 s. **Confirms the variable-count behavior**: EE-BOX pair is NOT admitted until step ~417 when phi drops to +1.8 mm (below 2 mm), giving the planner NO EE-BOX visibility during approach — the exact mechanism `LCS_ALWAYS_ON_EE_BOX` was designed to bypass (`lcs_formulator.py:194-208`).
+
+## 3.b — Pair-list specification
+
+- **Reference:** `franka_sampling_c3_controller.cc:124-269` — pairs are **PRE-SPECIFIED explicitly at controller construction**, per demo. For `push_t`: `SortedPair(EE, VERTICAL_LINK)`, `SortedPair(EE, HORIZONTAL_LINK)`, `SortedPair(TOP_LEFT_SPHERE, GROUND)`, `SortedPair(TOP_RIGHT_SPHERE, GROUND)`, `SortedPair(BOTTOM_SPHERE, GROUND)`. Ground-object pairs use SPHERE bodies added to the manipuland URDF (small witness spheres at footprint corners).
+- **Port:** `lcs_formulator.py:229-260` — pairs are **IMPLICIT**: at init, port builds three GeometryId sets (`_ee_geom_ids`, `_manipuland_geom_ids`, `_ground_geom_ids`); per tick, `extract_lcs_contacts` filters Drake's pairwise output to any pair whose two GeometryIds fall into `(EE, manipuland)` OR `(manipuland, ground)`. **No named pair list.**
+- **Tag:** LOAD-BEARING structurally.
+- **Confidence (Tier 1):** high.
+- **Tier 2:** REFERENCE-CONFIRMED (usage-site read); port confirmed via source-read + runtime `[FILTER INIT]` line. UNKNOWN: the internal ranking / secondary-tie-break inside `GetNClosestContactPairs` — needs c3 lib clone to verify.
+
+## 3.c — EE-manipuland admission
+
+- **Reference:** `franka_sampling_c3_controller.cc:186-191` (jacktoy) / `:229-232` (push_t) — 1 EE-object pair per body (or 2-3 for multi-body objects like jacktoy).
+- **Port:** `lcs_formulator.py:626-629` — admits `(EE geom_id, manipuland geom_id)` pair, tagged `EE-BOX`.
+- **Tag:** COSMETIC — both agents admit at the structure level.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED at runtime (`[CONTACT-ELEM] step=417 element=manipulated_object::collision phi=+0.0018m` shows admission fires when phi drops below 2 mm). The DIVERGENCE is not the admission event itself but the TIMING (deferred by port's threshold vs eager by reference's always-present pair). Belongs conceptually with 3.a.
+
+## 3.d — Manipuland-ground admission (count + method)
+
+- **Reference:** for `anything`, `resolve_contacts_to_lists=[[0, 1, 3, 0, 2]]` → **3 object-ground pairs** admitted. For `push_t`, `resolve_contacts_to_lists=[[0, 1, 3], [0, 2, 3]]` → also 3 T-ground pairs. Uses PRE-SPECIFIED sphere-witness bodies added to the manipuland URDF (see 3.b: `TOP_LEFT_SPHERE`, `TOP_RIGHT_SPHERE`, `BOTTOM_SPHERE` for push_t). **Fixed 3-point footprint captures torsional friction resistance.**
+- **Port:** `lcs_formulator.py:630-636` — admits whatever `(manipuland, ground)` pair Drake's `PairwiseClosestPoints` returns; Drake typically returns ONE pair (the single closest witness). Tagged `BOX-GND`.
+- **Port opt-in (3.o coupling):** `LCS_EXPLICIT_MANIPULAND_GND=N` activates `_synthesize_manipuland_ground_contacts` which synthesizes N vertex-witness rows — the port-analog of reference's URDF-defined witness spheres. For box: `_box_vertex_set_body_frame({4,8,12})`. For tshape: `_tshape_vertex_set_body_frame(3)` matching reference `resolve_contacts_to=[0, 1, 3]` exactly.
+- **Tag:** LOAD-BEARING (torsional friction; 1-pair port default vs 3-pair reference).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED port default = 1 BOX-GND pair (`[ADMIT-T2] call=0 tags=['BOX-GND'] n_box_gnd=1`). The 3-pair synthesis knob is OFF (`lcs_explicit_manipuland_ground_contacts=0`). Reference-analog synthesis exists in the port but is opt-in. **Consequence**: port LCS predicts box moves with only 1 ground constraint → planner can predict rotational drift the 3-witness reference wouldn't (partial explanation for why `box_ground_drag=10.0` was introduced — the 1-pair LCS can't sustain μ·λ_n_gnd realistically).
+
+## 3.e — Object-wall admission
+
+- **Reference:** `anything` config: `resolve_contacts_to_lists=[[0, 1, 3, 0, 2]]` — the last 2 = **2 object-wall pairs**. Workspace has virtual walls defined in the URDF/plant. Provides physical bounds inside the LCS.
+- **Port:** No object-wall pair type. The workspace is enforced via `sampling.py`'s `is_in_workspace` filter on samples, NOT via LCS wall contacts. `lcs_formulator.py` has no wall geometry set.
+- **Tag:** LOAD-BEARING for the `anything` (multi-manipuland) config; **effectively COSMETIC for the single-box `pushing` task if the box never reaches a wall** (the task goal is 30 cm inside a 60+ cm workspace).
+- **Confidence:** high (structural).
+- **Tier 2:** REFERENCE-CONFIRMED; port omission verified via grep for "wall". Load-bearing IFF the manipuland reaches a wall — for the default box `pushing --task-id 4` run, unlikely; for future multi-manipuland or edge-case tasks, could matter.
+
+## 3.f — Arm-self / arm-table exclusion
+
+- **Reference:** the pair list is explicitly enumerated (3.b); arm-self and arm-table pairs are simply NOT added. Guaranteed exclusion.
+- **Port:** `lcs_formulator.py:617-618, 636` — geometry-set filter admits ONLY EE-manipuland and manipuland-ground; all other pairs (arm-self, arm-table, arm-base) are silently dropped.
+- **Tag:** COSMETIC — both agents produce the same exclusion set.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED conformant. Different implementation, same result.
+
+## 3.g — Contact model (Stewart-Trinkle vs Anitescu)
+
+- **Reference:** `sampling_c3_options.yaml`: `contact_model: 'anitescu'` for BOTH `anything` and `push_t`. Anitescu with `num_friction_directions=2` → 2D linearized friction cone folded into a single λ block of size `2·num_friction·n_c = 4·n_c`. Single PSD F block (per lcs_formulator.py:174-191 comment on the reference's `lcs_factory.cc:235-275`).
+- **Port:** `lcs_formulator.py:186-191` — default `_contact_model = 'stewart_trinkle'`. Env `LCS_CONTACT_MODEL` opt-in to switch. Stewart-Trinkle: 3-block λ = `[γ (n_c) ; λ_n (n_c) ; λ_t (4·n_c)]` of total size `6·n_c`. F matrix has γ-γ block that is rank-deficient by construction.
+- **Tag:** LOAD-BEARING.
+- **Confidence:** high.
+- **Tier 2 — port-side runtime capture:**
+  ```
+  [ADMIT-T2] contact_model='stewart_trinkle' (reference default='anitescu';
+             port default='stewart_trinkle'; env_LCS_CONTACT_MODEL=<unset>)
+  ```
+  **CONFIRMED**: port default runs Stewart-Trinkle unless explicitly overridden. Reference default runs Anitescu. Different λ dimensions, different projection semantics, different friction-cone formulations. The port's §7.24/§7.26/§7.27 normal-row patch flags (3.n) are Stewart-Trinkle-specific — under Anitescu they become no-ops (per source comment). So enabling Anitescu (`LCS_CONTACT_MODEL=anitescu`) would also nullify those three patches.
+
+## 3.h — num_friction_directions
+
+- **Reference:** `sampling_c3_options.yaml: num_friction_directions: 2`. Anitescu 2D cone → 2 friction directions per contact folded into 4·n_c λ.
+- **Port:** implicit 4 (polyhedral pyramid `{t1, -t1, t2, -t2}` at `lcs_formulator.py:815-824`). Under Stewart-Trinkle this gives `n_t = 4·n_c`; the corresponding Anitescu equivalent would be `n_friction_dirs = 2`.
+- **Tag:** LOAD-BEARING (ties to 3.g).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via source-read. Port's 4-edge polyhedron matches Anitescu num_friction=2 in terms of the underlying friction cone discretization, but the ST-vs-Anitescu wrapping (γ slack; folded J_c = E_t^T·J_n + diag(μ)·J_t) changes the λ semantics.
+
+## 3.i — μ per-pair vs uniform
+
+- **Reference:** `mu_per_pair_type: [0.583, 0.42, 0.375, 0.3, 0.375]` for `anything` (ee-ground, ee-object, object-ground, object-object, object-wall). Each contact carries its OWN μ. Harmonic mean of the two surfaces' URDF μ values (comment: `match URDFs with (2·mu1·mu2)/(mu1+mu2)`).
+- **Port:** `lcs_formulator.py:80` — `self.mu = float(mu)`, single scalar from `task_cfg["friction"]`. All contacts (EE-BOX and BOX-GND) share the same μ.
+- **Tag:** LOAD-BEARING (different friction cones per contact pair).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] mu=0.4 (single scalar; reference uses mu_per_pair_type array)`. For `pushing` task, port `mu=0.4` (task_cfg). Reference-analog computation: pusher-box μ ≈ 0.42 (harmonic of `pusher_friction=0.4` × `box_friction=0.4` → 0.4; matches). But box-ground: port also uses 0.4, reference uses 0.375 (harmonic of box=0.4 × table-URDF-μ ≠ 0.4). Divergence is small (0.4 vs 0.375) but the STRUCTURAL divergence (one scalar vs per-pair vector) matters when the two contact types have very different physical μ (e.g., high-friction manipuland vs low-friction ground). See `push_t` config where `mu_per_pair_type=[0.4165, 1, 0.4615]` — EE-T is μ=1.0, T-ground is μ=0.4615, both HIGHER than pushing's 0.4.
+
+## 3.j — `box_ground_drag` viscous A-matrix modification
+
+- **Reference:** No analog. Reference LCS relies on `λ_n_gnd tracking gravity` and `μ·λ_n_gnd` friction to physically decelerate the manipuland.
+- **Port:** `lcs_formulator.py:56, 120, 1228-1234` — `box_ground_drag: float = 10.0` (constructor default). Injects `A[v_box_xy_diag] -= c·dt` viscous drag onto the box's translational velocity block. Per the source comment (line 1219-1227): "the ADMM componentwise projection cannot sustain λ_n_gnd at the m·g level needed to apply μ·λ_n_gnd friction over the prediction horizon; without this damping the predicted box trajectory coasts at the post-impact velocity for the full horizon (observed: −388 mm in 1 s vs executed ~−4 mm)."
+- **Tag:** LOAD-BEARING (active by default, port-only).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] box_ground_drag=10.0 (port-only viscous A-matrix modification; reference has no analog — LCS λ_n_gnd tracking is the reference mechanism)`. **This is a port-only band-aid for the ADMM's inability to sustain contact λ**. Structurally load-bearing: without it, the port's LCS predicts unrealistic box coasting; with it, the LCS predicts artificially fast box decay. Neither matches reference physics. Coupled to (4) ADMM projection semantics — a properly-converging ADMM would obviate the need for this drag.
+
+## 3.k — `LCS_ALWAYS_ON_EE_BOX` (port-only)
+
+- **Reference:** All pairs are always in the LCS by construction (pre-specified). Reference `EE-BOX` is present at every tick regardless of phi.
+- **Port:** `lcs_formulator.py:209-210` — env-gated flag; when set, if the 2 mm threshold did NOT admit an EE-BOX pair, inject the top-N closest EE-manipuland pair explicitly via `ComputeSignedDistancePairClosestPoints` (which does NOT apply the threshold). Mirrors reference's always-present pair.
+- **Tag:** LOAD-BEARING iff enabled. This flag is a PARTIAL reference-conformance path.
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] always_on_ee_box=False (env_LCS_ALWAYS_ON_EE_BOX=<unset>)`. **INERT by default.** The reference-conformant behavior exists but is opt-in.
+
+## 3.l — `force_top_k_ee_box` (partial ref-conformance, kwarg on `extract_lcs_contacts`)
+
+- **Reference:** Always uses top-K per pair-type group (see 3.a).
+- **Port:** `lcs_formulator.py:565-581, 665-685` — `force_top_k_ee_box: bool = False` default arg to `extract_lcs_contacts`. When True, unconditionally REPLACE the EE-manipuland slice with the top-K (by phi) candidate pairs. Called by `inner_solve.py` for the cost-LCS ONLY (`n_ee_top_k=2` per reference push_t `resolve_contacts_to_for_cost=[0, 2, 3]`). Planner LCS calls default (False).
+- **Tag:** LOAD-BEARING (planner LCS ⟂ cost LCS in port).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via source-read. Planner LCS default arg = False (planner uses the 2mm-filter path). Cost LCS = True per `inner_solve.py` (belongs to subsystem 4). **Partial reference-conformance**: reference uses top-K UNIFORMLY (both planner and cost); port uses top-K for cost only.
+
+## 3.m — `ref_pair_admission_planner_lcs` (yaml opt-in, tshape-only)
+
+- **Reference:** Always uses reference admission (see 3.a).
+- **Port:** `lcs_formulator.py:60-77` — yaml `use_reference_pair_admission_planner_lcs: bool = False` default. When True AND `object_shape=="tshape"` AT USE SITE, routes the planner LCS call through `force_top_k_ee_box=True, n_ee_top_k=1` — the reference-analog for the PLANNER LCS. Box path untouched.
+- **Tag:** LOAD-BEARING iff enabled (tshape-only opt-in).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] ref_pair_admission_planner_lcs=False`. **INERT for the default box run.** Would flip to LOAD-BEARING for T-shape tasks if opted in.
+
+## 3.n — Normal-row patches (three port-only mechanisms)
+
+**Applying the 2.k caution — verify each mechanism individually.**
+
+- **Reference:** No analog. Reference Anitescu doesn't have separate normal rows to patch (single folded λ block).
+- **Port:** three env-gated patches on the Stewart-Trinkle normal row:
+  1. `LCS_NORMAL_COMPLIANCE_K` (`lcs_formulator.py:132-139`) — additive `k·I` on F_lcs diagonal at EE-BOX normal contact. Default 0.0 = OFF.
+  2. `LCS_NORMAL_VELOCITY_LEVEL` (`lcs_formulator.py:149-150`) — drops the `φ/dt` position-forcing term from `c_lcs[SLN+ee_box_idx]`. Default False = OFF.
+  3. `LCS_NORMAL_PHI_CLAMP` (`lcs_formulator.py:164-172`) — clamps `phi/dt ≥ -v_cap` (depth-asymmetric saturation). Default None = OFF.
+- **Tag:** LOAD-BEARING iff ANY enabled; each independently opt-in.
+- **Confidence:** high.
+- **Tier 2 — port-side runtime capture (individually verified per 2.k caution):**
+  ```
+  [ADMIT-T2] normal_compliance_k=0.0  normal_velocity_level=False  normal_phi_clamp=None
+             (port-only diagnostic normal-row patches — ALL default OFF)
+  ```
+  **All THREE mechanisms individually confirmed INERT at runtime.** No hidden live mechanism underneath the "inert" tag. Passes the 2.k caution check. If Anitescu is enabled (`LCS_CONTACT_MODEL=anitescu`), all three become NO-OPs by construction (no separate normal row to patch, per source comment `lcs_formulator.py:184-186`).
+
+## 3.o — `LCS_EXPLICIT_MANIPULAND_GND` synthesis (port-only)
+
+- **Reference:** Explicit sphere-witness bodies in the URDF (3-4 spheres for push_t; jacktoy uses per-capsule spheres) provide fixed-witness ground contact via pre-specified `SortedPair(SPHERE, GROUND)`.
+- **Port:** `lcs_formulator.py:90-101, 458-540` — env-gated `_synthesize_manipuland_ground_contacts` synthesizes N vertex witnesses in body frame + computes their world Jacobians. For box: 4/8/12 vertex options. For tshape: 3 witness points matching reference push_t layout. When active, suppresses Drake's auto-admitted BOX-GND pair (de-dup).
+- **Tag:** LOAD-BEARING iff knob > 0.
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] lcs_explicit_manipuland_ground_contacts=0 object_shape='box'`. **INERT for default box run.** Reference-analog exists but is opt-in. Enabling it (e.g., LCS_EXPLICIT_MANIPULAND_GND=4 for box) would add 4 synthesized BOX-VERT rows and drop Drake's auto BOX-GND — closer to reference structure but the port synthesis uses geometric vertices, reference uses URDF-defined sphere-witness bodies.
+
+## 3.p — LCS λ-dimension formula
+
+- **Reference:** Anitescu with `num_friction=2` → `n_lambda = 2·num_friction·n_c = 4·n_c`. For `anything` (n_c=6): n_lambda = 24. For `push_t` planner (n_c=4): n_lambda = 16.
+- **Port:** Stewart-Trinkle → `n_lambda = 6·n_c`. For the default box run at `n_c=1` (only BOX-GND): n_lambda = 6. If Drake later admits an EE-BOX pair, n_c=2, n_lambda=12.
+- **Tag:** LOAD-BEARING (directly changes ADMM solve dimension, projection semantics, `F` matrix structure).
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED via `[ADMIT-T2] call=0 n_c=1 tags=['BOX-GND'] n_lambda_ST=6`. Reference-analog (Anitescu num_friction=2) would give `n_lambda = 4·1 = 4` for the same 1-pair admission. **The port ADMM projection thus operates on a 50%-larger λ vector**, with a different (rank-deficient γ-γ) F block. Belongs conceptually with 3.g.
+
+## 3.q — Tangential-Jacobian basis construction
+
+- **Reference:** UNKNOWN — internal to `c3::multibody::LCSFactory::GenerateLCS`. Needs c3 lib clone to verify (denied).
+- **Port:** `lcs_formulator.py:815-824` — 4-edge polyhedron `{t1, -t1, t2, -t2}` where `t1 = cross(nhat, ref)` (ref=[1,0,0] normally, [0,1,0] if nhat parallel to x). `t2 = cross(nhat, t1)`. Deterministic given nhat.
+- **Tag:** UNKNOWN pending reference verification.
+- **Confidence:** low (port high; reference unknown).
+- **Tier 2:** UNRESOLVABLE without c3 lib access. Flagged for user decision on whether to authorize a clone of `github.com/DAIRLab/c3.git @ 5c08cb2e`.
+
+## Coupling observed (from code + Tier-2 evidence)
+
+- **3.a ↔ 3.b ↔ 3.k ↔ 3.l ↔ 3.m** — the whole pair-selection stack. Reference uses a single mechanism (pre-specified + N-closest). Port uses FIVE mechanisms glued together: (a) 2 mm threshold, (b) geometry-set filter, (c) optional always-on injection, (d) optional top-K for cost LCS, (e) optional top-K for planner LCS (tshape-only). **Consolidation candidate**: could collapse to a single reference-conformant path (always-on + top-K for both planner and cost LCS, ALL tasks), but this changes n_c semantics run-to-run — COUPLED with (4) ADMM which currently expects variable n_c.
+- **3.d ↔ 3.j** — the 1-pair BOX-GND admission (3.d) is why `box_ground_drag=10.0` (3.j) was introduced. With 1 pair (single ground witness) and Stewart-Trinkle's non-converging ADMM projection, the LCS can't sustain μ·λ_n_gnd → box coasts predicted → drag term is the artificial fix. Reference's 3-pair witness + Anitescu doesn't need this. **The drag disappears IF (3.d) admits ≥ 3 pairs AND (3.g) switches to Anitescu.**
+- **3.g ↔ 3.h ↔ 3.n ↔ 3.p** — contact model cluster. Switching (3.g) to Anitescu automatically: (h) folds friction into single 4·n_c block, (n) makes all three normal-row patches no-ops by construction, (p) changes n_lambda from 6·n_c to 4·n_c. **Coupled subset — cannot flip individually.**
+- **3.i ↔ 3.d ↔ 3.g** — μ per-pair (3.i) is meaningful only when there are multiple contact pair TYPES (3.d admits both EE-BOX and BOX-GND) AND the contact model supports per-λ friction (3.g Anitescu folds μ into J_c = E_t^T·J_n + diag(μ)·J_t; ST doesn't fold this way).
+- **3.j (box_ground_drag) ↔ subsystem (4) ADMM** — port-only band-aid symptomatic of ADMM non-convergence. Belongs to the coupled band-aid subset that only resolves when (4) reaches a properly-converging ADMM projection.
+- **3.a (threshold) ↔ (2) reposition ↔ (4) mode-switch** — the 2 mm threshold means the LCS "sees" EE-BOX only in the final millimeter of approach. This drives the dispatcher's mode-switch timing (`kToC3ReachedReposTarget` fires only near contact) and interacts with the reposition finished-flag semantics (2.l) — CROSS-SUBSYSTEM coupling to (2) and (4).
+
+## Deferred / out-of-admission-scope items surfaced
+
+- Cost-LCS (`inner_solve.py`) admission (`force_top_k_ee_box=True, n_ee_top_k=2`) — belongs to (4) planner.
+- ADMM projection non-convergence (driving `box_ground_drag` band-aid) — belongs to (4).
+- URDF sphere-witness bodies (reference push_t) vs port programmatic collision geometry (env_builder.py) — belongs to (5).
+- Anitescu F-matrix construction (single PSD block vs ST 3-block) — belongs to (4) LCS matrix construction.
+- Reference `mu_per_pair_type` harmonic-mean derivation from URDF — belongs to (5) URDF.
+- `pusher_friction`, `box_friction`, `table_friction` per-task task_cfg values — belongs to (5).
+
+## Admission Tier-2 verdict roll-up
+
+| # | Divergence | Tier-1 | Tier-2 (this pass) |
+|---|---|---|---|
+| 3.a | Pair-selection algorithm | LOAD-BEARING | **CONFIRMED** — port default = 2 mm hardcoded threshold; reference = top-N ranking |
+| 3.b | Pair-list specification | LOAD-BEARING | **CONFIRMED port (implicit filter)**; reference explicit; **UNKNOWN** internals of `GetNClosestContactPairs` (needs c3 lib clone) |
+| 3.c | EE-manipuland admission | COSMETIC | **CONFIRMED conformant structurally** (both admit; port defers to 2 mm, reference always-present) |
+| 3.d | Manipuland-ground count + method | LOAD-BEARING | **CONFIRMED** — port 1 auto pair vs reference 3 pre-specified sphere witnesses |
+| 3.e | Object-wall admission | LOAD-BEARING (anything) | **REFERENCE-CONFIRMED** 2 wall pairs; port has NONE (effectively COSMETIC for pushing task) |
+| 3.f | Arm-self/arm-table exclusion | COSMETIC | **CONFIRMED conformant** — both exclude |
+| 3.g | Contact model (ST vs Anitescu) | LOAD-BEARING | **CONFIRMED at runtime** — port default `stewart_trinkle`; reference default `anitescu` |
+| 3.h | num_friction_directions | LOAD-BEARING | **CONFIRMED** — port 4-edge polyhedron (ST); reference `num_friction_directions=2` (Anitescu) |
+| 3.i | μ per-pair vs uniform | LOAD-BEARING | **CONFIRMED runtime** — port `mu=0.4` single scalar; reference 5-value array |
+| 3.j | `box_ground_drag` viscous A-mod | LOAD-BEARING (port-only) | **CONFIRMED at runtime** — 10.0 ACTIVE by default; reference has no analog |
+| 3.k | `LCS_ALWAYS_ON_EE_BOX` | LOAD-BEARING iff on | **CONFIRMED-INERT** (env unset) |
+| 3.l | `force_top_k_ee_box` (kwarg) | LOAD-BEARING | **CONFIRMED** — planner LCS: False; cost LCS: True (belongs to (4)) |
+| 3.m | `ref_pair_admission_planner_lcs` | LOAD-BEARING iff on | **CONFIRMED-INERT** (yaml unset) |
+| 3.n | Normal-row patches × 3 | LOAD-BEARING iff on | **CONFIRMED-INERT all 3 individually** (2.k caution passed) |
+| 3.o | `LCS_EXPLICIT_MANIPULAND_GND` | LOAD-BEARING iff on | **CONFIRMED-INERT** (default 0) |
+| 3.p | LCS λ-dimension formula | LOAD-BEARING | **CONFIRMED at runtime** — port ST 6·n_c; reference Anitescu 4·n_c |
+| 3.q | Tangential-Jacobian basis | UNKNOWN | **UNKNOWN — needs c3 lib clone** (denied) |
+
+17 entries → 12 CONFIRMED (7 live, 5 inert), 2 REFERENCE-CONFIRMED, 2 CONFIRMED-CONFORMANT (both agents match on the deciding value), 1 remaining UNKNOWN (3.q — c3 lib clone required).
+
+## 2.k caution — verification results
+
+**Applied to the port-only opt-in cluster (3.k, 3.l, 3.m, 3.n×3, 3.o) — 7 individual mechanisms, each verified separately at runtime:**
+
+- All 7 default OFF → inert by default at runtime (`[ADMIT-T2]` init disclosure confirmed each field individually).
+- No hidden live mechanism underneath the "inert" tag.
+- The 3.n cluster (three normal-row patches — COMPLIANCE_K, VELOCITY_LEVEL, PHI_CLAMP) was checked individually per the 2.k caution, not as a lump — all three individually inert.
+
+**The 2.k caution is especially relevant here because**: like the executor 1.p miss (where "orientation tilt" was inert but "orientation identity-hold" was live underneath), the admission subsystem has a large opt-in flag surface AND a small live default surface (`distance_threshold, contact_model=ST, mu=0.4, box_ground_drag=10.0`). The LIVE default surface was verified separately from the INERT opt-in surface. **The live default surface is where any missed load-bearing mechanism would hide** — verified: no such hidden live mechanism in this subsystem beyond the 4 already tagged.
+
+## Admission Tier-2 evidence artefacts
+
+- Diagnostic commit: `98f5e94` (`diag(admit-tier2): PUSHA_ADMIT_T2_DIAG log-only admission disclosure`).
+- Instrumentation guard: `PUSHA_ADMIT_T2_DIAG=1` — default OFF, byte-identical to `dd2294d` baseline.
+- Filtered run log: `audit_output/admit_tier2/run_default.log`
+- Summary + reference-side deep-read + 2.k caution result: `audit_output/admit_tier2/SUMMARY.md`
+
+## Open request: c3 lib clone permission
+
+Full verification of 3.b (pair-list construction internals) and 3.q (tangential-Jacobian basis construction) requires cloning `github.com/DAIRLab/c3.git @ 5c08cb2e14b1ab10e024cb46e8504970cffcd5ea` (pinned per `dairlib_sampling_c3/MODULE.bazel:88-95`). Auto-clone was **denied** by the sandbox. If the user authorizes cloning to `/root/reference_repos/c3/`, subsystem (3) Tier-2 can complete these two entries. Otherwise, 3.q stays UNKNOWN in the final map and 3.b stays reference-CONFIRMED-at-usage-site-only.
+
+---
+
+# Subsystems (4)–(5)
+
+Pending user re-authorization after Admission Tier-2 review. Order:
+
+- (4) Planner / ADMM C3+ solver + mode-switch dispatcher (consumes 2.l/2.m; touches 3.j/3.l/3.p)
+- (5) Sim / env-builder / URDF geometry (holds the 3-mm sphere-radius divergence + reference sphere-witness URDF bodies for 3.d)
+
+Same two-tier discipline + apply the 2.k caution for any "inert" verdict.

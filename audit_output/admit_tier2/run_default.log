@@ -1,0 +1,21 @@
+[FILTER INIT] Building EE geometry ID set:
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[ADMIT-T2] contact_model='stewart_trinkle' (reference default='anitescu'; port default='stewart_trinkle'; env_LCS_CONTACT_MODEL=<unset>)
+[ADMIT-T2] mu=0.4 (single scalar; reference uses mu_per_pair_type array)
+[ADMIT-T2] box_ground_drag=10.0 (port-only viscous A-matrix modification; reference has no analog — LCS λ_n_gnd tracking is the reference mechanism)
+[ADMIT-T2] lcs_explicit_manipuland_ground_contacts=0 object_shape='box' (port-only vertex synthesis; reference uses URDF-defined sphere witness points on the manipuland)
+[ADMIT-T2] ref_pair_admission_planner_lcs=False (port-only partial reference-conformance flag; tshape-only opt-in at use site)
+[ADMIT-T2] always_on_ee_box=False (env_LCS_ALWAYS_ON_EE_BOX=<unset>; port-only always-on EE-BOX injection when 2mm filter drops)
+[ADMIT-T2] normal_compliance_k=0.0 normal_velocity_level=False normal_phi_clamp=None (port-only diagnostic normal-row patches — ALL default OFF)
+[ADMIT-T2] distance_threshold=0.002 m (hardcoded default in extract_lcs_contacts; reference uses top-N ranking, no threshold)
+[ADMIT-T2] call=0 n_c=1 tags=['BOX-GND'] phi=['+0.0000'] n_ee_box=0 n_box_gnd=1 n_synth=0 n_other=0 n_lambda_ST=6 n_lambda_Anitescu_ref=6
+[ADMIT-T2] call=2 n_c=1 tags=['BOX-GND'] phi=['-0.0000'] n_ee_box=0 n_box_gnd=1 n_synth=0 n_other=0 n_lambda_ST=6 n_lambda_Anitescu_ref=6
+[ADMIT-T2] call=200 n_c=1 tags=['BOX-GND'] phi=['-0.0000'] n_ee_box=0 n_box_gnd=1 n_synth=0 n_other=0 n_lambda_ST=6 n_lambda_Anitescu_ref=6
+[CONTACT-ELEM] step=417 element=manipulated_object::collision phi=+0.0018m
+[CONTACT-ELEM] step=422 element=manipulated_object::collision phi=+0.0018m
+[CONTACT-ELEM] step=423 element=manipulated_object::collision phi=-0.0000m
+[CONTACT-ELEM] step=428 element=manipulated_object::collision phi=-0.0000m
+[CONTACT-ELEM] step=429 element=manipulated_object::collision phi=+0.0002m
+[CONTACT-ELEM] step=434 element=manipulated_object::collision phi=+0.0002m
