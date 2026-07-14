@@ -785,11 +785,279 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 ---
 
-# Subsystems (4)–(5)
+# Subsystem (4) — Planner / ADMM / mode-switch dispatcher
 
-Pending user re-authorization after Admission Tier-2 review. Order:
+## Sources read
 
-- (4) Planner / ADMM C3+ solver + mode-switch dispatcher (consumes 2.l/2.m; touches 3.j/3.l/3.p)
-- (5) Sim / env-builder / URDF geometry (holds the 3-mm sphere-radius divergence + reference sphere-witness URDF bodies for 3.d)
+- **Reference** (`dairlib_sampling_c3 @ push_anything_dev 257e3ed` + `c3 @ 5c08cb2e14b1ab10e024cb46e8504970cffcd5ea` clone):
+  `c3/core/c3.cc:267-412` (`Solve`, `ADMMStep`, `SetInitialGuessQP`);
+  `c3/core/c3_plus.cc:174-221` (`C3Plus::SolveSingleProjection` — Bui 2026 eq 12);
+  `c3/core/c3_miqp.cc, c3_qp.cc` (alternate projection classes);
+  `dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.cc:1140-1320` (mode-switch);
+  `dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.cc:1380-1400` (`filtered_solve_time_` LPF);
+  `dairlib_sampling_c3/examples/sampling_c3/anything/parameters/sampling_c3_options.yaml` (admm_iter=3, rho_scale=3, delta_option=1, projection_type='MIQP', warm_start=false, end_on_qp_step=false, N=5, planning_dt_position=0.1);
+  `dairlib_sampling_c3/examples/sampling_c3/anything/parameters/sampling_c3_options.yaml` (`penalize_changes_in_u_across_solves: true` for `anything`, `false` for `push_t`).
+- **Port** (`push_anything_ADMM @ main dd2294d + ... + 67232d7`):
+  `control/admm_solver.py:293-1810` (`C3Solver.solve`, `_solve_c3plus`, `_project_componentwise`, `_lorentz_project`);
+  `control/ci_mpc_c3plus.py:35-417` (`C3PlusMPC.__init__`, `.compute_control`);
+  `control/ci_mpc_c3.py:1-371` (`C3MPC` C3-with-Lorentz path);
+  `control/sampling_c3/mode_switch.py:1-162` (`decide_mode`, `SwitchReason` enum, hysteresis);
+  `control/sampling_c3/progress.py:1-266` (`ProgressTracker`, `StepMetrics`, `met_progress`);
+  `config/sampling_c3_kik.yaml` (`surrogate_admm_iters: 3`, no admm_iter override — main.py's `--admm-iter 25` is canonical);
+  `main.py:345-358` (`PUSHA_STAGE5_U_HORIZONTAL/VERTICAL/R_VECTOR` env-defaults for EE-space).
+
+**Planner scope:** the C3+ ADMM inner solver + the wrapper's mode-switch dispatcher decision + progress-tracking. Excludes contact admission (subsystem 3), OSC executor (subsystem 1), reposition target generation (subsystem 2).
+
+## Index table
+
+| # | Divergence | Tier-1 tag | Tier-2 |
+|---|---|---|---|
+| 4.a | Solver class / projection algorithm | LOAD-BEARING | CONFIRMED — port default `C3PlusMPC` + `componentwise` projection; reference default MIQP (C3MIQP class) |
+| 4.b | admm_iter count | LOAD-BEARING | CONFIRMED at runtime — port 25 (`--admm-iter 25`); reference 3 (`admm_iter: 3` YAML) |
+| 4.c | rho / rho_scale | LOAD-BEARING | CONFIRMED — port `rho_init=100.0` fixed; reference `rho_scale=3` adaptive per iter |
+| 4.d | Horizon N | LOAD-BEARING | CONFIRMED at runtime — port N=20; reference N=5 |
+| 4.e | Planning dt | LOAD-BEARING | CONFIRMED at runtime — port dt=0.05; reference dt=0.1; horizon_time port 1.0s vs reference 0.5s |
+| 4.f | delta initial guess | LOAD-BEARING | NEW DIVERGENCE — reference `delta_option=1` initializes `delta.head=x0`; port always zeros |
+| 4.g | end_on_qp_step (final rollout) | LOAD-BEARING at non-convergence | NEW DIVERGENCE — reference `end_on_qp_step=false` computes `x_seq` via LCS rollout; port returns direct QP solution |
+| 4.h | Cross-tick warm-start | COSMETIC (both OFF) | CONFIRMED — both cold-start per tick |
+| 4.i | Within-Solve warm-start (ADMM iter carryforward) | COSMETIC | CONFIRMED — both agents implicitly warm-start delta/omega across iterations |
+| 4.j | penalize_changes_in_u_across_solves | LOAD-BEARING | NEW DIVERGENCE — reference toggles between `R·‖u‖²` and `R·‖u−u_prev‖²`; port always uses `R·‖u‖²` |
+| 4.k | SolveSingleProjection (Bui eq 12) | COSMETIC (equivalent) | CONFIRMED via c3 lib — port `_project_componentwise` = reference C3Plus::SolveSingleProjection exactly (same weighted-eta-vs-lambda case selection + ≥0 clip) |
+| 4.l | ADMM convergence at runtime | LOAD-BEARING | CONFIRMED — port iters=25/25 on every solve; primal residual ~3.87 non-decreasing → NON-CONVERGENT (mechanically ties to 3.g Stewart-Trinkle rank-deficient F[γ,γ]) |
+| 4.m | Mode-switch branches | LOAD-BEARING | CONFIRMED-CONFORMANT (structure); port omits {xbox force_c3, achieved_fixed_goal, unsuccessful-sample-buffer, wall_offset}; port adds {kForceC3Watchdog, kToBetterRepos, kStayInRepos as distinct enum values} |
+| 4.n | Altitude gate on free→c3 transition | LOAD-BEARING | CONFIRMED — reference AND-gates cost-based free→c3 transition on `x_lcs_curr[2] < z_height + c3_min_clearance + wall_offset OR NOT ee_z_close`; port has `ee_z_gate_pass` kwarg (T1a port of reference altitude gate) |
+| 4.o | Hysteresis (kind × near_goal) | COSMETIC-EQUIVALENT | CONFIRMED — port `_hysteresis(params, kind, near_goal, ref_cost)` matches reference structure (absolute vs relative, position-near-goal vs generic) |
+| 4.p | Progress metric implementation | COSMETIC-EQUIVALENT | Both track "steps since last cost improvement" with mode-specific `num_control_loops_to_wait` |
+| 4.q | LCS h_is_zero → LCP pre-solve | UNKNOWN → RESOLVED | Reference c3.cc:283-299 detects `h_is_zero_` (LCS `H matrix all-zero → passive system`) and pre-solves λ via `MobyLcpSolver::SolveLcpLemke`. Port has NO analog (always runs full ADMM). For push_anything, `H` is derived from `Jn · Jf_u` (LCS-formulation), and `Jf_u = M⁻¹ · B` is non-zero (actuated arm) → `h_is_zero_ = false` in reference → LCP pre-solve INERT → no divergence in practice for pushing task. **INERT-BY-CONFIG for actuated systems.** |
+| 4.r | Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*) | LOAD-BEARING iff enabled | CONFIRMED — `main.py:346-358` sets env defaults `PUSHA_STAGE5_U_HORIZONTAL=10, PUSHA_STAGE5_U_VERTICAL=3, PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` for EE-space. Port-only Stage-5 alignment package. Default box run in R^7 does NOT trigger these; EE-space runs do. |
+
+## 4.a — Solver class / projection algorithm
+
+- **Reference:** `sampling_based_c3_controller.cc:143-176` constructs one of `C3MIQP`, `C3QP`, or `C3Plus` per `sampling_c3_options.projection_type`. YAML default for `anything` and `push_t`: `projection_type: 'MIQP'` → `C3MIQP`.
+- **Port:** `main.py:589` — `_MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC`. `--solver` argparse default is `'c3plus'` (per CLAUDE.md). No C3MIQP or C3QP class in port.
+- **Tag:** LOAD-BEARING. MIQP uses branch-and-bound on binary complementarity variables (exact LCP solve, no ADMM); QP relaxes; C3+ uses the Bui eq (12) componentwise projection.
+- **Confidence:** high.
+- **Tier 2 — port runtime confirmed:** `[PLAN-T2] solver_mode='c3plus' projection='componentwise' (reference default: 'MIQP' via C3MIQP class)`. **Divergent projection algorithms at runtime.** MIQP is exact but expensive; C3+ is approximate but cheaper.
+
+## 4.b — admm_iter count
+
+- **Reference:** `sampling_c3_options.yaml: admm_iter: 3` for both `anything` and `push_t`. Very few ADMM iterations because MIQP itself solves the LCP exactly at each iter — 3 outer iterations for ADMM refinement.
+- **Port:** `main.py:--admm-iter` argparse default = 3, BUT canonical runs pass `--admm-iter 25` (per CLAUDE.md and observed in production scripts). Port needs many iterations because C3+ componentwise projection is approximate and needs to refine.
+- **Tag:** LOAD-BEARING.
+- **Confidence:** high.
+- **Tier 2 — port runtime confirmed:** `[PLAN-T2] admm_iter=25` at canonical setting. Reference = 3. **8.3× more iterations in port** just to compensate for the weaker per-iter projection.
+
+## 4.c — rho / rho_scale
+
+- **Reference:** `rho_scale: 3` — per `c3.cc:389-390`, `w = w / rho_scale; G = G * rho_scale` each ADMM iter → ρ grows by 3× per iter multiplicatively. Adaptive schedule.
+- **Port:** `C3Solver(..., rho=100.0)` fixed. Some paths have adaptive rho every 10 iters (per CLAUDE.md).
+- **Tag:** LOAD-BEARING (affects ADMM convergence rate + fixed-point solution).
+- **Confidence:** medium (port has multiple rho paths; canonical is fixed 100).
+- **Tier 2:** `[PLAN-T2] solver.rho_init=100.0 (reference: rho_scale=3 adaptive per iter)`. Different regularization: reference grows ρ exponentially (3 → 9 → 27 in 3 iters); port stays fixed at 100 for 25 iters. Consequence: port's ADMM has fixed-weight augmented cost throughout; reference's has increasing weight (encouraging convergence via ρ growth).
+
+## 4.d — Horizon N
+
+- **Reference:** `N: 5`. 5-knot horizon.
+- **Port:** `horizon=20` (per CLAUDE.md + `ci_mpc_c3plus.py:132 compute_control` default construction from `main.py`). 20-knot horizon.
+- **Tag:** LOAD-BEARING (planner lookahead × dynamics accuracy tradeoff).
+- **Confidence:** high.
+- **Tier 2:** `[PLAN-T2] horizon N=20 (reference: N=5)`. Port plans **4× further** in knot count.
+
+## 4.e — Planning dt
+
+- **Reference:** `planning_dt_position: 0.1` s.
+- **Port:** `dt=0.05` s (per CLAUDE.md + confirmed in `[MPC] Horizon: 20 dt: 0.05 s`).
+- **Tag:** LOAD-BEARING (LCS discretization step).
+- **Confidence:** high.
+- **Tier 2:** `[PLAN-T2] dt=0.05 horizon_time=1.000s (reference: dt=0.1 horizon_time=0.5s)`. Port plans over 1.0 s at 20×50ms; reference plans over 0.5 s at 5×100ms. **Different planning cadence.** Port's finer time discretization + 4× longer horizon = 4× more state predictions per solve, at 8.3× more ADMM iters = ~33× more solve work per tick vs reference.
+
+## 4.f — delta initial guess
+
+- **Reference:** `c3.cc:312-316` — `delta_init = zeros; if (delta_option == 1) delta_init.head(n_x_) = x0`. YAML default `delta_option: 1` → first n_x components of every delta[k] initialized with the CURRENT STATE.
+- **Port:** `admm_solver.py` — `_solve_c3plus` initializes delta with zeros unconditionally (I did not find a `delta_option` analog in the port).
+- **Tag:** LOAD-BEARING (ADMM initial guess).
+- **Confidence:** high.
+- **Tier 2 — NEW DIVERGENCE surfaced by c3 lib deep read.** Reference bias-initializes delta.head=x0, port starts from origin. At convergence both should converge to same delta*, but at 25 iterations of non-converging port ADMM the initial condition may matter more.
+
+## 4.g — end_on_qp_step (final rollout)
+
+- **Reference:** `c3.cc:336-347` — after ADMM loop + final QP solve, IF `end_on_qp_step=false` (reference default), compute `z_sol[i].x = A·x_sol[i-1] + B·u_sol[i-1] + D·λ_sol[i-1] + d` — an LCS ROLLOUT of the state trajectory using the solved (u, λ). This produces a state trajectory that IS LCS-feasible even if the ADMM didn't fully converge.
+- **Port:** `_solve_c3plus` returns the QP-solved `x_seq` directly. No LCS rollout to enforce feasibility.
+- **Tag:** LOAD-BEARING at non-convergence. At full convergence the QP-solved x IS LCS-feasible so the rollout is a no-op; at non-convergence they differ.
+- **Confidence:** high.
+- **Tier 2:** NEW DIVERGENCE surfaced. Given port ADMM does NOT converge (4.l `iters=25/25 primal ~3.87`), the port's `x_seq` may be LCS-infeasible in ways the reference's rollout would correct. Belongs in the coupled band-aid subset with 3.j and 3.g.
+
+## 4.h — Cross-tick warm-start
+
+- **Reference:** `sampling_c3_options.yaml: warm_start: false` → no cross-tick warm-start. Per `c3.cc:396-397`, the `warm_start_` boolean gates the SetInitialGuessQP warm-start path.
+- **Port:** No cross-tick warm-start (per memory `project_admm_no_warmstart.md`).
+- **Tag:** COSMETIC (both OFF).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED both cold-start per tick. Prior port memory `project_admm_no_warmstart.md` framing "port has no cross-tick warm-start" is a divergence-from-reference — but reference is ALSO OFF, so this is CONFORMANT not divergent. **Prior memory framing corrected.**
+
+## 4.i — Within-Solve warm-start (ADMM iter carryforward)
+
+- **Reference:** `c3.cc:394-412 SetInitialGuessQP` — interpolates `warm_start_x_[admm_iter-1]` with `solve_time_/dt` weight into the current QP's initial guess. Only fires when `warm_start_ = true`. **Since `warm_start=false` in YAML, this branch is INERT for anything+push_t.** Delta / w carry naturally across ADMM iterations regardless.
+- **Port:** `_solve_c3plus` for-loop at line 1119 carries `delta`, `omega`, `z_sol` across iterations by scope. No explicit reset. Implicit warm-start of ADMM state across iterations.
+- **Tag:** COSMETIC (both agents' within-Solve state carries across iterations by scope).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED both agents implicitly warm-start delta/omega across ADMM iterations of a single Solve() call. The reference's *explicit* SetInitialGuessQP-based warm-start is INERT under `warm_start=false`.
+
+## 4.j — penalize_changes_in_u_across_solves
+
+- **Reference:** `c3.cc:302-310` — when `options_.penalize_input_change`, the input cost is rebuilt PER SOLVE as `2·R·u - 2·R·u_sol_prev` (i.e., `‖u - u_prev‖²_R` instead of `‖u‖²_R`). Reference `anything` YAML `penalize_changes_in_u_across_solves: true`; reference `push_t` YAML `false`.
+- **Port:** No analog. Port always uses `‖u‖²_R` (absolute penalty).
+- **Tag:** LOAD-BEARING for `anything`-analog tasks (like port's box pushing), inert for `push_t`-analog.
+- **Confidence:** high.
+- **Tier 2 — NEW DIVERGENCE surfaced by c3 lib + config deep read.** For box pushing task the reference penalizes u changes → smoother control; port penalizes u absolutely → may generate jerkier control. Not runtime-verified but the STATIC divergence is clear.
+
+## 4.k — SolveSingleProjection (Bui eq 12)
+
+- **Reference `c3_plus.cc:174-221 C3Plus::SolveSingleProjection`:**
+  ```cpp
+  eta_larger = eta * sqrt(w_eta) > lambda * sqrt(w_lambda);
+  delta.λ = eta_larger.select(0, lambda_c);
+  delta.η = eta_larger.select(eta_c, 0);
+  delta.λ = delta.λ.cwiseMax(0);   delta.η = delta.η.cwiseMax(0);
+  ```
+- **Port `admm_solver.py:809-835 _project_componentwise`:**
+  ```python
+  sqrt_ratio = float(np.sqrt(u_lambda / u_eta))
+  cond1 = (eta >= 0.0) & (eta >= sqrt_ratio * lam)
+  cond2 = (lam >= 0.0) & (eta <  sqrt_ratio * lam)
+  delta_lam = np.where(cond2, lam, 0.0)
+  delta_eta = np.where(cond1, eta, 0.0)
+  ```
+  Mathematically equivalent: `eta * sqrt(w_eta) > lambda * sqrt(w_lambda)` ⟺ `eta > lambda * sqrt(w_lambda/w_eta) = lambda * sqrt(u_lambda/u_eta)`. Both apply the same case selection + ≥0 clip.
+- **Tag:** COSMETIC-EQUIVALENT.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via c3 lib deep-read line-by-line. **Port's projection matches reference Bui eq (12) exactly** — this piece is not where the port's ADMM non-convergence originates. Non-convergence origin is upstream (3.g Stewart-Trinkle F[γ,γ] rank-deficiency).
+
+## 4.l — ADMM convergence at runtime
+
+- **Reference:** MIQP is exact per iteration → ADMM converges quickly (3 iters is enough with adaptive ρ).
+- **Port:** C3+ componentwise projection is approximate → ADMM may not converge. Observed: `[C3+] step=N iters=25/25 primal=3.87 (constant)` — hits max iterations, primal residual doesn't decrease.
+- **Tag:** LOAD-BEARING.
+- **Confidence:** high.
+- **Tier 2:** RUNTIME-CONFIRMED. Port ADMM is NON-CONVERGENT at nominal setting. **Ties to 3.g Stewart-Trinkle rank-deficient F[γ,γ]** — mechanically proven via c3 lib deep read that ST F has all-zero γ-γ top-left block, so any ADMM that projects onto the rank-deficient region has infinitely many valid (λ, η) pairs — no unique convergence.
+
+## 4.m — Mode-switch branches
+
+- **Reference:** `sampling_based_c3_controller.cc:1140-1320`. 8 branches: (kToReposUnproductive, kToReposCost, kToC3Xbox, kToC3ReachedReposTarget, kToC3Cost, kStayInRepos + kToBetterRepos + kNewSample, achieved_fixed_goal implicit).
+- **Port:** `mode_switch.py:decide_mode`. 7 SwitchReasons: {kStayInC3, kStayInRepos, kToReposCost, kToReposUnproductive, kToC3Cost, kToC3ReachedReposTarget, kToBetterRepos, kForceC3Watchdog}. Adds `kForceC3Watchdog` (steps_since_improve watchdog — port-only).
+- **Tag:** LOAD-BEARING (structure).
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED port omits {kToC3Xbox (xbox teleop only — reference-only), AddToUnsuccessfulBuffer, wall_offset for repos target, pursued_target_source_ tracking}. Port adds {kForceC3Watchdog, PUSHA_DISABLE_CONTACT_LOSS_GATE opt-in}. Core mode-switch logic (cost-gap × progress × hysteresis × finished_repos) is CONFORMANT.
+
+## 4.n — Altitude gate on free→c3 transition
+
+- **Reference:** `sampling_based_c3_controller.cc:1290-1293` — cost-based free→c3 switch is AND-gated by:
+  ```cpp
+  (x_lcs_curr[2] < z_height + c3_min_clearance + wall_offset
+   || !sampling_params_.ee_z_close)
+  ```
+  I.e., EE altitude must be below "contact zone" OR ee_z_close feature is off.
+- **Port:** `mode_switch.py:decide_mode` accepts `ee_z_gate_pass: bool = True` kwarg (T1a port of this gate). When False, both free→c3 branches (kToC3ReachedReposTarget and kToC3Cost) are suppressed inline.
+- **Tag:** LOAD-BEARING.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED-CONFORMANT via port source (T1a landing per file comment). Whether it's ACTIVE at runtime depends on wrapper's `ee_z_gate_pass` computation (belongs to (5) sim or (2) reposition depending on which computes ee_z + threshold).
+
+## 4.o — Hysteresis (kind × near_goal)
+
+- **Reference:** `sampling_based_c3_controller.cc:1175-1226` — separate `hyst_c3_to_repos`, `hyst_repos_to_c3`, `hyst_repos_to_repos` (absolute) and `_frac` variants (relative), selected by `use_relative_hysteresis` flag.
+- **Port:** `mode_switch.py:_hysteresis` — matches structure exactly, with the addition of `_position` variants (`hyst_c3_to_repos_position`, etc.) for the `near_goal=True` regime.
+- **Tag:** COSMETIC-EQUIVALENT.
+- **Confidence:** high.
+- **Tier 2:** CONFIRMED via side-by-side source read.
+
+## 4.p — Progress metric implementation
+
+- **Reference:** `KeepTrackOfC3ModeProgress` (mentioned at cc:1156 but implementation is elsewhere in the file) — tracks cost improvement in c3 mode, sets `met_minimum_progress` false after `num_control_loops_to_wait` ticks without cost decrease.
+- **Port:** `progress.py:ProgressTracker` — same abstraction, `steps_since_improve` field, `met_progress(near_goal)` predicate that gates on the `num_control_loops_to_wait[_position]` field per `ProgressMetric` (`kPosCost | kRotCost | kPosOrRotCost`).
+- **Tag:** COSMETIC-EQUIVALENT structurally.
+- **Confidence:** medium (reference implementation not read line-by-line; port confirmed).
+- **Tier 2:** Structural conformance verified; leaf-level parity would need full reference `KeepTrackOfC3ModeProgress` read (not done in this pass, low priority — the metric is a well-defined "steps since cost improved" counter with mode-specific wait threshold).
+
+## 4.q — LCS h_is_zero → LCP pre-solve
+
+- **Reference:** `c3.cc:283-299` — if `h_is_zero_` (LCS H matrix all-zero, meaning passive dynamics: no dependence on u), pre-solve λ_0 via `MobyLcpSolver::SolveLcpLemke(F[0], E[0]·x0 + c[0], &lambda0)`, add as initial-force constraint.
+- **Port:** No analog. Always runs full ADMM regardless.
+- **Tag:** LOAD-BEARING IFF `h_is_zero_` at runtime.
+- **Confidence:** high.
+- **Tier 2:** For push_anything (actuated Franka arm), `H = Jn·Jf_u` where `Jf_u = M⁻¹·B` (non-zero). Reference `h_is_zero_` would be FALSE for any actuated system. **INERT-BY-CONFIG for actuated pushing task.** Would matter only for passive-dynamics probes (e.g., free-fall LCS).
+
+## 4.r — Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*)
+
+- **Reference:** Fixed R + u-bounds from YAML.
+- **Port:** `main.py:346-358` sets env defaults `PUSHA_STAGE5_U_HORIZONTAL=10, PUSHA_STAGE5_U_VERTICAL=3, PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` for EE-space runs. These override the planner's per-axis u-bounds (Fx, Fy, Fz) and R-cost diagonal. Port-only "Stage 5 alignment" package.
+- **Tag:** LOAD-BEARING iff EE-space active AND env unset (default → these values apply).
+- **Confidence:** high.
+- **Tier 2:** For default R^7 box run (no `--ee-space`), these env-defaults do NOT trigger the EE-space-only branches. **INERT for the default box run.** Belongs to a subsystem-4.5 or Stage-5 opt-in cluster.
+
+## Coupling observed (from code + Tier-2 evidence)
+
+- **4.a ↔ 4.b ↔ 4.c ↔ 4.l** — Solver-choice cluster. Reference MIQP + admm_iter=3 + rho_scale=3 adaptive is a SINGLE self-consistent regime: exact per-iter LCP solve makes 3 ADMM iters sufficient. Port C3+ + admm_iter=25 + rho=100 fixed is a DIFFERENT self-consistent regime: approximate componentwise projection requires many iters and larger fixed penalty. Cannot mix (e.g., MIQP with admm_iter=25 = wasteful; C3+ with admm_iter=3 = under-converged).
+- **4.d ↔ 4.e ↔ 4.b** — planning horizon × dt × admm_iter compose into TOTAL SOLVE WORK per tick. Port: 20 knots × 0.05s × 25 iters. Reference: 5 knots × 0.1s × 3 iters. Port does **33× more work per tick** just to compensate for the weaker projection. Coupled to (F) multi-process architecture (reference solves at planner rate, publishes to OSC via LCM; port solves synchronously each control tick).
+- **4.f ↔ 4.g ↔ 4.l** — the three "at-non-convergence-matters" divergences. delta_option (initial guess), end_on_qp_step (final rollout), and iters=25/25 non-convergent behavior. Under full convergence all three would be equivalent to reference; at the port's regime they all contribute to trajectory divergence.
+- **4.j ↔ 1.k** — reference `penalize_changes_in_u_across_solves=true` for anything AND reference `w_input=0, w_input_reg=0` for OSC input-smoothing. The reference smooths CONTROL at TWO places (planner solve-to-solve + OSC input-smoothing weight, both configurable). Port has neither analog at either place.
+- **4.m ↔ 4.n ↔ 2.l** — mode-switch cluster (branch structure + altitude gate + finished-flag semantics). Port has close structural parity to reference on all three. Divergent leaf-level values (specific hysteresis, altitude, finished-cost) would live in the YAML — belongs in a per-value audit not this Tier-1 pass.
+- **4.l ↔ 3.g ↔ 3.j ↔ 3.n ↔ 3.p** — the LCS↔ADMM MECHANICAL LINK. Port's non-convergent ADMM (4.l) is CAUSED BY the ST rank-deficient F[γ,γ] (3.g/3.p). The non-convergence produces box coasting in the LCS predictions, requiring the box_ground_drag band-aid (3.j) AND the three normal-row patches (3.n). Flipping the contact model cluster (3.g) obsoletes all four downstream compensations. **This is the CENTRAL CROSS-SUBSYSTEM COUPLING** the whole arc was chasing, now mechanically proven.
+
+## Deferred / out-of-planner-scope
+- Force-tracking `λ_des` derivation and OSC coupling → belongs to (1) executor + (2) wrapper.
+- λ trace / stashing for the OSC (`last_lambda_n_first`, etc.) → COSMETIC (structural adapter for the wrapper).
+- CI_MPC C3 (`ci_mpc_c3.py`, `C3MPC` class with Lorentz projection) → alternate path via `--solver c3` argparse; used only in ablations (per `--solver` default = `c3plus`). AttributeError observed earlier this session (`_last_Q` missing on C3MPC) → pre-existing bug in C3MPC path, not exercised by default.
+
+## Planner/ADMM/mode-switch Tier-2 verdict roll-up
+
+| # | Divergence | Tier-1 | Tier-2 (this pass) |
+|---|---|---|---|
+| 4.a | Solver class | LOAD-BEARING | **CONFIRMED** — port C3+ (componentwise); reference MIQP |
+| 4.b | admm_iter | LOAD-BEARING | **CONFIRMED runtime** — port 25 (canonical); reference 3 |
+| 4.c | rho / rho_scale | LOAD-BEARING | **CONFIRMED** — port fixed 100; reference adaptive ×3 per iter |
+| 4.d | Horizon N | LOAD-BEARING | **CONFIRMED runtime** — port 20; reference 5 |
+| 4.e | Planning dt | LOAD-BEARING | **CONFIRMED runtime** — port 0.05; reference 0.1 |
+| 4.f | delta initial guess | LOAD-BEARING | **NEW DIVERGENCE** — port zeros; reference `delta_option=1` → head=x0 |
+| 4.g | end_on_qp_step (rollout) | LOAD-BEARING at non-conv | **NEW DIVERGENCE** — port direct QP; reference LCS rollout |
+| 4.h | Cross-tick warm-start | COSMETIC (both off) | **CONFIRMED conformant** — corrects prior memory framing |
+| 4.i | Within-Solve warm-start | COSMETIC | **CONFIRMED conformant** — both implicit carry across iters |
+| 4.j | penalize_input_change | LOAD-BEARING | **NEW DIVERGENCE** — port always absolute; reference toggles |
+| 4.k | SolveSingleProjection (Bui eq 12) | COSMETIC-EQUIVALENT | **CONFIRMED via c3 clone** — port projection = reference exactly |
+| 4.l | ADMM convergence | LOAD-BEARING | **CONFIRMED runtime** — port iters=25/25 primal~3.87 NON-CONVERGENT |
+| 4.m | Mode-switch branches | LOAD-BEARING | **CONFIRMED-CONFORMANT** structure + noted port-only add-ons |
+| 4.n | Altitude gate | LOAD-BEARING | **CONFIRMED-CONFORMANT** via T1a port |
+| 4.o | Hysteresis lookup | COSMETIC-EQUIVALENT | **CONFIRMED** |
+| 4.p | Progress metric | COSMETIC-EQUIVALENT | **CONFIRMED structurally** |
+| 4.q | LCS h_is_zero LCP pre-solve | UNKNOWN | **RESOLVED-INERT-BY-CONFIG** — actuated pushing task has H ≠ 0, branch never fires reference-side |
+| 4.r | PUSHA_STAGE5_* env defaults | LOAD-BEARING iff EE-space | **CONFIRMED-INERT** for default R^7 box run |
+
+18 entries → 6 CONFIRMED at runtime + 3 CONFIRMED-CONFORMANT + 4 NEW-DIVERGENCE (all surfaced by c3 lib clone) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 1 confirmed-structurally-conformant. Zero remaining UNKNOWNs.
+
+## 2.k caution result
+
+Verified the "inert" areas individually:
+- **Cross-tick warm-start (4.h)**: both agents cold-start — CONFIRMED. But VERIFIED the reference's within-Solve warm-start (4.i) is ALSO configured OFF via `warm_start: false` (not just cold-start-per-iter — the whole SetInitialGuessQP path is inert). Two mechanisms in same area, each verified.
+- **LCP pre-solve (4.q)**: verified INERT because H ≠ 0 for actuated push_anything — not just missing analog.
+- **Stage-5 env defaults (4.r)**: verified inert IF NOT in EE-space mode — not silently active in R^7.
+- **Both mode-switch branches (4.m)**: verified each of 7 port SwitchReasons vs 8 reference branches; explicitly enumerated the two agents' branch sets.
+
+**No hidden live mechanism uncovered.** All live mechanisms are explicitly tagged in the table.
+
+## Planner Tier-2 evidence artefacts
+
+- Diagnostic commit: `67232d7` (`diag(plan-tier2): PUSHA_PLAN_T2_DIAG log-only planner/ADMM disclosure`).
+- Instrumentation guard: `PUSHA_PLAN_T2_DIAG=1` — default OFF, byte-identical to `dd2294d` baseline.
+- Filtered run log: `audit_output/plan_tier2/run_default.log`
+- Summary + reference-side c3 lib + dairlib reads: `audit_output/plan_tier2/SUMMARY.md`
+
+---
+
+# Subsystem (5)
+
+Pending user re-authorization after Planner Tier-2 review. Order:
+
+- (5) Sim / env-builder / URDF geometry (holds the 3-mm sphere-radius divergence, reference sphere-witness URDF bodies for 3.d, per-body friction coefficients for 3.i, pusher weld offset for 1.f).
+
+Same two-tier discipline + 2.k caution.
 
 Same two-tier discipline + apply the 2.k caution for any "inert" verdict.
