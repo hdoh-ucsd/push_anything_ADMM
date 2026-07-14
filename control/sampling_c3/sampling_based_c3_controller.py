@@ -276,6 +276,44 @@ class SamplingC3MPC:
             print("[STAGE-A-PWL] dispatcher: "
                   "use_reposition_pwl_trajectory=True", flush=True)
 
+        # Tier-2 subsystem-(2) diagnostic (docs/conformance-map.md §2.*):
+        # LOG-ONLY, env-gated PUSHA_REPOS_T2_DIAG=1. Discloses the resolved
+        # tracker + PWL flag + reposition params at construction. No behavior
+        # change (env off = byte-identical to dd2294d).
+        import os as _os_t2r
+        if _os_t2r.environ.get("PUSHA_REPOS_T2_DIAG", "0") == "1":
+            _rp = params.reposition_params
+            _tracker_cls = type(self.tracker).__name__
+            print(f"[REPOS-T2] tracker={_tracker_cls} "
+                  f"traj_type={_rp.traj_type.name} "
+                  f"use_pwl_traj={self._use_pwl_traj} "
+                  f"env_PUSHA_REPOSITION_PWL="
+                  f"{_os_t2r.environ.get('PUSHA_REPOSITION_PWL', '0')}",
+                  flush=True)
+            print(f"[REPOS-T2] params: "
+                  f"speed={_rp.speed} "
+                  f"pwl_speed={getattr(_rp, 'pwl_speed', 'n/a')} "
+                  f"pwl_waypoint_height={_rp.pwl_waypoint_height} "
+                  f"use_straight_line_traj_under_piecewise_linear="
+                  f"{_rp.use_straight_line_traj_under_piecewise_linear}",
+                  flush=True)
+            print(f"[REPOS-T2] reference: traj_type=kPiecewiseLinear "
+                  f"speed=0.18 pwl_waypoint_height=0.06-0.077 "
+                  f"straight_line_thresh=0.008",
+                  flush=True)
+            # kIK-only latch params visible only when kIK is selected
+            if hasattr(self.tracker, "ADMIT_LATCH_TICKS"):
+                print(f"[REPOS-T2] kIK_latch: "
+                      f"ADMIT_LATCH_TICKS={self.tracker.ADMIT_LATCH_TICKS} "
+                      f"TARGET_STABLE_TICKS={self.tracker.TARGET_STABLE_TICKS} "
+                      f"TARGET_STABLE_TOL={self.tracker.TARGET_STABLE_TOL} "
+                      f"(port-only; reference has no analog)",
+                      flush=True)
+            print(f"[REPOS-T2] free_mode_v_ee_desired_wired="
+                  f"{self._use_pwl_traj}  "
+                  f"(legacy path passes v_ee_desired=None; PWL path passes v_des)",
+                  flush=True)
+
         # Mode state
         self.is_doing_c3 = start_in_c3_mode
         self._prev_mode:                str   = "c3" if start_in_c3_mode else "free"
