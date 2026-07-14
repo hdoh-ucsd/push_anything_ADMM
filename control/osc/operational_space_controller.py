@@ -374,6 +374,51 @@ class OperationalSpaceController:
         return u_opt, diag
 
     # ------------------------------------------------------------------
+    def compute_torque_from_trajectory(
+            self,
+            traj,                           # pydrake PiecewisePolynomial / Trajectory
+            t_sim:        float,
+            current_q:    np.ndarray,
+            current_v:    np.ndarray,
+            plant_ctx,
+            v_ee_desired: Optional[np.ndarray] = None,
+            lambda_n:     Optional[np.ndarray] = None,
+            lambda_t:     Optional[np.ndarray] = None,
+            J_n:          Optional[np.ndarray] = None,
+            J_t:          Optional[np.ndarray] = None,
+            lambda_des:   Optional[np.ndarray] = None,
+            a_ee_desired: Optional[np.ndarray] = None,
+            mode:         str = "free",
+    ) -> Tuple[np.ndarray, dict]:
+        """Trajectory-shaped variant of compute_torque.
+
+        `traj` must expose `.value(t_sim) -> np.ndarray(3, 1)` — matches
+        Drake's `Trajectory<double>` / `PiecewisePolynomial`. This is the
+        reference-parity contract: dairlib's `franka_osc_controller.cc`
+        consumes `Trajectory<double>` abstract input ports over LCM.
+
+        For Phase 1 (reproduce-dairlib), the wrapper wraps its per-tick R³
+        setpoint in a degenerate single-knot `PiecewisePolynomial.ZeroOrderHold`.
+        Phase 2 flips this to the full N-knot PWL from reposition.cc without
+        changing the executor's signature.
+        """
+        p_ee_desired = np.asarray(traj.value(t_sim)).reshape(3)
+        return self.compute_torque(
+            current_q=current_q,
+            current_v=current_v,
+            plant_ctx=plant_ctx,
+            p_ee_desired=p_ee_desired,
+            v_ee_desired=v_ee_desired,
+            lambda_n=lambda_n,
+            lambda_t=lambda_t,
+            J_n=J_n,
+            J_t=J_t,
+            lambda_des=lambda_des,
+            a_ee_desired=a_ee_desired,
+            mode=mode,
+        )
+
+    # ------------------------------------------------------------------
     def print_summary(self) -> None:
         """Print end-of-run diagnostic line."""
         if self._n_calls == 0:
