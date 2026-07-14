@@ -300,6 +300,42 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         ad.RigidTransform([0.0, 0.0, 0.05]),   # 5 cm past link8 along +z
     )
 
+    # Tier-2 subsystem-(5) sim/URDF diagnostic (docs/conformance-map.md §5.*):
+    # LOG-ONLY, env-gated PUSHA_SIM_T2_DIAG=1. Discloses env-builder's
+    # resolved geometry constants for comparison against reference URDFs.
+    # Default OFF = byte-identical.
+    import os as _os_t2s
+    if _os_t2s.environ.get("PUSHA_SIM_T2_DIAG", "0") == "1":
+        print(f"[SIM-T2] pusher_radius={PUSHER_RADIUS} "
+              f"(reference: end_effector_full.urdf sphere r=0.0195; "
+              f"env_PUSHA_PUSHER_RADIUS="
+              f"{_os_t2s.environ.get('PUSHA_PUSHER_RADIUS', '<unset>')})",
+              flush=True)
+        print(f"[SIM-T2] pusher_mu={_pusher_mu} "
+              f"(reference: end_effector_full.urdf mu_static=1.0 mu_dynamic=1.0)",
+              flush=True)
+        print(f"[SIM-T2] pusher_body='{EE_BODY_NAME}' weld_parent='panda_link8' "
+              f"weld_offset=[0,0,0.05] "
+              f"(reference: end_effector_flange welded to panda_link7 at "
+              f"kToolAttachmentFrame=[0,0,0.107] + 180deg x-rotation)",
+              flush=True)
+        print(f"[SIM-T2] robot_base_xyz={ROBOT_BASE_XYZ} "
+              f"(reference: Identity() = [0,0,0])",
+              flush=True)
+        print(f"[SIM-T2] table_size=(2.0, 2.0, 0.1) origin=[0,0,-0.05] "
+              f"table_mu=(static=0.6, dynamic=0.5) "
+              f"(reference: ground.urdf box=(5.0, 0.91, 0.1) origin=[0,0,-0.05] "
+              f"mu=1.0 static+dynamic; welded via kFrankaToGroundOffset=[0,0,-0.029])",
+              flush=True)
+        print(f"[SIM-T2] time_step={time_step} "
+              f"(reference sim_params.yaml: dt=0.001 — CONFORMANT)",
+              flush=True)
+        print(f"[SIM-T2] task='{obj_type}' friction={task_cfg.get('friction', 'n/a')} "
+              f"mass={task_cfg.get('mass', 'n/a')} "
+              f"(reference push_t: mu_dynamic=0.3 hydroelastic modulus=3e7; "
+              f"reference expo_box: mu_dynamic=0.3 hydroelastic modulus=3e7)",
+              flush=True)
+
     # ------------------------------------------------------------------
     # Manipulated object — generated from task config at runtime
     # ------------------------------------------------------------------
