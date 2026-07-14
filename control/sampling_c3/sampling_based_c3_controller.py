@@ -39,7 +39,6 @@ from control.sampling_c3.progress import ProgressTracker, StepMetrics
 from control.osc import OperationalSpaceController
 from control.osc.dynamics_helpers import ee_jacobian_translational
 from control.sampling_c3.reposition import PiecewiseLinearTracker
-from control.sampling_c3.reposition_ik import RepositionIKTracker
 from control.sampling_c3.reposition_trajectory import RepositionTrajectory
 from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
 from control.sampling_c3.sampling import generate_samples
@@ -147,53 +146,13 @@ class SamplingC3MPC:
             pos_threshold = params.sampling_params.pos_error_sample_retention,
             ang_threshold = params.sampling_params.ang_error_sample_retention,
         )
-        # Reposition-tracker dispatch on traj_type. The kIK path needs the
-        # diagram so it can build its own private diag_ctx for IK and apply
-        # the context-local collision filter to that context's SceneGraph
-        # (see RepositionIKTracker.__init__). Other traj types use the PWL
-        # tracker, which has no SceneGraph dependency.
-        _traj_type = params.reposition_params.traj_type
-        if _traj_type == RepositioningTrajectoryType.kIK:
-            if diagram is None:
-                raise ValueError(
-                    "SamplingC3MPC: traj_type=kIK requires diagram=. Pass the "
-                    "diagram returned by build_environment() through to the "
-                    "wrapper. PiecewiseLinearTracker does not require this."
-                )
-            # Resolve scene_graph by walking the diagram's subsystems —
-            # build_environment() does not return it, but Drake exposes it
-            # as a child system of the diagram. Filter-and-assert-exactly-one
-            # so a future builder that adds a second SceneGraph (e.g. for a
-            # separate visualisation diagram) fails loudly instead of having
-            # us pick an arbitrary one. If you genuinely want to disambiguate,
-            # add a scene_graph= kwarg here and short-circuit this lookup.
-            import pydrake.all as ad
-            _sgs = [s for s in diagram.GetSystems() if isinstance(s, ad.SceneGraph)]
-            if len(_sgs) != 1:
-                raise ValueError(
-                    f"SamplingC3MPC: diagram contains {len(_sgs)} SceneGraphs, "
-                    f"expected exactly 1. Pass scene_graph= explicitly if you "
-                    f"have multiple."
-                )
-            scene_graph = _sgs[0]
-            self.tracker = RepositionIKTracker(
-                plant=plant, ee_frame=ee_frame, obj_body=obj_body,
-                n_arm_dofs=self.n_u,
-                horizon=self._horizon,
-                dt=self._dt,
-                repos_params=params.reposition_params,
-                ik_params=params.repos_ik_params,
-                diagram=diagram,
-                scene_graph=scene_graph,
-                # table_body=None — defaults to plant.world_body() (env_builder
-                # registers the table on the world body).
-            )
-        else:
-            self.tracker = PiecewiseLinearTracker(
-                plant=plant, ee_frame=ee_frame,
-                n_arm_dofs=self.n_u,
-                params=params.reposition_params,
-            )
+        # PiecewiseLinearTracker is the only reference-conformant tracker.
+        # kIK (port-only) was deleted with reposition_ik.py.
+        self.tracker = PiecewiseLinearTracker(
+            plant=plant, ee_frame=ee_frame,
+            n_arm_dofs=self.n_u,
+            params=params.reposition_params,
+        )
 
         # ----- Executor: OSC (QP) -----
         # OSC is the sole executor. The alternate closed-form impedance
@@ -2403,117 +2362,58 @@ class SamplingC3MPC:
                     ).flatten()
                     self.plant.SetPositions(plant_ctx, current_q)
                     self.plant.SetVelocities(plant_ctx, current_v)
-                # ROOT-CAUSE DIAGNOSTIC (tshape-only, env-gated):
-                # `FK(x_seq[1][:7])` is a phantom target in the port's
-                # non-converged C3+ regime. Trace evidence
-                # (results/trace_p_ee/tshape.log) shows dot(Δp_ee, g_hat)
-                # < 0 for every traced c3 step: planner's arm-state
-                # prediction is physically inconsistent with its
-                # box-motion prediction because the LCS's ADMM projection
-                # doesn't converge on λ, and the box moves via "phantom
-                # contact force" that has no corresponding arm-state
-                # trajectory.
-                #
-                # ATTEMPTED FIX: replace with geometric contact target
-                # `box_center - g_hat·(face_offset + pusher_radius)`.
-                # This gives the correct Cartesian direction (dot > 0)
-                # but lacks joint-space guidance — the arm null space
-                # (4-DOF for a 3-DOF Cartesian target) drifts wildly,
-                # producing arm runaway that leaves EE 40-90 cm from
-                # start within a few seconds even with port-stable OSC
-                # gains and W_force=0.
-                #
-                # Real fix requires either: MIQP planner (not available
-                # in port), or IK-projected joint-space guidance per tick
-                # (adds solve time). Gated behind PUSHA_TSHAPE_C3_GEOM=1
-                # for future research; default OFF preserves the
-                # baseline (T doesn't move, but arm stays stable).
+                # IK-projected joint-space guidance for tshape c3 mode.
+                # Rationale: port's C3+ ADMM is non-converged, so
+                # FK(x_seq[1][:7]) is a phantom target (planner's
+                # arm-state prediction is physically inconsistent with
+                # its own box-motion prediction). Replace with an
+                # IK-solved arm state whose FK gives the geometric
+                # contact target `box_center − g_hat·(face_offset +
+                # pusher_radius)`. `q_arm_ik` is passed to the OSC as
+                # `q_nominal_override` so posture cost anchors null
+                # space to a reachable pose.
                 _shape_c3 = getattr(self.base_mpc.formulator,
                                     "_object_shape", "box")
-                import os as _os_tg
-                _tshape_geom_on = (_shape_c3 == "tshape"
-                                   and _os_tg.environ.get(
-                                       "PUSHA_TSHAPE_C3_GEOM", "0") == "1")
-                _q_arm_ik = None  # populated by IK-projection below
-                if _tshape_geom_on:
-                    _delta_fk = _p_ee_des - ee_pos_now
-                    _dot_g = float(np.dot(_delta_fk[:2], g_hat_3d[:2]))
-                    # Apply IK-projected geometric target when planner's
-                    # FK either points away from goal (dot<0) OR z-error
-                    # is large (planner suggesting a climb). Both signal
-                    # phantom target.
-                    _z_err_planner = abs(_p_ee_des[2] - ee_pos_now[2])
-                    if _dot_g < 0.0 or _z_err_planner > 0.02:
-                        _box_xy_now = np.array([
-                            current_q[self._obj_x_idx],
-                            current_q[self._obj_y_idx],
-                        ])
-                        _face_offset = (abs(g_hat_3d[0]) * 0.13
-                                        + abs(g_hat_3d[1]) * 0.08)
-                        _contact_offset = (_face_offset
-                                           + float(getattr(self, "_pusher_radius", 0.0195)))
-                        # z target: fix at the initial EE z (contact plane
-                        # set by --prepositioned or sampling_height).
-                        # Planner's z suggestion is phantom and would send
-                        # EE flying above T.
-                        if getattr(self, "_c3_geom_z_target", None) is None:
-                            self._c3_geom_z_target = float(ee_pos_now[2])
-                        _p_ee_geom = np.array([
-                            _box_xy_now[0] - g_hat_3d[0] * _contact_offset,
-                            _box_xy_now[1] - g_hat_3d[1] * _contact_offset,
-                            float(self._c3_geom_z_target),
-                        ])
-                        # IK-PROJECTED JOINT-SPACE GUIDANCE:
-                        # DLS IK from geometric target with current_q as
-                        # warm start (fast convergence, ~10 iters). The
-                        # solved q_arm_ik is passed to the OSC as
-                        # q_nominal_override so the null-space posture
-                        # cost pulls the arm toward the IK solution.
-                        # p_ee_desired is set to FK of the IK solution
-                        # (guaranteed reachable — prevents 90cm runaway).
-                        from control.sampling_c3.ik import solve_ik_to_ee_pos
-                        _q_lo_full = self.plant.GetPositionLowerLimits()
-                        _q_hi_full = self.plant.GetPositionUpperLimits()
-                        _q_ik_full, _ik_err, _ik_it = solve_ik_to_ee_pos(
-                            self.plant, self.ee_frame,
-                            _p_ee_geom, current_q, plant_ctx,
-                            n_arm_dofs=self.n_u,
-                            max_iter=10, tol=2e-3, damping=0.05,
-                            q_lo=_q_lo_full, q_hi=_q_hi_full,
-                        )
-                        # Restore plant context to actual current state
-                        # (solve_ik_to_ee_pos mutates it).
-                        self.plant.SetPositions(plant_ctx, current_q)
-                        self.plant.SetVelocities(plant_ctx, current_v)
-                        _q_arm_ik = _q_ik_full[:self.n_u].copy()
-                        # p_ee_desired = FK of the IK-solved arm state,
-                        # which by construction is close to _p_ee_geom
-                        # (within tolerance) AND reachable.
-                        _q_full_ik = current_q.copy()
-                        _q_full_ik[:self.n_u] = _q_arm_ik
-                        self.plant.SetPositions(plant_ctx, _q_full_ik)
-                        _p_ee_des = self.plant.CalcPointsPositions(
-                            plant_ctx, self.ee_frame, np.zeros(3),
-                            self.world_frame,
-                        ).flatten()
-                        self.plant.SetPositions(plant_ctx, current_q)
-                        self.plant.SetVelocities(plant_ctx, current_v)
-                # DIAG: trace p_ee_des vs current EE to isolate OSC-target bug.
-                import os as _os_pd
-                if _os_pd.environ.get("PUSHA_TRACE_P_EE_DES", "0") == "1":
-                    _dp = _p_ee_des - ee_pos_now
-                    _arm_now = current_q[:self.n_u]
-                    _arm_pred = _x_seq[1][:self.n_u]
-                    _darm = _arm_pred - _arm_now
-                    print(f"[TRACE-P_EE_DES] step={self._step} "
-                          f"ee_now=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}) "
-                          f"p_ee_des=({_p_ee_des[0]:+.4f},{_p_ee_des[1]:+.4f},{_p_ee_des[2]:+.4f}) "
-                          f"delta_ee=({_dp[0]:+.4f},{_dp[1]:+.4f},{_dp[2]:+.4f}) "
-                          f"|delta|={float(np.linalg.norm(_dp)):.4f} "
-                          f"g_hat=({g_hat_3d[0]:+.3f},{g_hat_3d[1]:+.3f},{g_hat_3d[2]:+.3f}) "
-                          f"dot(delta,g_hat)={float(np.dot(_dp[:2], g_hat_3d[:2])):+.4f} "
-                          f"|darm|={float(np.linalg.norm(_darm)):.4f}",
-                          flush=True)
+                _q_arm_ik = None
+                if _shape_c3 == "tshape":
+                    _box_xy_now = np.array([
+                        current_q[self._obj_x_idx],
+                        current_q[self._obj_y_idx],
+                    ])
+                    _face_offset = (abs(g_hat_3d[0]) * 0.13
+                                    + abs(g_hat_3d[1]) * 0.08)
+                    _contact_offset = (_face_offset
+                                       + float(getattr(self, "_pusher_radius", 0.0195)))
+                    # z target locked at c3-entry EE-z (contact plane).
+                    if getattr(self, "_c3_geom_z_target", None) is None:
+                        self._c3_geom_z_target = float(ee_pos_now[2])
+                    _p_ee_geom = np.array([
+                        _box_xy_now[0] - g_hat_3d[0] * _contact_offset,
+                        _box_xy_now[1] - g_hat_3d[1] * _contact_offset,
+                        float(self._c3_geom_z_target),
+                    ])
+                    from control.sampling_c3.ik import solve_ik_to_ee_pos
+                    _q_lo_full = self.plant.GetPositionLowerLimits()
+                    _q_hi_full = self.plant.GetPositionUpperLimits()
+                    _q_ik_full, _, _ = solve_ik_to_ee_pos(
+                        self.plant, self.ee_frame,
+                        _p_ee_geom, current_q, plant_ctx,
+                        n_arm_dofs=self.n_u,
+                        max_iter=10, tol=2e-3, damping=0.05,
+                        q_lo=_q_lo_full, q_hi=_q_hi_full,
+                    )
+                    self.plant.SetPositions(plant_ctx, current_q)
+                    self.plant.SetVelocities(plant_ctx, current_v)
+                    _q_arm_ik = _q_ik_full[:self.n_u].copy()
+                    _q_full_ik = current_q.copy()
+                    _q_full_ik[:self.n_u] = _q_arm_ik
+                    self.plant.SetPositions(plant_ctx, _q_full_ik)
+                    _p_ee_des = self.plant.CalcPointsPositions(
+                        plant_ctx, self.ee_frame, np.zeros(3),
+                        self.world_frame,
+                    ).flatten()
+                    self.plant.SetPositions(plant_ctx, current_q)
+                    self.plant.SetVelocities(plant_ctx, current_v)
             else:
                 _p_ee_des = ee_pos_now
             # Stage 2b: index into the planner's λ-horizon by elapsed time

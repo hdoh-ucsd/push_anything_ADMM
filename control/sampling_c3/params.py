@@ -79,17 +79,11 @@ class SamplingStrategy(IntEnum):
 
 
 class RepositioningTrajectoryType(IntEnum):
-    """Match enum RepositioningTrajectoryType in dairlib reposition_params.h.
-
-    kIK is a project-specific extension (no upstream equivalent) selecting
-    the constrained-pydrake-IK planner in control/sampling_c3/reposition_ik.py
-    instead of the per-step Cartesian PWL tracker.
-    """
+    """Match enum RepositioningTrajectoryType in dairlib reposition_params.h."""
     kSpline          = 0
     kSpherical       = 1
     kCircular        = 2
     kPiecewiseLinear = 3
-    kIK              = 4   # RepositionIKTracker — see reposition_ik.py
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +489,11 @@ class RepositionParams:
 
 
 # ---------------------------------------------------------------------------
-# RepositionIKParams — project-specific (no upstream equivalent)
+# RepositionIKParams — DEAD CODE, kept only so any external caller loading
+# an old yaml with `repos_ik_params:` doesn't crash. The kIK reposition
+# tracker (control/sampling_c3/reposition_ik.py) was removed as part of
+# the reference-only cleanup — the reference dairlib
+# push_anything_dev@257e3ed only ships PiecewiseLinearTracker.
 # ---------------------------------------------------------------------------
 
 @dataclass
