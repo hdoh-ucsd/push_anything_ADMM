@@ -664,6 +664,14 @@ class SamplingC3MPC:
         # §7.32 — FAITHFUL-DESIRED-STATE: the planner's predicted velocity
         # is fed undamped (alpha = 1.0) to match the reference's
         # `ydot_des = traj.EvalDerivative(t, 1)` (osc_tracking_data.cc:87-111).
+        # Honor the documented opt-in flag: when use_velocity_feedforward is
+        # False (default), return None so callers pass None to the OSC and
+        # v_err falls back to -v_ee_now. Diagnostic [VFF] reads the same flag
+        # (line 3037-3040) — the missing gate here caused a docstring/diag/
+        # behavior three-way disagreement where the flag was False, the diag
+        # printed alpha=0.000, but the OSC actually received alpha·v_clipped.
+        if not bool(getattr(self.params, "use_velocity_feedforward", False)):
+            return None
         x_seq = getattr(self.base_mpc, "last_x_seq", None)
         if x_seq is None or x_seq.shape[0] < 2:
             return None
