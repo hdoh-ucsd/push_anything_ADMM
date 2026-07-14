@@ -25,13 +25,24 @@ osc:
   Kp_null: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
   Kd_null: [3.0,  3.0,  3.0,  3.0,  3.0,  3.0,  3.0]
 
-  # ----- Joint-2 posture (dairlib parity, Phase 1) -----
-  # Reference: franka_osc_controller.cc:159-165, osc_params.yaml:42-44.
-  # Kp=200 / Kd=10 at target 1.1 rad, W=1. joint2_idx=1 = Franka joint 2.
-  # This is separate from Kp_null (general posture across all 7 joints).
+  # ----- Joint-2 posture (dairlib parity — DEFAULT OFF post-recert) -----
+  # Reference: franka_osc_controller.cc:159-165, osc_params.yaml:42-44 (weight 1).
+  # Kp=200 / Kd=10 at target 1.1 rad, joint2_idx=1 = Franka joint 2.
+  #
+  # W_joint2 SET TO 0.0 on 2026-07-13 after the restored-main re-cert
+  # (results/_recert_restored_main_box_seed0/VERDICT.md) showed that at
+  # W=1 the pin yanks the EE from z=95mm to z=711mm in 1s during c3-mode
+  # contact posture (a_j2 ≈ 200·(1.1 − q_j2) ≈ 120 rad/s² demanded → QP
+  # satisfies via EE-upward accel → box translation halts).
+  #
+  # The code scaffolding STAYS available (qp_builder.py:215 gates on
+  # W_joint2 > 0.0 so cost term is byte-inert here). Turn back on ONLY
+  # inside a coupled cost-stack + executor re-tune conversation, where
+  # the port's Q is being reshaped to work with reference-shaped OSC.
+  # Piecewise adoption is what the recert falsified.
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  W_joint2:            1.0
+  W_joint2:            0.0
   joint2_target_rad:   1.1
   joint2_idx:            1
 
