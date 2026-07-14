@@ -2448,7 +2448,26 @@ class SamplingC3MPC:
                 _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
             _Jn    = self.base_mpc.formulator._last_J_n
             _Jt    = self.base_mpc.formulator._last_J_t
-            _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
+            # SIGN-BUG FIX: only issue a force-tracking command when the
+            # planner actually predicts contact force on the EE-BOX pair.
+            # Without this gate, `_derive_force_command` returned
+            # `nominal_push_force · (−g_hat)` even at 10 cm separation, so
+            # the OSC generated joint torques to compensate for a fictional
+            # environment force — the arm accelerated as if pushing against
+            # a wall that wasn't there, and its actual EE motion diverged
+            # from the sample-driven `p_ee_desired`. Now: if the LCS
+            # admitted an EE-BOX pair AND predicted a non-trivial λ_n,
+            # execute the recoil-tracking command; otherwise pass 0 so the
+            # QP falls back to pure position tracking.
+            _lam_n_mag = (float(np.sum(np.abs(_lam_n)))
+                          if (_lam_n is not None
+                              and hasattr(_lam_n, "size")
+                              and _lam_n.size > 0)
+                          else 0.0)
+            if _lam_n_mag > 0.05:
+                _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
+            else:
+                _lam_des = np.zeros(3)
 
             import os as _os_fr
             if _os_fr.environ.get("PUSHA_FORCE_ROUTE_TRACE", "0") == "1":
