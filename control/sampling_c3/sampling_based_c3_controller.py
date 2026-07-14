@@ -3150,7 +3150,7 @@ class SamplingC3MPC:
                             _p_target_arr - _built)) * 1000.0
                     else:
                         _delta_mm = float("nan")
-                    _sim_t_now = float(self._step) * float(self._dt_ctrl)
+                    _sim_t_now = float(self._step - 1) * float(self._dt_ctrl)
                     # PWL trajectory finished-flag debug
                     if self._pwl_traj is not None:
                         _pwl_t_end = float(self._pwl_traj.t_end)
@@ -3569,7 +3569,7 @@ class SamplingC3MPC:
         C3-mode suffix: contact payload (c3_cost / lam_n / lam_t / contact /
         productive / f_cmd).
         """
-        sim_t = step * self._dt_ctrl
+        sim_t = (step - 1) * self._dt_ctrl
         # Object xyz (lift z from current_q for parity with [GS-tgt]).
         obj_z = float(current_q[self._obj_z_idx])
         prefix = (
