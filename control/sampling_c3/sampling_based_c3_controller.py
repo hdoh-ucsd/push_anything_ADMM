@@ -2450,20 +2450,22 @@ class SamplingC3MPC:
             _Jt    = self.base_mpc.formulator._last_J_t
             # SIGN-BUG FIX: only issue a force-tracking command when the
             # planner actually predicts contact force on the EE-manipuland
-            # pair specifically. Ground-contact λ_n (T-witness reactions,
-            # BOX-GND friction) can be ~2 N even without EE contact, which
-            # would spuriously trigger `_derive_force_command` and re-open
-            # the fictional-force drift.
+            # pair. Ground-contact λ_n can be ~2 N even without EE contact,
+            # which would spuriously trigger `_derive_force_command` and
+            # re-open the fictional-force drift.
             #
-            # Filter by pair-type using formulator._last_contact_info
-            # (same mechanism `_derive_force_command` uses at line 611+).
-            # Falls back to the raw sum when contact_info is unavailable.
+            # Filter shape-gated to match `_derive_force_command` (line 611+):
+            #   tshape → filter EE-BOX tags only
+            #   box    → raw sum (byte-identical to pre-fix)
+            _shape_gate = getattr(self.base_mpc.formulator,
+                                   "_object_shape", "box")
             _cinfo_gate = getattr(self.base_mpc.formulator,
                                    "_last_contact_info", None)
             if (_lam_n is not None
                     and hasattr(_lam_n, "size")
                     and _lam_n.size > 0):
-                if (_cinfo_gate is not None
+                if (_shape_gate == "tshape"
+                        and _cinfo_gate is not None
                         and len(_cinfo_gate) == _lam_n.size):
                     _ee_idxs_gate = [i for i, info in enumerate(_cinfo_gate)
                                      if isinstance(info, dict)
