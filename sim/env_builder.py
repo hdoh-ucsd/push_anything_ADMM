@@ -549,13 +549,14 @@ def compute_prepositioned_arm_q(plant,
     elif obj_type == "sphere":
         half_extent = float(task_cfg["radius"])
     elif obj_type == "tshape":
-        # Loose outward-bound: the T's max extent along g_hat is between the
-        # crossbar tip (link-frame +0.13 along x) and the stem back (-0.07).
-        # For a canonical West push (g_hat ≈ +x since goal is to -x → arm push
-        # from +x), 0.13 m is the outward face. Direction-agnostic upper bound
-        # = 0.13 m (worst case, over-approximate is safe: IK just seats a bit
-        # farther out).
-        half_extent = 0.13
+        # Direction-aware bound: the T occupies x∈[-0.07,+0.13], y∈[-0.08,+0.08]
+        # in link frame. For a +y push (stem south face), y half-extent = 0.08.
+        # For a +x push (crossbar tip), x half-extent = 0.13. Project g_hat
+        # onto both axes and pick the max — matches the box formula which
+        # uses `|gx|·sx/2 + |gy|·sy/2` but with per-axis T extents.
+        # Over-estimating (loose 0.13) left the EE 5 cm short of contact for
+        # push_t's dominant-y push direction (goal_yaw target).
+        half_extent = abs(g_hat[0]) * 0.13 + abs(g_hat[1]) * 0.08
     else:
         raise ValueError(
             f"compute_prepositioned_arm_q: unknown object_type '{obj_type}' "

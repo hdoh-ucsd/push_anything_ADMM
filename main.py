@@ -602,9 +602,15 @@ def main():
         pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
     )
     _MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC
-    # Tune-3: back to port's proven N=20, dt=0.05 (dd2294d @ 75% closure).
-    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", "20"))
-    _c3plus_dt = float(os.environ.get("PUSHA_C3PLUS_DT", "0.05"))
+    # Shape-gated planner cadence (T-only reference alignment):
+    #   tshape → N=5, dt=0.1 (reference anything/sampling_c3_options.yaml)
+    #   box    → N=20, dt=0.05 (port's proven dd2294d @ 75% closure)
+    if _obj_shape_for_defaults == "tshape":
+        _default_N, _default_dt = 5, 0.1
+    else:
+        _default_N, _default_dt = 20, 0.05
+    _c3plus_N = int(os.environ.get("PUSHA_C3PLUS_N", str(_default_N)))
+    _c3plus_dt = float(os.environ.get("PUSHA_C3PLUS_DT", str(_default_dt)))
     if _c3plus_N != 5 or _c3plus_dt != 0.1:
         print(f"[HORIZON-PROBE] N={_c3plus_N} dt={_c3plus_dt}  "
               f"(lookahead {_c3plus_N * _c3plus_dt:.2f}s)", flush=True)
@@ -687,6 +693,24 @@ def main():
                   f"dt_ctrl={_dt_ctrl_pass:.4f}s, "
                   f"sc3_params.dt_osc={sc3_params.dt_osc:.4f}s, "
                   f"sc3_params.dt_mpc={sc3_params.dt_mpc:.4f}s")
+        # Shape-gated OSC gain selection: tshape uses the reference-aligned
+        # yaml (Kp=200, W_track=1, W_rot=10, W_joint2=1, W_torque=0,
+        # W_acc=1e-7); box tasks keep the port's tuned yaml unchanged.
+        # Also override sc3_params.W_force to reference value (1.0) since the
+        # yaml default (100.0) would otherwise dominate the QP against the
+        # reference-scaled position/rotation terms.
+        if _obj_shape_for_defaults == "tshape":
+            _tshape_osc_yaml = "config/osc_franka_tshape.yaml"
+            if sc3_params.osc_gains_yaml == "config/osc_franka.yaml":
+                print(f"[OVERRIDE] tshape-only OSC yaml swap: "
+                      f"{sc3_params.osc_gains_yaml} → {_tshape_osc_yaml}",
+                      flush=True)
+                sc3_params.osc_gains_yaml = _tshape_osc_yaml
+            _prev_wf = sc3_params.W_force
+            if _prev_wf != 1.0:
+                sc3_params.W_force = 1.0
+                print(f"[OVERRIDE] tshape-only W_force: {_prev_wf} → 1.0 "
+                      f"(reference LambdaEndEffectorW)", flush=True)
         mpc = SamplingC3MPC(
             base_mpc=mpc,
             plant=plant,
