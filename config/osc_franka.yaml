@@ -25,6 +25,16 @@ osc:
   Kp_null: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
   Kd_null: [3.0,  3.0,  3.0,  3.0,  3.0,  3.0,  3.0]
 
+  # ----- Joint-2 posture (dairlib parity, Phase 1) -----
+  # Reference: franka_osc_controller.cc:159-165, osc_params.yaml:42-44.
+  # Kp=200 / Kd=10 at target 1.1 rad, W=1. joint2_idx=1 = Franka joint 2.
+  # This is separate from Kp_null (general posture across all 7 joints).
+  Kp_joint2:         200.0
+  Kd_joint2:          10.0
+  W_joint2:            1.0
+  joint2_target_rad:   1.1
+  joint2_idx:            1
+
   # ----- QP cost weights -----
   # Task tracking dominates posture by 100× — the posture cost behaves as
   # a true null-space pull rather than fighting the task.

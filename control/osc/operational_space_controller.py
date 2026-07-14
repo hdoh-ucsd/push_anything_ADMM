@@ -50,6 +50,11 @@ def _load_osc_gains(yaml_path: str | Path, n_arm: int) -> tuple[OscGains, np.nda
         W_posture = float(osc["W_posture"]),
         W_torque  = float(osc["W_torque"]),
         W_acc     = float(osc["W_acc"]),
+        Kp_joint2 = float(osc.get("Kp_joint2", 0.0)),
+        Kd_joint2 = float(osc.get("Kd_joint2", 0.0)),
+        W_joint2  = float(osc.get("W_joint2", 0.0)),
+        joint2_target_rad = float(osc.get("joint2_target_rad", 1.1)),
+        joint2_idx = int(osc.get("joint2_idx", 1)),
     )
     tau_max = osc.get("tau_max", None)
     if tau_max is not None:
