@@ -1245,7 +1245,12 @@ class SamplingC3MPC:
         # False (only T config sets it True), so line 1224's tracker.finished
         # remains the box's authoritative finished signal.
         if self._use_pwl_traj and self._pwl_traj is not None:
-            _sim_t_fin = float(self._step) * float(self._dt_ctrl)
+            # Align to real sim time at compute_control entry (see the fix
+            # applied to _sim_t / _sim_t_c3). self._step was incremented at
+            # line 850, so the real sim clock is (self._step - 1) * dt_ctrl.
+            # Off-by-one here reports PWL.is_finished ONE planner tick early,
+            # which can prematurely fire kToC3ReachedReposTarget.
+            _sim_t_fin = float(self._step - 1) * float(self._dt_ctrl)
             try:
                 _ee_now_fin = self.plant.CalcPointsPositions(
                     plant_ctx, self.ee_frame, np.zeros(3),
@@ -3443,7 +3448,7 @@ class SamplingC3MPC:
                             break
             print(
                 f"[STAGE-A-TRACE] step={self._step} "
-                f"sim_t={self._step * self._dt_ctrl:.3f} "
+                f"sim_t={(self._step - 1) * self._dt_ctrl:.3f} "
                 f"mode={mode} "
                 f"phi={_phi_ge:.5f} "
                 f"box_xy={float(current_q[self._obj_x_idx]):+.5f},"
