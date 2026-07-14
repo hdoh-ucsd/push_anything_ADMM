@@ -1376,13 +1376,12 @@ class LCSFormulator:
     N_X_NEW    = 19
     N_U_NEW    = 3               # u = EE Cartesian force ∈ ℝ^3
 
-    # EE point-mass for the planner. Full-stack conformance to reference:
-    # end_effector_simple.urdf sets mass=0.057 kg on the 3-prismatic floating
-    # EE. Prior port value 1.0 kg (17.5× reference) was chosen for B_ctrl
-    # O(1) numerics, but that scaling desynced with the reference R,
-    # q_vector, and gravity in the coupled c/b/Q-only ablations at
-    # results/_conform_both_* and results/_q_only_*.
-    _EE_MASS = 0.057   # kg — matches reference end_effector_simple.urdf
+    # EE point-mass for the planner. Configuration-INDEPENDENT by construction.
+    # Numerical value chosen so B_ctrl entries are O(1) at dt=0.05: dt²/m_ee
+    # ≈ 2.5e-3 for m_ee=1.0. Paper-typical effective EE mass; the downstream
+    # OSC is what realizes the actual joint torque from u, so this is a
+    # planner-internal scaling, not a physical claim.
+    _EE_MASS = 1.0   # kg
 
     def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
@@ -1536,14 +1535,9 @@ class LCSFormulator:
         # the LCS structure (D and H), so f_box here is the AUTONOMOUS part.
         f_box = M_box_inv @ (-Cv_box + tau_g_box)
 
-        # EE accel at linearization point (continuous): f_ee = u/m_ee + G + λ.
-        # Reference lcs_factory.cc:57 CalcGravityGeneralizedForces on the
-        # [floating EE + object + ground] plant naturally includes −m_ee·g on
-        # the EE-z slot. Port's hand-built proxy had dropped it; full-stack
-        # conformance restores it.
+        # EE accel at linearization point (continuous): f_ee = u/m_ee + λ-term.
         m_ee = float(self._EE_MASS)
-        _G_EE = np.array([0.0, 0.0, -9.81])
-        f_ee = u_star / m_ee + _G_EE   # autonomous (no λ) part
+        f_ee = u_star / m_ee   # autonomous (no λ) part
 
         # -----------------------------------------------------------------
         # 3. Contacts: phi, Drake's J_n (n_c, n_v_full), nhat list. We then
@@ -1731,14 +1725,14 @@ class LCSFormulator:
         # 4f. d_vec — affine offset (constant term in x_{k+1} after linearization).
         # d_box_v_offset = f_box(box_q*, box_v*) − df_box_dboxq · box_q*
         #                  − df_box_dboxv · box_v*
-        # d_v_ee_offset  = f_ee(u*) − (∂f_ee/∂u) · u* = (u*/m_ee + G) − u*/m_ee = G.
+        # d_v_ee_offset  = f_ee(u*) − (∂f_ee/∂u) · u*  = u*/m_ee − u*/m_ee = 0
         d_box_v_offset = f_box - df_box_dboxq @ box_q - df_box_dboxv @ box_v
-        d_v_ee_offset  = _G_EE.copy()  # gravity constant offset; u remains linear
+        d_v_ee_offset  = np.zeros(3)   # purely linear in u (no constant offset)
         d_vec = np.zeros(N_X)
         d_vec[self.BOX_Q_SLOT] = (dt * dt) * (N_box @ d_box_v_offset)
-        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset
+        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset    # zero
         d_vec[self.BOX_V_SLOT] = dt * d_box_v_offset
-        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset
+        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset           # zero
 
         # -----------------------------------------------------------------
         # 5. Stewart-Trinkle LCP slack:
