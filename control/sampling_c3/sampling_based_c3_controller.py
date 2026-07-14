@@ -2978,7 +2978,11 @@ class SamplingC3MPC:
             # Phase 2 flips this to the full N-knot PWL from reposition.cc).
             # Mirrors the dairlib LCM contract where the OSC consumes a
             # Trajectory<double> abstract input port.
-            _sim_t_c3 = float(self._step) * float(self._dt_ctrl)
+            # Align to real sim time at compute_control entry (self._step
+            # already incremented at line 850). Sub-tick OSC calls now
+            # evaluate the traj at t ∈ [t_start, t_start+dt_ctrl] rather
+            # than at t < t_start where ZOH clamps to the first knot.
+            _sim_t_c3 = float(self._step - 1) * float(self._dt_ctrl)
             _p_c3 = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
             _traj_c3 = PiecewisePolynomial.ZeroOrderHold(
                 [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],
@@ -3103,7 +3107,14 @@ class SamplingC3MPC:
                 # Past t_end, RepositionTrajectory.eval returns
                 # (p_target, 0, True) which holds the target — rebuilding
                 # there would be the per-tick march in disguise.
-                _sim_t = float(self._step) * float(self._dt_ctrl)
+                # self._step was incremented at the TOP of compute_control
+                # (line 850). At that point the real sim clock is
+                # (self._step - 1) * dt_ctrl (K-1 prior planner ticks have
+                # elapsed). Use that so trajectories are built with
+                # t_start = real sim time, letting 1 kHz OSC sub-ticks land
+                # in the traj interior rather than clamping to the pre-
+                # t_start start-knot branch (RepositionTrajectory.eval:102).
+                _sim_t = float(self._step - 1) * float(self._dt_ctrl)
                 _p_target = (
                     self._current_repos_target
                     if self._current_repos_target is not None
@@ -3266,7 +3277,7 @@ class SamplingC3MPC:
                 current_q[self._obj_z_idx],
             ])
             _ee_box_dist = float(np.linalg.norm(ee_pos_now - _box_xyz))
-            _sim_t = self._step * self._dt_ctrl
+            _sim_t = (self._step - 1) * self._dt_ctrl
             if mode == "c3":
                 _lam_n_first = getattr(
                     self.base_mpc, "last_lambda_n_first", None)
