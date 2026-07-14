@@ -288,6 +288,8 @@ class OperationalSpaceController:
             use_force_tracking=self.use_force_tracking,
             lambda_des=lambda_des,
             a_ff=a_ee_desired,
+            q_arm=q_arm,
+            v_arm=v_arm,
         )
         solve_ms = (time.perf_counter() - t0) * 1000.0
         self._total_solve_ms += solve_ms
