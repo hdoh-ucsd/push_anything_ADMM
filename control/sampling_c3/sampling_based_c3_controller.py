@@ -25,6 +25,7 @@ import time
 from typing import List, Optional
 
 import numpy as np
+from pydrake.trajectories import PiecewisePolynomial
 
 from control.sampling_c3.commit_face_gate import decide_commit_face_gate
 from control.sampling_c3.inner_solve import (
@@ -2912,9 +2913,21 @@ class SamplingC3MPC:
             # goal-aware). _v_ee_des already carries the planner's
             # predicted EE velocity at alpha = 1.0 under reconcile (see
             # _velocity_feedforward_from_xseq).
-            u_imp, imp_diag = self.executor.compute_torque(
-                current_q, current_v, plant_ctx,
-                p_ee_desired = _p_ee_des,
+            # Reproduce-dairlib Phase 1: dispatch c3-mode OSC through the
+            # trajectory-shaped interface (single-knot ZOH PP for now;
+            # Phase 2 flips this to the full N-knot PWL from reposition.cc).
+            # Mirrors the dairlib LCM contract where the OSC consumes a
+            # Trajectory<double> abstract input port.
+            _sim_t_c3 = float(self._step) * float(self._dt_ctrl)
+            _p_c3 = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
+            _traj_c3 = PiecewisePolynomial.ZeroOrderHold(
+                [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],
+                np.hstack([_p_c3, _p_c3]),
+            )
+            u_imp, imp_diag = self.executor.compute_torque_from_trajectory(
+                traj = _traj_c3, t_sim = _sim_t_c3,
+                current_q = current_q, current_v = current_v,
+                plant_ctx = plant_ctx,
                 v_ee_desired = _v_ee_des,
                 lambda_n     = _exec_lam_n,
                 lambda_t     = _exec_lam_t,
@@ -2922,7 +2935,7 @@ class SamplingC3MPC:
                 J_t          = _exec_Jt,
                 lambda_des   = _lam_des,
                 a_ee_desired = _a_ee_des,
-                mode         = "c3",  # §7.70 — reference-gain swap gate
+                mode         = "c3",  # §7.70 — reference-gain swap gate (now default)
             )
             # Velocity-feedforward A/B telemetry. Emit unconditionally so
             # the alpha=0 / disabled run has parsable rows for the baseline
