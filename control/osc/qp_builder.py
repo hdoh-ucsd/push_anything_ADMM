@@ -84,6 +84,13 @@ class OscGains:
     Kd_rot:            np.ndarray = None
     W_rot:             float = 0.0
 
+    # EE Cartesian accel command cap (reference SetCmdAccelerationBounds,
+    # franka_osc_controller.cc:155-158). Reference osc_params.yaml has
+    # `end_effector_acceleration: 10` applied as ±10 m/s² per axis. Any
+    # (Kp·p_err + Kd·v_err) component beyond this bound is clamped before
+    # the QP solves for v̇. Set 0.0 to disable (unbounded, port legacy).
+    a_ee_cap:          float = 0.0
+
 
 @dataclass
 class OscLimits:
@@ -175,6 +182,13 @@ def build_and_solve_qp(
     else:
         a_ff_v = np.asarray(a_ff, dtype=float).reshape(3)
         a_des = a_ff_v + gains.Kp_cart * p_err + gains.Kd_cart * v_err
+
+    # Reference-parity accel cap (franka_osc_controller.cc:155-158,
+    # SetCmdAccelerationBounds). Clamps each axis of a_des to
+    # ±gains.a_ee_cap. Disabled when a_ee_cap == 0.0.
+    if float(getattr(gains, "a_ee_cap", 0.0)) > 0.0:
+        _cap = float(gains.a_ee_cap)
+        a_des = np.clip(a_des, -_cap, +_cap)
     # residual_track = J_v @ vdot + Jdot_v_v - a_des
     # ‖residual‖² = vdot.T J_v.T J_v vdot + 2 vdot.T J_v.T (Jdot_v_v - a_des)
     #               + const
