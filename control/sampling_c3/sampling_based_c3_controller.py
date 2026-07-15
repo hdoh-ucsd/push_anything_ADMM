@@ -881,6 +881,14 @@ class SamplingC3MPC:
 
         # Append the best non-current feasible result so we remember it
         # across the next mode switch.
+        # Reference MaintainSampleBuffers appends ALL non-current, non-
+        # repos-target samples per tick. Retested: bulk-add regressed box
+        # (goal_dist 0.109 → 0.171, orient 1.61 → 2.99 rad tumble) because
+        # port's `best_with_position()` finds the true min across all
+        # entries, and bulk-add pollutes the min-cost lookup with poorly-
+        # scoring strat samples. Reference's move-to-end + last-entry
+        # lookup avoids this. Port kept single-best-append until buffer
+        # retrieval semantics matched. See d453709 vs regression.
         ranked = sorted(
             ((r.c_sample, k) for k, r in enumerate(results)
              if k > 0 and r.feasible),
