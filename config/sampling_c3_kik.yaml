@@ -238,7 +238,11 @@ sampling_params:
 
   # kFaceNormal geometry (Push-Anything §IV-B1).
   box_half_extent:         0.05    # m, cube half-extent
-  sampling_setback:        0.030   # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
+  sampling_setback:        0.022   # m, outward projection along face normal
+                                    # (reference push_t sample_projection_clearance:
+                                    # 0.02 + pusher_radius 0.0195 ≈ 0.04 clearance —
+                                    # arm 22 mm away from face gives smaller pre-
+                                    # contact gap → easier c3-entry for T)
   sample_reject_clearance: 0.005   # m, rejection if post-projection xy is within 5 mm of box surface
 
   # Face-selection bias toward goal-aligned faces (Stage 2B infrastructure).
