@@ -1316,6 +1316,28 @@ class SamplingC3MPC:
             rot_error   = rot_error_now,
         ))
 
+        # Reference achieved_fixed_goal_ (sampling_based_c3_controller.cc:887-897):
+        # when the object is at goal (position_success_threshold=0.02 m
+        # per goal_params.yaml:10), the controller pins samples at a
+        # "get out of the way" position and skips c3 mode.
+        # Port had no equivalent — arm kept pushing past goal and box
+        # overshot by 260mm (seed=0 60s: box (+0.30, 0) → (+0.561, +0.029)).
+        # Simple port version: track a sticky _achieved_fixed_goal flag
+        # that latches when goal_dist and rot_error both under thresholds.
+        # When set, force mode=free (arm won't push more).
+        if not hasattr(self, "_achieved_fixed_goal"):
+            self._achieved_fixed_goal = False
+        _pos_thr = 0.02  # reference position_success_threshold
+        _rot_thr = 0.10  # reference orientation_success_threshold
+        if not self._achieved_fixed_goal:
+            if goal_dist < _pos_thr and rot_error_now < _rot_thr:
+                self._achieved_fixed_goal = True
+                if self.log_diag:
+                    print(f"[ACHIEVED-FIXED-GOAL] step={self._step} "
+                          f"goal_dist={goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "
+                          f"— pinning free mode to prevent overshoot",
+                          flush=True)
+
         # 6. Mode-switch decision
         # Reference sampling_based_c3_controller.cc:800,821-830:
         # crossed_cost_switching_threshold_ is STICKY — set True once
@@ -1540,11 +1562,11 @@ class SamplingC3MPC:
         _obj_shape = getattr(
             getattr(self.base_mpc, "formulator", None), "_object_shape", "box")
         # Reference sampling_based_c3_controller.cc:1290-1293 applies this
-        # gate for ALL objects. Retest after W_posture/hyst/cost-drop fixes
-        # showed box still regresses (0.109→0.374 m goal_dist, tumble)
-        # when gate enabled for box. Root cause: with c3 entry gated on
-        # ee_z, arm doesn't get warmup c3-mode contact before final press.
-        # Gate stays tshape-only for now. Port divergence documented.
+        # gate for ALL objects. Retested twice for box (once earlier, once
+        # after achieved_fixed_goal + cost-drop-fraction + hyst-inversion +
+        # W_posture + a_ee_cap fixes) — box still regresses when gate is
+        # enabled (goal_dist 0.109→0.374 → 0.602 m, orient 92°→180° tumble).
+        # Kept tshape-only. Port divergence documented.
         if (self._prev_mode == "free"
                 and getattr(self.params, "ee_z_close", True)
                 and _obj_shape == "tshape"):
@@ -1580,6 +1602,12 @@ class SamplingC3MPC:
             params             = self.params.progress_params,
             ee_z_gate_pass     = _ee_z_gate_pass,
         )
+
+        # Reference achieved_fixed_goal_ override (cc:1160-1164, 1279-1283):
+        # if goal met, force mode=free so arm stops pushing.
+        if self._achieved_fixed_goal and mode == "c3":
+            mode = "free"
+            reason = SwitchReason.kToReposUnproductive
 
         # §7.56 Stage 1 — [COST-DECOMP] diagnostic. Gated by
         # PUSHA_COST_DECOMP_LOG=1 (default-OFF) so flag=0 stays byte-identical
