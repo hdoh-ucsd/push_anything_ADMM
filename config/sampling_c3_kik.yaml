@@ -111,8 +111,13 @@ progress_params:
   pos_regression_threshold:            0.025
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
-  progress_enforced_cost_drop:    0.0
-  progress_enforced_over_n_loops: 30
+  # Reference push_t progress_params_c3plus.yaml:44-45:
+  #   progress_enforced_cost_drop: 0.01
+  #   progress_enforced_over_n_loops: 180  (planner ticks = 13.5 s @ 13.3Hz)
+  # Applied only when track_c3_progress_via = kConfigCostDrop; port uses
+  # kPosOnly so these are currently inert but aligned for consistency.
+  progress_enforced_cost_drop:    0.01
+  progress_enforced_over_n_loops: 180
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
