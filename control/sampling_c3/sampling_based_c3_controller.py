@@ -1263,9 +1263,15 @@ class SamplingC3MPC:
                 best_other_idx  = k
 
         # 5. Update progress tracker (uses k=0 cost = c_curr)
-        # config_cost ≈ box-xy-error² weighted by w_obj_xy (kConfigCost
-        # equivalent for our pushing task)
+        # Reference sampling_based_c3_controller.cc:2228-2232:
+        #   curr_pos_and_rot_cost = err^T · Q_block(7x7) · err
+        # where err spans [quat(4), pos(3)] for the object.
+        # Port computed only xy pos component. For T (yaw-goal task with
+        # w_yaw=800 dominant), yaw progress was invisible to
+        # ProgressTracker's kConfigCostDrop metric. Now includes yaw
+        # cost so kConfigCostDrop tracks the reference's full pos+rot.
         w_obj_xy = self._quad_cost.w_obj_xy
+        w_yaw    = float(getattr(self._quad_cost, "w_yaw", 0.0))
         config_cost_now = w_obj_xy * (goal_dist ** 2)
 
         # D.2 fix (2026-07-13) — real yaw error for tasks with a rotation
@@ -1287,6 +1293,13 @@ class SamplingC3MPC:
         _yaw_now = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
         _dy = _yaw_now - float(target_yaw)
         rot_error_now = float(np.abs(np.arctan2(np.sin(_dy), np.cos(_dy))))
+
+        # Include yaw component in config_cost (reference full Q_block covers
+        # quat too). Uses the half-angle metric that w_yaw multiplies:
+        # sin((ψ-α)/2). For box, w_yaw=0 in tasks.yaml so contribution=0.
+        _half_yaw_err = np.sin(0.5 * (rot_error_now))   # >= 0
+        config_cost_now = (w_obj_xy * (goal_dist ** 2)
+                           + w_yaw * (_half_yaw_err ** 2))
 
         self.progress.update(StepMetrics(
             c3_cost     = c_curr,
