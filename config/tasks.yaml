@@ -19,10 +19,7 @@ tasks:
     # face under horizontal OSC commands, so geometry must tip the box BACK
     # into the EE, not away). Sphere radius 0.025; at sample center z=0.03
     # sphere bottom is z=0.005 (above ground; workspace_z_min=0.02 satisfied).
-    # Was 0.03. Raised to 0.05 (box CoM) so PWL contact target z is at
-    # mid-face height. Arm approaches box east face through CoM height,
-    # applies force through CoM → no tipping torque.
-    sampling_height: 0.05
+    sampling_height: 0.03
     cost:
       w_obj_xy:    100000.0
       w_obj_z:         10.0
@@ -50,10 +47,7 @@ tasks:
     goal_yaw: 0.0
     color_rgba: [0.2, 0.2, 0.8, 1.0]
     # D6: sub-CoM push point — see pushing task block above for rationale.
-    # Was 0.03. Raised to 0.05 (box CoM) so PWL contact target z is at
-    # mid-face height. Arm approaches box east face through CoM height,
-    # applies force through CoM → no tipping torque.
-    sampling_height: 0.05
+    sampling_height: 0.03
     cost:
       w_obj_xy:    150000.0
       w_obj_z:         10.0
