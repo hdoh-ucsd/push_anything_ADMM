@@ -304,11 +304,10 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
     )
     pusher_body = plant.AddRigidBody(EE_BODY_NAME, panda_model, _pusher_inertia)
     # Pusher-surface friction is task-configurable. Drake combines per-surface
-    # μ via harmonic mean: μ_eff = 2·μ_A·μ_B / (μ_A + μ_B). μ_eff = 1.0 requires
-    # BOTH surfaces at 1.0 (harmonic mean ≤ min). Reference push_t sets EE-T = 1.0
-    # per-pair; matching under Drake requires pusher_friction = 1.0 for T tasks
-    # and manipuland friction = 1.0. Box tasks keep 0.4 (regression-safe).
-    # Reference end_effector_full.urdf: pusher μ_static=μ_dynamic=1.0.
+    # μ via harmonic mean: μ_eff = 2·μ_A·μ_B / (μ_A + μ_B). Reference
+    # end_effector_full.urdf: pusher μ=1.0. Reference push_t.sdf: T μ=0.3;
+    # combined EE-T μ_eff = 2·1.0·0.3/(1.3) = 0.462 (reproduces reference
+    # EE-T pair exactly). Box tasks keep box μ=0.3 → box-EE μ_eff=0.462 too.
     _pusher_mu = float(task_cfg.get("pusher_friction", 1.0))
     plant.RegisterCollisionGeometry(
         pusher_body,
