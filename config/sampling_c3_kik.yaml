@@ -311,9 +311,7 @@ reposition_params:
   # planning-lookahead stride; this one is the PWL's per-leg linear velocity.
   # Aligning to the reference eliminates the free-mode brush observed at
   # speed=0.40 (vz≈0.44 m/s past phi=6mm → Drake compliant contact yawed box).
-  # Was 0.18 (reference). Raised to 0.5 to shrink repos duration — T
-  # spent 5.7 s out of 8 s in repos before first c3 entry.
-  pwl_speed: 0.5    # m/s
+  pwl_speed: 0.18    # m/s
 
   # (other traj-type knobs left at defaults; ignored when traj_type=kPiecewiseLinear)
   use_straight_line_traj_under_spline: 0.12
