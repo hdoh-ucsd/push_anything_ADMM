@@ -2413,8 +2413,30 @@ class SamplingC3MPC:
                 _bhe = float(getattr(self.params.sampling_params,
                                      "box_half_extent", 0.05))
                 if _shape_c3 == "tshape":
-                    _face_offset = (abs(g_hat_3d[0]) * 0.13
-                                    + abs(g_hat_3d[1]) * 0.08)
+                    # T geometry (reference push_t.sdf + port _tshape_sdf):
+                    #   vertical bar: x [-0.03, +0.13], y [-0.02, +0.02]
+                    #     (center CoM+0.05 in x, 0.16 x-long, 0.04 y-wide)
+                    #   horizontal bar: x [-0.07, -0.03], y [-0.08, +0.08]
+                    #     (center CoM-0.05 in x, rotated 90° → 0.04 x-long,
+                    #      0.16 y-wide)
+                    # For pushing along +y (or -y), arm contacts the
+                    # VERTICAL bar's south (or north) face at y = ±0.02.
+                    # For pushing along +x (west push), arm contacts the
+                    # horizontal bar's east face at x = -0.07 (or vertical
+                    # bar's east face at x = +0.13). For -x push, vertical
+                    # bar's west face x = -0.03 (or horizontal bar's west
+                    # at x = -0.07). Old formula 0.13·|gx|+0.08·|gy| put
+                    # arm at |y|=0.08 for pure-y push — outside T's actual
+                    # extent (T y-half at vertical bar is 0.02, not 0.08).
+                    # New: pick the bar to push based on |gx| vs |gy|.
+                    if abs(g_hat_3d[1]) >= abs(g_hat_3d[0]):
+                        # dominant y push: target vertical bar's y face
+                        _face_offset = 0.02
+                    else:
+                        # dominant x push: target vertical bar's east face
+                        # (x = +0.13) if pushing -x, or horizontal bar's
+                        # west face (x = -0.07) if pushing +x
+                        _face_offset = (0.13 if g_hat_3d[0] < 0 else 0.07)
                 elif _shape_c3 == "box":
                     _face_offset = (abs(g_hat_3d[0]) + abs(g_hat_3d[1])) * _bhe
                 else:
