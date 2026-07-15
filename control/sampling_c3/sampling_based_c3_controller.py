@@ -190,8 +190,11 @@ class SamplingC3MPC:
         # admits (§7.54 root-cause). This flag is SEPARATE from PUSHA_DISABLE_
         # C3_OVERRIDE so the effect of the watchdog removal is cleanly
         # attributable. Default-OFF byte-identical preserved.
+        # Default flipped to disable the port-only watchdog by default —
+        # the reference dispatcher has no such gate. Explicit re-enable
+        # via PUSHA_DISABLE_CONTACT_LOSS_GATE=0 for legacy runs.
         self._disable_contact_loss_gate = (
-            _os_rec.environ.get("PUSHA_DISABLE_CONTACT_LOSS_GATE", "0") == "1")
+            _os_rec.environ.get("PUSHA_DISABLE_CONTACT_LOSS_GATE", "1") == "1")
 
         # Force-tracking follows params.use_force_tracking (True by default).
         # The reconcile path no longer silently overrides it to False —
