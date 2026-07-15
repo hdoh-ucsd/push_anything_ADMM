@@ -1136,7 +1136,18 @@ class SamplingC3MPC:
         # sampler. For the box (target_yaw = 0 and box stays flat),
         # yaw_delta stays near 0 and the sampler skips the bias entirely
         # (see sampling.py:_face_normal_projection D.3 block).
-        _yaw_now_samp = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
+        # Was `2.0 * atan2(qz, qw)` — a small-tilt approximation that
+        # only equals the world-z yaw when the box is axis-aligned. For
+        # a tipped box (qy≠0), it can be off by ~30-90°, feeding a wrong
+        # yaw_delta to the sampler's D.3 face-selection bias. Use the
+        # standard quaternion-to-yaw extraction instead:
+        #   yaw = atan2(2·(qw·qz + qx·qy), 1 - 2·(qy² + qz²))
+        _qw, _qx, _qy, _qz = (float(obj_quat[0]), float(obj_quat[1]),
+                              float(obj_quat[2]), float(obj_quat[3]))
+        _yaw_now_samp = float(np.arctan2(
+            2.0 * (_qw * _qz + _qx * _qy),
+            1.0 - 2.0 * (_qy * _qy + _qz * _qz),
+        ))
         _dy_samp = float(target_yaw) - _yaw_now_samp
         yaw_delta_samp = float(
             np.arctan2(np.sin(_dy_samp), np.cos(_dy_samp)))
