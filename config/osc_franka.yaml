@@ -42,7 +42,14 @@ osc:
 
   # Reference EndEffectorW = diag(1,1,1).
   W_track:   1.0
-  W_posture: 1.0
+  # W_posture is a PORT-ADDED nullspace posture cost with no reference
+  # equivalent. Reference OSC tracking data: EE-pos + joint2-pin +
+  # EE-rot (inert) + EE-force — no general arm posture. Port's
+  # W_posture=1.0 across all 7 arm joints fights task tracking (posture
+  # is 7D vs task 3D) and pulled OSC to a low-|u| equilibrium ~90 mm
+  # above the box target z. Disabled to match reference. Nullspace
+  # DOFs still regularized weakly by W_acc=1e-7.
+  W_posture: 0.0
 
   # Reference w_input = 0 → no input regularization.
   W_torque: 0.0
