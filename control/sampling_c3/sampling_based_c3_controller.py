@@ -2423,9 +2423,15 @@ class SamplingC3MPC:
                     ])
                     _contact_offset = (_face_offset
                                        + float(getattr(self, "_pusher_radius", 0.0195)))
-                    # z target locked at c3-entry EE-z (contact plane).
+                    # z target locked at the object CoM z (contact plane).
+                    # Previously locked to ee_pos_now[2] at first c3 entry,
+                    # which for box was 0.20 m (initial prepositioning) —
+                    # arm would then track to z=0.20 forever, never descending
+                    # to the box at z=0.05. Using obj_z anchors the target
+                    # at the mid-face of the manipuland.
+                    _obj_z_now = float(current_q[self._obj_z_idx])
                     if getattr(self, "_c3_geom_z_target", None) is None:
-                        self._c3_geom_z_target = float(ee_pos_now[2])
+                        self._c3_geom_z_target = _obj_z_now
                     _p_ee_geom = np.array([
                         _box_xy_now[0] - g_hat_3d[0] * _contact_offset,
                         _box_xy_now[1] - g_hat_3d[1] * _contact_offset,
