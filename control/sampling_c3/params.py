@@ -705,8 +705,13 @@ class SamplingC3Params:
     # When the LCS has no admitted EE-BOX pair at knot 0, command this
     # magnitude of recoil force in the -g_hat direction so the executor
     # keeps pressing rather than letting the command collapse to zero.
-    # Tuned ≥ μ·m·g to overcome static friction; box ~ 200 g, μ ≈ 0.4 →
-    # 0.8 N threshold, so 5 N is ~6× headroom.
+    #
+    # Reference c3-mode force target = u_sol (planner's 3D EE-space control),
+    # QP-bounded by u_horizontal_limits=[-10,10] N and u_vertical_limits=
+    # [-3,3] N (a HARD constraint rarely hit — average u_sol is smaller).
+    # Port fabricates from -g_hat and caps here (R^7 mode can't use u_sol
+    # directly). 5 N chosen empirically to match reference AVERAGE force
+    # (not the [-10,10] hard cap — raising to 10 tumbled the box).
     nominal_push_force: float = 5.0
     # When λ_n is admitted but very small, floor the commanded magnitude
     # at this value so the executor doesn't fall below the friction
