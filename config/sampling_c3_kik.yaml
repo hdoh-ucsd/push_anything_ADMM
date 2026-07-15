@@ -143,18 +143,20 @@ progress_params:
   # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
   # ~30 steps, fragmenting free mode into incomplete descents. The new
   # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
-  hyst_c3_to_repos_frac:                  0.95
-  hyst_c3_to_repos_frac_position:         0.50
+  # Reference push_t progress_params_c3plus.yaml:59-60: 0.4, 0.6
+  hyst_c3_to_repos_frac:                  0.4
+  hyst_c3_to_repos_frac_position:         0.6
   # Repos→C3 hysteresis raised to 0.9 (push_t reference value) when
   # moving to the cost-based entry gate.  The dispatcher now applies the
   # fraction to best_other_cost (matching the reference at line 765), so
   # 0.9 means the current EE position must be ≤ 10% of the best other
   # sample's cost before the switch fires.  Stricter than the prior 0.30
   # used with the geometric-trigger gate.
+  # Reference push_t progress_params_c3plus.yaml:61-64: 0.9, 0.5, 0.3, 0.1
   hyst_repos_to_c3_frac:                  0.9
-  hyst_repos_to_c3_frac_position:         0.9
-  hyst_repos_to_repos_frac:               0.10
-  hyst_repos_to_repos_frac_position:      0.10
+  hyst_repos_to_c3_frac_position:         0.5
+  hyst_repos_to_repos_frac:               0.3
+  hyst_repos_to_repos_frac_position:      0.1
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
