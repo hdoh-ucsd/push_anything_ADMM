@@ -741,8 +741,31 @@ def main():
             _effective_target_xy = _obj_xy_now + (_delta_vec / _dist) * _step
         else:
             _effective_target_xy = target_xy
+        # Yaw sub-goal — reference anything/goal_params.yaml:20 and
+        # push_t/goal_params.yaml:18 `lookahead_angle: 2 rad`. Clip the
+        # planner's yaw target to at most `lookahead_angle` from current
+        # object yaw so a distant orientation goal doesn't force the
+        # planner to reason over a large rotation in one solve. Yaw
+        # extraction from box quaternion (qw, qx, qy, qz) at pos_start.
+        _lookahead_angle = 2.0  # rad
+        _qw = float(current_q[pos_start + 0])
+        _qx = float(current_q[pos_start + 1])
+        _qy = float(current_q[pos_start + 2])
+        _qz = float(current_q[pos_start + 3])
+        _yaw_now = float(np.arctan2(
+            2.0 * (_qw * _qz + _qx * _qy),
+            1.0 - 2.0 * (_qy * _qy + _qz * _qz),
+        ))
+        _dyaw = float(np.arctan2(np.sin(target_yaw - _yaw_now),
+                                 np.cos(target_yaw - _yaw_now)))
+        if abs(_dyaw) > _lookahead_angle:
+            _effective_target_yaw = float(_yaw_now
+                                          + np.sign(_dyaw) * _lookahead_angle)
+        else:
+            _effective_target_yaw = float(target_yaw)
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx,
-                                    _effective_target_xy, target_yaw=target_yaw)
+                                    _effective_target_xy,
+                                    target_yaw=_effective_target_yaw)
         # === end Stage 2 ===
 
         # Update predicted-trajectory markers in Meshcat
