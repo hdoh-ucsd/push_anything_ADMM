@@ -124,14 +124,16 @@ class C3Solver:
         # after the first solve; None (or first-call sentinel) means "use u=0
         # as u_prev on the first call".
         self._u_prev_solve = None
-        # 4.c — reference rho_scale (c3.cc:389-390). Reference default 3
-        # applied per-iter over admm_iter=3 iters (total 27× growth).
-        # DISABLED by default: the per-iter P-diagonal update was cheap but
-        # the QP solve time itself grew hugely under the resulting large ρ.
-        # Reference rho_scale=3 default; port opted out because per-iter
-        # P-diagonal update was cheap but QP solve time grew hugely under
-        # large ρ. Iter 28 attempt to set 3.0 regressed box success
-        # (goal_dist 0.049→0.307). Keeping port default 1.0.
+        # Reference rho_scale (c3.cc:389-390):
+        #   w = w / rho_scale;  G = G * rho_scale;  (per ADMM iter)
+        # sampling_c3plus_options.yaml default: 3.
+        # Re-tested with all mode/progress/OSC fixes applied — still
+        # regresses (box orient 3.14 rad tumble, T pushed backward).
+        # Port's admm_iter=25 (vs reference 3) means 25×log(3)=27 more
+        # scaling would occur — huge ρ inflation over the iterations.
+        # Keep at 1.0. Reference-conformant value requires reference's
+        # admm_iter=3 first (out of scope: port hits 25/25 without
+        # monotonic convergence).
         self._rho_scale = 1.0
         # 4.g — reference sampling_c3plus_options.yaml end_on_qp_step: false
         # → do an LCS rollout of x from x0 using solved (u, λ) after the
