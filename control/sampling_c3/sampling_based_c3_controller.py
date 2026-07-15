@@ -1502,6 +1502,12 @@ class SamplingC3MPC:
         # T1b/T1c (both correctly gated at their use sites).
         _obj_shape = getattr(
             getattr(self.base_mpc, "formulator", None), "_object_shape", "box")
+        # Reference sampling_based_c3_controller.cc:1290-1293 applies this
+        # gate for ALL objects. Retest after W_posture/hyst/cost-drop fixes
+        # showed box still regresses (0.109→0.374 m goal_dist, tumble)
+        # when gate enabled for box. Root cause: with c3 entry gated on
+        # ee_z, arm doesn't get warmup c3-mode contact before final press.
+        # Gate stays tshape-only for now. Port divergence documented.
         if (self._prev_mode == "free"
                 and getattr(self.params, "ee_z_close", True)
                 and _obj_shape == "tshape"):
