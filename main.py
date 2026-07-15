@@ -50,9 +50,9 @@ import pydrake.all as ad
 
 from sim.env_builder import (
     build_environment,
-    INITIAL_ARM_Q,
+    _INITIAL_ARM_Q_SEED,
     EE_BODY_NAME,
-    compute_prepositioned_arm_q,
+    compute_safe_init_arm_q,
 )
 from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
@@ -211,8 +211,6 @@ def main():
         help="Reset arm + box to initial pose every N control steps "
              "(useful to test first-contact behaviour repeatedly)",
     )
-    parser.add_argument("--prepositioned", action="store_true",
-                        help="Start arm in contact with box (diagnostic only)")
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
                         help="Directional task ID from config/directional_tasks.json "
                              "(1=north, 2=east, 3=south, 4=west). Overrides tasks.yaml goal.")
@@ -345,9 +343,10 @@ def main():
 
     task_name   = args.task
     reset_every = args.reset_every
-    # init_q is computed below, after plant_ctx is staged with the object pose.
-    # When --prepositioned, it comes from a push-direction-aware IK cascade so
-    # the cost differential alone selects c3 mode at step 1.
+    # init_q is computed below via compute_safe_init_arm_q — IK-solved so
+    # EE starts OPPOSITE goal direction at safe altitude above object top.
+    # Prior INITIAL_ARM_Q placed EE directly over box CoM, causing PWL
+    # descent to pass through box top (impact tumble).
 
     Path("results").mkdir(exist_ok=True)
     from datetime import datetime
@@ -430,7 +429,7 @@ def main():
     print(f"[COST] w_terminal:    {_cost.get('w_terminal', '?')}  (QN = w_terminal * Q)")
     print(f"[COST] w_ee_approach: {_cost.get('w_ee_approach', '?')}")
     print(f"[COST] w_torque:      {_cost.get('w_torque', '?')}")
-    print(f"[ENV]  INITIAL_ARM_Q: {'PREPOSITIONED' if args.prepositioned else 'DEFAULT'}")
+    print(f"[ENV]  init arm q: SAFE-OFFSET (IK-derived, opposite goal direction)")
 
     # ------------------------------------------------------------------
     # Build Drake environment
@@ -472,23 +471,19 @@ def main():
 
     # ------------------------------------------------------------------
     # Set initial state
-    # Stage object pose first so the prepositioned IK can see the object,
-    # then resolve init_q (IK-derived if --prepositioned, default otherwise),
-    # then set arm positions.
+    # Stage object pose first so compute_safe_init_arm_q's IK can see it,
+    # then resolve init_q (IK-derived safe-offset pose), then set arm.
     # ------------------------------------------------------------------
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
         ad.RigidTransform(ad.RotationMatrix(), task_cfg["init_xyz"])
     )
-    if args.prepositioned:
-        init_q = compute_prepositioned_arm_q(
-            plant, plant_ctx, panda_model,
-            ee_frame=plant.GetFrameByName(EE_BODY_NAME),
-            obj_body=obj_body,
-            task_cfg=task_cfg,
-        )
-    else:
-        init_q = INITIAL_ARM_Q
+    init_q = compute_safe_init_arm_q(
+        plant, plant_ctx, panda_model,
+        ee_frame=plant.GetFrameByName(EE_BODY_NAME),
+        obj_body=obj_body,
+        task_cfg=task_cfg,
+    )
     plant.SetPositions(plant_ctx, panda_model, init_q)
 
     # ------------------------------------------------------------------
@@ -602,11 +597,9 @@ def main():
             sc3_params.sampling_params.sampling_height = float(_task_sample_h)
             print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
                   f"(was {_was_sh:.3f}, per-task '{task_name}')")
-        # With the new IK-based --prepositioned pose, k=0 captures the
-        # ~30k alignment bonus (vs zero contact for every k>=1 at sampling
-        # radius 0.18m), so decide_mode picks "c3" via kToC3Cost on step 1
-        # under its own cost differential. Forcing the initial mode would
-        # mask whether the pose actually does what we want.
+        # With safe-offset init (IK-derived), EE starts opposite goal at
+        # safe altitude above object top — free-mode PWL descent has
+        # clear space, arm doesn't clip through object on the way down.
         # Reposition PWL trajectory is the reference path (LcmTrajectoryReceiver
         # + FirstOrderHold PP → OSC position tracking with velocity feedforward).
         # Default True in SamplingC3Params.

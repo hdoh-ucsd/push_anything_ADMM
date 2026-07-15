@@ -42,8 +42,8 @@ os.environ.setdefault("PUSHA_CAMERA_PERSPECTIVE", "1")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from sim.env_builder import (  # noqa: E402
-    build_environment, compute_prepositioned_arm_q,
-    EE_BODY_NAME, INITIAL_ARM_Q,
+    build_environment, compute_safe_init_arm_q,
+    EE_BODY_NAME, _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q,
 )
 from control.sampling_c3.ik import solve_ik_to_ee_pos  # noqa: E402
 
