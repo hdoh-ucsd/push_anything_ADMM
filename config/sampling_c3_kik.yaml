@@ -87,9 +87,13 @@ progress_params:
   # kPosOnly: pushing-task variant; avoids the rot=0 OR-mask in kPosOrRotCost.
   track_c3_progress_via: kPosOnly
 
-  # Number of control loops to wait before declaring "no progress" timeout.
-  num_control_loops_to_wait:           60
-  num_control_loops_to_wait_position:  30
+  # Reference push_t progress_params_c3plus.yaml:40-41:
+  #   num_control_loops_to_wait: 5, num_control_loops_to_wait_position: 5
+  # (planner-tick counts, rate-independent). At port's 13.3 Hz planner
+  # cadence, 5 ticks = 5 × 75 ms = 0.375 s. Overriding via _s keys so the
+  # YAML-COMPAT legacy-tick path (which assumes 100 Hz) is bypassed.
+  num_control_loops_to_wait_s:          0.375   # 5 planner ticks @ 13.3 Hz
+  num_control_loops_to_wait_position_s: 0.375
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
