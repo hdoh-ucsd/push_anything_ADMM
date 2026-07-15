@@ -2987,19 +2987,27 @@ class SamplingC3MPC:
             # predicted EE velocity at alpha = 1.0 under reconcile (see
             # _velocity_feedforward_from_xseq).
             # Reproduce-dairlib Phase 1: dispatch c3-mode OSC through the
-            # trajectory-shaped interface (single-knot ZOH PP for now;
-            # Phase 2 flips this to the full N-knot PWL from reposition.cc).
-            # Mirrors the dairlib LCM contract where the OSC consumes a
-            # Trajectory<double> abstract input port.
+            # trajectory-shaped interface. Two-knot FirstOrderHold from
+            # ee_pos_now to _p_c3 over dt_ctrl so `traj.EvalDerivative(t, 1)`
+            # returns the intended EE velocity (p_c3 - ee_now)/dt_ctrl rather
+            # than 0. Previous single-knot ZOH caused v_ee_desired to default
+            # to 0 in compute_torque_from_trajectory (line 555-560), which
+            # turned OSC's v_err into pure -v_ee_now damping. When the arm
+            # was already moving toward p_c3, Kd·v_err cancelled Kp·p_err
+            # and drove |u| to near zero — arm coasted, never contacting
+            # box. Bug surfaced after the use_velocity_feedforward gate
+            # (8098e2d) closed the alternate _v_ee_des path.
             # Align to real sim time at compute_control entry (self._step
-            # already incremented at line 850). Sub-tick OSC calls now
-            # evaluate the traj at t ∈ [t_start, t_start+dt_ctrl] rather
-            # than at t < t_start where ZOH clamps to the first knot.
+            # already incremented at line 850). Sub-tick OSC calls evaluate
+            # the traj at t ∈ [t_start, t_start+dt_ctrl] → interior
+            # interpolation → p_ee_desired sweeps from ee_now to p_c3, and
+            # v_ee_desired = (p_c3 - ee_now)/dt_ctrl throughout the window.
             _sim_t_c3 = float(self._step - 1) * float(self._dt_ctrl)
-            _p_c3 = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
-            _traj_c3 = PiecewisePolynomial.ZeroOrderHold(
+            _p_c3_col = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
+            _p_now_col = np.asarray(ee_pos_now, dtype=float).reshape(3, 1)
+            _traj_c3 = PiecewisePolynomial.FirstOrderHold(
                 [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],
-                np.hstack([_p_c3, _p_c3]),
+                np.hstack([_p_now_col, _p_c3_col]),
             )
             u_imp, imp_diag = self.executor.compute_torque_from_trajectory(
                 traj = _traj_c3, t_sim = _sim_t_c3,
