@@ -2564,15 +2564,19 @@ class SamplingC3MPC:
                     ])
                     _contact_offset = (_face_offset
                                        + float(getattr(self, "_pusher_radius", 0.0195)))
-                    # z target locked at the object CoM z (contact plane).
-                    # Previously locked to ee_pos_now[2] at first c3 entry,
-                    # which for box was 0.20 m (initial prepositioning) —
-                    # arm would then track to z=0.20 forever, never descending
-                    # to the box at z=0.05. Using obj_z anchors the target
-                    # at the mid-face of the manipuland.
-                    _obj_z_now = float(current_q[self._obj_z_idx])
+                    # Reference c3-mode UpdateC3ExecutionTrajectory
+                    # (cc:1757-1761) OVERRIDES the c3 planner's z at each
+                    # knot to sampling_params_.z_height:
+                    #   knots(2, i) = sampling_z_height;
+                    # → arm z is PINNED at the sampling plane throughout c3.
+                    # Port previously used obj_z (object CoM z), which for
+                    # T (obj_z=0.020) is below reference's z_height=0.034
+                    # equivalent. Aligning to sampling_height matches
+                    # reference's constant-plane push posture.
+                    _sampling_z = float(
+                        self.params.sampling_params.sampling_height)
                     if getattr(self, "_c3_geom_z_target", None) is None:
-                        self._c3_geom_z_target = _obj_z_now
+                        self._c3_geom_z_target = _sampling_z
                     _p_ee_geom = np.array([
                         _box_xy_now[0] - g_hat_3d[0] * _contact_offset,
                         _box_xy_now[1] - g_hat_3d[1] * _contact_offset,
