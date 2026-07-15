@@ -112,7 +112,7 @@ progress_params:
   # q5_head_default_noregress + q5_seed4_goal_reach gives [11mm wobble-max,
   # 35mm runaway-catch-max] -> midpoint 25mm. See
   # q6_combined_fix/CP1_threshold_pin.txt for full derivation.
-  pos_regression_threshold:            0.025
+  pos_regression_threshold:            0.0    # DISABLED — port-only, reference has no such gate
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
   # Reference anything/progress_params_c3plus.yaml:
