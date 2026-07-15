@@ -9,7 +9,9 @@
 osc:
   # Reference EndEffectorKp / EndEffectorKd.
   Kp_cart: [200.0, 200.0, 200.0]
-  Kd_cart: [20.0,  20.0,  20.0]
+  # Was 20 (reference). Bumped to 40 to damp arm oscillation at contact
+  # boundary (T arm bounces off — 29/32 c3 ticks had F_y≈0).
+  Kd_cart: [40.0,  40.0,  40.0]
 
   # Nullspace posture gains (reference relies on task + rotation-hold +
   # joint-2 pin for authority; nullspace posture is a weak anchor).
