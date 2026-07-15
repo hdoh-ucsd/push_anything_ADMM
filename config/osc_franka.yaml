@@ -33,12 +33,15 @@ osc:
   # Reference w_accel · W_accel = 1e-5 · 0.01 = 1e-7 per axis.
   W_acc:    0.0000001
 
-  # Reference EndEffectorRotW=10, EndEffectorRotKp=800, EndEffectorRotKd=40
-  # → compound rotational authority 8000 per axis. Tracks identity-quaternion
-  # (or snapshot at t=0 per operational_space_controller.py).
+  # Reference osc_params.yaml:37 track_end_effector_orientation: false
+  # → the reference OSC does NOT add an EndEffectorRot tracking data,
+  # so the rotation cost never enters the QP even though EndEffectorRotW/
+  # Kp/Kd are defined in the yaml. Port's W_rot=10 was a divergence
+  # (port-only orientation-hold cost). Setting W_rot=0 removes the
+  # cost entirely; Kp/Kd left non-zero as spec-comparable diagnostic.
   Kp_rot: [800.0, 800.0, 800.0]
   Kd_rot: [40.0,  40.0,  40.0]
-  W_rot:  10.0
+  W_rot:  0.0
 
   # Per-joint torque limits (Franka URDF spec).
   tau_max: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
