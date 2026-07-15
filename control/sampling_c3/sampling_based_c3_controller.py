@@ -2452,7 +2452,7 @@ class SamplingC3MPC:
                     # corrected face_offset (iter 37), F_on_box spiked to
                     # 4-16 N but only on 27 % of ticks — arm was
                     # bouncing off. Overshoot into body → constant contact.
-                    _penetration = 0.050
+                    _penetration = 0.030
                     _contact_offset = (_face_offset
                                        + float(getattr(self, "_pusher_radius", 0.0195))
                                        - _penetration)
