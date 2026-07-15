@@ -3508,6 +3508,10 @@ class SamplingC3MPC:
             self._current_repos_cost       = None
             self._prev_logged_repos_target = None
             self._last_repos_finished      = False
+            # Reset _c3_geom_z_target so the next c3 entry re-captures obj_z.
+            # Prevents stale z-target if the object shifted vertically during
+            # a c3 stint (e.g., box tilted then relaxed).
+            self._c3_geom_z_target = None
             if self.log_diag:
                 print(f"[RICH-EXIT-REFRESH] step={self._step} "
                       f"mode {self._prev_mode}->{mode} reason={reason.name} "
