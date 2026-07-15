@@ -112,7 +112,11 @@ progress_params:
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
   # placement is more sensitive than gross translation).
-  cost_switching_threshold_distance: 0.05    # m
+  # Reference push_t progress_params_c3plus.yaml:33: 0.50 m — the
+  # "near_goal" threshold that toggles between generic and position
+  # variants of hysteresis / wait thresholds. Port had 0.05 m (10×
+  # tighter): "near_goal" fractions rarely engaged.
+  cost_switching_threshold_distance: 0.50    # m
 
   # Reference-aligned arrival penalty (dairlib
   # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
