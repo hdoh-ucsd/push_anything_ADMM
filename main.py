@@ -779,7 +779,8 @@ def main():
             _effective_target_yaw = float(target_yaw)
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx,
                                     _effective_target_xy,
-                                    target_yaw=_effective_target_yaw)
+                                    target_yaw=_effective_target_yaw,
+                                    final_target_xy=target_xy)
         # === end Stage 2 ===
 
         # Update predicted-trajectory markers in Meshcat
