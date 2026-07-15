@@ -98,13 +98,11 @@ progress_params:
   # over enforced_over_n_loops). Aligned to reference.
   track_c3_progress_via: kConfigCostDrop
 
-  # Reference anything/progress_params.yaml:
-  #   num_control_loops_to_wait: 50  (ticks at planning_dt=0.075 → 3.75 s)
-  #   num_control_loops_to_wait_position: 50 → 3.75 s
-  # Port previously used 0.60/0.30 s (6.25× / 12.5× tighter than reference)
-  # — cut c3 off early, especially bad for T which needs sustained contact.
-  num_control_loops_to_wait_s:          3.75
-  num_control_loops_to_wait_position_s: 3.75
+  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
+  #   num_control_loops_to_wait:          5  (ticks × 0.075s = 0.375s)
+  #   num_control_loops_to_wait_position: 5 → 0.375 s
+  num_control_loops_to_wait_s:          0.375
+  num_control_loops_to_wait_position_s: 0.375
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
@@ -117,18 +115,18 @@ progress_params:
   pos_regression_threshold:            0.025
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
-  # Reference anything/progress_params.yaml:
-  #   progress_enforced_cost_drop:    0.1
-  #   progress_enforced_over_n_loops: 100
-  # Port targets `anything` (docs/alignment-references.md).
-  progress_enforced_cost_drop:    0.1
-  progress_enforced_over_n_loops: 100
+  # Reference anything/progress_params_c3plus.yaml:
+  #   progress_enforced_cost_drop:    0.5
+  #   progress_enforced_over_n_loops: 16
+  progress_enforced_cost_drop:    0.5
+  progress_enforced_over_n_loops: 16
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
   # placement is more sensitive than gross translation).
-  # Reference anything/progress_params.yaml: 0.4 m.
-  cost_switching_threshold_distance: 0.4     # m
+  # Reference anything/progress_params_c3plus.yaml: 0.05 m
+  # (c3+ variant is tighter than progress_params.yaml's 0.4).
+  cost_switching_threshold_distance: 0.05    # m
 
   # Reference-aligned arrival penalty (dairlib
   # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
@@ -159,11 +157,10 @@ progress_params:
   # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
   # ~30 steps, fragmenting free mode into incomplete descents. The new
   # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
-  # Reference anything/progress_params.yaml: 0.8, 0.7 (port targets `anything`
-  # per docs/alignment-references.md — the umbrella task, of which box and T
-  # are validation instances). Prior 0.95/0.95 was an off-reference tune.
-  # (push_t reference uses 0.4/0.6 — different config file.)
-  hyst_c3_to_repos_frac:                  0.8
+  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
+  # 0.6, 0.7. (Prior 0.95/0.95 was off-reference; 0.8/0.7 was the wrong
+  # progress_params.yaml file for the c3+ solver.)
+  hyst_c3_to_repos_frac:                  0.6
   hyst_c3_to_repos_frac_position:         0.7
   # Repos→C3 hysteresis raised to 0.9 (push_t reference value) when
   # moving to the cost-based entry gate.  The dispatcher now applies the
@@ -171,13 +168,13 @@ progress_params:
   # 0.9 means the current EE position must be ≤ 10% of the best other
   # sample's cost before the switch fires.  Stricter than the prior 0.30
   # used with the geometric-trigger gate.
-  # Reference anything/progress_params.yaml: 0.5, 0.3, 0.9, 0.9.
-  # (Prior 0.9/0.5/0.3/0.1 were push_t values — wrong reference target.
-  # Port targets `anything` per docs/alignment-references.md.)
-  hyst_repos_to_c3_frac:                  0.5
-  hyst_repos_to_c3_frac_position:         0.3
-  hyst_repos_to_repos_frac:               0.9
-  hyst_repos_to_repos_frac_position:      0.9
+  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
+  # 0.9, 0.5, 0.7, 0.7. (Different from progress_params.yaml's
+  # 0.5/0.3/0.9/0.9 — this port uses the c3+ solver.)
+  hyst_repos_to_c3_frac:                  0.9
+  hyst_repos_to_c3_frac_position:         0.5
+  hyst_repos_to_repos_frac:               0.7
+  hyst_repos_to_repos_frac_position:      0.7
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
