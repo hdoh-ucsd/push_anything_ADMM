@@ -63,6 +63,7 @@ def _load_osc_gains(yaml_path: str | Path, n_arm: int) -> tuple[OscGains, np.nda
         Kd_rot    = (np.asarray(osc["Kd_rot"], dtype=float).reshape(3)
                      if "Kd_rot" in osc else None),
         W_rot     = float(osc.get("W_rot", 0.0)),
+        a_ee_cap  = float(osc.get("end_effector_acceleration", 0.0)),
     )
     tau_max = osc.get("tau_max", None)
     if tau_max is not None:
@@ -166,6 +167,7 @@ class OperationalSpaceController:
             W_torque  = self.gains.W_torque,
             W_acc     = self.gains.W_acc,
             W_force   = self.gains.W_force,
+            a_ee_cap  = self.gains.a_ee_cap,
         )
         if self._c3_ref_gains_flag:
             print("[§7.70] PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 — c3-mode "

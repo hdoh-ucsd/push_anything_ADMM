@@ -68,3 +68,10 @@ osc:
 
   # Per-joint torque limits (Franka URDF spec).
   tau_max: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
+
+  # Reference SetCmdAccelerationBounds (franka_osc_controller.cc:155-158,
+  # osc_params.yaml `end_effector_acceleration: 10`). Clamps each axis of
+  # a_des = Kp·p_err + Kd·v_err to ±10 m/s² before the OSC QP solves for
+  # v̇. Without this cap, raw a_des reached -17 m/s² for p_err_z=-0.086,
+  # driving arm through box target and tumbling it (24% torque saturation).
+  end_effector_acceleration: 10.0
