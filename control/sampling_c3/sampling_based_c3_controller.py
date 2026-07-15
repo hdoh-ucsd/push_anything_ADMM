@@ -2404,13 +2404,23 @@ class SamplingC3MPC:
                 _shape_c3 = getattr(self.base_mpc.formulator,
                                     "_object_shape", "box")
                 _q_arm_ik = None
+                # Per-shape face-normal offset from CoM to contact point on
+                # the pushed face. tshape: 0.13×|g_hat_x| + 0.08×|g_hat_y|.
+                # box: box_half_extent uniform on both axes (0.05 default).
+                _bhe = float(getattr(self.params.sampling_params,
+                                     "box_half_extent", 0.05))
                 if _shape_c3 == "tshape":
+                    _face_offset = (abs(g_hat_3d[0]) * 0.13
+                                    + abs(g_hat_3d[1]) * 0.08)
+                elif _shape_c3 == "box":
+                    _face_offset = (abs(g_hat_3d[0]) + abs(g_hat_3d[1])) * _bhe
+                else:
+                    _face_offset = None  # sphere / unknown → skip IK proj
+                if _face_offset is not None:
                     _box_xy_now = np.array([
                         current_q[self._obj_x_idx],
                         current_q[self._obj_y_idx],
                     ])
-                    _face_offset = (abs(g_hat_3d[0]) * 0.13
-                                    + abs(g_hat_3d[1]) * 0.08)
                     _contact_offset = (_face_offset
                                        + float(getattr(self, "_pusher_radius", 0.0195)))
                     # z target locked at c3-entry EE-z (contact plane).
