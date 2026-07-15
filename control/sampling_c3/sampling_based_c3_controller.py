@@ -912,7 +912,8 @@ class SamplingC3MPC:
                         current_v:  np.ndarray,
                         plant_ctx,
                         target_xy:  np.ndarray,
-                        target_yaw: float = 0.0) -> np.ndarray:
+                        target_yaw: float = 0.0,
+                        final_target_xy: Optional[np.ndarray] = None) -> np.ndarray:
         """T-architecture Stage 2b: gate the planner solve on dt_mpc
         boundaries, run the OSC every tick at dt_osc, and index the
         planner's λ-horizon by elapsed time since the last solve. At
@@ -938,7 +939,8 @@ class SamplingC3MPC:
 
         if should_solve:
             plan_ctx = self._solve_plan(current_q, current_v, plant_ctx,
-                                        target_xy, target_yaw)
+                                        target_xy, target_yaw,
+                                        final_target_xy=final_target_xy)
             self._last_plan_tick = self._step
             self._last_plan_ctx  = plan_ctx
             elapsed = 0.0
@@ -1092,7 +1094,8 @@ class SamplingC3MPC:
                     current_v:  np.ndarray,
                     plant_ctx,
                     target_xy:  np.ndarray,
-                    target_yaw: float = 0.0) -> dict:
+                    target_yaw: float = 0.0,
+                    final_target_xy: Optional[np.ndarray] = None) -> dict:
         """Planning half of the original compute_control: sample evaluation,
         mode dispatch (c3 vs free), and the planner-side branch (c3
         invokes base_mpc.compute_control to mutate self.base_mpc.last_*;
@@ -1187,6 +1190,19 @@ class SamplingC3MPC:
         goal_dist = float(np.linalg.norm(v_goal))
         g_hat   = v_goal / (goal_dist + 1e-9)
         g_hat_3d = np.array([g_hat[0], g_hat[1], 0.0])
+
+        # Reference-conformance: distance to FINAL goal for progress tracking
+        # and achieved_fixed_goal check. target_xy here is the LOOKAHEAD
+        # sub-goal (main.py:746), which spikes back to 0.15 m each time box
+        # reaches the sub-goal. Progress tracker fed with sub-goal distance
+        # sees false regression. Reference uses x_lcs_final_des (absolute
+        # goal). Fall back to target_xy if final not passed (legacy callers).
+        if final_target_xy is not None:
+            _final_target = np.asarray(final_target_xy, dtype=float).reshape(2)
+            _v_final = _final_target - obj_xy
+            _final_goal_dist = float(np.linalg.norm(_v_final))
+        else:
+            _final_goal_dist = goal_dist
 
         ee_pos_now = self.plant.CalcPointsPositions(
             plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
@@ -1305,14 +1321,17 @@ class SamplingC3MPC:
         # Include yaw component in config_cost (reference full Q_block covers
         # quat too). Uses the half-angle metric that w_yaw multiplies:
         # sin((ψ-α)/2). For box, w_yaw=0 in tasks.yaml so contribution=0.
+        # NOTE: Uses _final_goal_dist (distance to FINAL goal), NOT goal_dist
+        # (which is distance to LOOKAHEAD sub-goal — spikes as sub-goal
+        # advances). Reference progress tracker feeds x_lcs_final_des cost.
         _half_yaw_err = np.sin(0.5 * (rot_error_now))   # >= 0
-        config_cost_now = (w_obj_xy * (goal_dist ** 2)
+        config_cost_now = (w_obj_xy * (_final_goal_dist ** 2)
                            + w_yaw * (_half_yaw_err ** 2))
 
         self.progress.update(StepMetrics(
             c3_cost     = c_curr,
             config_cost = config_cost_now,
-            pos_error   = goal_dist,
+            pos_error   = _final_goal_dist,
             rot_error   = rot_error_now,
         ))
 
@@ -1330,11 +1349,13 @@ class SamplingC3MPC:
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
         if not self._achieved_fixed_goal:
-            if goal_dist < _pos_thr and rot_error_now < _rot_thr:
+            # Use _final_goal_dist (not goal_dist which is sub-goal dist)
+            # so the flag latches only when box is at the TRUE final goal.
+            if _final_goal_dist < _pos_thr and rot_error_now < _rot_thr:
                 self._achieved_fixed_goal = True
                 if self.log_diag:
                     print(f"[ACHIEVED-FIXED-GOAL] step={self._step} "
-                          f"goal_dist={goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "
+                          f"final_goal_dist={_final_goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "
                           f"— pinning free mode to prevent overshoot",
                           flush=True)
 
