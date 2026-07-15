@@ -96,13 +96,14 @@ tasks:
   # port re-parameterizes so the link origin sits AT the combined CoM, moving
   # both bar collision poses by +0.05 along x.
   #
-  # Friction: reference EE-T μ=1.0 (per-pair). Drake combines per-surface μ
-  # via harmonic mean (μ_eff = 2·μ_A·μ_B/(μ_A+μ_B)); to hit μ_eff=1.0 both
-  # surfaces must be 1.0. The pusher_friction override raises pusher μ to 1.0
-  # for this task only (box tasks stay at 0.4). Ground pairs approximated
-  # because per-surface μ can't independently match reference's per-pair
-  # μ_EE-ground=0.4165 + μ_T-ground=0.4615. Stability lever is EE-T; the ground
-  # pairs are a documented fidelity boundary.
+  # Friction: reference push_t.sdf has T μ=0.3, EE μ=1.0. Drake combines
+  # per-surface μ via harmonic mean (μ_eff = 2·μ_A·μ_B/(μ_A+μ_B)), so the
+  # reference EE-T μ_eff = 2·0.3·1.0/(1.3) = 0.462 (NOT 1.0 as prior comment
+  # stated). Setting T μ=0.3 reproduces both the reference EE-T μ_eff AND
+  # brings T-Table μ_eff from 1.0 to 0.462 (was blocking T motion — 9.8N
+  # friction resistance was more than 4-6N push force). Ground pair no longer
+  # a "documented fidelity boundary" — 0.462 matches reference within
+  # single-surface constraints of Drake's model.
   #
   # Goal is a POSE target (position + yaw) — this task demonstrates the
   # paper's headline capability the cube literally cannot: pushing to a yaw
@@ -111,8 +112,8 @@ tasks:
     object_type: tshape
     link_name: t_link
     mass: 1.0             # kg — matches reference (2 × 0.5 kg links)
-    friction: 1.0         # μ_T; combined with pusher_friction=1.0 → μ_eff=1.0 (EE-T)
-    pusher_friction: 1.0  # μ_EE; task-scoped override of the 0.4 default
+    friction: 0.3         # μ_T (reference push_t.sdf drake:mu_dynamic); EE-T μ_eff=0.462
+    pusher_friction: 1.0  # μ_EE (reference end_effector_full.urdf drake:mu_dynamic)
     init_xyz: [0.0, 0.0, 0.02]     # link origin at combined CoM; T half-height 0.02 → base on ground
     # Reference target — push_t/parameters/goal_params.yaml:30-31 frame-transformed.
     # Reference init T pose (sim_params.yaml:15): q_init_object = [1,0,0,0, 0.5, 0, -0.009]
