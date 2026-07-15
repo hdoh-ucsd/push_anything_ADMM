@@ -27,7 +27,11 @@
 # w_align=0 and w_align=30000 across all 3 seeds).  Restored at 30000;
 # seed-0 takes a 0.147→0.264 soft trade-off but the 2/3 catastrophic
 # outcome avoidance dominates.
-w_align:  30000.0
+# Reference has no goal-alignment bonus for samples. Port added
+# w_align=30000 as sample-cost augmentation biasing toward samples aligned
+# with g_hat. Setting 0 to align (equivalent to reference which weighs
+# only c3-cost + travel + face/other geometric criteria).
+w_align:  0.0
 
 # Cartesian travel penalty per metre on sample selection.
 # Reference push_t progress_params_c3plus.yaml:36 travel_cost_per_meter: 0.
