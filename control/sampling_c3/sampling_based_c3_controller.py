@@ -1634,11 +1634,21 @@ class SamplingC3MPC:
                       f"clearance={_c3_min_clearance*1000:.1f}mm) "
                       f"gate=BLOCK", flush=True)
 
+        # Reference cc:1148-1149: repos_target_cost = all_sample_costs_[
+        # kCurrentReposTarget=1]. Cost is FRESHLY evaluated on THIS tick
+        # for the slot 1 = prev-repos-target position. Port previously
+        # passed `self._current_repos_cost` which was stored from the
+        # PREVIOUS tick's target selection — stale relative to current
+        # arm position. Fresh c_samples[1] matches reference semantics.
+        if len(labels) > 1 and labels[1] == "prev_repos":
+            _fresh_repos_cost = float(c_samples[1])
+        else:
+            _fresh_repos_cost = self._current_repos_cost  # fallback
         mode, reason = decide_mode(
             prev_mode          = self._prev_mode,
             c3_cost            = c_curr,
             best_other_cost    = best_other_cost,
-            current_repos_cost = self._current_repos_cost,
+            current_repos_cost = _fresh_repos_cost,
             met_progress       = met,
             near_goal          = near_goal,
             finished_repos     = finished_repos,
