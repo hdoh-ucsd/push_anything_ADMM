@@ -45,13 +45,8 @@ w_travel: 0.0
 # and PUSHA_DISABLE_C3_OVERRIDE).
 W_force: 1.0
 
-# Push force magnitudes (used when force-tracking is ON).
-# nominal_push_force: fallback when planner λ_n dropped to 0 or LCS didn't
-# admit EE-BOX pair. min_push_force: floor when planner λ_n is present but
-# tiny. Doubled from port defaults (5/2) to give more push authority for
-# heavier objects like T (mass 1 kg vs box 0.2 kg).
-nominal_push_force: 10.0
-min_push_force:      4.0
+# Push force magnitudes reverted (iter 32) — iter 31's doubling
+# regressed box (0.049→0.070) without helping T. Keep port defaults.
 
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
 use_commit_face_gate: false
