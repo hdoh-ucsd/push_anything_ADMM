@@ -187,6 +187,12 @@ class QuadraticManipulationCost:
         self.w_torque      = float(c.get("w_torque",         0.01))
         self.w_terminal    = float(c.get("w_terminal",        5.0))
         self.z_ref         = float(c.get("z_ee_target",      0.05))
+        # Separate obj z target from EE z target. Reference push_t goal target
+        # keeps T at its init z (does NOT lift). Prior x_ref[obj_z]=z_ee_target
+        # forced planner to lift push_t 14mm (z_ee=0.034 vs T_z=0.020).
+        # Default: obj target z equals init obj z if provided, else z_ee_target
+        # (backward-compat for tasks where they coincide — box, sphere).
+        self.z_obj_target  = float(c.get("z_obj_target",    self.z_ref))
         self.d_push        = float(c.get("d_push",           0.10))
         self.w_ee_approach = float(c.get("w_ee_approach",   800.0))
         # Lateral-alignment clamp scale (metres). The proxy shift at
@@ -268,7 +274,7 @@ class QuadraticManipulationCost:
         x_ref = np.zeros(self.n_x)
         x_ref[self._obj_x_idx] = target_xy[0]
         x_ref[self._obj_y_idx] = target_xy[1]
-        x_ref[self._obj_z_idx] = self.z_ref
+        x_ref[self._obj_z_idx] = self.z_obj_target
 
         # --- Yaw-target cost (Jin & Posa eq. 40 analog) ---
         # Add w_yaw · (c_yaw · (q_box - q_goal))² on the box quaternion slots.
@@ -704,7 +710,7 @@ class QuadraticManipulationCost:
         x_ref = np.zeros(n_x)
         x_ref[self._NEW_OBJ_X] = target_xy[0]
         x_ref[self._NEW_OBJ_Y] = target_xy[1]
-        x_ref[self._NEW_OBJ_Z] = self.z_ref
+        x_ref[self._NEW_OBJ_Z] = self.z_obj_target
 
         # --- Yaw target (linear-in-quaternion residual) ---
         self._target_yaw = float(target_yaw)
