@@ -1245,18 +1245,22 @@ class SamplingC3MPC:
         c_samples = [r.c_sample for r in results]
 
         # 3b. Finished-reposition cost penalty.  Mirrors the reference
-        #     (dairlib sampling_based_c3_controller.cc:604-608): when the
-        #     IK tracker reports the EE is within tolerance of the pursued
-        #     repos target, inflate that slot's c_sample by
-        #     finished_reposition_cost.  The inflation feeds into both
-        #     best_other_cost and the dispatcher's label discrimination
-        #     (mode_switch.decide_mode), so the mode-switch trigger remains
-        #     cost-based — geometry only contributes as a soft penalty.
+        #     (sampling_based_c3_controller.cc:1081-1084):
+        #         if (i == kCurrentReposTarget && finished_reposition_flag_) {
+        #             all_sample_costs_[i] += finished_reposition_cost;
+        #             finished_reposition_flag_ = false;   // RESET after use
+        #         }
+        #     The flag is RESET after being applied — inflation fires ONCE
+        #     per finished-reposition event. Port previously left the flag
+        #     True, so cost was inflated EVERY tick — kToC3ReachedReposTarget
+        #     kept re-firing (or blocking) as long as the arm hovered near
+        #     the target.
         if (self._last_repos_finished
                 and len(labels) > 1
                 and labels[1] == "prev_repos"):
             c_samples[1] = (c_samples[1]
                             + self.params.progress_params.finished_reposition_cost)
+            self._last_repos_finished = False   # match reference reset
 
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
