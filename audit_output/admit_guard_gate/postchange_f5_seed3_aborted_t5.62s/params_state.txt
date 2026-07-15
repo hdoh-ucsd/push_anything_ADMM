@@ -1,0 +1,4 @@
+537:    nominal_push_force: float = 5.0
+541:    min_push_force: float = 5.0
+770:            nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
+771:            min_push_force       = float(raw.get("min_push_force", 5.0)),

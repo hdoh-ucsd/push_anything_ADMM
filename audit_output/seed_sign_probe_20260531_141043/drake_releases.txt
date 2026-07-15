@@ -1,0 +1,54 @@
+[alpha05 seed=0] Drake-realized contact ticks=2; release events found: 1 at steps [330]
+[alpha05 seed=3] Drake-realized contact ticks=1; release events found: 1 at steps [84]
+[off seed=3] Drake-realized contact ticks=5; release events found: 4 at steps [217, 219, 221, 224]
+[alpha05 seed=4] Drake-realized contact ticks=1; release events found: 1 at steps [347]
+[off seed=4] Drake-realized contact ticks=20; release events found: 15 at steps [293, 295, 297, 303, 307, 309, 311, 313, 315, 319, 323, 327, 330, 333, 335]
+[alpha05 seed=6] Drake-realized contact ticks=2; release events found: 1 at steps [319]
+[alpha05 seed=7] Drake-realized contact ticks=4; release events found: 2 at steps [131, 319]
+[off seed=7] Drake-realized contact ticks=4; release events found: 3 at steps [273, 279, 287]
+[off seed=8] Drake-realized contact ticks=1; release events found: 1 at steps [178]
+[alpha05 seed=9] Drake-realized contact ticks=9; release events found: 7 at steps [297, 299, 301, 309, 313, 317, 321]
+
+=== TOTAL DRAKE RELEASE EVENTS ACROSS 20 RUNS: 36 ===
+
+--- PER-EVENT DETAIL ---
+    arm seed stepK                    nhat  F_W_mag F_inward   ee_out box_run     cT->cT+1 mode        ovr_K     ovr_K+1
+alpha05    0   330  (+1.00,-0.08,-0.01)   60.356  +60.357   -0.86  +0.46  EE-BOX->EE-BOX   c3         None        None
+alpha05    3    84  (+0.97,-0.01,+0.26)    0.516   +0.157   -1.54  -0.02  EE-BOX->EE-BOX   c3         None        None
+    off    3   217  (+1.00,-0.00,+0.00)    3.415   +1.657   -0.37  +0.26  EE-BOX->EE-BOX   c3         None        None
+    off    3   219  (+1.00,-0.01,+0.00)   34.487  +33.230   -0.32  +0.11  EE-BOX->EE-BOX   c3         None        None
+    off    3   221  (+1.00,-0.02,+0.00)   43.309  +41.932   -0.39  +0.04  EE-BOX->EE-BOX   c3         None        None
+    off    3   224  (+1.00,-0.05,+0.00)    0.316   +0.000   -0.32  -0.17  EE-BOX->EE-BOX   c3         None        None
+alpha05    4   347  (+1.00,-0.10,-0.00)    0.204   -0.000   -0.66  +0.19  EE-BOX->EE-BOX   c3         None        None
+    off    4   293  (+1.00,-0.00,-0.00)   13.359  +13.224   -0.26  +0.23  EE-BOX->EE-BOX   c3         None        None
+    off    4   295  (+1.00,-0.01,-0.00)   10.616   +5.009   -0.18  +0.02  EE-BOX->EE-BOX   c3         None        None
+    off    4   297  (+1.00,-0.01,+0.00)   37.986  +36.733   -0.24  +0.08  EE-BOX->EE-BOX   c3         None        None
+    off    4   303  (+1.00,-0.02,-0.00)    4.133   +1.992   -0.16  +0.06  EE-BOX->EE-BOX   c3         None        None
+    off    4   307  (+1.00,-0.03,+0.00)    0.033   -0.000   -0.21  +0.12  EE-BOX->EE-BOX   c3         None        None
+    off    4   309  (+1.00,-0.04,+0.00)    1.777   +0.235   -0.27  +0.07  EE-BOX->EE-BOX   c3         None        None
+    off    4   311  (+1.00,-0.05,+0.00)    0.033   -0.000   -0.29  +0.12  EE-BOX->EE-BOX   c3         None        None
+    off    4   313  (+1.00,-0.06,-0.00)    3.056   +3.050   -0.28  +0.08  EE-BOX->EE-BOX   c3         None        None
+    off    4   315  (+1.00,-0.07,+0.00)    8.743   -0.000   -0.26  +0.11  EE-BOX->EE-BOX   c3         None        None
+    off    4   319  (+1.00,-0.09,-0.00)    3.584   +3.583   -0.47  +0.10  EE-BOX->EE-BOX   c3         None        None
+    off    4   323  (+0.99,-0.13,+0.00)    0.178   -0.000   -0.46  +0.17  EE-BOX->EE-BOX   c3         None        None
+    off    4   327  (+0.99,-0.16,+0.00)   23.934  +23.928   -0.48  +0.13  EE-BOX->EE-BOX   c3         None        None
+    off    4   330  (+0.98,-0.19,+0.00)    0.000   -0.000   -0.54  +0.11  EE-BOX->EE-BOX   c3         None        None
+    off    4   333  (+0.97,-0.23,-0.00)   45.909  +45.624   -0.94  +0.17  EE-BOX->EE-BOX   c3         None        None
+    off    4   335  (+0.96,-0.27,-0.00)   21.207   -0.001   -0.56  -0.04  EE-BOX->EE-BOX   c3         None        None
+alpha05    6   319  (+1.00,+0.01,+0.00)   16.609   +5.986   -0.90  +0.58  EE-BOX->EE-BOX   c3         None        None
+alpha05    7   131  (+0.91,-0.02,+0.41)    0.457   +0.457   -1.86  -0.09  EE-BOX->EE-BOX   c3         None        None
+alpha05    7   319  (+0.99,-0.13,+0.01)   51.459   +0.002   -1.49  +0.68  EE-BOX->EE-BOX   c3         None        None
+    off    7   273  (+1.00,-0.00,+0.00)    0.348   +0.332   -0.32  +0.19  EE-BOX->EE-BOX   c3         None        None
+    off    7   279  (+1.00,-0.06,+0.00)    2.094   +1.728   -0.43  -0.03  EE-BOX->EE-BOX   c3         None        None
+    off    7   287  (+0.99,-0.11,-0.00)    7.991   +7.980   -0.20  +0.03  EE-BOX->EE-BOX   c3         None        None
+    off    8   178  (+0.09,-1.00,+0.00)    0.045   -0.000   -0.52  +0.31  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   297  (+1.00,+0.04,-0.00)   74.770  +17.412   -1.06  +0.05  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   299  (+1.00,+0.02,+0.00)   11.845  +11.650   -0.28  +0.18  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   301  (+1.00,+0.01,+0.00)   80.891  +75.899   -0.25  +0.04  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   309  (+1.00,-0.05,+0.01)    2.378   +1.992   -0.40  -0.04  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   313  (+0.99,-0.15,+0.00)  126.788 +121.213   -0.80  +0.48  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   317  (+0.95,-0.30,+0.00)   47.366   -0.002   -1.31  +0.67  EE-BOX->EE-BOX   c3         None        None
+alpha05    9   321  (+0.87,-0.49,+0.01)    8.988   +8.988   -0.14  -3.59  EE-BOX->EE-BOX   c3         None        None
+
+--- CLASSIFIED DRAKE RELEASE EVENTS ---
+  LCS-still-admits      36

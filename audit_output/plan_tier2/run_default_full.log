@@ -1,0 +1,796 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+[C3] Log: results/plan_t2_default.txt
+[C3] Task: pushing
+[ENV]  Directional task: id=4 name=west
+[ENV]  Goal coords: [-0.3, 0.0]
+[ENV]  Description: Push box 30cm west. Arm prepositioned on west face: contact normal anti-aligned with goal direction. Pusher would have to go through the box -- impossible without contact mode switch.
+[ENV]  Mass: 0.2 kg   Friction mu: 0.4
+[MPC]  Horizon: 20   dt: 0.05 s
+[MPC]  ADMM max iters: 3   rho_init: 100.0
+[MPC]  Force limit: 30.0 Nm
+[COST] w_obj_xy:      100000.0
+[COST] w_obj_z:       10.0
+[COST] w_box_z:       100.0
+[COST] w_box_rp:      50.0
+[COST] w_terminal:    5.0  (QN = w_terminal * Q)
+[COST] w_ee_approach: 8000.0
+[COST] w_torque:      0.01
+[ENV]  INITIAL_ARM_Q: DEFAULT
+[C3] Building Drake environment ...
+[C3] DOFs: n_q=14, n_v=13, n_u=7, n_x=27
+[C3] 'box_link': q[11]=x, q[12]=y
+[FILTER INIT] Building EE geometry ID set:
+  pusher: 1 collision geom(s)
+[FILTER INIT] EE body: pusher  geom IDs: [<GeometryId value=223>]
+[FILTER INIT] Manipuland geom IDs : 1
+[FILTER INIT] Ground geom IDs     : 1  (world_body collision geoms)
+[C3] Solver mode: c3plus  (planner: R^7 joint torque, c3+ projection: componentwise)
+[C3+] planner construction verified: use_ee_space=False solver.n_x=27 solver.n_u=7  (joint torque (Nm))
+[PLAN-T2] planner_class=C3PlusMPC solver_class=C3Solver solver_mode='c3plus' projection='componentwise' (reference default: 'MIQP' via C3MIQP class)
+[PLAN-T2] horizon N=20 dt=0.05 horizon_time=1.000s admm_iter=25 (reference: N=5 dt=0.1 horizon_time=0.5s admm_iter=3 for anything+push_t)
+[PLAN-T2] torque_limit=30.0 use_ee_space=False warm_start_across_ticks=False (reference: warm_start=false in YAML — matches port cold-start)
+[PLAN-T2] solver.rho_init=100.0 (reference: rho_scale=3 adaptive per iter)
+[YAML-COMPAT] num_control_loops_to_wait=60 (ticks @ 100 Hz) → num_control_loops_to_wait_s=0.6000 s
+[YAML-COMPAT] num_control_loops_to_wait_position=30 (ticks @ 100 Hz) → num_control_loops_to_wait_position_s=0.3000 s
+[YAML-COMPAT] progress_enforced_over_n_loops=30 (ticks @ 100 Hz) → progress_enforced_over_duration_s=0.3000 s
+[YAML-COMPAT] sample_buffer_lifetime=30 (ticks @ 100 Hz) → sample_buffer_lifetime_s=0.3000 s
+[OVERRIDE] sampling_height=0.030 (was 0.050, per-task 'pushing')
+[OVERRIDE] seed=0 (rng=np.random.default_rng)
+[GS] start_mode=free (--prepositioned=False)
+[GS] SamplingC3MPC enabled (config: config/sampling_c3_kik.yaml)
+[GS]   strategy=kFaceNormal num_add_c3=3 num_add_repos=1
+[GS]   w_align=30000.0  w_travel=200.0
+[GS]   reposition: traj_type=kPiecewiseLinear z_safe=0.15m speed=0.4m/s
+[C3] Goal: [-0.3  0. ]  |  Meshcat: http://localhost:7000
+[C3] Running simulation ...
+[ENV]  Sim duration overridden: max_time=0.5s
+[PERSIST] step=1 refresh n_strategy=1 samples=[(-0.023, -0.08, 0.03)]
+[LCS-DRAG] box translational v indices in v: [10,11,12]  c=10.00/s  per-step multiplier=(1 - c·dt)=0.5000
+[SANITY] nc=1  n_tangent_per_contact=4  J_n=(1, 13)  J_t=(4, 13)
+[SANITY] Tangent interpretation: 4 → polyhedral pyramid
+[CONTACT 0]
+  body_A=world  body_B=box_link  a_is_box=False
+  nhat_BA_W (B→A): [-0. -0. -1.]
+  nhat_onto_box  : [0. 0. 1.]
+  p_ACa (on A)   : [0.05 0.05 0.05]
+  p_BCb (on B)   : [ 0.05  0.05 -0.05]
+  distance       : 0.00000 m
+[SIGN] J_n[0] (first contact normal row):
+       [ 0.    0.    0.    0.    0.    0.    0.    0.05 -0.05  0.    0.    0.
+  1.  ]
+  nhat_onto_box = [0. 0. 1.]
+  → if nhat_onto_box·[1,0,0] > 0, box should accelerate eastward from λ_n
+[EErel] along_push=-0.000m (neg=correct)  perp=0.001m  ee_to_box=0.001m  stage=3  obj=[0. 0.]  g_hat=[-1.  0.]
+[proxy] err=0.158m  effective=[0.051 0.    0.05 ]
+[DEBUG-C3+] n_contacts=1, n_lambda=6, TOT=46, total_dim=947
+[DEBUG-C3+] per-step slots:  x=[0:27)  λ=[27:33)  u=[33:40)  η=[40:46)
+[ADMM-C3+] primal: 6.1275->4.9328  dual: 109.1384->80.5932  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9328 dr=80.5932 tol=1e-03
+[C3+] step=1 |u[0]|=34.28Nm u_axis=(+10.22,-26.29,-0.84,+15.92,+3.40,-10.63,-0.76)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.933 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=1 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=1 target_stable=0/0 allow_descent=1
+[GS-tgt] step=1 ee=(+0.000,-0.001,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.189m target_label=strat_0 target_changed=Y delta=nanm
+[OSC-INIT] n_arm=7 n_v=13
+[OSC-INIT]   Kp_cart=[400.0, 400.0, 400.0]  Kd_cart=[40.0, 40.0, 40.0]
+[OSC-INIT]   Kp_null=[10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+[OSC-INIT]   Kd_null=[3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+[OSC-INIT]   W_track=100.0  W_posture=1.0  W_torque=0.001  W_acc=0.001
+[OSC-INIT]   tau_max=[87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]
+[OSC-INIT]   q_nominal=[0.5522, 0.325, 0.9763, -2.2462, -0.189, 3.0447, 0.785]
+[OSC-INIT]   use_force_tracking=True  W_force=1.0
+[IMP] step=1 mode=free |x_err|=0.0040m |tau_imp|=6.55Nm |tau_ff|=0.00Nm |tau_out|=6.55Nm sat=False lam_n=False lam_t=False
+[GS] step=1 mode=free switch=kStayInRepos best_k=0 best_src=strat_0 curr_cost=133952.57 repos_cost=195929.76 best_other=195929.76 met_progress=Y steps_since_improve=0 switches=0
+[STEP] step=1 mode=free t=0.010s ee=(+0.000,-0.001,+0.200) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.001,-0.004,+0.200) ee_stride=0.004m ee_to_ptarget=0.189m landing_err=0.1874m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=0.66 target_changed=Y retgt=N held_idx=- held_cost=- won_cost=195929.76 margin=- won_src=strat_0 held_valid=N reason=no_held setpoint_to_ptarget=nanm finished_val=0.1892m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=1 curr=133952.57 best_other=195929.76 ratio=0.6837 ee_to_optimal=0.0749m phi=0.0751m
+[STAGE-A-TRACE] step=1 sim_t=0.010 mode=free phi=0.07508 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00000 qz=+0.00000 finished_repos=0
+  t=0.00s | ee=(0.000, -0.001, 0.200) | obj=(0.000, 0.000, 0.050) | |u|=6.55 Nm | goal_dist=0.300 m
+[DRAKE-CONTACT] step=1 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=1 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00000,+0.00000,+0.00000) box_p=(+0.00000,+0.00000,+0.05000) ee_p=(+0.00013,-0.00051,+0.20008)
+[EErel] along_push=-0.000m (neg=correct)  perp=0.001m  ee_to_box=0.001m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.158m  effective=[0.051 0.    0.05 ]
+[ADMM-C3+] primal: 5.7428->3.8718  dual: 74.7888->83.3044  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8718 dr=83.3044 tol=1e-03
+[C3+] step=3 |u[0]|=34.29Nm u_axis=(+10.16,-26.16,-0.96,+16.21,+3.43,-10.59,-0.76)Nm λ_n_max=0.000 η_n_max=0.742 primal=3.872 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=2 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=2 target_stable=0/0 allow_descent=1
+[GS-tgt] step=2 ee=(+0.000,-0.001,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.189m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=2 mode=free |x_err|=0.0079m |tau_imp|=9.51Nm |tau_ff|=0.00Nm |tau_out|=9.51Nm sat=False lam_n=False lam_t=False
+[GS] step=2 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156901.18 repos_cost=214633.15 best_other=214633.15 met_progress=Y steps_since_improve=0 switches=0
+[STEP] step=2 mode=free t=0.020s ee=(+0.000,-0.001,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.002,-0.008,+0.200) ee_stride=0.008m ee_to_ptarget=0.189m landing_err=0.1858m ik_ok=Y ik_resid=0.0004m q_max_resid_deg=1.31 target_changed=Y retgt=N held_idx=1 held_cost=214633.15 won_cost=214633.15 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1891m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=2 curr=156901.18 best_other=214633.15 ratio=0.7310 ee_to_optimal=0.0749m phi=0.0751m
+[STAGE-A-TRACE] step=2 sim_t=0.020 mode=free phi=0.07508 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00002 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=2 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=2 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00002,-0.00002,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(+0.00010,-0.00059,+0.20008)
+[EErel] along_push=-0.000m (neg=correct)  perp=0.001m  ee_to_box=0.001m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.159m  effective=[0.051 0.    0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8590->83.4158  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4158 tol=1e-03
+[C3+] step=6 |u[0]|=34.38Nm u_axis=(+10.16,-26.01,-1.20,+16.65,+3.48,-10.51,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=3 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=3 target_stable=0/0 allow_descent=1
+[GS-tgt] step=3 ee=(+0.000,-0.001,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.189m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=3 mode=free |x_err|=0.0117m |tau_imp|=11.33Nm |tau_ff|=0.00Nm |tau_out|=11.33Nm sat=False lam_n=False lam_t=False
+[GS] step=3 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156747.50 repos_cost=214051.63 best_other=214051.63 met_progress=Y steps_since_improve=1 switches=0
+[STEP] step=3 mode=free t=0.030s ee=(+0.000,-0.001,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.003,-0.012,+0.200) ee_stride=0.012m ee_to_ptarget=0.189m landing_err=0.1842m ik_ok=Y ik_resid=0.0007m q_max_resid_deg=1.92 target_changed=Y retgt=N held_idx=1 held_cost=214051.63 won_cost=214051.63 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1890m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=3 curr=156747.50 best_other=214051.63 ratio=0.7323 ee_to_optimal=0.0750m phi=0.0751m
+[STAGE-A-TRACE] step=3 sim_t=0.030 mode=free phi=0.07507 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=3 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=3 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(+0.00002,-0.00084,+0.20006)
+[EErel] along_push=+0.000m (neg=correct)  perp=0.001m  ee_to_box=0.001m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.159m  effective=[0.052 0.    0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=9 |u[0]|=34.49Nm u_axis=(+10.13,-25.80,-1.51,+17.25,+3.54,-10.41,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=4 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=4 target_stable=0/0 allow_descent=1
+[GS-tgt] step=4 ee=(-0.000,-0.001,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.189m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=4 mode=free |x_err|=0.0151m |tau_imp|=12.29Nm |tau_ff|=0.00Nm |tau_out|=12.29Nm sat=False lam_n=False lam_t=False
+[GS] step=4 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156763.61 repos_cost=213601.37 best_other=213601.37 met_progress=Y steps_since_improve=2 switches=0
+[STEP] step=4 mode=free t=0.040s ee=(-0.000,-0.001,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.004,-0.016,+0.200) ee_stride=0.015m ee_to_ptarget=0.189m landing_err=0.1827m ik_ok=Y ik_resid=0.0009m q_max_resid_deg=2.50 target_changed=Y retgt=N held_idx=1 held_cost=213601.37 won_cost=213601.37 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1887m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=4 curr=156763.61 best_other=213601.37 ratio=0.7339 ee_to_optimal=0.0752m phi=0.0750m
+[STAGE-A-TRACE] step=4 sim_t=0.040 mode=free phi=0.07505 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=4 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=4 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00015,-0.00134,+0.20004)
+[EErel] along_push=+0.000m (neg=correct)  perp=0.002m  ee_to_box=0.002m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.159m  effective=[0.053 0.    0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=12 |u[0]|=34.67Nm u_axis=(+10.14,-25.61,-1.91,+17.90,+3.64,-10.28,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=5 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=5 target_stable=0/0 allow_descent=1
+[GS-tgt] step=5 ee=(-0.000,-0.002,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.188m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=5 mode=free |x_err|=0.0183m |tau_imp|=12.62Nm |tau_ff|=0.00Nm |tau_out|=12.62Nm sat=False lam_n=False lam_t=False
+[GS] step=5 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156783.72 repos_cost=213140.26 best_other=213140.26 met_progress=Y steps_since_improve=3 switches=0
+[STEP] step=5 mode=free t=0.050s ee=(-0.000,-0.002,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.005,-0.020,+0.200) ee_stride=0.018m ee_to_ptarget=0.188m landing_err=0.1813m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=3.14 target_changed=Y retgt=N held_idx=1 held_cost=213140.26 won_cost=213140.26 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1884m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=5 curr=156783.72 best_other=213140.26 ratio=0.7356 ee_to_optimal=0.0754m phi=0.0750m
+[STAGE-A-TRACE] step=5 sim_t=0.050 mode=free phi=0.07501 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=5 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=5 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00040,-0.00211,+0.20000)
+[EErel] along_push=+0.001m (neg=correct)  perp=0.003m  ee_to_box=0.003m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.160m  effective=[0.055 0.    0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=15 |u[0]|=34.90Nm u_axis=(+10.12,-25.41,-2.37,+18.61,+3.74,-10.15,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=6 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=6 target_stable=0/0 allow_descent=1
+[GS-tgt] step=6 ee=(-0.001,-0.003,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.188m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=6 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156810.40 repos_cost=212692.44 best_other=212692.44 met_progress=Y steps_since_improve=4 switches=0
+[STEP] step=6 mode=free t=0.060s ee=(-0.001,-0.003,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.007,-0.024,+0.200) ee_stride=0.021m ee_to_ptarget=0.188m landing_err=0.1800m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=3.63 target_changed=Y retgt=N held_idx=1 held_cost=212692.44 won_cost=212692.44 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1878m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=6 curr=156810.40 best_other=212692.44 ratio=0.7373 ee_to_optimal=0.0758m phi=0.0750m
+[STAGE-A-TRACE] step=6 sim_t=0.060 mode=free phi=0.07496 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=6 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=6 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00074,-0.00318,+0.19995)
+[EErel] along_push=+0.001m (neg=correct)  perp=0.005m  ee_to_box=0.005m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.161m  effective=[0.057 0.    0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=18 |u[0]|=35.22Nm u_axis=(+10.06,-25.25,-2.95,+19.42,+3.90,-9.98,-0.77)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=7 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=7 target_stable=0/0 allow_descent=1
+[GS-tgt] step=7 ee=(-0.001,-0.005,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.187m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=7 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=134129.73 repos_cost=193453.53 best_other=193453.53 met_progress=Y steps_since_improve=5 switches=0
+[STEP] step=7 mode=free t=0.070s ee=(-0.001,-0.005,+0.200) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.008,-0.027,+0.200) ee_stride=0.024m ee_to_ptarget=0.187m landing_err=0.1787m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=4.04 target_changed=Y retgt=N held_idx=1 held_cost=193453.53 won_cost=193453.53 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1871m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=7 curr=134129.73 best_other=193453.53 ratio=0.6933 ee_to_optimal=0.0764m phi=0.0749m
+[STAGE-A-TRACE] step=7 sim_t=0.070 mode=free phi=0.07491 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=7 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=7 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.00122,-0.00468,+0.19990)
+[EErel] along_push=+0.002m (neg=correct)  perp=0.006m  ee_to_box=0.006m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.162m  effective=[0.06  0.001 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=21 |u[0]|=35.47Nm u_axis=(+10.00,-25.10,-3.44,+20.07,+4.04,-9.83,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=8 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=8 target_stable=0/0 allow_descent=1
+[GS-tgt] step=8 ee=(-0.002,-0.006,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.186m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=8 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156880.89 repos_cost=211921.89 best_other=211921.89 met_progress=Y steps_since_improve=6 switches=0
+[STEP] step=8 mode=free t=0.080s ee=(-0.002,-0.006,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.009,-0.031,+0.200) ee_stride=0.026m ee_to_ptarget=0.186m landing_err=0.1775m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=4.44 target_changed=Y retgt=N held_idx=1 held_cost=211921.89 won_cost=211921.89 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1864m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=8 curr=156880.89 best_other=211921.89 ratio=0.7403 ee_to_optimal=0.0769m phi=0.0749m
+[STAGE-A-TRACE] step=8 sim_t=0.080 mode=free phi=0.07486 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=8 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=8 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00168,-0.00615,+0.19985)
+[EErel] along_push=+0.002m (neg=correct)  perp=0.008m  ee_to_box=0.008m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.163m  effective=[0.063 0.001 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=24 |u[0]|=35.84Nm u_axis=(+9.93,-24.98,-4.06,+20.83,+4.21,-9.65,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=9 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=9 target_stable=0/0 allow_descent=1
+[GS-tgt] step=9 ee=(-0.002,-0.008,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.186m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=9 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156927.21 repos_cost=211600.33 best_other=211600.33 met_progress=Y steps_since_improve=7 switches=0
+[STEP] step=9 mode=free t=0.090s ee=(-0.002,-0.008,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.010,-0.035,+0.200) ee_stride=0.028m ee_to_ptarget=0.186m landing_err=0.1764m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=4.78 target_changed=Y retgt=N held_idx=1 held_cost=211600.33 won_cost=211600.33 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1856m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=9 curr=156927.21 best_other=211600.33 ratio=0.7416 ee_to_optimal=0.0777m phi=0.0748m
+[STAGE-A-TRACE] step=9 sim_t=0.090 mode=free phi=0.07481 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=9 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=9 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00227,-0.00802,+0.19980)
+[EErel] along_push=+0.003m (neg=correct)  perp=0.010m  ee_to_box=0.011m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.165m  effective=[0.066 0.002 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=27 |u[0]|=36.24Nm u_axis=(+9.83,-24.90,-4.71,+21.57,+4.39,-9.44,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=10 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=10 target_stable=0/0 allow_descent=1
+[GS-tgt] step=10 ee=(-0.003,-0.010,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.185m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=10 mode=free |x_err|=0.0299m |tau_imp|=10.04Nm |tau_ff|=0.00Nm |tau_out|=10.04Nm sat=False lam_n=False lam_t=False
+[GS] step=10 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=156981.29 repos_cost=211320.95 best_other=211320.95 met_progress=Y steps_since_improve=8 switches=0
+[STEP] step=10 mode=free t=0.100s ee=(-0.003,-0.010,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.011,-0.039,+0.200) ee_stride=0.030m ee_to_ptarget=0.185m landing_err=0.1754m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=5.06 target_changed=Y retgt=N held_idx=1 held_cost=211320.95 won_cost=211320.95 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1847m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=10 curr=156981.29 best_other=211320.95 ratio=0.7429 ee_to_optimal=0.0786m phi=0.0748m
+[STAGE-A-TRACE] step=10 sim_t=0.100 mode=free phi=0.07477 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=10 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=10 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00292,-0.01015,+0.19976)
+[EErel] along_push=+0.004m (neg=correct)  perp=0.012m  ee_to_box=0.013m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.167m  effective=[0.07  0.003 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=30 |u[0]|=36.70Nm u_axis=(+9.72,-24.89,-5.39,+22.31,+4.59,-9.20,-0.77)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=11 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=11 target_stable=0/0 allow_descent=1
+[GS-tgt] step=11 ee=(-0.004,-0.012,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.184m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=11 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157043.64 repos_cost=211085.34 best_other=211085.34 met_progress=Y steps_since_improve=9 switches=0
+[STEP] step=11 mode=free t=0.110s ee=(-0.004,-0.012,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.012,-0.043,+0.200) ee_stride=0.031m ee_to_ptarget=0.184m landing_err=0.1744m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=5.31 target_changed=Y retgt=N held_idx=1 held_cost=211085.34 won_cost=211085.34 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1837m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=11 curr=157043.64 best_other=211085.34 ratio=0.7440 ee_to_optimal=0.0796m phi=0.0747m
+[STAGE-A-TRACE] step=11 sim_t=0.110 mode=free phi=0.07472 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=11 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=11 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00363,-0.01249,+0.19972)
+[EErel] along_push=+0.004m (neg=correct)  perp=0.015m  ee_to_box=0.016m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.170m  effective=[0.073 0.005 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=33 |u[0]|=37.20Nm u_axis=(+9.60,-24.90,-6.11,+23.04,+4.79,-8.94,-0.76)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=12 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=12 target_stable=0/0 allow_descent=1
+[GS-tgt] step=12 ee=(-0.004,-0.015,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.183m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=12 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157115.89 repos_cost=210890.06 best_other=210890.06 met_progress=Y steps_since_improve=10 switches=0
+[STEP] step=12 mode=free t=0.120s ee=(-0.004,-0.015,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.013,-0.047,+0.200) ee_stride=0.033m ee_to_ptarget=0.183m landing_err=0.1736m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=5.52 target_changed=Y retgt=N held_idx=1 held_cost=210890.06 won_cost=210890.06 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1826m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=12 curr=157115.89 best_other=210890.06 ratio=0.7450 ee_to_optimal=0.0808m phi=0.0747m
+[STAGE-A-TRACE] step=12 sim_t=0.120 mode=free phi=0.07469 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=12 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=12 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00439,-0.01503,+0.19968)
+[EErel] along_push=+0.005m (neg=correct)  perp=0.018m  ee_to_box=0.018m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.173m  effective=[0.078 0.006 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=36 |u[0]|=37.74Nm u_axis=(+9.49,-24.94,-6.86,+23.77,+5.00,-8.66,-0.76)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=13 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=13 target_stable=0/0 allow_descent=1
+[GS-tgt] step=13 ee=(-0.005,-0.018,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.182m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=13 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157199.19 repos_cost=210730.82 best_other=210730.82 met_progress=Y steps_since_improve=11 switches=0
+[STEP] step=13 mode=free t=0.130s ee=(-0.005,-0.018,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.014,-0.050,+0.200) ee_stride=0.034m ee_to_ptarget=0.182m landing_err=0.1728m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=5.70 target_changed=Y retgt=N held_idx=1 held_cost=210730.82 won_cost=210730.82 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1816m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=13 curr=157199.19 best_other=210730.82 ratio=0.7460 ee_to_optimal=0.0821m phi=0.0747m
+[STAGE-A-TRACE] step=13 sim_t=0.130 mode=free phi=0.07466 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=13 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=13 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00520,-0.01775,+0.19965)
+[EErel] along_push=+0.006m (neg=correct)  perp=0.021m  ee_to_box=0.022m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.176m  effective=[0.082 0.009 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=39 |u[0]|=38.04Nm u_axis=(+9.35,-24.59,-7.62,+24.49,+5.22,-8.34,-0.75)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=14 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=14 target_stable=0/0 allow_descent=1
+[GS-tgt] step=14 ee=(-0.006,-0.021,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.181m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=14 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157294.00 repos_cost=210603.04 best_other=210603.04 met_progress=Y steps_since_improve=12 switches=0
+[STEP] step=14 mode=free t=0.140s ee=(-0.006,-0.021,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.016,-0.054,+0.200) ee_stride=0.035m ee_to_ptarget=0.181m landing_err=0.1722m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=5.84 target_changed=Y retgt=N held_idx=1 held_cost=210603.04 won_cost=210603.04 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1805m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=14 curr=157294.00 best_other=210603.04 ratio=0.7469 ee_to_optimal=0.0836m phi=0.0746m
+[STAGE-A-TRACE] step=14 sim_t=0.140 mode=free phi=0.07464 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=14 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=14 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00606,-0.02063,+0.19963)
+[EErel] along_push=+0.007m (neg=correct)  perp=0.024m  ee_to_box=0.025m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.180m  effective=[0.087 0.011 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=42 |u[0]|=38.23Nm u_axis=(+9.21,-24.01,-8.40,+25.21,+5.45,-8.00,-0.75)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=15 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=15 target_stable=0/0 allow_descent=1
+[GS-tgt] step=15 ee=(-0.007,-0.024,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.179m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=15 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157402.13 repos_cost=210502.25 best_other=210502.25 met_progress=Y steps_since_improve=13 switches=0
+[STEP] step=15 mode=free t=0.150s ee=(-0.007,-0.024,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.017,-0.058,+0.200) ee_stride=0.036m ee_to_ptarget=0.179m landing_err=0.1716m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=5.97 target_changed=Y retgt=N held_idx=1 held_cost=210502.25 won_cost=210502.25 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1794m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=15 curr=157402.13 best_other=210502.25 ratio=0.7477 ee_to_optimal=0.0853m phi=0.0746m
+[STAGE-A-TRACE] step=15 sim_t=0.150 mode=free phi=0.07462 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=15 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=15 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00695,-0.02365,+0.19961)
+[EErel] along_push=+0.008m (neg=correct)  perp=0.027m  ee_to_box=0.028m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.184m  effective=[0.092 0.014 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=45 |u[0]|=38.49Nm u_axis=(+9.08,-23.45,-9.20,+25.95,+5.69,-7.63,-0.74)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=16 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=16 target_stable=0/0 allow_descent=1
+[GS-tgt] step=16 ee=(-0.008,-0.027,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.178m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=16 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157525.73 repos_cost=210424.35 best_other=210424.35 met_progress=Y steps_since_improve=14 switches=0
+[STEP] step=16 mode=free t=0.160s ee=(-0.008,-0.027,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.018,-0.062,+0.200) ee_stride=0.037m ee_to_ptarget=0.178m landing_err=0.1711m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=6.07 target_changed=Y retgt=N held_idx=1 held_cost=210424.35 won_cost=210424.35 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1784m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=16 curr=157525.73 best_other=210424.35 ratio=0.7486 ee_to_optimal=0.0871m phi=0.0746m
+[STAGE-A-TRACE] step=16 sim_t=0.160 mode=free phi=0.07461 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=16 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=16 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00787,-0.02678,+0.19960)
+[EErel] along_push=+0.009m (neg=correct)  perp=0.030m  ee_to_box=0.031m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.189m  effective=[0.097 0.018 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=48 |u[0]|=38.81Nm u_axis=(+8.95,-22.90,-10.02,+26.70,+5.93,-7.25,-0.73)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=17 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=17 target_stable=0/0 allow_descent=1
+[GS-tgt] step=17 ee=(-0.009,-0.030,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.177m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=17 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157666.65 repos_cost=210365.71 best_other=210365.71 met_progress=Y steps_since_improve=15 switches=0
+[STEP] step=17 mode=free t=0.170s ee=(-0.009,-0.030,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.019,-0.066,+0.200) ee_stride=0.037m ee_to_ptarget=0.177m landing_err=0.1707m ik_ok=Y ik_resid=0.0003m q_max_resid_deg=6.15 target_changed=Y retgt=N held_idx=1 held_cost=210365.71 won_cost=210365.71 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1774m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=17 curr=157666.65 best_other=210365.71 ratio=0.7495 ee_to_optimal=0.0890m phi=0.0746m
+[STAGE-A-TRACE] step=17 sim_t=0.170 mode=free phi=0.07460 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=17 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=17 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00882,-0.03002,+0.19959)
+[EErel] along_push=+0.010m (neg=correct)  perp=0.033m  ee_to_box=0.035m  stage=3  obj=[-0. -0.]  g_hat=[-1.  0.]
+[proxy] err=0.195m  effective=[0.102 0.022 0.05 ]
+[ADMM-C3+] primal: 5.7461->3.8743  dual: 74.8587->83.4152  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=3.8743 dr=83.4152 tol=1e-03
+[C3+] step=51 |u[0]|=39.20Nm u_axis=(+8.82,-22.37,-10.86,+27.47,+6.17,-6.85,-0.72)Nm λ_n_max=0.000 η_n_max=0.740 primal=3.874 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=18 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=18 target_stable=0/0 allow_descent=1
+[GS-tgt] step=18 ee=(-0.010,-0.033,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.176m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=18 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=157826.93 repos_cost=210323.24 best_other=210323.24 met_progress=Y steps_since_improve=16 switches=0
+[STEP] step=18 mode=free t=0.180s ee=(-0.010,-0.033,+0.200) obj=(-0.000,-0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.020,-0.070,+0.200) ee_stride=0.038m ee_to_ptarget=0.176m landing_err=0.1704m ik_ok=Y ik_resid=0.0003m q_max_resid_deg=6.22 target_changed=Y retgt=N held_idx=1 held_cost=210323.24 won_cost=210323.24 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1764m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=18 curr=157826.93 best_other=210323.24 ratio=0.7504 ee_to_optimal=0.0911m phi=0.0746m
+[STAGE-A-TRACE] step=18 sim_t=0.180 mode=free phi=0.07460 box_xy=-0.00000,-0.00000 lam_n_ee_box=nan qy=-0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=18 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=18 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,+0.00001,-0.00001,+0.00000) box_p=(-0.00000,-0.00000,+0.04999) ee_p=(-0.00979,-0.03335,+0.19959)
+[EErel] along_push=+0.011m (neg=correct)  perp=0.037m  ee_to_box=0.039m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.202m  effective=[0.108 0.028 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=54 |u[0]|=39.71Nm u_axis=(+8.69,-21.81,-11.80,+28.35,+6.44,-6.40,-0.71)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=19 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=19 target_stable=0/0 allow_descent=1
+[GS-tgt] step=19 ee=(-0.011,-0.037,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.175m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=19 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=135312.19 repos_cost=191519.89 best_other=191519.89 met_progress=Y steps_since_improve=17 switches=0
+[STEP] step=19 mode=free t=0.190s ee=(-0.011,-0.037,+0.200) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.021,-0.073,+0.200) ee_stride=0.038m ee_to_ptarget=0.175m landing_err=0.1702m ik_ok=Y ik_resid=0.0003m q_max_resid_deg=6.21 target_changed=Y retgt=N held_idx=1 held_cost=191519.89 won_cost=191519.89 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1753m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=19 curr=135312.19 best_other=191519.89 ratio=0.7065 ee_to_optimal=0.0936m phi=0.0746m
+[STAGE-A-TRACE] step=19 sim_t=0.190 mode=free phi=0.07459 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=19 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=19 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01088,-0.03710,+0.19958)
+[EErel] along_push=+0.012m (neg=correct)  perp=0.041m  ee_to_box=0.042m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.209m  effective=[0.113 0.033 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=57 |u[0]|=40.24Nm u_axis=(+8.58,-21.33,-12.65,+29.15,+6.68,-5.98,-0.70)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=20 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=20 target_stable=0/0 allow_descent=1
+[GS-tgt] step=20 ee=(-0.012,-0.041,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.174m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=20 mode=free |x_err|=0.0382m |tau_imp|=4.03Nm |tau_ff|=0.00Nm |tau_out|=4.03Nm sat=False lam_n=False lam_t=False
+[GS] step=20 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=135519.54 repos_cost=191508.53 best_other=191508.53 met_progress=Y steps_since_improve=18 switches=0
+[STEP] step=20 mode=free t=0.200s ee=(-0.012,-0.041,+0.200) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.022,-0.077,+0.200) ee_stride=0.038m ee_to_ptarget=0.174m landing_err=0.1701m ik_ok=Y ik_resid=0.0003m q_max_resid_deg=6.25 target_changed=Y retgt=N held_idx=1 held_cost=191508.53 won_cost=191508.53 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1745m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=20 curr=135519.54 best_other=191508.53 ratio=0.7076 ee_to_optimal=0.0959m phi=0.0746m
+[STAGE-A-TRACE] step=20 sim_t=0.200 mode=free phi=0.07459 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[GS-table] step=20
+  k=0 (current   ) pos=(-0.012,-0.041,+0.200) c_C3= 135519.54 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 135519.54 feas=Y ik_err=0.0000m  ← WIN
+  k=1 (prev_repos) pos=(-0.023,-0.080,+0.030) c_C3= 191473.64 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.174m(pen= 34.89) c_sample= 191508.53 feas=Y ik_err=0.0001m
+  k=2 (strat_0   ) pos=(-0.023,-0.080,+0.030) c_C3= 191473.64 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.174m(pen= 34.89) c_sample= 191508.53 feas=Y ik_err=0.0001m
+[DRAKE-CONTACT] step=20 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=20 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01189,-0.04057,+0.19959)
+[EErel] along_push=+0.013m (neg=correct)  perp=0.044m  ee_to_box=0.046m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.216m  effective=[0.119 0.039 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=60 |u[0]|=40.84Nm u_axis=(+8.46,-20.85,-13.51,+29.99,+6.94,-5.55,-0.69)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=21 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=21 target_stable=0/0 allow_descent=1
+[GS-tgt] step=21 ee=(-0.013,-0.044,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.174m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=21 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=135753.46 repos_cost=191504.91 best_other=191504.91 met_progress=Y steps_since_improve=19 switches=0
+[STEP] step=21 mode=free t=0.210s ee=(-0.013,-0.044,+0.200) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.196) ee_stride=0.037m ee_to_ptarget=0.174m landing_err=0.1661m ik_ok=Y ik_resid=0.0002m q_max_resid_deg=5.90 target_changed=Y retgt=N held_idx=1 held_cost=191504.91 won_cost=191504.91 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1736m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=21 curr=135753.46 best_other=191504.91 ratio=0.7089 ee_to_optimal=0.0983m phi=0.0746m
+[STAGE-A-TRACE] step=21 sim_t=0.210 mode=free phi=0.07460 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=21 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=21 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01291,-0.04409,+0.19959)
+[EErel] along_push=+0.014m (neg=correct)  perp=0.048m  ee_to_box=0.050m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.224m  effective=[0.124 0.045 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=63 |u[0]|=40.95Nm u_axis=(+8.33,-20.78,-14.15,+30.00,+7.13,-4.88,-0.68)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=22 admit_active=0 latch=0/0 ee_z=0.200 gate_cap=0
+[ALT-GATE] step=22 target_stable=0/0 allow_descent=1
+[GS-tgt] step=22 ee=(-0.014,-0.048,+0.200) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.173m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=22 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136014.95 repos_cost=191491.17 best_other=191491.17 met_progress=Y steps_since_improve=20 switches=0
+[STEP] step=22 mode=free t=0.220s ee=(-0.014,-0.048,+0.200) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.192) ee_stride=0.034m ee_to_ptarget=0.173m landing_err=0.1621m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=5.10 target_changed=Y retgt=N held_idx=1 held_cost=191491.17 won_cost=191491.17 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1728m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=22 curr=136014.95 best_other=191491.17 ratio=0.7103 ee_to_optimal=0.1009m phi=0.0745m
+[STAGE-A-TRACE] step=22 sim_t=0.220 mode=free phi=0.07453 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=22 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=22 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01393,-0.04763,+0.19952)
+[EErel] along_push=+0.015m (neg=correct)  perp=0.051m  ee_to_box=0.053m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.232m  effective=[0.13  0.051 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=66 |u[0]|=41.15Nm u_axis=(+8.09,-21.14,-14.48,+30.00,+7.27,-4.16,-0.65)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=23 admit_active=0 latch=0/0 ee_z=0.199 gate_cap=0
+[ALT-GATE] step=23 target_stable=0/0 allow_descent=1
+[GS-tgt] step=23 ee=(-0.015,-0.051,+0.199) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.172m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=23 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136254.14 repos_cost=191503.53 best_other=191503.53 met_progress=Y steps_since_improve=21 switches=0
+[STEP] step=23 mode=free t=0.230s ee=(-0.015,-0.051,+0.199) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.188) ee_stride=0.032m ee_to_ptarget=0.172m landing_err=0.1581m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=4.31 target_changed=Y retgt=N held_idx=1 held_cost=191503.53 won_cost=191503.53 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1719m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=23 curr=136254.14 best_other=191503.53 ratio=0.7115 ee_to_optimal=0.1035m phi=0.0743m
+[STAGE-A-TRACE] step=23 sim_t=0.230 mode=free phi=0.07429 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=23 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=23 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01493,-0.05113,+0.19928)
+[EErel] along_push=+0.016m (neg=correct)  perp=0.054m  ee_to_box=0.057m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.238m  effective=[0.135 0.054 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=69 |u[0]|=41.42Nm u_axis=(+7.70,-21.85,-14.55,+30.00,+7.36,-3.51,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=24 admit_active=0 latch=0/0 ee_z=0.199 gate_cap=0
+[ALT-GATE] step=24 target_stable=0/0 allow_descent=1
+[GS-tgt] step=24 ee=(-0.016,-0.054,+0.199) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.171m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=24 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136436.06 repos_cost=191677.80 best_other=191677.80 met_progress=Y steps_since_improve=22 switches=0
+[STEP] step=24 mode=free t=0.240s ee=(-0.016,-0.054,+0.199) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.184) ee_stride=0.030m ee_to_ptarget=0.171m landing_err=0.1541m ik_ok=Y ik_resid=0.0004m q_max_resid_deg=3.51 target_changed=Y retgt=N held_idx=1 held_cost=191677.80 won_cost=191677.80 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1709m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=24 curr=136436.06 best_other=191677.80 ratio=0.7118 ee_to_optimal=0.1060m phi=0.0739m
+[STAGE-A-TRACE] step=24 sim_t=0.240 mode=free phi=0.07391 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=24 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=24 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01586,-0.05449,+0.19880)
+[EErel] along_push=+0.017m (neg=correct)  perp=0.058m  ee_to_box=0.060m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.245m  effective=[0.14  0.058 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=72 |u[0]|=41.75Nm u_axis=(+7.27,-22.77,-14.43,+30.00,+7.42,-2.89,-0.61)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=25 admit_active=0 latch=0/0 ee_z=0.198 gate_cap=0
+[ALT-GATE] step=25 target_stable=0/0 allow_descent=1
+[GS-tgt] step=25 ee=(-0.017,-0.058,+0.198) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.170m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=25 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136596.29 repos_cost=192080.26 best_other=192080.26 met_progress=Y steps_since_improve=23 switches=0
+[STEP] step=25 mode=free t=0.250s ee=(-0.017,-0.058,+0.198) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.180) ee_stride=0.029m ee_to_ptarget=0.170m landing_err=0.1501m ik_ok=Y ik_resid=0.0004m q_max_resid_deg=2.86 target_changed=Y retgt=N held_idx=1 held_cost=192080.26 won_cost=192080.26 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1697m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=25 curr=136596.29 best_other=192080.26 ratio=0.7111 ee_to_optimal=0.1083m phi=0.0734m
+[STAGE-A-TRACE] step=25 sim_t=0.250 mode=free phi=0.07337 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=25 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=25 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01672,-0.05766,+0.19806)
+[EErel] along_push=+0.017m (neg=correct)  perp=0.061m  ee_to_box=0.063m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.250m  effective=[0.145 0.061 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=75 |u[0]|=42.14Nm u_axis=(+6.83,-23.82,-14.15,+30.00,+7.45,-2.30,-0.59)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=26 admit_active=0 latch=0/0 ee_z=0.197 gate_cap=0
+[ALT-GATE] step=26 target_stable=0/0 allow_descent=1
+[GS-tgt] step=26 ee=(-0.017,-0.061,+0.197) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.168m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=26 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136732.73 repos_cost=192733.17 best_other=192733.17 met_progress=Y steps_since_improve=24 switches=0
+[STEP] step=26 mode=free t=0.260s ee=(-0.017,-0.061,+0.197) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.176) ee_stride=0.029m ee_to_ptarget=0.168m landing_err=0.1461m ik_ok=Y ik_resid=0.0008m q_max_resid_deg=2.25 target_changed=Y retgt=N held_idx=1 held_cost=192733.17 won_cost=192733.17 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1683m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=26 curr=136732.73 best_other=192733.17 ratio=0.7094 ee_to_optimal=0.1106m phi=0.0726m
+[STAGE-A-TRACE] step=26 sim_t=0.260 mode=free phi=0.07262 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=26 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=26 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01750,-0.06059,+0.19704)
+[EErel] along_push=+0.018m (neg=correct)  perp=0.063m  ee_to_box=0.066m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.255m  effective=[0.149 0.063 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=78 |u[0]|=42.46Nm u_axis=(+6.39,-24.96,-13.77,+29.83,+7.45,-1.76,-0.58)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=27 admit_active=0 latch=0/0 ee_z=0.196 gate_cap=0
+[ALT-GATE] step=27 target_stable=0/0 allow_descent=1
+[GS-tgt] step=27 ee=(-0.018,-0.063,+0.196) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.167m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=27 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136847.65 repos_cost=193665.77 best_other=193665.77 met_progress=Y steps_since_improve=25 switches=0
+[STEP] step=27 mode=free t=0.270s ee=(-0.018,-0.063,+0.196) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.172) ee_stride=0.029m ee_to_ptarget=0.167m landing_err=0.1421m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=1.99 target_changed=Y retgt=N held_idx=1 held_cost=193665.77 won_cost=193665.77 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1666m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=27 curr=136847.65 best_other=193665.77 ratio=0.7066 ee_to_optimal=0.1126m phi=0.0717m
+[STAGE-A-TRACE] step=27 sim_t=0.270 mode=free phi=0.07165 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=27 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=27 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01818,-0.06327,+0.19573)
+[EErel] along_push=+0.019m (neg=correct)  perp=0.066m  ee_to_box=0.068m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.260m  effective=[0.152 0.066 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=81 |u[0]|=42.68Nm u_axis=(+5.99,-26.14,-13.32,+29.46,+7.42,-1.24,-0.57)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=28 admit_active=0 latch=0/0 ee_z=0.194 gate_cap=0
+[ALT-GATE] step=28 target_stable=0/0 allow_descent=1
+[GS-tgt] step=28 ee=(-0.019,-0.066,+0.194) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.165m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=28 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136940.92 repos_cost=194767.33 best_other=194767.33 met_progress=Y steps_since_improve=26 switches=0
+[STEP] step=28 mode=free t=0.280s ee=(-0.019,-0.066,+0.194) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.168) ee_stride=0.030m ee_to_ptarget=0.165m landing_err=0.1381m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=2.88 target_changed=Y retgt=N held_idx=1 held_cost=194767.33 won_cost=194767.33 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1648m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=28 curr=136940.92 best_other=194767.33 ratio=0.7031 ee_to_optimal=0.1145m phi=0.0704m
+[STAGE-A-TRACE] step=28 sim_t=0.280 mode=free phi=0.07045 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=28 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=28 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01879,-0.06569,+0.19414)
+[EErel] along_push=+0.019m (neg=correct)  perp=0.068m  ee_to_box=0.071m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.263m  effective=[0.156 0.068 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=84 |u[0]|=42.62Nm u_axis=(+5.58,-26.80,-12.82,+29.11,+7.37,-0.76,-0.56)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=29 admit_active=0 latch=0/0 ee_z=0.192 gate_cap=0
+[ALT-GATE] step=29 target_stable=0/0 allow_descent=1
+[GS-tgt] step=29 ee=(-0.019,-0.068,+0.192) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.163m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=29 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137006.07 repos_cost=195962.31 best_other=195962.31 met_progress=Y steps_since_improve=27 switches=0
+[STEP] step=29 mode=free t=0.290s ee=(-0.019,-0.068,+0.192) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.164) ee_stride=0.031m ee_to_ptarget=0.163m landing_err=0.1341m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=3.67 target_changed=Y retgt=N held_idx=1 held_cost=195962.31 won_cost=195962.31 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1628m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=29 curr=137006.07 best_other=195962.31 ratio=0.6991 ee_to_optimal=0.1162m phi=0.0690m
+[STAGE-A-TRACE] step=29 sim_t=0.290 mode=free phi=0.06900 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=29 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=29 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01932,-0.06786,+0.19228)
+[EErel] along_push=+0.020m (neg=correct)  perp=0.070m  ee_to_box=0.073m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.266m  effective=[0.159 0.07  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=87 |u[0]|=42.21Nm u_axis=(+5.17,-26.85,-12.28,+28.80,+7.33,-0.31,-0.55)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=30 admit_active=0 latch=0/0 ee_z=0.190 gate_cap=0
+[ALT-GATE] step=30 target_stable=0/0 allow_descent=1
+[GS-tgt] step=30 ee=(-0.020,-0.070,+0.190) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.161m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=30 mode=free |x_err|=0.0319m |tau_imp|=22.79Nm |tau_ff|=0.00Nm |tau_out|=22.79Nm sat=False lam_n=False lam_t=False
+[GS] step=30 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137043.97 repos_cost=197194.96 best_other=197194.96 met_progress=Y steps_since_improve=28 switches=0
+[STEP] step=30 mode=free t=0.300s ee=(-0.020,-0.070,+0.190) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.160) ee_stride=0.032m ee_to_ptarget=0.161m landing_err=0.1301m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=4.35 target_changed=Y retgt=N held_idx=1 held_cost=197194.96 won_cost=197194.96 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1605m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=30 curr=137043.97 best_other=197194.96 ratio=0.6950 ee_to_optimal=0.1177m phi=0.0673m
+[STAGE-A-TRACE] step=30 sim_t=0.300 mode=free phi=0.06732 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=30 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=30 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.01979,-0.06978,+0.19017)
+[PERSIST] step=31 refresh n_strategy=1 samples=[(0.0459, 0.08, 0.03)]
+[EErel] along_push=+0.020m (neg=correct)  perp=0.071m  ee_to_box=0.074m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.269m  effective=[0.161 0.071 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=90 |u[0]|=41.85Nm u_axis=(+4.80,-26.92,-11.75,+28.52,+7.26,+0.11,-0.55)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=31 admit_active=0 latch=0/0 ee_z=0.188 gate_cap=0
+[ALT-GATE] step=31 target_stable=0/0 allow_descent=1
+[GS-tgt] step=31 ee=(-0.020,-0.071,+0.188) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.158m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=31 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137058.32 repos_cost=198463.00 best_other=198463.00 met_progress=Y steps_since_improve=29 switches=0
+[STEP] step=31 mode=free t=0.310s ee=(-0.020,-0.071,+0.188) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.156) ee_stride=0.033m ee_to_ptarget=0.158m landing_err=0.1261m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=4.93 target_changed=Y retgt=N held_idx=1 held_cost=198463.00 won_cost=198463.00 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1581m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=31 curr=137058.32 best_other=198463.00 ratio=0.6906 ee_to_optimal=0.1190m phi=0.0654m
+[STAGE-A-TRACE] step=31 sim_t=0.310 mode=free phi=0.06542 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=31 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=31 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02019,-0.07147,+0.18782)
+[EErel] along_push=+0.021m (neg=correct)  perp=0.073m  ee_to_box=0.076m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.271m  effective=[0.164 0.073 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=93 |u[0]|=41.60Nm u_axis=(+4.38,-27.07,-11.23,+28.29,+7.20,+0.52,-0.55)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=32 admit_active=0 latch=0/0 ee_z=0.185 gate_cap=0
+[ALT-GATE] step=32 target_stable=0/0 allow_descent=1
+[GS-tgt] step=32 ee=(-0.021,-0.073,+0.185) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.155m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=32 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137048.39 repos_cost=199662.06 best_other=199662.06 met_progress=Y steps_since_improve=30 switches=0
+[STEP] step=32 mode=free t=0.320s ee=(-0.021,-0.073,+0.185) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.152) ee_stride=0.034m ee_to_ptarget=0.155m landing_err=0.1221m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=5.42 target_changed=Y retgt=N held_idx=1 held_cost=199662.06 won_cost=199662.06 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1554m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=32 curr=137048.39 best_other=199662.06 ratio=0.6864 ee_to_optimal=0.1202m phi=0.0633m
+[STAGE-A-TRACE] step=32 sim_t=0.320 mode=free phi=0.06330 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=32 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=32 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02054,-0.07293,+0.18526)
+[EErel] along_push=+0.021m (neg=correct)  perp=0.074m  ee_to_box=0.077m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.273m  effective=[0.166 0.074 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=96 |u[0]|=41.40Nm u_axis=(+4.00,-27.24,-10.72,+28.09,+7.12,+0.91,-0.56)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=33 admit_active=0 latch=0/0 ee_z=0.182 gate_cap=0
+[ALT-GATE] step=33 target_stable=0/0 allow_descent=1
+[GS-tgt] step=33 ee=(-0.021,-0.074,+0.182) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.153m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=33 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=137021.24 repos_cost=200779.83 best_other=200779.83 met_progress=Y steps_since_improve=31 switches=0
+[STEP] step=33 mode=free t=0.330s ee=(-0.021,-0.074,+0.182) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.148) ee_stride=0.035m ee_to_ptarget=0.153m landing_err=0.1181m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=5.83 target_changed=Y retgt=N held_idx=1 held_cost=200779.83 won_cost=200779.83 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1526m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=33 curr=137021.24 best_other=200779.83 ratio=0.6824 ee_to_optimal=0.1212m phi=0.0610m
+[STAGE-A-TRACE] step=33 sim_t=0.330 mode=free phi=0.06098 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=33 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=33 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02084,-0.07420,+0.18250)
+[EErel] along_push=+0.021m (neg=correct)  perp=0.075m  ee_to_box=0.078m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.274m  effective=[0.167 0.075 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=99 |u[0]|=41.27Nm u_axis=(+3.62,-27.45,-10.24,+27.93,+7.03,+1.30,-0.56)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=34 admit_active=0 latch=0/0 ee_z=0.180 gate_cap=0
+[ALT-GATE] step=34 target_stable=0/0 allow_descent=1
+[GS-tgt] step=34 ee=(-0.021,-0.075,+0.180) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.150m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=34 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136978.98 repos_cost=201801.92 best_other=201801.92 met_progress=Y steps_since_improve=32 switches=0
+[STEP] step=34 mode=free t=0.340s ee=(-0.021,-0.075,+0.180) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.144) ee_stride=0.036m ee_to_ptarget=0.150m landing_err=0.1141m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.16 target_changed=Y retgt=N held_idx=1 held_cost=201801.92 won_cost=201801.92 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1496m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=34 curr=136978.98 best_other=201801.92 ratio=0.6788 ee_to_optimal=0.1221m phi=0.0585m
+[STAGE-A-TRACE] step=34 sim_t=0.340 mode=free phi=0.05849 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=34 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=34 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02110,-0.07529,+0.17956)
+[EErel] along_push=+0.021m (neg=correct)  perp=0.076m  ee_to_box=0.079m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.274m  effective=[0.169 0.076 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=102 |u[0]|=41.21Nm u_axis=(+3.21,-27.69,-9.80,+27.82,+6.95,+1.69,-0.57)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=35 admit_active=0 latch=0/0 ee_z=0.176 gate_cap=0
+[ALT-GATE] step=35 target_stable=0/0 allow_descent=1
+[GS-tgt] step=35 ee=(-0.021,-0.076,+0.176) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.147m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=35 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136922.61 repos_cost=202720.68 best_other=202720.68 met_progress=Y steps_since_improve=33 switches=0
+[STEP] step=35 mode=free t=0.350s ee=(-0.021,-0.076,+0.176) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.140) ee_stride=0.037m ee_to_ptarget=0.147m landing_err=0.1101m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.43 target_changed=Y retgt=N held_idx=1 held_cost=202720.68 won_cost=202720.68 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1465m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=35 curr=136922.61 best_other=202720.68 ratio=0.6754 ee_to_optimal=0.1228m phi=0.0558m
+[STAGE-A-TRACE] step=35 sim_t=0.350 mode=free phi=0.05584 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=35 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=35 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02132,-0.07622,+0.17646)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.077m  ee_to_box=0.080m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.275m  effective=[0.17  0.077 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=105 |u[0]|=41.18Nm u_axis=(+2.85,-27.92,-9.38,+27.72,+6.84,+2.08,-0.58)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=36 admit_active=0 latch=0/0 ee_z=0.173 gate_cap=0
+[ALT-GATE] step=36 target_stable=0/0 allow_descent=1
+[GS-tgt] step=36 ee=(-0.022,-0.077,+0.173) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.143m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=36 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136859.55 repos_cost=203533.55 best_other=203533.55 met_progress=Y steps_since_improve=34 switches=0
+[STEP] step=36 mode=free t=0.360s ee=(-0.022,-0.077,+0.173) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.136) ee_stride=0.037m ee_to_ptarget=0.143m landing_err=0.1061m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.64 target_changed=Y retgt=N held_idx=1 held_cost=203533.55 won_cost=203533.55 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1433m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=36 curr=136859.55 best_other=203533.55 ratio=0.6724 ee_to_optimal=0.1235m phi=0.0531m
+[STAGE-A-TRACE] step=36 sim_t=0.360 mode=free phi=0.05305 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=36 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=36 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02151,-0.07700,+0.17323)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.078m  ee_to_box=0.081m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.275m  effective=[0.171 0.078 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=108 |u[0]|=41.21Nm u_axis=(+2.48,-28.17,-8.99,+27.67,+6.73,+2.48,-0.59)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=37 admit_active=0 latch=0/0 ee_z=0.170 gate_cap=0
+[ALT-GATE] step=37 target_stable=0/0 allow_descent=1
+[GS-tgt] step=37 ee=(-0.022,-0.078,+0.170) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.140m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=37 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136788.26 repos_cost=204241.84 best_other=204241.84 met_progress=Y steps_since_improve=35 switches=0
+[STEP] step=37 mode=free t=0.370s ee=(-0.022,-0.078,+0.170) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.132) ee_stride=0.038m ee_to_ptarget=0.140m landing_err=0.1021m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.80 target_changed=Y retgt=N held_idx=1 held_cost=204241.84 won_cost=204241.84 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1399m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=37 curr=136788.26 best_other=204241.84 ratio=0.6697 ee_to_optimal=0.1240m phi=0.0501m
+[STAGE-A-TRACE] step=37 sim_t=0.370 mode=free phi=0.05015 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=37 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=37 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02168,-0.07766,+0.16987)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.078m  ee_to_box=0.081m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.275m  effective=[0.172 0.078 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=111 |u[0]|=41.24Nm u_axis=(+2.10,-28.42,-8.59,+27.61,+6.61,+2.88,-0.59)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=38 admit_active=0 latch=0/0 ee_z=0.166 gate_cap=0
+[ALT-GATE] step=38 target_stable=0/0 allow_descent=1
+[GS-tgt] step=38 ee=(-0.022,-0.078,+0.166) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.136m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=38 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136716.09 repos_cost=204849.88 best_other=204849.88 met_progress=Y steps_since_improve=36 switches=0
+[STEP] step=38 mode=free t=0.380s ee=(-0.022,-0.078,+0.166) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.128) ee_stride=0.038m ee_to_ptarget=0.136m landing_err=0.0981m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.92 target_changed=Y retgt=N held_idx=1 held_cost=204849.88 won_cost=204849.88 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1364m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=38 curr=136716.09 best_other=204849.88 ratio=0.6674 ee_to_optimal=0.1245m phi=0.0472m
+[STAGE-A-TRACE] step=38 sim_t=0.380 mode=free phi=0.04715 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=38 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=38 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02183,-0.07821,+0.16640)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.079m  ee_to_box=0.082m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.274m  effective=[0.172 0.079 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=114 |u[0]|=41.33Nm u_axis=(+1.76,-28.67,-8.24,+27.60,+6.47,+3.29,-0.60)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=39 admit_active=0 latch=0/0 ee_z=0.163 gate_cap=0
+[ALT-GATE] step=39 target_stable=0/0 allow_descent=1
+[GS-tgt] step=39 ee=(-0.022,-0.079,+0.163) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.133m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=39 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136638.70 repos_cost=205364.21 best_other=205364.21 met_progress=Y steps_since_improve=37 switches=0
+[STEP] step=39 mode=free t=0.390s ee=(-0.022,-0.079,+0.163) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.124) ee_stride=0.039m ee_to_ptarget=0.133m landing_err=0.0941m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.01 target_changed=Y retgt=N held_idx=1 held_cost=205364.21 won_cost=205364.21 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1329m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=39 curr=136638.70 best_other=205364.21 ratio=0.6653 ee_to_optimal=0.1249m phi=0.0441m
+[STAGE-A-TRACE] step=39 sim_t=0.390 mode=free phi=0.04408 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=39 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=39 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02196,-0.07866,+0.16284)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.079m  ee_to_box=0.082m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.274m  effective=[0.173 0.079 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=117 |u[0]|=41.41Nm u_axis=(+1.43,-28.90,-7.89,+27.59,+6.33,+3.70,-0.61)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=40 admit_active=0 latch=0/0 ee_z=0.159 gate_cap=0
+[ALT-GATE] step=40 target_stable=0/0 allow_descent=1
+[GS-tgt] step=40 ee=(-0.022,-0.079,+0.159) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.129m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=40 mode=free |x_err|=0.0392m |tau_imp|=4.38Nm |tau_ff|=0.00Nm |tau_out|=4.38Nm sat=False lam_n=False lam_t=False
+[GS] step=40 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136561.89 repos_cost=205792.92 best_other=205792.92 met_progress=Y steps_since_improve=38 switches=0
+[STEP] step=40 mode=free t=0.400s ee=(-0.022,-0.079,+0.159) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.120) ee_stride=0.039m ee_to_ptarget=0.129m landing_err=0.0901m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.06 target_changed=Y retgt=N held_idx=1 held_cost=205792.92 won_cost=205792.92 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1292m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=40 curr=136561.89 best_other=205792.92 ratio=0.6636 ee_to_optimal=0.1252m phi=0.0409m
+[STAGE-A-TRACE] step=40 sim_t=0.400 mode=free phi=0.04095 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[GS-table] step=40
+  k=0 (current   ) pos=(-0.022,-0.079,+0.159) c_C3= 136561.89 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.000m(pen=  0.00) c_sample= 136561.89 feas=Y ik_err=0.0000m  ← WIN
+  k=1 (prev_repos) pos=(-0.023,-0.080,+0.030) c_C3= 205767.07 align=0.0000(bonus=    0.00) rot=+0.0000(bonus=    0.00) travel=0.129m(pen= 25.84) c_sample= 205792.92 feas=Y ik_err=0.0001m
+  k=2 (strat_0   ) pos=(+0.046,+0.080,+0.030) c_C3= 262708.15 align=0.0000(bonus=    0.15) rot=+0.0000(bonus=    0.00) travel=0.216m(pen= 43.18) c_sample= 262751.18 feas=Y ik_err=0.0002m
+[DRAKE-CONTACT] step=40 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=40 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02207,-0.07902,+0.15921)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.079m  ee_to_box=0.082m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.273m  effective=[0.174 0.079 0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=120 |u[0]|=41.52Nm u_axis=(+1.07,-29.14,-7.53,+27.59,+6.18,+4.09,-0.62)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=41 admit_active=0 latch=0/0 ee_z=0.156 gate_cap=0
+[ALT-GATE] step=41 target_stable=0/0 allow_descent=1
+[GS-tgt] step=41 ee=(-0.022,-0.079,+0.156) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.126m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=41 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136486.90 repos_cost=206164.14 best_other=206164.14 met_progress=Y steps_since_improve=39 switches=0
+[STEP] step=41 mode=free t=0.410s ee=(-0.022,-0.079,+0.156) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.116) ee_stride=0.039m ee_to_ptarget=0.126m landing_err=0.0861m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.09 target_changed=Y retgt=N held_idx=1 held_cost=206164.14 won_cost=206164.14 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1255m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=41 curr=136486.90 best_other=206164.14 ratio=0.6620 ee_to_optimal=0.1254m phi=0.0378m
+[STAGE-A-TRACE] step=41 sim_t=0.410 mode=free phi=0.03779 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=41 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=41 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02217,-0.07932,+0.15551)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.272m  effective=[0.174 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=123 |u[0]|=41.65Nm u_axis=(+0.74,-29.37,-7.20,+27.62,+6.04,+4.50,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=42 admit_active=0 latch=0/0 ee_z=0.152 gate_cap=0
+[ALT-GATE] step=42 target_stable=0/0 allow_descent=1
+[GS-tgt] step=42 ee=(-0.022,-0.080,+0.152) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.122m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=42 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136410.50 repos_cost=206469.09 best_other=206469.09 met_progress=Y steps_since_improve=40 switches=0
+[STEP] step=42 mode=free t=0.420s ee=(-0.022,-0.080,+0.152) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.112) ee_stride=0.040m ee_to_ptarget=0.122m landing_err=0.0821m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.11 target_changed=Y retgt=N held_idx=1 held_cost=206469.09 won_cost=206469.09 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1218m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=42 curr=136410.50 best_other=206469.09 ratio=0.6607 ee_to_optimal=0.1257m phi=0.0346m
+[STAGE-A-TRACE] step=42 sim_t=0.420 mode=free phi=0.03461 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=42 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=42 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02226,-0.07957,+0.15175)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.271m  effective=[0.174 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=126 |u[0]|=41.66Nm u_axis=(+0.41,-29.56,-6.72,+27.54,+5.84,+4.85,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=43 admit_active=0 latch=0/0 ee_z=0.148 gate_cap=0
+[ALT-GATE] step=43 target_stable=0/0 allow_descent=1
+[GS-tgt] step=43 ee=(-0.022,-0.080,+0.148) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.118m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=43 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136354.82 repos_cost=206711.25 best_other=206711.25 met_progress=Y steps_since_improve=41 switches=0
+[STEP] step=43 mode=free t=0.430s ee=(-0.022,-0.080,+0.148) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.108) ee_stride=0.040m ee_to_ptarget=0.118m landing_err=0.0781m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.11 target_changed=Y retgt=N held_idx=1 held_cost=206711.25 won_cost=206711.25 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1180m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=43 curr=136354.82 best_other=206711.25 ratio=0.6596 ee_to_optimal=0.1258m phi=0.0314m
+[STAGE-A-TRACE] step=43 sim_t=0.430 mode=free phi=0.03144 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=43 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=43 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02233,-0.07976,+0.14795)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.270m  effective=[0.174 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=129 |u[0]|=41.68Nm u_axis=(+0.10,-29.75,-6.23,+27.47,+5.64,+5.19,-0.63)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=44 admit_active=0 latch=0/0 ee_z=0.144 gate_cap=0
+[ALT-GATE] step=44 target_stable=0/0 allow_descent=1
+[GS-tgt] step=44 ee=(-0.022,-0.080,+0.144) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.114m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=44 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136302.65 repos_cost=206902.06 best_other=206902.06 met_progress=Y steps_since_improve=42 switches=0
+[STEP] step=44 mode=free t=0.440s ee=(-0.022,-0.080,+0.144) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.104) ee_stride=0.040m ee_to_ptarget=0.114m landing_err=0.0741m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.09 target_changed=Y retgt=N held_idx=1 held_cost=206902.06 won_cost=206902.06 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1141m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=44 curr=136302.65 best_other=206902.06 ratio=0.6588 ee_to_optimal=0.1260m phi=0.0283m
+[STAGE-A-TRACE] step=44 sim_t=0.440 mode=free phi=0.02830 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=44 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=44 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02240,-0.07991,+0.14411)
+[EErel] along_push=+0.022m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.269m  effective=[0.175 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=132 |u[0]|=41.94Nm u_axis=(-0.20,-29.93,-6.09,+27.63,+5.52,+5.63,-0.65)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=45 admit_active=0 latch=0/0 ee_z=0.140 gate_cap=0
+[ALT-GATE] step=45 target_stable=0/0 allow_descent=1
+[GS-tgt] step=45 ee=(-0.022,-0.080,+0.140) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.110m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=45 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136215.90 repos_cost=207050.28 best_other=207050.28 met_progress=Y steps_since_improve=43 switches=0
+[STEP] step=45 mode=free t=0.450s ee=(-0.022,-0.080,+0.140) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.100) ee_stride=0.040m ee_to_ptarget=0.110m landing_err=0.0701m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.07 target_changed=Y retgt=N held_idx=1 held_cost=207050.28 won_cost=207050.28 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1102m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=45 curr=136215.90 best_other=207050.28 ratio=0.6579 ee_to_optimal=0.1261m phi=0.0252m
+[STAGE-A-TRACE] step=45 sim_t=0.450 mode=free phi=0.02521 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=+0.00000 finished_repos=0
+[DRAKE-CONTACT] step=45 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=45 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,+0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02246,-0.08003,+0.14024)
+[EErel] along_push=+0.023m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.268m  effective=[0.175 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3187  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3187 tol=1e-03
+[C3+] step=135 |u[0]|=41.91Nm u_axis=(-0.55,-29.99,-5.65,+27.57,+5.36,+5.97,-0.66)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=46 admit_active=0 latch=0/0 ee_z=0.136 gate_cap=0
+[ALT-GATE] step=46 target_stable=0/0 allow_descent=1
+[GS-tgt] step=46 ee=(-0.023,-0.080,+0.136) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.106m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=46 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136163.50 repos_cost=207008.68 best_other=207008.68 met_progress=Y steps_since_improve=44 switches=0
+[STEP] step=46 mode=free t=0.460s ee=(-0.023,-0.080,+0.136) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.096) ee_stride=0.040m ee_to_ptarget=0.106m landing_err=0.0661m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.04 target_changed=Y retgt=N held_idx=1 held_cost=207008.68 won_cost=207008.68 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1063m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=46 curr=136163.50 best_other=207008.68 ratio=0.6578 ee_to_optimal=0.1262m phi=0.0222m
+[STAGE-A-TRACE] step=46 sim_t=0.460 mode=free phi=0.02221 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=46 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=46 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02251,-0.08012,+0.13634)
+[EErel] along_push=+0.023m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.267m  effective=[0.175 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3185  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3185 tol=1e-03
+[C3+] step=138 |u[0]|=41.48Nm u_axis=(-0.90,-30.00,-4.69,+27.12,+5.06,+6.01,-0.66)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=47 admit_active=0 latch=0/0 ee_z=0.132 gate_cap=0
+[ALT-GATE] step=47 target_stable=0/0 allow_descent=1
+[GS-tgt] step=47 ee=(-0.023,-0.080,+0.132) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.102m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=47 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136173.80 repos_cost=207117.83 best_other=207117.83 met_progress=Y steps_since_improve=45 switches=0
+[STEP] step=47 mode=free t=0.470s ee=(-0.023,-0.080,+0.132) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.092) ee_stride=0.040m ee_to_ptarget=0.102m landing_err=0.0621m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=7.01 target_changed=Y retgt=N held_idx=1 held_cost=207117.83 won_cost=207117.83 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.1024m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=47 curr=136173.80 best_other=207117.83 ratio=0.6575 ee_to_optimal=0.1263m phi=0.0193m
+[STAGE-A-TRACE] step=47 sim_t=0.470 mode=free phi=0.01931 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=47 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=47 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02256,-0.08019,+0.13242)
+[EErel] along_push=+0.023m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.266m  effective=[0.175 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3183  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3183 tol=1e-03
+[C3+] step=141 |u[0]|=41.29Nm u_axis=(-1.18,-29.99,-4.13,+26.93,+4.84,+6.15,-0.67)Nm λ_n_max=1.059 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=48 admit_active=0 latch=0/0 ee_z=0.128 gate_cap=0
+[ALT-GATE] step=48 target_stable=0/0 allow_descent=1
+[GS-tgt] step=48 ee=(-0.023,-0.080,+0.128) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.098m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=48 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136152.06 repos_cost=207202.77 best_other=207202.77 met_progress=Y steps_since_improve=46 switches=0
+[STEP] step=48 mode=free t=0.480s ee=(-0.023,-0.080,+0.128) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.088) ee_stride=0.040m ee_to_ptarget=0.098m landing_err=0.0581m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.97 target_changed=Y retgt=N held_idx=1 held_cost=207202.77 won_cost=207202.77 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.0985m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=48 curr=136152.06 best_other=207202.77 ratio=0.6571 ee_to_optimal=0.1264m phi=0.0166m
+[STAGE-A-TRACE] step=48 sim_t=0.480 mode=free phi=0.01655 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=48 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=48 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02260,-0.08025,+0.12848)
+[EErel] along_push=+0.023m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.265m  effective=[0.175 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3188  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3188 tol=1e-03
+[C3+] step=144 |u[0]|=41.54Nm u_axis=(-1.43,-30.00,-4.00,+27.23,+4.72,+6.55,-0.67)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=49 admit_active=0 latch=0/0 ee_z=0.125 gate_cap=0
+[ALT-GATE] step=49 target_stable=0/0 allow_descent=1
+[GS-tgt] step=49 ee=(-0.023,-0.080,+0.125) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.095m target_label=prev_repos target_changed=N delta=0.000m
+[GS] step=49 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136073.38 repos_cost=207269.07 best_other=207269.07 met_progress=Y steps_since_improve=47 switches=0
+[STEP] step=49 mode=free t=0.490s ee=(-0.023,-0.080,+0.125) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.084) ee_stride=0.040m ee_to_ptarget=0.095m landing_err=0.0541m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.93 target_changed=Y retgt=N held_idx=1 held_cost=207269.07 won_cost=207269.07 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.0945m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=49 curr=136073.38 best_other=207269.07 ratio=0.6565 ee_to_optimal=0.1264m phi=0.0140m
+[STAGE-A-TRACE] step=49 sim_t=0.490 mode=free phi=0.01398 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=49 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=49 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02264,-0.08029,+0.12453)
+[EErel] along_push=+0.023m (neg=correct)  perp=0.080m  ee_to_box=0.083m  stage=3  obj=[0. 0.]  g_hat=[-1. -0.]
+[proxy] err=0.264m  effective=[0.175 0.08  0.05 ]
+[ADMM-C3+] primal: 6.1274->4.9359  dual: 109.8105->80.3186  mono=False  iters=25/25  rho=25.0
+[ADMM-C3+] WARNING non-converged: pr=4.9359 dr=80.3186 tol=1e-03
+[C3+] step=147 |u[0]|=40.74Nm u_axis=(-1.73,-30.00,-2.57,+26.34,+4.35,+6.06,-0.68)Nm λ_n_max=1.058 η_n_max=1.279 primal=4.936 iters=25/25 lcp_res_max=nan
+[ADMIT-GUARD] step=50 admit_active=0 latch=0/0 ee_z=0.121 gate_cap=0
+[ALT-GATE] step=50 target_stable=0/0 allow_descent=1
+[GS-tgt] step=50 ee=(-0.023,-0.080,+0.121) p_repos=(-0.023,-0.080,+0.030) ee_to_target=0.091m target_label=prev_repos target_changed=N delta=0.000m
+[IMP] step=50 mode=free |x_err|=0.0405m |tau_imp|=0.98Nm |tau_ff|=0.00Nm |tau_out|=0.98Nm sat=False lam_n=False lam_t=False
+[GS] step=50 mode=free switch=kStayInRepos best_k=0 best_src=prev_repos curr_cost=136161.27 repos_cost=207321.48 best_other=207321.48 met_progress=Y steps_since_improve=48 switches=0
+[STEP] step=50 mode=free t=0.500s ee=(-0.023,-0.080,+0.121) obj=(+0.000,+0.000,+0.050) goal_dist=0.300m switch=kStayInRepos target=(-0.023,-0.080,+0.080) ee_stride=0.040m ee_to_ptarget=0.091m landing_err=0.0501m ik_ok=Y ik_resid=0.0001m q_max_resid_deg=6.89 target_changed=Y retgt=N held_idx=1 held_cost=207321.48 won_cost=207321.48 margin=+0.00 won_src=prev_repos held_valid=Y reason=hold setpoint_to_ptarget=nanm finished_val=0.0906m finished_thresh=0.0200m pd_resid=nanm nextwp_to_ptarget=nanm guide_terminal_err=nanm
+[GATE-EVOLVE] step=50 curr=136161.27 best_other=207321.48 ratio=0.6568 ee_to_optimal=0.1265m phi=0.0116m
+[STAGE-A-TRACE] step=50 sim_t=0.500 mode=free phi=0.01164 box_xy=+0.00000,+0.00000 lam_n_ee_box=nan qy=+0.00001 qz=-0.00000 finished_repos=0
+[DRAKE-CONTACT] step=50 n_pairs=1 ee_box_normal=0.000
+[GATE-CONTACT] step=50 F_W=(+0.0000,+0.0000,+0.0000) F_on_box=(-0.0000,-0.0000,-0.0000) n_face_out=(-0.0000,-0.0000,-0.0000) A_is_ee=0 box_q=(+1.00000,-0.00001,+0.00001,-0.00000) box_p=(+0.00000,+0.00000,+0.04999) ee_p=(-0.02267,-0.08032,+0.12057)
+[C3] Simulation complete.
+[GS-perf] avg_per_step_ms=1385.9  full_solves=50  cheap_solves=99  switches=0
+[OSC-SUMMARY] calls=50  qp_failures=0 (0.00%)  saturation=0 (0.00%)  avg_solve_ms=0.38
+[RESULT] method=sampling-c3  final_obj_xy=(0.0000, 0.0000)  goal_dist=0.3000m  orient_err=0.0000rad  success=NO  ref_gate=FAIL

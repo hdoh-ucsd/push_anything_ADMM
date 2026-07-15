@@ -1,0 +1,37 @@
+=== PER-LOG CONTACT-OPENING SUMMARY ===
+    arm seed  n_LCS n_Drake n_open  LCS-DROP EE-RETR BOX-ESC
+alpha05    0     15       2      3         2       0       1
+alpha05    1      0       0      0         0       0       0
+alpha05    2      0       0      0         0       0       0
+alpha05    3      4       1      1         0       1       0
+alpha05    4     17       1      0         0       0       0
+alpha05    5      0       0      0         0       0       0
+alpha05    6     15       2      2         1       1       0
+alpha05    7      9       4      2         0       1       1
+alpha05    8      3       0      1         1       0       0
+alpha05    9     28       9      1         1       0       0
+    off    0      2       0      1         1       0       0
+    off    1     27       0     15         4      11       0
+    off    2     54       0     29        20       9       0
+    off    3     48       5     12         0      12       0
+    off    4     77      20      6         6       0       0
+    off    5     36       0     17        17       0       0
+    off    6      0       0      0         0       0       0
+    off    7     40       4      5         0       5       0
+    off    8     35       1     18        18       0       0
+    off    9     10       0      5         5       0       0
+
+=== AGGREGATE BY ARM ===
+    arm  n_LCS_total n_Drake_total openings    LCS-DROP  EE-RETR  BOX-ESC
+alpha05           91            19       10      5( 50.0%)   3( 30.0%)   2( 20.0%)
+    off          329            30      108     71( 65.7%)  37( 34.3%)   0(  0.0%)
+
+=== AGGREGATE (BOTH ARMS POOLED) ===
+    LCS-DROP    76  ( 64.4%)
+  EE-RETREAT    40  ( 33.9%)
+  BOX-ESCAPE     2  (  1.7%)
+       TOTAL   118
+
+=== LCS vs Drake gap (model-fidelity signal) ===
+  [alpha05] LCS-admitted EE-BOX ticks =    91  vs  Drake A_is_ee=1 ticks =    19  (LCS/Drake = 4.79x)
+  [off] LCS-admitted EE-BOX ticks =   329  vs  Drake A_is_ee=1 ticks =    30  (LCS/Drake = 10.97x)

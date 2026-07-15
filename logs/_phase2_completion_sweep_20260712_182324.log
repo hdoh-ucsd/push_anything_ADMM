@@ -1,0 +1,8 @@
+[PHASE2] out_dir=results/_phase2_completion_20260712_182324
+[PHASE2] HEAD=490a7caae49d1e0d668e357cd3740e6bc50b7dde
+[PHASE2] tree_dirty=
+
+[PHASE2] === seed=0 start 18:23:24 ===
+[PHASE2] WARN: no [RESULT] line in seed=0 log (rc=1, wall=3179s)
+
+[PHASE2] === seed=1 start 19:16:23 ===
