@@ -95,13 +95,12 @@ progress_params:
   # over enforced_over_n_loops). Aligned to reference.
   track_c3_progress_via: kConfigCostDrop
 
-  # Reference push_t progress_params_c3plus.yaml:40-41:
-  #   num_control_loops_to_wait: 5, num_control_loops_to_wait_position: 5
-  # (planner-tick counts, rate-independent). At port's 13.3 Hz planner
-  # cadence, 5 ticks = 5 × 75 ms = 0.375 s. Overriding via _s keys so the
-  # YAML-COMPAT legacy-tick path (which assumes 100 Hz) is bypassed.
-  num_control_loops_to_wait_s:          0.375   # 5 planner ticks @ 13.3 Hz
-  num_control_loops_to_wait_position_s: 0.375
+  # Reverted iter 17 (0.375 → 0.60): the tighter threshold didn't help
+  # box success on this seed. 0.60 = 8 planner ticks @ 13.3 Hz matches
+  # original port dataclass default (which was tuned at 100 Hz to 60
+  # ticks = 0.6 s wall).
+  num_control_loops_to_wait_s:          0.60
+  num_control_loops_to_wait_position_s: 0.30
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
