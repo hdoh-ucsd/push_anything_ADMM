@@ -1360,13 +1360,20 @@ class SamplingC3MPC:
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
         if not self._achieved_fixed_goal:
-            # Use _final_goal_dist (not goal_dist which is sub-goal dist)
-            # so the flag latches only when box is at the TRUE final goal.
-            if _final_goal_dist < _pos_thr and rot_error_now < _rot_thr:
+            # Reference cc:876-881 object_on_target:
+            #   crossed_ mode:   pos < pos_thr AND rot < rot_thr
+            #   !crossed_ mode:  pos < pos_thr only  (rot ignored)
+            # Port previously required both always, which prevented latch
+            # for a tumbled box that reached position but had large rot_err.
+            _on_target = (_final_goal_dist < _pos_thr
+                          and (not self._crossed_switching_threshold
+                               or rot_error_now < _rot_thr))
+            if _on_target:
                 self._achieved_fixed_goal = True
                 if self.log_diag:
                     print(f"[ACHIEVED-FIXED-GOAL] step={self._step} "
                           f"final_goal_dist={_final_goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "
+                          f"crossed={self._crossed_switching_threshold} "
                           f"— pinning free mode to prevent overshoot",
                           flush=True)
 
