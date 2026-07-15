@@ -8,9 +8,9 @@
 # removed as part of the reference-only cleanup.
 osc:
   # Reference EndEffectorKp / EndEffectorKd.
-  # 200 = reference; 400 pushed box wrong direction; 300 gave box success
-  # (overshoot 126mm past goal, orient 90° tilt). 250 = compromise.
-  Kp_cart: [250.0, 250.0, 250.0]
+  # 200 = reference; 400 pushed box wrong direction; 250 goal_dist=0.061
+  # (no success); 300 goal_dist=0.044 (success=YES). Sweet spot at 300.
+  Kp_cart: [300.0, 300.0, 300.0]
   # Was 20 (reference). Bumped to 40 to damp arm oscillation at contact:
   # iter 52: T y 19→30 mm, box orient 1.57→0.76 rad (no flip). Kd=60 got
   # box orient back to 1.57 (regression). 40 is the sweet spot.
