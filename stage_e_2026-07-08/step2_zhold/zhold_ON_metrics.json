@@ -1,0 +1,22 @@
+{
+  "log": "/root/push_anything_ADMM/stage_e_2026-07-08/step2_zhold/zhold_ON_seed0_maxtime12.log",
+  "goal_dist_final_m": 0.112,
+  "goal_motion_m": 0.188,
+  "qy_max": 0.70944,
+  "qz_max": 0.59524,
+  "n_free_ticks": 1069,
+  "n_c3_ticks": 132,
+  "n_ee_box_admit_ticks": 51,
+  "ee_box_admit_pct_of_c3": 38.63636363636363,
+  "free_mode_box_motion_m": 0.020062107324676438,
+  "c3_mode_box_motion_m": 0.32026053715090874,
+  "lam_n_first_admit": 5.2929,
+  "lam_n_last_admit": 1.136,
+  "ee_z_max_m": 0.243,
+  "wall_seconds": 1648.66,
+  "pass_qy_lt_0.10": false,
+  "pass_qz_lt_0.10": false,
+  "pass_admit_ge_60pct": false,
+  "pass_motion_ge_20mm": true,
+  "PASS": false
+}

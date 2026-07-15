@@ -3052,28 +3052,7 @@ class SamplingC3MPC:
             # interpolation → p_ee_desired sweeps from ee_now to p_c3, and
             # v_ee_desired = (p_c3 - ee_now)/dt_ctrl throughout the window.
             _sim_t_c3 = float(self._step - 1) * float(self._dt_ctrl)
-            # Descend-first guard: if arm is above box top height, restrict
-            # the trajectory to pure z-descent (freeze xy at current). Only
-            # after arm is at contact-plane height allow lateral motion.
-            # Prevents arm from sweeping laterally across box's top edge and
-            # applying off-center force → tipping the box.
-            # Box top height = obj_z + half_extent (0.05 for box).
-            _obj_z_now_c3 = float(current_q[self._obj_z_idx])
-            _shape_c3_top = getattr(self.base_mpc.formulator,
-                                    "_object_shape", "box")
-            if _shape_c3_top == "box":
-                _obj_top_z = _obj_z_now_c3 + float(getattr(
-                    self.params.sampling_params, "box_half_extent", 0.05))
-            elif _shape_c3_top == "tshape":
-                _obj_top_z = _obj_z_now_c3 + 0.02  # T bar half-height
-            else:
-                _obj_top_z = _obj_z_now_c3 + 0.05
-            _p_ee_des_guarded = np.asarray(_p_ee_des, dtype=float).reshape(3).copy()
-            if float(ee_pos_now[2]) > _obj_top_z:
-                # Above object top: freeze xy at current, descend to target z.
-                _p_ee_des_guarded[0] = float(ee_pos_now[0])
-                _p_ee_des_guarded[1] = float(ee_pos_now[1])
-            _p_c3_col = _p_ee_des_guarded.reshape(3, 1)
+            _p_c3_col = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
             _p_now_col = np.asarray(ee_pos_now, dtype=float).reshape(3, 1)
             _traj_c3 = PiecewisePolynomial.FirstOrderHold(
                 [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],

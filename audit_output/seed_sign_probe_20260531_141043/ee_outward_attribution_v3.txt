@@ -1,0 +1,44 @@
+=== EE-OUTWARD ATTRIBUTION over 118 contact-opening events ===
+
+--- PRIMARY CAUSE (priority: PHANTOM-LCS > TARGET-RETREAT > MODE-FLIP > VFF-OUTWARD > REAL-CONTACT-OPENING) ---
+                 cause    all   alpha05   off
+            TRAJ-BRUSH     13         1    12   ( 11.0% pooled)
+           PHANTOM-LCS    105         9    96   ( 89.0% pooled)
+        TARGET-RETREAT      0         0     0   (  0.0% pooled)
+             MODE-FLIP      0         0     0   (  0.0% pooled)
+           VFF-OUTWARD      0         0     0   (  0.0% pooled)
+  REAL-CONTACT-OPENING      0         0     0   (  0.0% pooled)
+
+--- PHANTOM-LCS vs REAL-CONTACT — A_is_ee at K ---
+  events with Drake-realized contact at K (A_is_ee=1): 0  (  0.0%)
+  events with phantom LCS contact at K  (A_is_ee=0):   118  (100.0%)
+
+--- PLANNER λ_n_first at K (from c3-mode [STEP]) ---
+  λ_n_first = 0 at K:      74  ( 62.7%)
+  λ_n_first > 0 at K:      44  ( 37.3%)
+  K not in c3 mode (no [STEP] λ_n_first):    0  (  0.0%)
+  λ_n_first values >0: [0.032, 0.038, 0.042, 0.045, 0.055, 0.061, 0.062, 0.08, 0.109, 0.114]...
+
+--- APPROACH-OVERRIDE PHASE at K ---
+  <no override active>             118  (100.0%)
+
+--- FLAG-COMBINATION DISTRIBUTION (every event, all flags that tripped) ---
+  PHANTOM-LCS+PLANNER-LAMBDA-ZERO             64  ( 54.2%)
+  PHANTOM-LCS                                 39  ( 33.1%)
+  PHANTOM-LCS+PLANNER-LAMBDA-ZERO+TRAJ-BRUSH     9  (  7.6%)
+  PHANTOM-LCS+TRAJ-BRUSH                       4  (  3.4%)
+  PHANTOM-LCS+VFF-OUTWARD                      1  (  0.8%)
+  PHANTOM-LCS+PLANNER-LAMBDA-ZERO+VFF-OUTWARD     1  (  0.8%)
+
+--- INDIVIDUAL FLAG TRIP RATES (multi-counted) ---
+  PHANTOM-LCS            118  (100.0% of events)
+  PLANNER-LAMBDA-ZERO     74  ( 62.7% of events)
+  TRAJ-BRUSH              13  ( 11.0% of events)
+  VFF-OUTWARD              2  (  1.7% of events)
+
+--- EE-OUTWARD MOTION MAGNITUDE BREAKDOWN ---
+  events with EE moving OUTWARD (ee_out_mm > 0): 112
+  events with EE moving INWARD  (ee_out_mm < 0): 6
+  events with EE stationary in normal dir       : 0
+  median outward motion (mm/tick): 0.858
+  mean   outward motion (mm/tick): 0.786

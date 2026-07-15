@@ -1,0 +1,12 @@
+[task4] HEAD=c8402b35c237a6b1e42845486829c6dca2ff0293
+[task4] params.py before sed:
+537:    nominal_push_force: float = 5.0
+541:    min_push_force: float = 2.0
+770:            nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
+771:            min_push_force       = float(raw.get("min_push_force", 2.0)),
+[task4] sed-verify: nominal=1 min=1 nominalfb=1 minfb=1
+[task4] params.py after restore (trap):
+537:    nominal_push_force: float = 5.0
+541:    min_push_force: float = 2.0
+770:            nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
+771:            min_push_force       = float(raw.get("min_push_force", 2.0)),

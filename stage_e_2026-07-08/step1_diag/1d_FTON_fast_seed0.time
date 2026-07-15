@@ -1,0 +1,25 @@
+INFO:drake:Meshcat listening for connections at http://localhost:7000
+	Command being timed: "env PUSHA_G_WEIGHT_EE_BOX_FINAL=1 PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING=1 PUSHA_STAGE5_U_HORIZONTAL=50 PUSHA_STAGE5_U_VERTICAL=3 PUSHA_STAGE5_R_VECTOR=0.1,0.1,10 REF_RECONCILE_APPROACH=1 LCS_ALWAYS_ON_EE_BOX=1 PUSHA_FORCE_ROUTING=u_sol PUSHA_EE_APPROACH_FACE_TARGET=1 PUSHA_DISABLE_C3_OVERRIDE=1 PUSHA_REPOSITION_PWL=1 python main.py pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --sampling-c3 config/sampling_c3_kik_fast.yaml --admm-iter 25 --max-time 12 --seed 0 --no-record --math-diag"
+	User time (seconds): 2084.37
+	System time (seconds): 227.27
+	Percent of CPU this job got: 129%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 29:51.35
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 293688
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 106861273
+	Voluntary context switches: 10581
+	Involuntary context switches: 13972
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 18368
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+STEP1D_EXIT=0
