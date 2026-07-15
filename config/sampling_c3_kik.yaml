@@ -64,8 +64,11 @@ surrogate_admm_iters: 3
 # flips values). At defaults dt_osc == dt_mpc so N_plan = 1 and the
 # planner solves every OSC tick — pre-Stage-2b behavior preserved.
 # Paper target: dt_osc ≈ 0.001 (1 kHz OSC), dt_mpc ≈ 0.025-0.143 (7-40 Hz MPC).
-dt_osc: 0.01
-dt_mpc: 0.01
+# Runtime rates: main.py runs OSC sub-tick loop at 1 kHz (dt_osc=0.001)
+# and planner at 13.3 Hz (dt_mpc=0.075). Aligning YAML so the wrapper's
+# Stage-2b decoupling (elapsed, horizon indexing) sees correct rates.
+dt_osc: 0.001
+dt_mpc: 0.075
 
 # Stage 2 L1: goal-aligned contact-normal requirement at admission gate.
 # Conformance landing (early_window verdict): entry-align gate is STRUCTURALLY
