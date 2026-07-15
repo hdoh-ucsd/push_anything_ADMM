@@ -61,15 +61,24 @@ def _hysteresis(params: ProgressParams,
     Absolute mode: returns the hyst_* field (in cost units).
     Relative mode: returns hyst_*_frac (or _frac_position) × |ref_cost|.
     """
+    # Reference (sampling_based_c3_controller.cc:1107-1114):
+    #   if (!crossed_cost_switching_threshold_)         # far from goal
+    #       hyst_c3_to_repos = hyst_c3_to_repos_position
+    #   else                                            # near goal
+    #       hyst_c3_to_repos = hyst_c3_to_repos
+    # → _position variants apply FAR from goal (position-dominant regime);
+    #   non-_position variants apply NEAR goal (pose-tracking regime).
+    # Port previously inverted this (used _position when near_goal). Fixed.
+    _use_position = not near_goal
     if params.use_relative_hysteresis:
         if kind == "c3_to_repos":
-            frac = (params.hyst_c3_to_repos_frac_position if near_goal
+            frac = (params.hyst_c3_to_repos_frac_position if _use_position
                     else params.hyst_c3_to_repos_frac)
         elif kind == "repos_to_c3":
-            frac = (params.hyst_repos_to_c3_frac_position if near_goal
+            frac = (params.hyst_repos_to_c3_frac_position if _use_position
                     else params.hyst_repos_to_c3_frac)
         elif kind == "repos_to_repos":
-            frac = (params.hyst_repos_to_repos_frac_position if near_goal
+            frac = (params.hyst_repos_to_repos_frac_position if _use_position
                     else params.hyst_repos_to_repos_frac)
         else:
             raise ValueError(f"Unknown hysteresis kind: {kind}")
@@ -77,13 +86,13 @@ def _hysteresis(params: ProgressParams,
 
     # Absolute mode
     if kind == "c3_to_repos":
-        return (params.hyst_c3_to_repos_position if near_goal
+        return (params.hyst_c3_to_repos_position if _use_position
                 else params.hyst_c3_to_repos)
     if kind == "repos_to_c3":
-        return (params.hyst_repos_to_c3_position if near_goal
+        return (params.hyst_repos_to_c3_position if _use_position
                 else params.hyst_repos_to_c3)
     if kind == "repos_to_repos":
-        return (params.hyst_repos_to_repos_position if near_goal
+        return (params.hyst_repos_to_repos_position if _use_position
                 else params.hyst_repos_to_repos)
     raise ValueError(f"Unknown hysteresis kind: {kind}")
 
