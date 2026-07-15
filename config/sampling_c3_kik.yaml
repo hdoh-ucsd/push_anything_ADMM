@@ -253,15 +253,17 @@ sampling_params:
   face_bias_strength:      0.0
 
   # Robot workspace bounds; samples failing this are pruned.
-  # (xy_min/xy_max define a planar rectangle, z_min/max define the z slab.)
-  workspace_xy_min: [-0.5, -0.7]
-  # F3: y_max raised from 0.0 to 0.13 to match sampling_radius.
-  # See journal 2026-05-13/14 and docs/_archive/paper_alignment_plan_2026-05-13.md.
-  # Phase 2 sweep showed M1 strat_0 generation: 17% → 100% with no
-  # downstream M3 regression; bit-identical on M3 across {0.10, 0.13, 0.15, 0.20}.
-  workspace_xy_max: [ 0.5,  0.13]
+  # Reference anything/sampling_c3plus_options.yaml:
+  #   workspace_limits x=[0.23, 0.8], y=[-0.507, 0.507], z=[-0.04, 0.3]
+  # Reference Franka base at world (0,0), port Franka same → port frame
+  # matches reference y-frame. Prior port y=[-0.7, 0.13] was clipped and
+  # prevented arm from following T beyond y=0.13 (T goal_y=+0.187 needs
+  # arm at y ≈ 0.14 during push, unreachable). Port x-frame is shifted
+  # (port objects at origin, reference at +0.5) so x-range is centered.
+  workspace_xy_min: [-0.5,  -0.507]
+  workspace_xy_max: [ 0.5,   0.507]
   workspace_z_min:  0.02
-  workspace_z_max:  0.30
+  workspace_z_max:  0.3
 
   filter_samples_for_safety: true
 
