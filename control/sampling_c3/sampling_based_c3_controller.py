@@ -1332,12 +1332,19 @@ class SamplingC3MPC:
         config_cost_now = (w_obj_xy * (_final_goal_dist ** 2)
                            + w_yaw * (_half_yaw_err ** 2))
 
-        self.progress.update(StepMetrics(
-            c3_cost     = c_curr,
-            config_cost = config_cost_now,
-            pos_error   = _final_goal_dist,
-            rot_error   = rot_error_now,
-        ))
+        # Reference sampling_based_c3_controller.cc:1150-1157 calls
+        # KeepTrackOfC3ModeProgress ONLY when is_doing_c3_ == true.
+        # Port previously updated progress tracker every tick (both modes),
+        # polluting the history with free-mode ticks. The metric-drop
+        # test (kConfigCostDrop) is designed to detect C3-mode stalls;
+        # free-mode ticks skew the front/back window.
+        if self._prev_mode == "c3":
+            self.progress.update(StepMetrics(
+                c3_cost     = c_curr,
+                config_cost = config_cost_now,
+                pos_error   = _final_goal_dist,
+                rot_error   = rot_error_now,
+            ))
 
         # Reference achieved_fixed_goal_ (sampling_based_c3_controller.cc:887-897):
         # when the object is at goal (position_success_threshold=0.02 m
