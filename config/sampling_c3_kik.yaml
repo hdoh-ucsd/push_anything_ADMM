@@ -90,7 +90,10 @@ progress_params:
   # Which progress metric drives the timeout decision.
   # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kPosOnly | kConfigCostDrop
   # kPosOnly: pushing-task variant; avoids the rot=0 OR-mask in kPosOrRotCost.
-  track_c3_progress_via: kPosOnly
+  # Reference push_t progress_params_c3plus.yaml:30 track_c3_progress_via: 3
+  # (kConfigCostDrop = require config cost to drop by ≥ enforced_cost_drop
+  # over enforced_over_n_loops). Aligned to reference.
+  track_c3_progress_via: kConfigCostDrop
 
   # Reference push_t progress_params_c3plus.yaml:40-41:
   #   num_control_loops_to_wait: 5, num_control_loops_to_wait_position: 5
