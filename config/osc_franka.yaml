@@ -18,10 +18,26 @@ osc:
 
   # Reference w_elbow=1, elbow_kp=200, elbow_kd=10, target=1.1 rad
   # (osc_params.yaml:42-44 / franka_osc_controller.cc:159-165).
+  #
+  # Reference sends `panda_joint2_target = q_init_franka[1] = 1.1 rad`
+  # continuously via LCM. In reference, arm INIT joint2 is 1.1 → zero
+  # posture error and joint2 is pinned at that raised-shoulder pose,
+  # matching reference's Franka mount (arm reaches down from a raised
+  # platform onto the box/T). Port's Franka is welded at world origin
+  # (not raised), so a raised-shoulder pose can't reach the low-z targets.
+  # Port's INITIAL_ARM_Q[1]=0.675 is a different pose calibrated for the
+  # port frame; setting target=1.1 pulled arm UP, setting target=0.675
+  # PINNED arm at start pose (both prevent Cartesian z-descent to box).
+  #
+  # The joint2 posture cost is a REFERENCE FRAME-SPECIFIC compensation
+  # that doesn't apply to the port's frame. Setting W_joint2=0 removes
+  # it entirely — port relies on task tracking (Kp_cart=200) plus
+  # nullspace posture (Kp_null=10) for arm posture, which is sufficient
+  # without an over-strong elbow pin.
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  W_joint2:            1.0
-  joint2_target_rad:   1.1
+  W_joint2:            0.0    # DISABLED — pin harmful in port's Franka frame
+  joint2_target_rad:   0.675  # (unused when W_joint2=0; kept for spec-comparable diagnostic)
   joint2_idx:            1
 
   # Reference EndEffectorW = diag(1,1,1).
