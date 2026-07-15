@@ -86,6 +86,11 @@ class LCSFormulator:
         self._box_half_extents = None
         self._ground_z = 0.0
 
+        # Cache of the most recent planner-dt seen by linearize_discrete*.
+        # Used by _maybe_dump_filter_audit to report sim_t correctly; was
+        # previously hardcoded as step*0.01 assuming 100 Hz.
+        self._last_planner_dt: float = 0.01
+
         self.n_q = plant.num_positions()
         self.n_v = plant.num_velocities()
         self.n_u = plant.num_actuators()
@@ -828,7 +833,10 @@ class LCSFormulator:
         # --- Mark fired BEFORE printing so a print exception doesn't loop us.
         self._diag_dumped = True
         step = self._diag_step_count
-        sim_t = step * 0.01  # MPC dt is 10 ms
+        # Use last-seen planner dt cached at linearize_discrete{,_ee_space}
+        # entry (was hardcoded 0.01 assuming 100 Hz; after freq-match to
+        # dt=0.075, that under-reported sim_t by ~7.5×).
+        sim_t = step * self._last_planner_dt
 
         # Write through a single open file handle. Stdout still gets a brief
         # tee'd header so live observers see that the audit fired, but every
@@ -987,6 +995,7 @@ class LCSFormulator:
 
     # ------------------------------------------------------------------
     def linearize_discrete(self, context, dt: float, u_lin=None):
+        self._last_planner_dt = float(dt)
         """
         Linearize the Drake plant into a discrete-time LCS at (q*, v*, u*).
 
@@ -1273,6 +1282,7 @@ class LCSFormulator:
     def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
                                     force_top_k_ee_box: bool = False):
+        self._last_planner_dt = float(dt)
         # d.1 — reference-conforming pair admission for the planner LCS.
         # When the caller didn't already opt in (force_top_k_ee_box=False,
         # the ci_mpc_c3plus.py planner default) AND the object is a tshape
