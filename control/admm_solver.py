@@ -128,9 +128,11 @@ class C3Solver:
         # applied per-iter over admm_iter=3 iters (total 27× growth).
         # DISABLED by default: the per-iter P-diagonal update was cheap but
         # the QP solve time itself grew hugely under the resulting large ρ.
-        # Reference rho_scale=3 default; port opted out for perf. Enabling
-        # to match reference; may slow ADMM but conformance-correct.
-        self._rho_scale = 3.0
+        # Reference rho_scale=3 default; port opted out because per-iter
+        # P-diagonal update was cheap but QP solve time grew hugely under
+        # large ρ. Iter 28 attempt to set 3.0 regressed box success
+        # (goal_dist 0.049→0.307). Keeping port default 1.0.
+        self._rho_scale = 1.0
         # 4.g — reference sampling_c3plus_options.yaml end_on_qp_step: false
         # → do an LCS rollout of x from x0 using solved (u, λ) after the
         # ADMM loop, so the returned x_seq is LCS-feasible even under
