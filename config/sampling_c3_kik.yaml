@@ -30,9 +30,10 @@
 w_align:  30000.0
 
 # Cartesian travel penalty per metre on sample selection.
-# 50 cm reposition costs +100 cost units, comparable to a few percent
-# of typical c_C3 ~ 60000.
-w_travel: 200.0
+# Reference push_t progress_params_c3plus.yaml:36 travel_cost_per_meter: 0.
+# Port had 200 — a port-only sample-cost augmentation that disincentivized
+# distant repos targets. Setting to 0 removes the port-only bias.
+w_travel: 0.0
 
 # Reference alignment (§7.51 bank): matches ref LambdaEndEffectorW=diag(1,1,1).
 # This is a default-changing edit: dataclass default is 100, ref-faithful is 1.
