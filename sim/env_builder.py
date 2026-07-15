@@ -10,21 +10,17 @@ import pydrake.all as ad
 # Panda base weld: arm sits 0.6 m behind table centre along -Y
 ROBOT_BASE_XYZ = [0.0, -0.6, 0.0]
 
-# Confirmed working pose: EE at (0.347, -0.600, 0.097) world at t=0,
-# no self-collisions. Forward-lean places EE near table height.
-INITIAL_ARM_Q = np.array([
+# IK seed for compute_safe_init_arm_q. Not used directly as the start
+# pose — `compute_safe_init_arm_q` runs IK from this seed to place the EE
+# at a task-specific safe-offset position (opposite goal direction, above
+# object top). Retained for continuity with prior compute_prepositioned
+# IK cascades.
+_INITIAL_ARM_Q_SEED = np.array([
     +0.552150, +0.675037, +0.976275, -2.246164, -0.188979, +3.044706, +0.785000,
 ])
-# FK: EE at (0.000, 0.000, 0.200) — 20 cm directly above the box centre
-
-
-# Legacy pre-positioned start pose: pusher already touching box's west face.
-# Hand-tuned for the EAST push only — does not generalise to other directions.
-# Kept as a fallback seed for `compute_prepositioned_arm_q` when the IK cascade
-# from `INITIAL_ARM_Q` fails to converge for a particular push direction.
-_LEGACY_PREPOSITIONED_ARM_Q = np.array([
-    +0.602050, +1.368574, +1.119371, -1.896220, +1.722135, +2.991599, +0.785000,
-])
+# FK of the seed: EE at (0.000, 0.000, 0.200) — this is the OLD default
+# that placed EE directly over box CoM and caused the descend-through-box
+# bug. Kept only as an IK warm-start seed; runtime uses IK-derived pose.
 
 # Dedicated pusher body — spherical puck rigidly welded to panda_link8.
 # This is the single authoritative name for EE body and contact filter.
@@ -486,47 +482,30 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
 # Prepositioned-pose IK (push-direction-aware)
 # ---------------------------------------------------------------------------
 
-def compute_prepositioned_arm_q(plant,
-                                plant_ctx,
-                                panda_model,
-                                ee_frame,
-                                obj_body,
-                                task_cfg: dict,
-                                *,
-                                contact_clearance: float = +0.001,
-                                intermediate_z:    float = 0.25,
-                                seed_arm_q:        np.ndarray = None,
-                                verbose:           bool = True) -> np.ndarray:
-    """Solve IK so the pusher rests on the object face opposite the goal.
+def compute_safe_init_arm_q(plant,
+                            plant_ctx,
+                            panda_model,
+                            ee_frame,
+                            obj_body,
+                            task_cfg: dict,
+                            *,
+                            safe_xy_offset:  float = 0.15,
+                            safe_z_margin:   float = 0.05,
+                            intermediate_z:  float = 0.30,
+                            seed_arm_q:      np.ndarray = None,
+                            verbose:         bool = True) -> np.ndarray:
+    """Solve IK to place the pusher OPPOSITE the goal at safe altitude.
 
-    Why this exists
-    ---------------
-    The default `contact_clearance` of +1 mm seats the pusher just outside
-    the object (1 mm gap, no interpenetration). The LCS contact filter's
-    `distance_threshold=0.10 m` still returns this pair, so `_last_nhats`
-    is non-empty and the alignment bonus on `c_sample[k=0]` still fires —
-    `decide_mode` takes the `kToC3Cost` branch on step 0 just as it did
-    with the previous -2 mm seed. The change avoids the contact-separation
-    impulse the previous -2 mm penetration produced at t=0, which (coupled
-    with an off-limit IK solution at joint 6) launched the box off the
-    table within 0.5 s.
+    Places EE at:
+      xy = obj_xy - g_hat * (object_half_extent + safe_xy_offset)
+      z  = object_top + safe_z_margin
 
-    A two-stage IK cascade (lifted waypoint, then descend) is used because
-    `INITIAL_ARM_Q` parks the EE ~0.7 m from the WEST/NORTH targets and a
-    single DLS pass gets stuck in local minima for those directions.
-
-    Parameters
-    ----------
-    contact_clearance : float
-        Signed gap between the pusher surface and the object face along
-        `g_hat`. Positive (default +1 mm) places the pusher just outside
-        contact; the LCS filter still captures the pair so the
-        alignment-bonus path through `decide_mode` is unchanged. The
-        previous default of -2 mm caused a contact-separation impulse on
-        the very first integration step.
+    This avoids the descend-through-box bug (prior INITIAL_ARM_Q's
+    EE-at-(0,0,0.2) put the sphere directly over the box; PWL Phase-1
+    straight-down descent passed through box top since pwl_waypoint_height
+    < box_top). By starting OFFSET in xy on the goal-opposite side and
+    ABOVE box top, the first PWL lift/descend has clear space.
     """
-    # Local import keeps env_builder.py free of control/* deps when this
-    # function isn't called.
     from control.sampling_c3.ik import solve_ik_to_ee_pos
 
     init_xyz = np.asarray(task_cfg["init_xyz"], dtype=float)
@@ -536,37 +515,38 @@ def compute_prepositioned_arm_q(plant,
     norm     = float(np.linalg.norm(delta))
     if norm < 1e-9:
         raise ValueError(
-            "compute_prepositioned_arm_q: goal coincides with object init "
+            "compute_safe_init_arm_q: goal coincides with object init "
             "position — push direction undefined."
         )
     g_hat = delta / norm
 
     obj_type = task_cfg["object_type"]
     if obj_type == "box":
-        sx, sy, _sz = task_cfg["size"]
+        sx, sy, sz = task_cfg["size"]
         half_extent = abs(g_hat[0]) * sx / 2.0 + abs(g_hat[1]) * sy / 2.0
+        obj_top_z   = init_xyz[2] + sz / 2.0
     elif obj_type == "sphere":
-        half_extent = float(task_cfg["radius"])
+        r = float(task_cfg["radius"])
+        half_extent = r
+        obj_top_z   = init_xyz[2] + r
     elif obj_type == "tshape":
-        # Direction-aware bound: the T occupies x∈[-0.07,+0.13], y∈[-0.08,+0.08]
-        # in link frame. For a +y push (stem south face), y half-extent = 0.08.
-        # For a +x push (crossbar tip), x half-extent = 0.13. Project g_hat
-        # onto both axes and pick the max — matches the box formula which
-        # uses `|gx|·sx/2 + |gy|·sy/2` but with per-axis T extents.
-        # Over-estimating (loose 0.13) left the EE 5 cm short of contact for
-        # push_t's dominant-y push direction (goal_yaw target).
+        # T occupies x∈[-0.07,+0.13], y∈[-0.08,+0.08], z half-extent 0.02.
         half_extent = abs(g_hat[0]) * 0.13 + abs(g_hat[1]) * 0.08
+        obj_top_z   = init_xyz[2] + 0.02
     else:
         raise ValueError(
-            f"compute_prepositioned_arm_q: unknown object_type '{obj_type}' "
+            f"compute_safe_init_arm_q: unknown object_type '{obj_type}' "
             "(expected 'box', 'sphere', or 'tshape')."
         )
 
-    contact_offset = half_extent + PUSHER_RADIUS + contact_clearance
-    p_target_xy = obj_xy - contact_offset * g_hat
-    p_target    = np.array([p_target_xy[0], p_target_xy[1], init_xyz[2]])
+    # SAFE-OFFSET target: xy offset opposite goal direction by
+    # (object half-extent + safe_xy_offset), z above object top by margin.
+    safe_offset = half_extent + PUSHER_RADIUS + safe_xy_offset
+    p_target_xy = obj_xy - safe_offset * g_hat
+    p_target_z  = obj_top_z + safe_z_margin
+    p_target    = np.array([p_target_xy[0], p_target_xy[1], p_target_z])
 
-    seed = INITIAL_ARM_Q if seed_arm_q is None else np.asarray(seed_arm_q, float)
+    seed = _INITIAL_ARM_Q_SEED if seed_arm_q is None else np.asarray(seed_arm_q, float)
     plant.SetPositions(plant_ctx, panda_model, seed)
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
@@ -604,7 +584,7 @@ def compute_prepositioned_arm_q(plant,
 
     if verbose:
         print(
-            f"[ENV]  --prepositioned: g_hat={g_hat.round(3).tolist()} "
+            f"[ENV]  safe-init pose: g_hat={g_hat.round(3).tolist()} "
             f"target={p_target.round(4).tolist()} "
             f"ee_after_ik={ee_after.round(4).tolist()} "
             f"ik_err=(stage1={err1*1000:.2f}mm/{it1}it, "
@@ -613,8 +593,8 @@ def compute_prepositioned_arm_q(plant,
         if err2 > 5e-3:
             print(
                 f"[ENV]  WARN stage-2 IK error {err2*1000:.2f}mm > 5mm — "
-                "contact may not be captured at t=0. Try "
-                "seed_arm_q=_LEGACY_PREPOSITIONED_ARM_Q or raise intermediate_z."
+                "safe init pose may be off. Raise intermediate_z or "
+                "check task_cfg."
             )
 
     return q2[:n_arm_dofs]

@@ -37,7 +37,9 @@ from typing import Any
 
 import yaml
 
-from sim.env_builder import INITIAL_ARM_Q
+# NOTE: INITIAL_ARM_Q import removed — env_builder no longer exports it.
+# The comment references at lines below are historical (documenting the
+# rationale for q_nominal[1]=0.325 vs the old INITIAL_ARM_Q[1]=0.675).
 
 
 # ---------------------------------------------------------------------------
