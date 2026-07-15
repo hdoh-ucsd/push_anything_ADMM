@@ -8,9 +8,7 @@
 # removed as part of the reference-only cleanup.
 osc:
   # Reference EndEffectorKp / EndEffectorKd.
-  # Was 200 (reference). Bumped to 400 for critical damping paired with
-  # Kd=40 (critical Kd = 2*sqrt(Kp*m) = 2*sqrt(400) ≈ 40 for m≈1kg).
-  Kp_cart: [400.0, 400.0, 400.0]
+  Kp_cart: [200.0, 200.0, 200.0]
   # Was 20 (reference). Bumped to 40 to damp arm oscillation at contact:
   # iter 52: T y 19→30 mm, box orient 1.57→0.76 rad (no flip). Kd=60 got
   # box orient back to 1.57 (regression). 40 is the sweet spot.
