@@ -206,14 +206,25 @@ class ProgressTracker:
             return self._steps_since_pos_improve < wait
 
         if m == ProgressMetric.kConfigCostDrop:
-            # over the last N loops, cost must have dropped by ≥ required
-            # 2026-06-25 reconciliation: read _s field, convert to int ticks
+            # Reference sampling_based_c3_controller.cc:2267-2299 uses a
+            # RELATIVE fraction:
+            #   cost_progress_fraction = (back - front) / front
+            #   if cost_progress_fraction > -cost_drop: NOT met
+            # → met iff (front - back) / front >= cost_drop.
+            # Port previously compared absolute drop >= cost_drop, which
+            # made yaml value 0.5 mean "0.5 raw cost units" — trivially
+            # satisfied at 100k-scale costs. Now interpreted as a fraction
+            # (0.5 = 50% cost drop required).
             n = int(round(self.params.progress_enforced_over_duration_s / self._dt_ctrl))
             if len(self._config_cost_history) < n + 1:
                 return True   # not enough history yet — give the benefit of the doubt
             window = self._config_cost_history[-(n + 1):]
-            drop = window[0] - window[-1]
-            return drop >= self.params.progress_enforced_cost_drop - self._IMPROVEMENT_EPS
+            front = window[0]
+            back  = window[-1]
+            if abs(front) < 1e-12:
+                return True   # avoid divide-by-zero — treat as met
+            fraction = (back - front) / front
+            return fraction <= -self.params.progress_enforced_cost_drop + self._IMPROVEMENT_EPS
 
         raise ValueError(f"Unknown ProgressMetric: {m}")
 
