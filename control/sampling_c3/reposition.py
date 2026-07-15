@@ -298,20 +298,20 @@ class PiecewiseLinearTracker:
         _landing_err = float(np.linalg.norm(p_des - p_target))
 
         # Trajectory-finished signal: EE physically at the repos target.
-        # Legacy z-aware predicate (2026-06-16 gate) — ee_z within 5 mm of
-        # p_target.z. This is what the box's mode-switch consumes directly
-        # via self._last_repos_finished at wrapper.py:1224. The T config
-        # takes a different path — the PWL trajectory's is_finished
-        # (wrapper.py:1237) overrides this — so this predicate is
-        # preserved for the box path.
-        #
-        # `finished_val` (added 2026-07-13, BUG 1 wiring): euclidean
-        # residual ‖p_target − ee_now‖. Emitted in the diag dict so
-        # [STEP] displays a numeric value instead of `nan` — closes the
-        # display-side of the plumbing gap. Pure diagnostic — no behavior
-        # change.
+        # Was z-only (`|ee_z - p_target_z| ≤ 5 mm`). After fc51111 flipped
+        # use_reposition_pwl_trajectory to True by default, the wrapper's
+        # line 1269 overrides finished_repos with the PWL trajectory's own
+        # is_finished (20 mm 3D tol) for the mode-switch decision — but
+        # `_last_repos_finished` (written from `finished` below at wrapper
+        # line 2259) is ALSO consumed at wrapper line 1155 to inflate the
+        # prev_repos sample cost by finished_reposition_cost. The z-only
+        # check fired false-positives whenever the arm's z happened to
+        # pass through the repos-target z on descent (e.g. box run: EE
+        # z=0.20 → 0.030 sweeps through), spuriously inflating prev_repos
+        # cost mid-descent → target-flip instability. Use 3 D euclidean
+        # with 20 mm tolerance to match the PWL is_finished predicate.
         finished_val = float(np.linalg.norm(p_target - ee_now))
-        finished     = abs(float(ee_now[2]) - float(p_target[2])) <= 0.005
+        finished     = finished_val <= 0.020
 
         diag = dict(
             up_norm         = float(np.linalg.norm(u_p)),
