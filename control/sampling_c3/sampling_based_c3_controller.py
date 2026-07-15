@@ -1379,10 +1379,17 @@ class SamplingC3MPC:
         # feed I fixed in bf2828b. Use _final_goal_dist for the crossed check.
         if not self._crossed_switching_threshold and _final_goal_dist < _cost_switch_thr:
             self._crossed_switching_threshold = True
+            # Reference cc:845-847: reset progress metrics when threshold
+            # is crossed while doing c3. Pose regime uses different cost
+            # scaling than position regime, so stale position-regime
+            # progress history would trigger spurious kToReposUnproductive.
+            if self._prev_mode == "c3":
+                self.progress.reset()
             if self.log_diag:
                 print(f"[CROSSED-COST-THRESHOLD] step={self._step} "
                       f"final_goal_dist={_final_goal_dist:.4f}m < {_cost_switch_thr:.4f}m — "
-                      f"switching to pose-tracking (non-_position) hyst variants",
+                      f"switching to pose-tracking (non-_position) hyst variants"
+                      f"{' + progress reset' if self._prev_mode == 'c3' else ''}",
                       flush=True)
         near_goal = self._crossed_switching_threshold
         # Reposition is "finished" iff the PWL tracker reports the EE within
