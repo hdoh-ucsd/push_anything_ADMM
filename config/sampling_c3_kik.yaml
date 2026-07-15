@@ -196,7 +196,12 @@ sampling_params:
   # 30 ≈ 0.3 sec at dt_ctrl=0.01s, ~IK convergence time on the ring.
   # Buffer also force-refreshes on arrival (finished_repos fires) and
   # on mode transitions that change n_strategy.
-  sample_buffer_lifetime:      30
+  # Port-only tick-expiry mechanism. Reference has no such lifetime — the
+  # sample buffer is purged only by pos/ang retention criteria (retention_
+  # 0.004 m / 0.05 rad, N_sample_buffer=200 above). Setting to a large
+  # sim-time value effectively disables the tick expiry (60 s > 8 s max_time
+  # in the current sanity runs).
+  sample_buffer_lifetime_s:    60.0
 
   # Geometric parameters (interpretation depends on sampling_strategy).
   sampling_radius: 0.075        # m, candidate-ring radius — set to contact distance (box half-width 0.05 + EE radius 0.025) so IK targets land on the contact face
