@@ -677,6 +677,11 @@ def main():
     # For c3plus: 0.075 s → planner ticks ~13.3 Hz (matches reference
     # sampling_c3plus_options.yaml planning_dt_position/pose = 0.075).
     dt_ctrl       = float(_dt_ctrl_pass)
+    # Yaw sub-goal clip hysteresis state (reference goal_params.yaml:24
+    # angle_hysteresis: 0.4). Once we've entered the clip regime, require
+    # |Δyaw| to fall below (lookahead_angle - hysteresis) before un-clipping.
+    # Prevents sub-goal orientation flip near the 180° error singularity.
+    _yaw_clip_active = False
     # 1 kHz OSC decoupling — mirror dairlib's LcmDrivenLoop where the OSC
     # subscribes to the last-published planner trajectory and ticks at
     # osc_params.yaml:2 `controller_frequency: 1000`. Every outer iteration
@@ -747,7 +752,8 @@ def main():
         # object yaw so a distant orientation goal doesn't force the
         # planner to reason over a large rotation in one solve. Yaw
         # extraction from box quaternion (qw, qx, qy, qz) at pos_start.
-        _lookahead_angle = 2.0  # rad
+        _lookahead_angle = 2.0  # rad, reference goal_params.yaml:18/20
+        _yaw_hysteresis  = 0.4  # rad, reference goal_params.yaml:24
         _qw = float(current_q[pos_start + 0])
         _qx = float(current_q[pos_start + 1])
         _qy = float(current_q[pos_start + 2])
@@ -758,7 +764,15 @@ def main():
         ))
         _dyaw = float(np.arctan2(np.sin(target_yaw - _yaw_now),
                                  np.cos(target_yaw - _yaw_now)))
-        if abs(_dyaw) > _lookahead_angle:
+        # Hysteresis: enter clip at |Δyaw| > lookahead_angle; only exit clip
+        # when |Δyaw| falls below (lookahead_angle - hysteresis).
+        if _yaw_clip_active:
+            if abs(_dyaw) < (_lookahead_angle - _yaw_hysteresis):
+                _yaw_clip_active = False
+        else:
+            if abs(_dyaw) > _lookahead_angle:
+                _yaw_clip_active = True
+        if _yaw_clip_active:
             _effective_target_yaw = float(_yaw_now
                                           + np.sign(_dyaw) * _lookahead_angle)
         else:
