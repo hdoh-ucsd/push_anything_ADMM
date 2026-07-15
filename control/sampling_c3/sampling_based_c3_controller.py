@@ -2446,16 +2446,8 @@ class SamplingC3MPC:
                         current_q[self._obj_x_idx],
                         current_q[self._obj_y_idx],
                     ])
-                    # Target 5 mm INSIDE the object face so arm continually
-                    # presses (sustains contact) rather than parking at
-                    # exact contact position. For T (mass 1 kg) with the
-                    # corrected face_offset (iter 37), F_on_box spiked to
-                    # 4-16 N but only on 27 % of ticks — arm was
-                    # bouncing off. Overshoot into body → constant contact.
-                    _penetration = 0.050
                     _contact_offset = (_face_offset
-                                       + float(getattr(self, "_pusher_radius", 0.0195))
-                                       - _penetration)
+                                       + float(getattr(self, "_pusher_radius", 0.0195)))
                     # z target locked at the object CoM z (contact plane).
                     # Previously locked to ee_pos_now[2] at first c3 entry,
                     # which for box was 0.20 m (initial prepositioning) —
