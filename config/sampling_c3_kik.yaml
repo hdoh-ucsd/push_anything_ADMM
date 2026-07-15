@@ -162,10 +162,11 @@ progress_params:
   # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
   # ~30 steps, fragmenting free mode into incomplete descents. The new
   # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
-  # Reference push_t: 0.4, 0.6. Iter 50: raised to 0.95 to make c3 stickier
-  # (dispatcher reluctant to exit c3). T needs sustained contact to push.
-  hyst_c3_to_repos_frac:                  0.95
-  hyst_c3_to_repos_frac_position:         0.95
+  # Reference push_t progress_params_c3plus.yaml:60-61: 0.4, 0.6.
+  # (Prior 0.95 was an off-reference tune to make c3 stickier for T. Per
+  # "stick to reference values" rule the port matches the reference.)
+  hyst_c3_to_repos_frac:                  0.4
+  hyst_c3_to_repos_frac_position:         0.6
   # Repos→C3 hysteresis raised to 0.9 (push_t reference value) when
   # moving to the cost-based entry gate.  The dispatcher now applies the
   # fraction to best_other_cost (matching the reference at line 765), so
