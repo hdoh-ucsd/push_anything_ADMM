@@ -737,7 +737,9 @@ class SamplingC3Params:
     # 30mm-setback target, leaving the EE ~35mm shy of contact -> LCS
     # admits no EE-BOX pair -> contact-loss exit after 5 steps. (12/13
     # canonical c3 sessions failed this way before the fix.)
-    use_contact_entry_gate: bool = True
+    # Port-only gate — reference has no contact-proximity entry gate.
+    # Reference dispatcher relies on cost hysteresis + progress tracker.
+    use_contact_entry_gate: bool = False
     # Threshold on ‖ee_now − box_center‖ in meters. Default 0.090 m
     # (loosened from 0.080 after the both_fixes_20260521_193033 run
     # found that IK arrivals systematically land at 80-95 mm — a 0.080
@@ -766,7 +768,8 @@ class SamplingC3Params:
     # supersedes contact_entry_threshold. Goal-agnostic — applies to
     # translation tasks too; threshold chosen to preserve their
     # engagement behavior.
-    use_surface_entry_gate: bool = True
+    # Port-only surface-distance entry gate — reference has no such gate.
+    use_surface_entry_gate: bool = False
     contact_entry_surface_threshold: float = 0.060
 
     # Stage 2 L1: goal-aligned contact-normal requirement at admission.
@@ -818,7 +821,9 @@ class SamplingC3Params:
     # formulator._last_contact_info which is empty 80 mm pre-contact;
     # L2 keys on _current_repos_target which is populated by
     # definition when finished_repos==True.
-    use_commit_face_gate: bool = True
+    # Port-only face-selection gate on c3 entry — reference doesn't gate by
+    # face alignment; dispatcher lets the sample scorer sort candidates.
+    use_commit_face_gate: bool = False
     commit_face_gate_threshold: float = 0.3
 
     # ------------ T1a — EE_z altitude mode-switch gate --------------------
@@ -969,7 +974,10 @@ class SamplingC3Params:
     #   A: lift-and-traverse — aim above-and-beside box at face-x/y
     #   B: descend           — aim at W_side (beside box, face mid-height)
     #   C: approach          — aim at face centroid (z rigidly clamped)
-    use_lift_traverse_descend_override: bool = True
+    # Port-only lift-traverse-descend override for approach path. Reference
+    # relies on the PWL reposition trajectory (which itself does lift/traverse/
+    # descend via z_safe). Disabling to remove the redundant approach shaper.
+    use_lift_traverse_descend_override: bool = False
     # PHASE B descent puts the sphere SURFACE at (clearance - PUSHER_RADIUS)
     # from the face plane. Floor is PUSHER_RADIUS + LCS_THRESHOLD + 5 mm
     # safety = 32 mm: smaller would admit contact mid-descent and re-
