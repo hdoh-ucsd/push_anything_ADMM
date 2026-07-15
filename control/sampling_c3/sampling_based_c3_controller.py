@@ -862,7 +862,16 @@ class SamplingC3MPC:
         t_step_start = time.perf_counter()
 
         # Gating: how many OSC ticks per planner solve?
-        N_plan = max(1, int(round(self._dt_mpc / self._dt_osc)))
+        # main.py decouples OSC via compute_control_osc_only (1 kHz sub-tick
+        # loop), so compute_control fires ONLY at planner rate. Each call
+        # should trigger a fresh solve — force N_plan=1 regardless of the
+        # dt_mpc/dt_osc YAML values (which correctly describe the rates but
+        # would confuse this counter, since self._step counts compute_control
+        # calls = planner ticks, NOT OSC ticks).
+        # Pre-fix: N_plan=75 (dt_mpc=0.075 / dt_osc=0.001) made
+        # should_solve fire every 75 planner ticks = every 5.6 s wall; only
+        # 2 solves per 8 s run.
+        N_plan = 1
         should_solve = (self._last_plan_tick < 0
                         or (self._step - self._last_plan_tick) >= N_plan)
 
