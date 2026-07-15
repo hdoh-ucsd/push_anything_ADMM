@@ -139,6 +139,7 @@ tasks:
       w_yaw:          800.0   # DOMINANT — the headline of this task
       w_terminal:       5.0
       z_ee_target:      0.034
+      z_obj_target:     0.020   # T stays on ground (reference target z = init z)
       d_push:           0.05
       w_ee_approach: 8000.0
       w_torque:         0.01
