@@ -143,25 +143,28 @@ def decide_mode(prev_mode:          str,
 
     # prev_mode == "free"
 
-    # 1. Reposition declared finished (e.g. cost below finished_reposition_cost).
-    # T1a: gated by ee_z_gate_pass — mirrors reference cc:1290-1293's altitude
-    # AND-condition on the combined else-if branch.
-    if finished_repos and ee_z_gate_pass:
-        return "c3", SwitchReason.kToC3ReachedReposTarget
-
-    # 2. Cost-based switch back to C3. Skip when best_other_cost == inf.
-    # Reference (sampling_based_c3_controller.cc:1288-1289):
-    #   best_other_cost > curr_cost + hyst_repos_to_c3_frac * best_other_cost
-    # → the frac multiplies best_other_cost (the sample being considered),
-    # NOT c3_cost. Port previously passed c3_cost as ref_cost, which
-    # inverts the semantics for high frac values (0.9): port needed
-    # best > 1.9 · curr; reference needs best > curr / (1-frac) = 10 · curr
-    # (much stricter — reference re-enters c3 only for MUCH better samples).
+    # Reference cc:1284-1303: c3 entry from free is COST-GATED, and the
+    # label is chosen after the cost gate passes:
+    #     if (best_other > curr + hyst_frac * best_other &&
+    #         (ee_z < z_height + clearance || !ee_z_close)) {
+    #         is_doing_c3_ = true;
+    #         if (repos_target_cost > finished_reposition_cost) {
+    #             reason = kToC3ReachedReposTarget;
+    #         } else {
+    #             reason = kToC3Cost;
+    #         }
+    #     }
+    # Port previously had a SEPARATE direct-flag c3 entry (fired when
+    # finished_repos flag set, bypassing cost gate). That fired c3 more
+    # aggressively than reference. Now cost-gated with post-gate label
+    # discrimination (finished_repos → kToC3ReachedReposTarget label).
     if best_other_cost != float("inf") and ee_z_gate_pass:
         gap_back = _hysteresis(params, "repos_to_c3", near_goal,
                                best_other_cost)
         if c3_cost + gap_back < best_other_cost:
-            return "c3", SwitchReason.kToC3Cost
+            _label = (SwitchReason.kToC3ReachedReposTarget
+                      if finished_repos else SwitchReason.kToC3Cost)
+            return "c3", _label
 
     # 3. Re-target within repos mode (only if a current repos target exists)
     if current_repos_cost is not None:
