@@ -24,9 +24,7 @@ tasks:
       w_obj_xy:    100000.0
       w_obj_z:         10.0
       w_box_z:        100.0
-      # w_box_rp: was 50. Raised to 1000 to penalize box tipping (planner
-      # avoids trajectories that would apply off-center torque).
-      w_box_rp:      1000.0
+      w_box_rp:        50.0
       w_yaw:            0.0
       w_terminal:       5.0
       z_ee_target:      0.05

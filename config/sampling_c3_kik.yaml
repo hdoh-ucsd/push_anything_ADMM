@@ -296,13 +296,7 @@ reposition_params:
   # budget by ~100 mm for typical xy_dist ≈ 0.20 m repositions, so
   # p_guide[:, -1] clamped short of p_target and finished_repos rarely fired.
   # Reference anything/reposition_params.yaml.
-  # Was 0.07738005 (from reference anything traj) — 20mm above box CoM at
-  # 0.05, meaning arm sphere top (at z=CoM+27mm) is 3mm below box top edge.
-  # During east push, arm approaches at that height → contact often at box
-  # top corner → torque → box tips forward (orient_err=π in earlier runs).
-  # Lowering to box CoM height so arm approaches AT mid-face level, no
-  # torque about box CoM.
-  pwl_waypoint_height: 0.05    # m — box CoM height for centered-face contact
+  pwl_waypoint_height: 0.07738005    # m
 
   # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
   # (Stage A, PUSHA_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
