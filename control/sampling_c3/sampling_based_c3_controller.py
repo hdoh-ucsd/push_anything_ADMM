@@ -507,7 +507,8 @@ class SamplingC3MPC:
 
     def _derive_force_command(self,
                               lambda_n: Optional[np.ndarray],
-                              g_hat_3d: np.ndarray) -> np.ndarray:
+                              g_hat_3d: np.ndarray,
+                              plant_ctx=None) -> np.ndarray:
         """Derive a sustained Cartesian force command for OSC λ_ext tracking.
 
         Mirrors the dairlib reference's `end_effector_force_target`
@@ -535,6 +536,16 @@ class SamplingC3MPC:
         # unset or 'off' → falls through to the legacy -g_hat path below
         # (bit-identical to pre-prototype). 'neg_u_sol' returns -u_seq[0]
         # for the opposite sign convention.
+        # Reference c3-mode force target = u_sol (planner's raw output),
+        # QP-bounded by u_horizontal_limits=[-10,10] N, u_vertical=[-3,3] N.
+        # See sampling_based_c3_controller.cc:1820-1832 (reference).
+        #
+        # EE-space path (n_u=3): use u_sol[0] directly via
+        # PUSHA_FORCE_ROUTING=u_sol. R^7 path: recovery via pinv(J^T)
+        # doesn't yield a clean Cartesian direction (verified — box
+        # tumbled 180°), so R^7 falls through to the fabricated -g_hat
+        # path below. Default OFF (fabricated path bit-identical to
+        # pre-prototype).
         import os as _os
         _fr = _os.environ.get("PUSHA_FORCE_ROUTING", "off").lower()
         if _fr in ("u_sol", "neg_u_sol"):
@@ -551,6 +562,48 @@ class SamplingC3MPC:
                           flush=True)
                     self._force_route_logged = True
                 return u0
+            # R^7 path: recover Cartesian force from joint torque via
+            # pinv(J^T). Requires current plant_ctx which we access via
+            # the base_mpc formulator's cached last-tick state.
+            if _u_seq is not None and hasattr(_u_seq, "shape") \
+                    and _u_seq.ndim == 2 and _u_seq.shape[1] == 7 \
+                    and plant_ctx is not None:
+                try:
+                    from pydrake.multibody.tree import JacobianWrtVariable as _JWV
+                    _J = self.plant.CalcJacobianTranslationalVelocity(
+                        plant_ctx, _JWV.kV, self.ee_frame,
+                        np.zeros(3), self.world_frame, self.world_frame,
+                    )   # (3, n_v)
+                    _n_u_arm = self.n_u
+                    _J_arm = _J[:, :_n_u_arm]        # (3, n_arm)
+                    _u7 = np.asarray(_u_seq[0], dtype=float).reshape(7)
+                    # min ‖J^T f − u‖ → f = (J J^T)^-1 J u
+                    _JJT = _J_arm @ _J_arm.T          # (3, 3)
+                    _f_ee = np.linalg.solve(
+                        _JJT + 1e-6*np.eye(3), _J_arm @ _u7)  # (3,)
+                    if _fr == "neg_u_sol":
+                        _f_ee = -_f_ee
+                    # Reference u_horizontal_limits=[-10,10], u_vertical=[-3,3]
+                    # (sampling_c3plus_options.yaml lines 34-35). Reference
+                    # planner enforces these as QP bounds so u_sol respects
+                    # them naturally. Port R^7 planner has separate joint
+                    # torque limits, so we re-apply the reference EE-force
+                    # bounds on the recovered f_ee.
+                    _f_ee[0] = float(np.clip(_f_ee[0], -10.0, 10.0))
+                    _f_ee[1] = float(np.clip(_f_ee[1], -10.0, 10.0))
+                    _f_ee[2] = float(np.clip(_f_ee[2],  -3.0,  3.0))
+                    if not getattr(self, "_force_route_logged", False):
+                        _nm = max(1e-9, float(np.linalg.norm(_f_ee)))
+                        print(f"[FORCE-ROUTE] R^7 recovery env={_fr} "
+                              f"|f_ee|={float(np.linalg.norm(_f_ee)):.3f}N "
+                              f"dir=({_f_ee[0]/_nm:.2f},"
+                              f"{_f_ee[1]/_nm:.2f},{_f_ee[2]/_nm:.2f}) "
+                              f"[clamped ±10/±10/±3 N]",
+                              flush=True)
+                        self._force_route_logged = True
+                    return _f_ee
+                except Exception:
+                    pass  # fall through to fabricated path
 
         recoil_dir = -np.asarray(g_hat_3d, dtype=float).reshape(3)
         n = float(np.linalg.norm(recoil_dir))
@@ -2580,7 +2633,8 @@ class SamplingC3MPC:
             else:
                 _lam_n_mag = 0.0
             if _lam_n_mag > 0.05:
-                _lam_des = self._derive_force_command(_lam_n, g_hat_3d)
+                _lam_des = self._derive_force_command(
+                    _lam_n, g_hat_3d, plant_ctx=plant_ctx)
             else:
                 _lam_des = np.zeros(3)
 
