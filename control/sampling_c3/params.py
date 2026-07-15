@@ -927,7 +927,7 @@ class SamplingC3Params:
     #
     # Default off so the flag is opt-in; current behavior preserved bit-
     # identically when `use_velocity_feedforward=False`.
-    use_velocity_feedforward: bool = False
+    use_velocity_feedforward: bool = False  # reference has ydot_des but at α=1 port saturates/spikes (per docstring). Kept off; would need bounded α.
     # Scale on v_des derived from successive p_ee_des. α=1.0 is full
     # feedforward (analytically eliminates the steady-state lag). Lower α
     # trades descent rate for actuator headroom.
