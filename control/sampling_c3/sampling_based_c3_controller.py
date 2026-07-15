@@ -1373,11 +1373,15 @@ class SamplingC3MPC:
         if not hasattr(self, "_crossed_switching_threshold"):
             self._crossed_switching_threshold = False
         _cost_switch_thr = self.params.progress_params.cost_switching_threshold_distance
-        if not self._crossed_switching_threshold and goal_dist < _cost_switch_thr:
+        # Reference cc:821-830 uses `x_lcs_final_des` (FINAL goal), not the
+        # per-tick lookahead sub-goal. Port previously used goal_dist here
+        # (lookahead sub-goal distance) — same bug as the progress-tracker
+        # feed I fixed in bf2828b. Use _final_goal_dist for the crossed check.
+        if not self._crossed_switching_threshold and _final_goal_dist < _cost_switch_thr:
             self._crossed_switching_threshold = True
             if self.log_diag:
                 print(f"[CROSSED-COST-THRESHOLD] step={self._step} "
-                      f"goal_dist={goal_dist:.4f}m < {_cost_switch_thr:.4f}m — "
+                      f"final_goal_dist={_final_goal_dist:.4f}m < {_cost_switch_thr:.4f}m — "
                       f"switching to pose-tracking (non-_position) hyst variants",
                       flush=True)
         near_goal = self._crossed_switching_threshold
