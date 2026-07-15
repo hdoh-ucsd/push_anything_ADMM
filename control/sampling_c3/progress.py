@@ -174,9 +174,17 @@ class ProgressTracker:
         if self._n_updates == 0:
             return True   # nothing to time-out yet
 
-        # 2026-06-25 reconciliation: read _s fields, convert to int ticks.
+        # Reference sampling_based_c3_controller.cc:2293-2296:
+        #   num_control_loops_to_wait = progress_params_.num_control_loops_to_wait;
+        #   if (!crossed_cost_switching_threshold_) {
+        #     num_control_loops_to_wait = num_control_loops_to_wait_position;
+        #   }
+        # `!crossed_threshold` = FAR from goal → use _position variant.
+        # Port previously inverted this (used _position when near_goal=True,
+        # i.e. CLOSE to goal). Fixed by flipping condition.
+        _use_position = not near_goal
         wait_s = (self.params.num_control_loops_to_wait_position_s
-                  if near_goal else self.params.num_control_loops_to_wait_s)
+                  if _use_position else self.params.num_control_loops_to_wait_s)
         wait = int(round(wait_s / self._dt_ctrl))
 
         m = self.params.track_c3_progress_via
