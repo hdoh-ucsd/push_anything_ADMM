@@ -130,12 +130,12 @@ class C3Solver:
         # the QP solve time itself grew hugely under the resulting large ρ.
         # Opt in via `solver._rho_scale = 3.0`.
         self._rho_scale = 1.0
-        # 4.g — reference end_on_qp_step=false → do an LCS rollout of x from
-        # x0 using solved (u, λ) after the ADMM loop, so the returned x_seq
-        # is LCS-feasible even under non-convergence. Default OFF while
-        # diagnosing perf; opt in via `solver._end_on_qp_step = False`
-        # (yes, that's the "true" reference setting; True means skip rollout).
-        self._end_on_qp_step = True
+        # 4.g — reference sampling_c3plus_options.yaml end_on_qp_step: false
+        # → do an LCS rollout of x from x0 using solved (u, λ) after the
+        # ADMM loop, so the returned x_seq is LCS-feasible even under
+        # non-convergence. Port True = skip rollout (opt-out from reference).
+        # Default now False = reference-conformant.
+        self._end_on_qp_step = False
         # Bui §IV-B.2 final paragraph: large G-weight on EE-object contact
         # components in the final QP step. NOT applied here yet (would
         # require knowing which contact is EE↔box; see TODO in _solve_c3plus).
