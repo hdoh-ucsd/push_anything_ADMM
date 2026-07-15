@@ -189,21 +189,27 @@ class ProgressTracker:
 
         m = self.params.track_c3_progress_via
 
+        # Reference sampling_based_c3_controller.cc:2302:
+        #   else if (best_progress_steps_ago_ > num_control_loops_to_wait)
+        #       met_minimum_progress = false;
+        # Reference uses STRICT > (not >=). At steps_since == wait, still
+        # met_progress. Port previously used `< wait` which flags NOT-met
+        # at steps_since == wait — one tick too early.
         if m == ProgressMetric.kC3Cost:
-            return self._steps_since_c3_improve < wait
+            return self._steps_since_c3_improve <= wait
 
         if m == ProgressMetric.kConfigCost:
-            return self._steps_since_config_improve < wait
+            return self._steps_since_config_improve <= wait
 
         if m == ProgressMetric.kPosOrRotCost:
             # progress = either pos OR rot improved recently
-            return (self._steps_since_pos_improve < wait
-                    or self._steps_since_rot_improve < wait)
+            return (self._steps_since_pos_improve <= wait
+                    or self._steps_since_rot_improve <= wait)
 
         if m == ProgressMetric.kPosOnly:
             # Pushing-task variant: pos timer only. Avoids the OR-mask when
             # rot_error is constant 0.
-            return self._steps_since_pos_improve < wait
+            return self._steps_since_pos_improve <= wait
 
         if m == ProgressMetric.kConfigCostDrop:
             # Reference sampling_based_c3_controller.cc:2267-2299 uses a
