@@ -140,24 +140,18 @@ progress_params:
   # Which progress metric drives the timeout decision.
   # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kPosOnly | kConfigCostDrop
   #
-  # D.2 fix (2026-07-13): kPosOrRotCost, NOT kPosOnly.
-  # T-push cost is yaw-dominated (w_yaw=800 vs w_obj_xy=100000·yaw² with
-  # yaw goal −0.7379 rad). c3 optimizes yaw, but kPosOnly only counts
-  # pos_error toward "progress" — c3 exits via kToReposUnproductive
-  # every ~5 ticks even while c3 is productively rotating the T. The
-  # port had rot_error hardcoded to 0 (see wrapper.py, progress-update
-  # site) so kPosOrRotCost previously degenerated to kPosOnly; that
-  # hardcode is now fixed to compute the real yaw residual, which lets
-  # kPosOrRotCost see rotational progress on the T.
-  # Box unaffected: box configs (sampling_c3_kik*.yaml) keep kPosOnly.
-  track_c3_progress_via: kPosOrRotCost
+  # Reference push_t progress_params_c3plus.yaml:30 track_c3_progress_via: 3
+  # (kConfigCostDrop = require config cost to drop by ≥ enforced_cost_drop
+  # over enforced_over_n_loops). Aligned to reference — same value box uses.
+  track_c3_progress_via: kConfigCostDrop
 
-  # Number of control loops to wait before declaring "no progress" timeout.
-  # §9 reference alignment: push_t/parameters/progress_params_c3plus.yaml
-  #   uses 5 / 5 (not 60 / 30). Reference-verified divergence identified
-  #   during the T-push tier-2 checklist audit.
-  num_control_loops_to_wait:            5
-  num_control_loops_to_wait_position:   5
+  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
+  #   num_control_loops_to_wait:          5  (ticks × 0.075s = 0.375s at ref)
+  #   num_control_loops_to_wait_position: 5 → 0.375 s
+  # Use _s form to bypass params.py:239 100Hz compat shim (which turns
+  # `_n_loops: 5` into 0.05 s, ≈0.67 ticks at port planner 13.3 Hz).
+  num_control_loops_to_wait_s:          0.375
+  num_control_loops_to_wait_position_s: 0.375
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
@@ -167,13 +161,16 @@ progress_params:
   # q5_head_default_noregress + q5_seed4_goal_reach gives [11mm wobble-max,
   # 35mm runaway-catch-max] -> midpoint 25mm. See
   # q6_combined_fix/CP1_threshold_pin.txt for full derivation.
-  pos_regression_threshold:            0.025
+  pos_regression_threshold:            0.0    # DISABLED — port-only, reference has no such gate
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
-  # §9 reference alignment: push_t/parameters/progress_params_c3plus.yaml uses
-  # 0.01 (1% cost drop required) over 180 loops (not 0.0 over 30).
-  progress_enforced_cost_drop:    0.01
-  progress_enforced_over_n_loops: 180
+  # Reference anything/progress_params_c3plus.yaml:
+  #   progress_enforced_cost_drop:    0.5
+  #   progress_enforced_over_n_loops: 16   (16 planner ticks at ref dt=0.075)
+  # Use duration_s form to bypass params.py:239 100Hz compat shim (which
+  # would turn `_n_loops: 16` into 0.16 s = 2 ticks at port planner 13.3 Hz).
+  progress_enforced_cost_drop:        0.5
+  progress_enforced_over_duration_s:  1.2
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
@@ -209,23 +206,16 @@ progress_params:
   # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
   # ~30 steps, fragmenting free mode into incomplete descents. The new
   # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
-  hyst_c3_to_repos_frac:                  0.95
-  hyst_c3_to_repos_frac_position:         0.50
-  # Repos→C3 hysteresis raised to 0.9 (push_t reference value) when
-  # moving to the cost-based entry gate.  The dispatcher now applies the
-  # fraction to best_other_cost (matching the reference at line 765), so
-  # 0.9 means the current EE position must be ≤ 10% of the best other
-  # sample's cost before the switch fires.  Stricter than the prior 0.30
-  # used with the geometric-trigger gate.
+  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
+  # 0.6, 0.7, 0.9, 0.5, 0.7, 0.7. Port previously had 0.95/0.50/0.9/0.9/0.30/0.30
+  # — all port-only "tuned" values that starved c3 entry (0 switches in 8 s
+  # sim, T never pushed). Aligned to reference source-of-truth.
+  hyst_c3_to_repos_frac:                  0.6
+  hyst_c3_to_repos_frac_position:         0.7
   hyst_repos_to_c3_frac:                  0.9
-  hyst_repos_to_c3_frac_position:         0.9
-  # T-task override: reference push_t uses hyst_repos_to_repos_frac=0.30
-  # (progress_params_c3plus.yaml:64) — a new sample must be ≥30% cheaper than
-  # the current repos target to steal it. Reference-grounded fix for the
-  # T's 250mm-spread sample distribution: box's 0.10 is too weak, letting
-  # winner flip every tick (Diag 1: 768/801 kToBetterRepos events).
-  hyst_repos_to_repos_frac:               0.30
-  hyst_repos_to_repos_frac_position:      0.30
+  hyst_repos_to_c3_frac_position:         0.5
+  hyst_repos_to_repos_frac:               0.7
+  hyst_repos_to_repos_frac_position:      0.7
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
