@@ -9,7 +9,7 @@
 
 Evidence is separate from verdict — instrumented run outputs live under `audit_output/<subsystem>_tier2/`, never in this doc.
 
-**Status:** Subsystem (1) Executor Tier-1 approved 2026-07-14; Tier-2 landed 2026-07-14. Subsystems (2)–(5) pending.
+**Status:** Subsystem (1) Executor Tier-1 approved 2026-07-14; Tier-2 landed 2026-07-14. Subsystems (2)–(5) pending. **2026-07-17 update:** Subsystem (4) rows 4.a, 4.b, 4.c, 4.l reach reference-match for T-push (commit 08003e1 + prior 4c3bad5); new row 4.s added for port-only surface-entry gate (now disabled for T). Box-push retains prior regime — subsystem (4) audit for box unchanged.
 
 ---
 
@@ -803,7 +803,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
   `control/ci_mpc_c3.py:1-371` (`C3MPC` C3-with-Lorentz path);
   `control/sampling_c3/mode_switch.py:1-162` (`decide_mode`, `SwitchReason` enum, hysteresis);
   `control/sampling_c3/progress.py:1-266` (`ProgressTracker`, `StepMetrics`, `met_progress`);
-  `config/sampling_c3_kik.yaml` (`surrogate_admm_iters: 3`, no admm_iter override — main.py's `--admm-iter 25` is canonical);
+  `config/sampling_c3_kik.yaml` (`surrogate_admm_iters: 3`; T-push canonical `--admm-iter 3` since commit 4c3bad5 (2026-07-17), box-push still at 25);
   `main.py:345-358` (`PUSHA_STAGE5_U_HORIZONTAL/VERTICAL/R_VECTOR` env-defaults for EE-space).
 
 **Planner scope:** the C3+ ADMM inner solver + the wrapper's mode-switch dispatcher decision + progress-tracking. Excludes contact admission (subsystem 3), OSC executor (subsystem 1), reposition target generation (subsystem 2).
@@ -812,9 +812,9 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 | # | Divergence | Tier-1 tag | Tier-2 |
 |---|---|---|---|
-| 4.a | Solver class / projection algorithm | LOAD-BEARING | CONFIRMED — port default `C3PlusMPC` + `componentwise` projection; reference default MIQP (C3MIQP class) |
-| 4.b | admm_iter count | LOAD-BEARING | CONFIRMED at runtime — port 25 (`--admm-iter 25`); reference 3 (`admm_iter: 3` YAML) |
-| 4.c | rho / rho_scale | LOAD-BEARING | CONFIRMED — port `rho_init=100.0` fixed; reference `rho_scale=3` adaptive per iter |
+| 4.a | Solver class / projection algorithm | LOAD-BEARING | CONFIRMED — port `C3PlusMPC` + `componentwise` projection (script override `--c3plus-projection lcp` removed for T-push 2026-07-17, commit 08003e1); reference default MIQP (C3MIQP class) |
+| 4.b | admm_iter count | LOAD-BEARING → PARTIAL-REFERENCE-MATCH | CONFIRMED at runtime — T-push port 3 (commit 4c3bad5, matches reference); box-push port still 25; reference 3 (`admm_iter: 3` YAML) |
+| 4.c | rho / rho_scale | LOAD-BEARING → REFERENCE-MATCH | CONFIRMED — port `_rho_scale = 3.0` (commit 08003e1) applied per ADMM iter with initial `rho_init=100.0`; reference `rho_scale=3` per iter. Ramp trace: 100 → 300 → 900 → 2700 over 3 iters. Legacy "adaptive-ρ every 10 iters" branch retained but unreachable at admm_iter≤10. |
 | 4.d | Horizon N | LOAD-BEARING | CONFIRMED at runtime — port N=20; reference N=5 |
 | 4.e | Planning dt | LOAD-BEARING | CONFIRMED at runtime — port dt=0.05; reference dt=0.1; horizon_time port 1.0s vs reference 0.5s |
 | 4.f | delta initial guess | LOAD-BEARING | NEW DIVERGENCE — reference `delta_option=1` initializes `delta.head=x0`; port always zeros |
@@ -830,30 +830,32 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.p | Progress metric implementation | COSMETIC-EQUIVALENT | Both track "steps since last cost improvement" with mode-specific `num_control_loops_to_wait` |
 | 4.q | LCS h_is_zero → LCP pre-solve | UNKNOWN → RESOLVED | Reference c3.cc:283-299 detects `h_is_zero_` (LCS `H matrix all-zero → passive system`) and pre-solves λ via `MobyLcpSolver::SolveLcpLemke`. Port has NO analog (always runs full ADMM). For push_anything, `H` is derived from `Jn · Jf_u` (LCS-formulation), and `Jf_u = M⁻¹ · B` is non-zero (actuated arm) → `h_is_zero_ = false` in reference → LCP pre-solve INERT → no divergence in practice for pushing task. **INERT-BY-CONFIG for actuated systems.** |
 | 4.r | Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*) | LOAD-BEARING iff enabled | CONFIRMED — `main.py:346-358` sets env defaults `PUSHA_STAGE5_U_HORIZONTAL=10, PUSHA_STAGE5_U_VERTICAL=3, PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` for EE-space. Port-only Stage-5 alignment package. Default box run in R^7 does NOT trigger these; EE-space runs do. |
+| 4.s | Port-only contact-entry gate (surface / center distance) | LOAD-BEARING → DISABLED-FOR-T | CONFIRMED — `sampling_based_c3_controller.py:1487-1512` blocks `finished_repos` when `ee_to_surf ≥ 60mm` (`use_surface_entry_gate=True, contact_entry_surface_threshold=0.060`). Reference `sampling_based_c3_controller.cc:1284-1309` has no such gate — only the height ceiling (4.n). Disabled for T-push in `config/sampling_c3_kik_t.yaml` (commit 08003e1); box-push YAML still leaves the port default on. |
 
 ## 4.a — Solver class / projection algorithm
 
-- **Reference:** `sampling_based_c3_controller.cc:143-176` constructs one of `C3MIQP`, `C3QP`, or `C3Plus` per `sampling_c3_options.projection_type`. YAML default for `anything` and `push_t`: `projection_type: 'MIQP'` → `C3MIQP`.
-- **Port:** `main.py:589` — `_MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC`. `--solver` argparse default is `'c3plus'` (per CLAUDE.md). No C3MIQP or C3QP class in port.
-- **Tag:** LOAD-BEARING. MIQP uses branch-and-bound on binary complementarity variables (exact LCP solve, no ADMM); QP relaxes; C3+ uses the Bui eq (12) componentwise projection.
+- **Reference:** `sampling_based_c3_controller.cc:143-176` constructs one of `C3MIQP`, `C3QP`, or `C3Plus` per `sampling_c3_options.projection_type`. `anything` YAML: `projection_type: 'MIQP'` → `C3MIQP`; `push_t/parameters/sampling_c3plus_options.yaml` selects `C3Plus`.
+- **Port:** `main.py:589` — `_MPCClass = C3PlusMPC if args.solver == "c3plus" else C3MPC`. `--solver` argparse default `'c3plus'`. No C3MIQP or C3QP class in port.
+- **Port projection variants for C3+:** `admm_solver.py:82-85` accepts `c3plus_projection ∈ {componentwise, lcp}`. `componentwise` (default) matches `c3_plus.cc:174-221 SolveSingleProjection` (Bui eq 12, closed-form). `lcp` is a port-only Aydinoglu-style Lemke retrofit with no reference analog — was returning `lcp_res_max=inf` on 43% of solves via `lcp_solver.py:66` (Lemke ray-termination sentinel). Fixed 2026-07-17 (commit 08003e1): `run_T.sh` no longer passes `--c3plus-projection lcp`; argparse default `componentwise` applies.
+- **Tag:** LOAD-BEARING. MIQP = exact LCP solve, no ADMM; QP = relaxation; C3+ componentwise = Bui eq 12; C3+ lcp = port-only, retired for T.
 - **Confidence:** high.
-- **Tier 2 — port runtime confirmed:** `[PLAN-T2] solver_mode='c3plus' projection='componentwise' (reference default: 'MIQP' via C3MIQP class)`. **Divergent projection algorithms at runtime.** MIQP is exact but expensive; C3+ is approximate but cheaper.
+- **Tier 2 — port runtime confirmed 2026-07-17:** `[C3] Solver mode: c3plus (planner: EE-space (R^3 force), c3+ projection: componentwise)`. Post-fix log shows zero `lcp_res_max=inf` events (was 389/903 pre-fix). Reference `push_t` uses C3+ too (via `sampling_c3plus_options.yaml`), so this row now reads: port C3+ + componentwise ≡ reference C3+ + eq 12 exactly. **REFERENCE-MATCH for T-push.** Box-push canonical path unchanged.
 
 ## 4.b — admm_iter count
 
 - **Reference:** `sampling_c3_options.yaml: admm_iter: 3` for both `anything` and `push_t`. Very few ADMM iterations because MIQP itself solves the LCP exactly at each iter — 3 outer iterations for ADMM refinement.
-- **Port:** `main.py:--admm-iter` argparse default = 3, BUT canonical runs pass `--admm-iter 25` (per CLAUDE.md and observed in production scripts). Port needs many iterations because C3+ componentwise projection is approximate and needs to refine.
-- **Tag:** LOAD-BEARING.
+- **Port:** `main.py:--admm-iter` argparse default = 3. T-push canonical `run_T.sh` passes `--admm-iter 3` since commit 4c3bad5 (2026-07-17). Box-push canonical `run_box.sh` still passes `--admm-iter 25` (C3+ componentwise projection is approximate; more iterations were needed to refine).
+- **Tag:** LOAD-BEARING → PARTIAL-REFERENCE-MATCH (T only).
 - **Confidence:** high.
-- **Tier 2 — port runtime confirmed:** `[PLAN-T2] admm_iter=25` at canonical setting. Reference = 3. **8.3× more iterations in port** just to compensate for the weaker per-iter projection.
+- **Tier 2 — post-fix runtime 2026-07-17 (T-push 60s):** `[MPC] ADMM max iters: 3` — matches reference. ADMM residuals: `primal 6.9→2.1 mono=True` on 818/818 solves (was `36→61 mono=False` at admm_iter=25 with rho_init=100). Tolerance `1e-3` still not reached in 3 iters (final primal ~1.68) — inherits reference's own non-convergence-tolerance behavior. Box-push residual metrics unchanged at admm_iter=25.
 
 ## 4.c — rho / rho_scale
 
-- **Reference:** `rho_scale: 3` — per `c3.cc:389-390`, `w = w / rho_scale; G = G * rho_scale` each ADMM iter → ρ grows by 3× per iter multiplicatively. Adaptive schedule.
-- **Port:** `C3Solver(..., rho=100.0)` fixed. Some paths have adaptive rho every 10 iters (per CLAUDE.md).
-- **Tag:** LOAD-BEARING (affects ADMM convergence rate + fixed-point solution).
-- **Confidence:** medium (port has multiple rho paths; canonical is fixed 100).
-- **Tier 2:** `[PLAN-T2] solver.rho_init=100.0 (reference: rho_scale=3 adaptive per iter)`. Different regularization: reference grows ρ exponentially (3 → 9 → 27 in 3 iters); port stays fixed at 100 for 25 iters. Consequence: port's ADMM has fixed-weight augmented cost throughout; reference's has increasing weight (encouraging convergence via ρ growth).
+- **Reference:** `rho_scale: 3` — per `c3.cc:389-390`, `w = w / rho_scale; G = G * rho_scale` each ADMM iter → ρ grows by 3× per iter multiplicatively. Reference uses `rho: 0` (unused) + `rho_scale: 3` per `push_t/parameters/sampling_c3plus_options.yaml:2-4`.
+- **Port:** `C3Solver(..., rho=100.0)` initial + `admm_solver.py:137 self._rho_scale = 3.0` (post-2026-07-17). Scaffolding at `admm_solver.py:1436-1442` applies the reference per-iter multiply when `_rs > 1.0`; the legacy `elif (it + 1) % 10 == 0` Boyd-style adaptive branch at 1443-1457 becomes unreachable at admm_iter ≤ 10.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH.
+- **Confidence:** high.
+- **Tier 2 — post-fix runtime 2026-07-17:** `rho=2700.0` at end of solve (100 × 3³ over 3 iters, matches reference geometric ramp). Log-line self-flag `Note: adaptive-ρ fires every 10 iters; current max_iter=3 ← never triggers!` still prints because the diagnostic remained; the code path it warns about is now correctly dead. Pre-fix (`_rho_scale = 1.0`): 100 → 100 → 100 (dead-flat, adaptive branch unreachable at admm_iter=3).
 
 ## 4.d — Horizon N
 
@@ -935,11 +937,12 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 ## 4.l — ADMM convergence at runtime
 
-- **Reference:** MIQP is exact per iteration → ADMM converges quickly (3 iters is enough with adaptive ρ).
-- **Port:** C3+ componentwise projection is approximate → ADMM may not converge. Observed: `[C3+] step=N iters=25/25 primal=3.87 (constant)` — hits max iterations, primal residual doesn't decrease.
-- **Tag:** LOAD-BEARING.
+- **Reference:** MIQP is exact per iteration → ADMM converges quickly (3 iters is enough with adaptive ρ). Reference push_t (C3+) reaches similar tolerance behavior via `rho_scale=3` geometric ramp.
+- **Port pre-fix (t_long60, 2026-07-17):** admm_iter=3 + `_rho_scale=1.0` + `--c3plus-projection lcp` → 903/903 solves `mono=False`, primal 36→61 (backwards), 43% LCP-inf events. Old baseline (admm_iter=25 + rho_init=100 + lcp) hit `iters=25/25 primal=3.87 constant`.
+- **Port post-fix (t_ref3fix, commit 08003e1):** admm_iter=3 + `_rho_scale=3.0` + `componentwise` → 818/818 solves `mono=True`, primal 6.9→1.7 monotone-decreasing, zero LCP-inf events. Tolerance `1e-3` still not reached in 3 iters (final residual ~1.7), matching the reference's own admm_iter=3 non-convergence-tolerance regime.
+- **Tag:** LOAD-BEARING → PARTIAL-REFERENCE-MATCH (T only).
 - **Confidence:** high.
-- **Tier 2:** RUNTIME-CONFIRMED. Port ADMM is NON-CONVERGENT at nominal setting. **Ties to 3.g Stewart-Trinkle rank-deficient F[γ,γ]** — mechanically proven via c3 lib deep read that ST F has all-zero γ-γ top-left block, so any ADMM that projects onto the rank-deficient region has infinitely many valid (λ, η) pairs — no unique convergence.
+- **Tier 2 — post-fix runtime 2026-07-17:** monotonic-decreasing ADMM restored. Residual floor at ~1.7 in 3 iters is the reference-conformant behavior; a lower tolerance would require MIQP (reference `anything`) or more iters. **Ties to 3.g Stewart-Trinkle rank-deficient F[γ,γ]** — even monotone-decreasing ADMM cannot reach zero residual under rank-deficient F because valid (λ, η) pairs are non-unique.
 
 ## 4.m — Mode-switch branches
 
@@ -986,6 +989,14 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 - **Confidence:** high.
 - **Tier 2:** For push_anything (actuated Franka arm), `H = Jn·Jf_u` where `Jf_u = M⁻¹·B` (non-zero). Reference `h_is_zero_` would be FALSE for any actuated system. **INERT-BY-CONFIG for actuated pushing task.** Would matter only for passive-dynamics probes (e.g., free-fall LCS).
 
+## 4.s — Port-only contact-entry gate
+
+- **Reference:** `sampling_based_c3_controller.cc:1284-1309` — free→c3 cost-based transition is AND-gated ONLY by (i) the altitude ceiling (4.n: `x_lcs_curr[2] < z_height + c3_min_clearance + wall_offset || !ee_z_close`) and (ii) the cost-gap hysteresis. There is NO distance-to-box surface gate.
+- **Port:** `sampling_based_c3_controller.py:1487-1512` adds a distance gate: when `finished_repos=True and use_contact_entry_gate=True`, it flips `finished_repos → False` (blocking `kToC3ReachedReposTarget`) if `ee_to_surf ≥ contact_entry_surface_threshold` (default 60 mm) OR `ee_to_box ≥ contact_entry_threshold` (default 90 mm) depending on `use_surface_entry_gate`. Discovered 2026-07-17 blocking every IK arrival on push_t (IK landing 65–68 mm reads → 24 `[ENTRY-GATE] ... block kToC3ReachedReposTarget` events over 60 s; zero free→c3-via-arrival transitions).
+- **Tag:** LOAD-BEARING (port-only) → DISABLED-FOR-T.
+- **Confidence:** high.
+- **Tier 2 — post-fix runtime 2026-07-17:** `config/sampling_c3_kik_t.yaml:use_contact_entry_gate: false` (commit 08003e1). Post-fix log shows 0 `[ENTRY-GATE]` events. The reference-equivalent altitude ceiling (4.n, `c3_min_clearance=0.01`) is unchanged and still fires. **REFERENCE-MATCH for T-push.** Box-push YAML unchanged — port default `True` still holds there.
+
 ## 4.r — Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*)
 
 - **Reference:** Fixed R + u-bounds from YAML.
@@ -996,8 +1007,14 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 ## Coupling observed (from code + Tier-2 evidence)
 
-- **4.a ↔ 4.b ↔ 4.c ↔ 4.l** — Solver-choice cluster. Reference MIQP + admm_iter=3 + rho_scale=3 adaptive is a SINGLE self-consistent regime: exact per-iter LCP solve makes 3 ADMM iters sufficient. Port C3+ + admm_iter=25 + rho=100 fixed is a DIFFERENT self-consistent regime: approximate componentwise projection requires many iters and larger fixed penalty. Cannot mix (e.g., MIQP with admm_iter=25 = wasteful; C3+ with admm_iter=3 = under-converged).
-- **4.d ↔ 4.e ↔ 4.b** — planning horizon × dt × admm_iter compose into TOTAL SOLVE WORK per tick. Port: 20 knots × 0.05s × 25 iters. Reference: 5 knots × 0.1s × 3 iters. Port does **33× more work per tick** just to compensate for the weaker projection. Coupled to (F) multi-process architecture (reference solves at planner rate, publishes to OSC via LCM; port solves synchronously each control tick).
+- **4.a ↔ 4.b ↔ 4.c ↔ 4.l** — Solver-choice cluster. Two reference regimes exist per task family:
+  - Reference `anything` (box): MIQP + admm_iter=3 + rho_scale=3 → exact per-iter LCP + adaptive ρ = 3 iters sufficient.
+  - Reference `push_t`: **C3+ (Bui eq 12) + admm_iter=3 + rho_scale=3** — same admm-iter/rho-schedule discipline, closed-form projection.
+  Port T-push (commit 08003e1) is now C3+ + admm_iter=3 + rho_scale=3 + componentwise projection = **REFERENCE-MATCH to `push_t` regime**. Post-fix ADMM is `mono=True` on 100% of solves; residual floor ~1.7 in 3 iters is the reference's own non-convergence-tolerance behavior for this regime.
+  Port box-push canonical still runs `--admm-iter 25` (an off-reference regime), pending its own rho_scale+iter audit.
+- **4.d ↔ 4.e ↔ 4.b** — planning horizon × dt × admm_iter compose into TOTAL SOLVE WORK per tick.
+  - T-push post-fix: 5 knots × 0.1s × 3 iters = REFERENCE-MATCH (`sampling_c3_options.yaml N: 5 planning_dt_position: 0.1`). Runtime `avg_per_step_ms=127.7` — dominated by non-ADMM overhead (sample eval / IK) not ADMM.
+  - Box-push: 20 knots × 0.05s × 25 iters = **33× more work per tick** vs reference. Coupled to (F) multi-process architecture (reference solves at planner rate, publishes to OSC via LCM; port solves synchronously each control tick).
 - **4.f ↔ 4.g ↔ 4.l** — the three "at-non-convergence-matters" divergences. delta_option (initial guess), end_on_qp_step (final rollout), and iters=25/25 non-convergent behavior. Under full convergence all three would be equivalent to reference; at the port's regime they all contribute to trajectory divergence.
 - **4.j ↔ 1.k** — reference `penalize_changes_in_u_across_solves=true` for anything AND reference `w_input=0, w_input_reg=0` for OSC input-smoothing. The reference smooths CONTROL at TWO places (planner solve-to-solve + OSC input-smoothing weight, both configurable). Port has neither analog at either place.
 - **4.m ↔ 4.n ↔ 2.l** — mode-switch cluster (branch structure + altitude gate + finished-flag semantics). Port has close structural parity to reference on all three. Divergent leaf-level values (specific hysteresis, altitude, finished-cost) would live in the YAML — belongs in a per-value audit not this Tier-1 pass.
@@ -1012,9 +1029,9 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 | # | Divergence | Tier-1 | Tier-2 (this pass) |
 |---|---|---|---|
-| 4.a | Solver class | LOAD-BEARING | **CONFIRMED** — port C3+ (componentwise); reference MIQP |
-| 4.b | admm_iter | LOAD-BEARING | **CONFIRMED runtime** — port 25 (canonical); reference 3 |
-| 4.c | rho / rho_scale | LOAD-BEARING | **CONFIRMED** — port fixed 100; reference adaptive ×3 per iter |
+| 4.a | Solver class / projection | LOAD-BEARING → PARTIAL-REF-MATCH | **REFERENCE-MATCH for T-push** (C3+ + componentwise via commit 08003e1); reference `push_t` also C3+; reference `anything` = MIQP; box-push in port stays C3+ |
+| 4.b | admm_iter | LOAD-BEARING → PARTIAL-REF-MATCH | **CONFIRMED runtime** — T-push port 3 (matches ref, commit 4c3bad5); box-push port 25 (off-ref); reference 3 |
+| 4.c | rho / rho_scale | LOAD-BEARING → REF-MATCH | **CONFIRMED runtime** — port `_rho_scale=3.0` per-iter (commit 08003e1); reference `rho_scale=3` per iter; runtime ρ ramp 100→2700 over 3 iters |
 | 4.d | Horizon N | LOAD-BEARING | **CONFIRMED runtime** — port 20; reference 5 |
 | 4.e | Planning dt | LOAD-BEARING | **CONFIRMED runtime** — port 0.05; reference 0.1 |
 | 4.f | delta initial guess | LOAD-BEARING | **NEW DIVERGENCE** — port zeros; reference `delta_option=1` → head=x0 |
@@ -1023,15 +1040,16 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.i | Within-Solve warm-start | COSMETIC | **CONFIRMED conformant** — both implicit carry across iters |
 | 4.j | penalize_input_change | LOAD-BEARING | **NEW DIVERGENCE** — port always absolute; reference toggles |
 | 4.k | SolveSingleProjection (Bui eq 12) | COSMETIC-EQUIVALENT | **CONFIRMED via c3 clone** — port projection = reference exactly |
-| 4.l | ADMM convergence | LOAD-BEARING | **CONFIRMED runtime** — port iters=25/25 primal~3.87 NON-CONVERGENT |
+| 4.l | ADMM convergence | LOAD-BEARING → PARTIAL-REF-MATCH | **CONFIRMED runtime** — T-push post-fix `mono=True` on 818/818 solves, primal 6.9→1.7 (was `mono=False`, 36→61 pre-fix); box-push unchanged |
 | 4.m | Mode-switch branches | LOAD-BEARING | **CONFIRMED-CONFORMANT** structure + noted port-only add-ons |
 | 4.n | Altitude gate | LOAD-BEARING | **CONFIRMED-CONFORMANT** via T1a port |
 | 4.o | Hysteresis lookup | COSMETIC-EQUIVALENT | **CONFIRMED** |
 | 4.p | Progress metric | COSMETIC-EQUIVALENT | **CONFIRMED structurally** |
 | 4.q | LCS h_is_zero LCP pre-solve | UNKNOWN | **RESOLVED-INERT-BY-CONFIG** — actuated pushing task has H ≠ 0, branch never fires reference-side |
 | 4.r | PUSHA_STAGE5_* env defaults | LOAD-BEARING iff EE-space | **CONFIRMED-INERT** for default R^7 box run |
+| 4.s | Port-only contact-entry gate | LOAD-BEARING → DISABLED-FOR-T | **REFERENCE-MATCH for T-push** (commit 08003e1 `use_contact_entry_gate: false` in `sampling_c3_kik_t.yaml`); pre-fix 24 block events over 60s; post-fix 0. Box-push YAML unchanged |
 
-18 entries → 6 CONFIRMED at runtime + 3 CONFIRMED-CONFORMANT + 4 NEW-DIVERGENCE (all surfaced by c3 lib clone) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 1 confirmed-structurally-conformant. Zero remaining UNKNOWNs.
+19 entries → 3 REF-MATCH-for-T (4.a/4.c/4.s, all landed 2026-07-17 commit 08003e1) + 3 PARTIAL-REF-MATCH (4.b/4.l via T only) + 3 CONFIRMED-CONFORMANT + 4 NEW-DIVERGENCE (all surfaced by c3 lib clone) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 2 structurally-conformant. Zero remaining UNKNOWNs.
 
 ## 2.k caution result
 

@@ -65,7 +65,8 @@ class C3Solver:
 
     def __init__(self, n_x: int, n_u: int, rho: float = 1.0,
                  math_diag: bool = False, mode: str = "c3",
-                 c3plus_projection: str = "componentwise"):
+                 c3plus_projection: str = "componentwise",
+                 penalize_input_change: bool = True):
         assert mode in ("c3", "c3plus"), f"unknown solver mode: {mode}"
         # C3+ δ-projection variant (only consulted when mode='c3plus'):
         #   'componentwise' : Bui 2026 eq (12) per-scalar-pair test —
@@ -118,8 +119,10 @@ class C3Solver:
         self._u_eta              = 1.0
         # 4.j — reference penalize_changes_in_u_across_solves. When True,
         # the R-block cost becomes ‖u_k − u_prev_k‖²_R (matches c3.cc:302-310).
-        # Reference `anything` YAML sets this true.
-        self._penalize_input_change = True
+        # Reference `anything/sampling_c3plus_options.yaml`: true;
+        # reference `push_t/sampling_c3plus_options.yaml`: false. Task-driven
+        # per caller (see main.py).
+        self._penalize_input_change = penalize_input_change
         # Cache the previous solve's u_seq for the delta penalty. Shape (N, n_u)
         # after the first solve; None (or first-call sentinel) means "use u=0
         # as u_prev on the first call".
