@@ -15,16 +15,16 @@ tasks:
     color_rgba: [0.8, 0.2, 0.2, 1.0]
     # D6: per-task push-point lowering. Sub-CoM contact (z=0.03 vs box CoM
     # at z=0.05) gives a restoring tip moment when the EE has any vertical
-    # Reference `anything/sampling_params.yaml` z_height: 0.002 is what the
-    # OSC track-Z uses (sampling_based_c3_controller.cc:1758). Port would like
-    # to match but workspace_z_min = 0.02 in sampling_c3_kik.yaml blocks any
-    # target below 0.02 m (samples get rejected → arm can't reposition,
-    # observed in box_zlow_062758 which stalled entirely at start pose).
-    # Pick the minimum workspace-legal value: 0.020. Pusher sphere r=0.0195
-    # at ee_z=0.020 extends z ∈ [0, 0.040] — 40 mm of side-face contact on
-    # box side [0, 0.10], starting at ground level (was 0.030 = pusher only
-    # in upper part of box side face; too high for reliable contact).
-    sampling_height: 0.020
+    # Reference push_t contacts object at ee_z = +14 mm above the object's
+    # link-origin (world-z 0.005 vs object center at world-z -0.009 per
+    # push_t/sim_params.yaml q_init_object). Port must MATCH this above-center
+    # contact geometry to inherit the reference's stable rolling-contact
+    # behavior — sub-center contact (previous 0.020 = 30 mm below center)
+    # applies a torque in the wrong direction and 2x reference magnitude,
+    # causing the 118° tumble observed in bug3_30s and prior runs.
+    # Port box center at world-z 0.050 (init_xyz above + half-extent 0.05),
+    # so +14 mm above center = world-z 0.064. Well within workspace_z_max.
+    sampling_height: 0.064
     cost:
       w_obj_xy:    100000.0
       w_obj_z:         10.0
