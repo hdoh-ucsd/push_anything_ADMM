@@ -15,11 +15,15 @@ tasks:
     color_rgba: [0.8, 0.2, 0.2, 1.0]
     # D6: per-task push-point lowering. Sub-CoM contact (z=0.03 vs box CoM
     # at z=0.05) gives a restoring tip moment when the EE has any vertical
-    # component in its contact wrench (GATE verdict: sphere climbs UP the
-    # face under horizontal OSC commands, so geometry must tip the box BACK
-    # into the EE, not away). Sphere radius 0.025; at sample center z=0.03
-    # sphere bottom is z=0.005 (above ground; workspace_z_min=0.02 satisfied).
-    sampling_height: 0.03
+    # Reference `anything/sampling_params.yaml` uses `z_height: 0.002` for the
+    # OSC track-Z (sampling_based_c3_controller.cc:1758). Port's z-freeze fix
+    # (commit 201bb8e) reads `sampling_params.sampling_height` for the OSC
+    # track-Z, so we drop this to match reference intent. Pusher r=0.0195 at
+    # ee_z=0.005 → sphere extends z∈[-0.015, 0.025], overlaps box side face
+    # [0, 0.10] cleanly at [0, 0.025] — 25 mm of side-face contact.
+    # Was 0.03; box_zfreeze_061734 showed arm parked at ee_z=0.035 with only
+    # 1 Drake contact event (2.16 N peak) and pusher 1.8 mm short in XY.
+    sampling_height: 0.005
     cost:
       w_obj_xy:    100000.0
       w_obj_z:         10.0
