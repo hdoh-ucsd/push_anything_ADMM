@@ -53,6 +53,7 @@ class C3PlusMPC:
                  quadratic_cost,
                  horizon:      int   = 8,
                  dt:           float = 0.03,
+                 dt_pose:      float = None,
                  torque_limit: float = 30.0,
                  admm_iter:    int   = 10,
                  math_diag:    bool  = False,
@@ -66,6 +67,15 @@ class C3PlusMPC:
         self.quad_cost     = quadratic_cost
         self.horizon       = horizon
         self.dt            = dt
+        # Near-goal (pose regime) planning dt. Mirrors reference push_t
+        # `planning_dt_pose: 0.05` — finer temporal resolution when box is
+        # inside cost_switching_threshold_distance, so the planner can
+        # brake a fast-moving box in time. None → falls back to dt (=
+        # bit-identical to prior behavior when the caller doesn't set it).
+        self.dt_pose       = float(dt_pose) if dt_pose is not None else dt
+        # Mutable per-tick flag written by the wrapper (SamplingC3MPC).
+        # When True, compute_control uses dt_pose + POSE u-limits.
+        self._crossed_switching_threshold = False
         # When use_ee_space=True, `torque_limit` is reinterpreted as the
         # EE-force limit (Newtons), since u is now R^3 EE Cartesian force.
         # The downstream OSC realizes the joint torques.
@@ -145,6 +155,19 @@ class C3PlusMPC:
 
         self._mpc_step += 1
 
+        # Near-goal (pose regime) dt swap. Mirrors reference push_t
+        # `GetC3Options(crossed_cost_switching_threshold_)` returning
+        # a C3Options with a different `planning_dt`. Finer resolution
+        # near goal lets the planner react to fast box velocity in time.
+        _dt = self.dt_pose if self._crossed_switching_threshold else self.dt
+        # One-shot pose regime activation diagnostic. Fires the first
+        # tick after crossed_switching_threshold latches.
+        if (self._crossed_switching_threshold
+                and not getattr(self, "_pose_regime_logged", False)):
+            self._pose_regime_logged = True
+            print(f"[POSE-REGIME] step={self._mpc_step} activated: "
+                  f"dt {self.dt:.3f}→{self.dt_pose:.3f}s", flush=True)
+
         # 1. Linearise Drake plant into discrete LCS + slack expression, around
         # the previous solve's u[0] (Aydinoglu 2024 eq. 8 linearization point).
         if self.use_ee_space:
@@ -152,13 +175,13 @@ class C3PlusMPC:
              E_lcs, F_lcs, H_lcs, c_lcs,
              J_n, J_t, phi, mu) = \
                 self.formulator.linearize_discrete_ee_space(
-                    plant_ctx, self.dt, u_lin=self._last_u)
+                    plant_ctx, _dt, u_lin=self._last_u)
         else:
             (A, B_ctrl, D, d,
              E_lcs, F_lcs, H_lcs, c_lcs,
              J_n, J_t, phi, mu) = \
                 self.formulator.linearize_discrete_with_complementarity(
-                    plant_ctx, self.dt, u_lin=self._last_u)
+                    plant_ctx, _dt, u_lin=self._last_u)
 
         # ---- [MATH.setup] fires ONCE on first MPC step ----------------------
         if self._math_diag and not self._math_setup_done:
@@ -308,8 +331,20 @@ class C3PlusMPC:
         _u_lo = None
         _u_hi = None
         if self.use_ee_space and self.solver.n_u == 3:
-            _uh_s = os.environ.get("PUSHA_STAGE5_U_HORIZONTAL", "")
-            _uv_s = os.environ.get("PUSHA_STAGE5_U_VERTICAL", "")
+            # Near-goal (pose regime) u-limit swap. Mirrors reference
+            # push_t vs anything: push_t uses ±50 N horizontal, anything
+            # uses ±10 N. When box is near goal, higher force limits let
+            # the planner brake a fast-moving box in time. When
+            # POSE env vars are unset OR the near-goal flag hasn't
+            # latched, the base (position-regime) values apply.
+            if (self._crossed_switching_threshold
+                    and os.environ.get("PUSHA_STAGE5_U_HORIZONTAL_POSE", "")
+                    and os.environ.get("PUSHA_STAGE5_U_VERTICAL_POSE", "")):
+                _uh_s = os.environ.get("PUSHA_STAGE5_U_HORIZONTAL_POSE", "")
+                _uv_s = os.environ.get("PUSHA_STAGE5_U_VERTICAL_POSE", "")
+            else:
+                _uh_s = os.environ.get("PUSHA_STAGE5_U_HORIZONTAL", "")
+                _uv_s = os.environ.get("PUSHA_STAGE5_U_VERTICAL", "")
             if _uh_s and _uv_s:
                 try:
                     _uh = float(_uh_s)
