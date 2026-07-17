@@ -43,6 +43,13 @@ W_force: 1.0
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
 use_commit_face_gate: false
 
+# Reference sampling_based_c3_controller.cc:1284-1309 has NO distance-to-box
+# entry gate; only the height ceiling (x_lcs_curr[2] < z_height +
+# c3_min_clearance + wall_offset) governs free→c3 hand-off. Port's
+# contact_entry_surface_threshold=60mm was blocking every IK arrival (65-68mm
+# reads) → kToC3ReachedReposTarget never fired → T stalled. Disable to match.
+use_contact_entry_gate: false
+
 # Reference push_t/parameters/sampling_params.yaml does NOT set ee_z_close (only
 # anything/sampling_params.yaml sets it true for box). Drake default-inits
 # `bool ee_z_close` to false, so reference push_t runs with EE-Z gate bypassed.
