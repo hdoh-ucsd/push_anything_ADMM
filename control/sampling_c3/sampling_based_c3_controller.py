@@ -242,6 +242,13 @@ class SamplingC3MPC:
         self.is_doing_c3 = start_in_c3_mode
         self._prev_mode:                str   = "c3" if start_in_c3_mode else "free"
         self._step:                     int   = 0
+        # Reference `pursued_target_source_` state
+        # (dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.h:505).
+        # Purely telemetry — derived from the mode + best-sample-source label at
+        # each mode-switch tick via `mode_switch.pursued_from_label`. Emitted in
+        # the [GS] line.
+        from control.sampling_c3.mode_switch import PursuedTargetSource as _PTS
+        self._pursued_target_source: _PTS = _PTS.kNoTarget
         # T-architecture Stage 2b: rate-decoupling state. At default rates
         # (params.dt_osc == params.dt_mpc == 0.01) N_plan=1 and the planner
         # solves every tick with elapsed=0; Stage 2c flips dt_mpc to e.g.
@@ -3989,8 +3996,13 @@ class SamplingC3MPC:
                           if self._current_repos_cost is not None else "-")
         best_other_str = (f"{best_other_cost:.2f}"
                           if best_other_cost != float("inf") else "-")
+        # Derive reference `pursued_target_source_` from the port's existing
+        # mode + best_src labels and update the state field. Emitted below.
+        from control.sampling_c3.mode_switch import pursued_from_label
+        self._pursued_target_source = pursued_from_label(mode, best_src)
         print(f"[GS] step={step} mode={mode} switch={switch_reason.name} "
               f"best_k={best_k} best_src={best_src} "
+              f"pursued={self._pursued_target_source.name} "
               f"curr_cost={c_samples[0]:.2f} repos_cost={repos_cost_str} "
               f"best_other={best_other_str} "
               f"met_progress={'Y' if met_progress else 'N'} "
