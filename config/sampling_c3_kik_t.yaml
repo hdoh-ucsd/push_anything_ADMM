@@ -287,7 +287,7 @@ sampling_params:
   # T-shape overrides — see object_shape switch below.
   sampling_radius: 0.12         # m, candidate-ring radius approximating T's outer envelope
   repos_target_radius: 0.10     # m, IK proxy target — halfway between crossbar tip and stem back
-  sampling_height: 0.034        # m, EE sphere-center world-z; matches reference push_t regime (34 mm above ground; port ground at world-z=0 vs reference ground at world-z=-0.029)
+  sampling_height: 0.005        # m, EE sphere-center world-z; matches reference push_t/parameters/sampling_params.yaml:5 (5 mm above ground, ground-relative). Prior port comment claimed 0.034 was frame-adjusted to match reference; empirically ee_z ended up at 0.06 during Drake contact, riding the T top-corner (T body top at world-z=0.04). At 0.005 the pusher sphere (r=0.025) extends world-z ∈ [-0.02, 0.03], hitting T side face squarely.
 
   # T-shape face table (Push-Anything §IV-B1 analog for the T).
   # The 8-patch table is hardcoded in sampling.py:_TSHAPE_FACE_TABLE — this
