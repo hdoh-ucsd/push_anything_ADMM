@@ -175,6 +175,15 @@ class QuadraticManipulationCost:
         self.w_obj_z       = float(c.get("w_obj_z",         10.0))
         self.w_box_z       = float(c.get("w_box_z",        100.0))
         self.w_box_rp      = float(c.get("w_box_rp",        50.0))
+        # Near-goal (pose regime) weight overrides. Mirrors reference
+        # push_t sampling_c3plus_options.yaml: q_vector_position obj_pos
+        # 250,250,250 → q_vector obj_pos 200,200,120 (20% xy reduction,
+        # 52% z reduction). When _crossed_switching_threshold is True,
+        # build() scales down w_obj_xy and w_box_z accordingly. Defaults
+        # fall back to the far-goal values → byte-identical to prior
+        # behavior when the pose override is not configured.
+        self.w_obj_xy_pose = float(c.get("w_obj_xy_pose", self.w_obj_xy))
+        self.w_box_z_pose  = float(c.get("w_box_z_pose",  self.w_box_z))
         # Yaw-error penalty (Jin & Posa eq. 40 analog). w_yaw=0 → fully inert.
         # Residual e_z = c_yaw · q_box where c_yaw = [-sin(α/2),0,0,cos(α/2)]
         # is EXACTLY linear in the quaternion (not a small-angle approximation):
@@ -291,6 +300,16 @@ class QuadraticManipulationCost:
         """
         # --- Base object-goal cost ---
         Q     = self._Q_obj.copy()
+        # Near-goal (pose regime) cost swap. Mirrors reference push_t
+        # `sampling_c3_options_.GetC3Options(crossed_cost_switching_threshold_)`
+        # — swap object-position weights when box is inside 5 cm of goal.
+        # Rewrites the Q_obj_pos slots in-place; leaves w_box_rp and other
+        # blocks alone (analogous to reference push_t regime deltas).
+        if self._crossed_switching_threshold:
+            Q[self._obj_x_idx, self._obj_x_idx] = self.w_obj_xy_pose
+            Q[self._obj_y_idx, self._obj_y_idx] = self.w_obj_xy_pose
+            Q[self._obj_z_idx, self._obj_z_idx] = (self.w_obj_z
+                                                   + self.w_box_z_pose)
         x_ref = np.zeros(self.n_x)
         x_ref[self._obj_x_idx] = target_xy[0]
         x_ref[self._obj_y_idx] = target_xy[1]

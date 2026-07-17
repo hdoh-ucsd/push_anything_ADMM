@@ -36,6 +36,14 @@ tasks:
       d_push:           0.05
       w_ee_approach: 8000.0
       w_torque:         0.01
+      # Near-goal (pose regime) overrides. Fire when the wrapper's
+      # sticky `_crossed_switching_threshold` flag latches at
+      # box-to-goal distance < cost_switching_threshold_distance (5 cm).
+      # Ratios mirror reference push_t sampling_c3plus_options.yaml:
+      #   position obj_pos = [250, 250, 250], pose obj_pos = [200, 200, 120]
+      #   → 20 % xy reduction, 52 % z reduction near goal.
+      w_obj_xy_pose: 80000.0    # 100k × 0.80
+      w_box_z_pose:  48.0       # 100 × 0.48
 
   # -----------------------------------------------------------------------
   # Task 2: Hard Physics Pushing
