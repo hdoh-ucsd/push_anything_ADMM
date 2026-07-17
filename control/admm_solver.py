@@ -985,6 +985,24 @@ class C3Solver:
                   f"λ=[{SL}:{SU})  u=[{SU}:{SE})  η=[{SE}:{TOT})")
 
         # ---------------------------------------------------------------
+        # LCS scaling — reference c3.cc:81, 204-212 + lcs.cc:46-58.
+        # ScaleComplementarityDynamics: scale = ||A[0]|| / ||D[0]||;
+        # D *= scale, E /= scale, c /= scale, H /= scale. Renormalizes
+        # the LCS so ADMM's OSQP sees comparable magnitudes for state
+        # propagation (A) and contact impulse (D). Without this, small-D
+        # contact rows (T-push EE-BOX: 4cm bar geometry → small D) get
+        # numerically zeroed by the ADMM projection.
+        # Physical λ recovered at end via lambda_sol *= _lcs_scale
+        # (reference c3.cc:349-354).
+        _lcs_scale = 1.0
+        if n_lambda > 0 and D is not None and np.linalg.norm(D) > 0:
+            _lcs_scale = float(np.linalg.norm(A) / np.linalg.norm(D))
+            D     = D     * _lcs_scale
+            E     = E     / _lcs_scale
+            c_lcs = c_lcs / _lcs_scale
+            H     = H     / _lcs_scale
+
+        # ---------------------------------------------------------------
         # QP cost: P = 2·diag(Q,_,_,_,_, R block, _,_,...)·etc + ρ·I
         # ---------------------------------------------------------------
         with timed("admm.qp_build"):
@@ -1589,11 +1607,35 @@ class C3Solver:
                 _base = _k * TOT
                 _la_h[_k] = z_sol[_base + SL : _base + SL + n_lambda]
             self._last_lambda_anitescu_horizon = _la_h
-            # ST views left as placeholders — the executor pipeline under
-            # Anitescu (J_c-aware F_ff) is the SEPARATE next block.
-            self._last_lambda_n_first        = np.zeros(num_normals)
+            # Anitescu → per-pair λ_n recovery. Under Anitescu, each contact
+            # has 4 folded λ components (lcs_formulator.py:1765-1798,
+            # NUM_FRICTION_DIRECTIONS=2 → 4 dirs/contact). Reduce to per-pair
+            # activation magnitude by summing the 4 components per contact
+            # (mirrors E_t_an at lcs_formulator.py:1771). This populates
+            # `_last_lambda_n_first` (n_c,) so the downstream tag-filter at
+            # sampling_based_c3_controller.py:2762-2779 can identify active
+            # EE-BOX pairs — without this, `_lam_n` was zeros(n_c) and the
+            # `_lam_n_mag > 0.05` gate blocked u_sol force routing even when
+            # PUSHA_FORCE_ROUTING=u_sol was set. Root cause of T-push
+            # λ_EE-BOX=0 executor symptom.
+            _dirs_per_contact = int(n_lambda // num_normals) if num_normals > 0 else 4
+            _lam_an0 = z_sol[_LAN0 : _LAN0 + n_lambda]
+            _lam_n_per_pair = np.array([
+                float(np.sum(np.abs(
+                    _lam_an0[i * _dirs_per_contact : (i + 1) * _dirs_per_contact]
+                ))) for i in range(num_normals)
+            ])
+            _lam_n_horizon = np.zeros((N, num_normals))
+            for _k in range(N):
+                _base = _k * TOT + SL
+                _la_k = z_sol[_base : _base + n_lambda]
+                for _i in range(num_normals):
+                    _lam_n_horizon[_k, _i] = float(np.sum(np.abs(
+                        _la_k[_i * _dirs_per_contact : (_i + 1) * _dirs_per_contact]
+                    )))
+            self._last_lambda_n_first        = _lam_n_per_pair
             self._last_lambda_t_first        = np.zeros(J_t.shape[0])
-            self._last_lambda_n_horizon      = np.zeros((N, num_normals))
+            self._last_lambda_n_horizon      = _lam_n_horizon
             self._last_lambda_t_horizon      = np.zeros((N, J_t.shape[0]))
             self._last_lambda_n_first_zsol   = None
             self._last_lambda_n_first_delta  = None
@@ -1618,6 +1660,31 @@ class C3Solver:
             self._last_lambda_t_horizon_delta = None
             self._last_lambda_anitescu_first  = np.zeros(0)
             self._last_lambda_anitescu_horizon = np.zeros((N, 0))
+
+        # LCS-scaling unscale — reference c3.cc:349-354. The ADMM solved in
+        # scaled space (D *= scale, so internal λ_scaled = λ_physical/scale).
+        # Recover physical λ magnitudes by multiplying all cached views by
+        # _lcs_scale. Executor/downstream code sees physical Newtons.
+        if _lcs_scale != 1.0 and num_normals > 0:
+            for _attr in (
+                "_last_lambda_n_first",
+                "_last_lambda_t_first",
+                "_last_lambda_n_horizon",
+                "_last_lambda_t_horizon",
+                "_last_lambda_n_first_zsol",
+                "_last_lambda_n_first_delta",
+                "_last_lambda_t_first_zsol",
+                "_last_lambda_t_first_delta",
+                "_last_lambda_n_horizon_zsol",
+                "_last_lambda_n_horizon_delta",
+                "_last_lambda_t_horizon_zsol",
+                "_last_lambda_t_horizon_delta",
+                "_last_lambda_anitescu_first",
+                "_last_lambda_anitescu_horizon",
+            ):
+                _v = getattr(self, _attr, None)
+                if _v is not None and hasattr(_v, "shape") and _v.size > 0:
+                    setattr(self, _attr, _v * _lcs_scale)
 
         # ---------------------------------------------------------------
         # Diagnostics — mirror C3's [MATH.QP], [MATH.δ], [MATH.ω] blocks.
