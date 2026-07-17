@@ -242,7 +242,7 @@ sampling_params:
 
   # kFaceNormal geometry (Push-Anything §IV-B1).
   box_half_extent:         0.05    # m, cube half-extent
-  sampling_setback:        0.030   # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
+  sampling_setback:        0.027   # m, matches reference anything/sampling_params.yaml:sample_projection_clearance (27 mm). Prior 0.030 left pusher west-edge ~6.5 mm from box east-face; c3-mode couldn't close the last mm consistently and arm hovered at ~75 mm from box center.
   sample_reject_clearance: 0.005   # m, rejection if post-projection xy is within 5 mm of box surface
 
   # Face-selection bias toward goal-aligned faces (Stage 2B infrastructure).
