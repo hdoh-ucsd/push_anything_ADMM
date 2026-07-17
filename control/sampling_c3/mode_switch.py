@@ -48,6 +48,32 @@ class SwitchReason(IntEnum):
                                    # Item 2.1 post-F2 reframe)
 
 
+class PursuedTargetSource(IntEnum):
+    """Which sample the current reposition target came from (mirrors
+    reference `enum PursuedTargetSource` at
+    `dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.h:60`).
+    Purely telemetry — no dispatcher branch consults this state.
+    Derived from the port's existing string labels via
+    `pursued_from_label(mode, best_src)` below."""
+    kNoTarget   = 0   # in c3 mode (no reposition target)
+    kPrevious   = 1   # reusing prior reposition target
+    kNewSample  = 2   # freshly sampled
+    kFromBuffer = 3   # reserved — port lacks the unsuccessful-sample buffer
+                      # `AddToUnsuccessfulBuffer` (reference cc:2161-2177);
+                      # never emitted until that buffer lands
+
+
+def pursued_from_label(mode: str, best_src: str) -> "PursuedTargetSource":
+    """Map the port's string label at each mode-switch tick to the reference
+    PursuedTargetSource enum. In c3 mode, always kNoTarget. In free mode,
+    'prev_repos' → kPrevious, 'strat_*' / other → kNewSample."""
+    if mode == "c3":
+        return PursuedTargetSource.kNoTarget
+    if best_src == "prev_repos":
+        return PursuedTargetSource.kPrevious
+    return PursuedTargetSource.kNewSample
+
+
 # ---------------------------------------------------------------------------
 # Hysteresis lookup
 # ---------------------------------------------------------------------------
