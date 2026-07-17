@@ -3280,12 +3280,48 @@ class SamplingC3MPC:
             # interpolation → p_ee_desired sweeps from ee_now to p_c3, and
             # v_ee_desired = (p_c3 - ee_now)/dt_ctrl throughout the window.
             _sim_t_c3 = float(self._step - 1) * float(self._dt_ctrl)
-            _p_c3_col = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
-            _p_now_col = np.asarray(ee_pos_now, dtype=float).reshape(3, 1)
-            _traj_c3 = PiecewisePolynomial.FirstOrderHold(
-                [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],
-                np.hstack([_p_now_col, _p_c3_col]),
-            )
+            # Full-horizon c3-mode position trajectory (matches reference
+            # sampling_based_c3_controller.cc:1757-1770 publishing N-knot
+            # LcmTrajectory to OSC). Prior port built a 2-knot trajectory
+            # spanning dt_ctrl only (~10 ms) — OSC saw ~1 point of look-ahead.
+            # Reference publishes N knots at dt_planner spacing (0.075 s × 5
+            # = 0.375 s of look-ahead), so OSC has continuous forward-motion
+            # info as it evaluates at increasing t_sim between planner solves.
+            _use_ee_space = bool(getattr(self.base_mpc, "use_ee_space", False))
+            _x_seq_full = getattr(self.base_mpc, "last_x_seq", None)
+            _dt_plan = float(getattr(self.base_mpc, "dt", 0.075))
+            _N_plan = int(getattr(self.base_mpc, "horizon", 5))
+            _sh = float(self.params.sampling_params.sampling_height)
+            if (_use_ee_space and _x_seq_full is not None
+                    and hasattr(_x_seq_full, "shape")
+                    and _x_seq_full.ndim == 2
+                    and _x_seq_full.shape[0] >= _N_plan + 1
+                    and _x_seq_full.shape[1] >= 10):
+                # Build (3, N+1) knots = arm-XY-Z from x_seq, Z frozen at
+                # sampling_height per commit 201bb8e.
+                _knots_arm = np.array([
+                    _x_seq_full[i][7:10] for i in range(_N_plan + 1)
+                ], dtype=float).T
+                _knots_arm[2, :] = _sh
+                # Prepend current EE at t=_sim_t_c3 so trajectory starts
+                # from actual state (avoids OSC target jump at planner tick).
+                _knots = np.hstack([
+                    np.asarray(ee_pos_now, dtype=float).reshape(3, 1),
+                    _knots_arm,
+                ])
+                _ts = [_sim_t_c3] + [
+                    _sim_t_c3 + (i + 1) * _dt_plan
+                    for i in range(_N_plan + 1)
+                ]
+                _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
+            else:
+                # Legacy 2-knot fallback for R^7 path or missing x_seq.
+                _p_c3_col = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
+                _p_now_col = np.asarray(ee_pos_now, dtype=float).reshape(3, 1)
+                _traj_c3 = PiecewisePolynomial.FirstOrderHold(
+                    [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],
+                    np.hstack([_p_now_col, _p_c3_col]),
+                )
             u_imp, imp_diag = self.executor.compute_torque_from_trajectory(
                 traj = _traj_c3, t_sim = _sim_t_c3,
                 current_q = current_q, current_v = current_v,
