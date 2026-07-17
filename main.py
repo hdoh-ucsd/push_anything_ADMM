@@ -524,10 +524,14 @@ def main():
     # Reference rho_scale=3 (adaptive per iter, applied in _solve_c3plus).
     # Initial rho matches port's tuned C3+ constant; adaptive schedule
     # multiplies over the 3 admm iterations.
+    # penalize_input_change: reference push_t/sampling_c3plus_options.yaml
+    # sets `false`; reference anything/*.yaml sets `true`. Task-gated.
+    _penalize_input_change = (task_name != "push_t")
     solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
                           math_diag=args.math_diag,
                           mode=args.solver,
-                          c3plus_projection=args.c3plus_projection)
+                          c3plus_projection=args.c3plus_projection,
+                          penalize_input_change=_penalize_input_change)
     _proj_label = (args.c3plus_projection
                    if args.solver == "c3plus" else "n/a (mode=c3)")
     print(f"[C3] Solver mode: {args.solver}  "
