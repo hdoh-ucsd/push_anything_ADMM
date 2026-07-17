@@ -64,8 +64,6 @@ python main.py pushing \
     --sampling-c3 config/sampling_c3_kik.yaml \
     --admm-iter 3 \
     --max-time 30 \
-    --early-exit-goal-d 0.085 \
-    --goal-settle-time 0.5 \
     --name "$STEM" \
     --drake-frames-dir "results/${STEM}_frames" \
     --force-save-video \

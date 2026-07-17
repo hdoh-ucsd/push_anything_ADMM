@@ -126,11 +126,16 @@ tasks:
     goal_xy:  [-0.018, 0.187]
     goal_yaw: -0.7379    # rad = -42.28°, from reference push_t target quaternion
     color_rgba: [0.75, 0.75, 0.75, 1.0]
-    # Contact regime matched to reference push_t: sphere-center world-z = 34 mm
-    # (reference: world-z = 0.005 m with ground at world-z = -0.029 m; port
-    # ground at world-z = 0). Puts contact 14 mm above T CoM (T sits on ground
-    # at world-z = 0.02, top at 0.04).
-    sampling_height: 0.034
+    # Contact regime matched to reference push_t/parameters/sampling_params.yaml:5
+    # (sampling_height: 0.005 above ground). Port ground at world-z = 0, T body
+    # sits on ground at CoM z=0.02 (T bottom at 0, top at 0.04). Pusher sphere
+    # (r=0.025) at ee_z=0.005 extends z ∈ [-0.02, 0.03] — hits T side face
+    # squarely across nearly its full 0-0.04 height. Prior value 0.034 was based
+    # on a mistaken frame-offset argument and had the pusher center riding the
+    # T top corner (ee_z ~0.06 during Drake contact events).
+    # NOTE: This value OVERRIDES sampling_c3_kik_t.yaml `sampling_height` via
+    # main.py:598-603 — the sampling-c3 yaml value is inert for push_t.
+    sampling_height: 0.005
     cost:
       w_obj_xy:    100000.0
       w_obj_z:         10.0
