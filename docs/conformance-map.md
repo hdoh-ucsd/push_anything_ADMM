@@ -821,7 +821,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.g | end_on_qp_step (final rollout) | LOAD-BEARING at non-convergence | NEW DIVERGENCE — reference `end_on_qp_step=false` computes `x_seq` via LCS rollout; port returns direct QP solution |
 | 4.h | Cross-tick warm-start | COSMETIC (both OFF) | CONFIRMED — both cold-start per tick |
 | 4.i | Within-Solve warm-start (ADMM iter carryforward) | COSMETIC | CONFIRMED — both agents implicitly warm-start delta/omega across iterations |
-| 4.j | penalize_changes_in_u_across_solves | LOAD-BEARING | NEW DIVERGENCE — reference toggles between `R·‖u‖²` and `R·‖u−u_prev‖²`; port always uses `R·‖u‖²` |
+| 4.j | penalize_changes_in_u_across_solves | LOAD-BEARING → PARTIAL-REFERENCE-MATCH | RESOLVED 2026-07-17 commit 84823fe — port now task-gates the flag (push_t: false, box/other: true) per reference `push_t/sampling_c3plus_options.yaml` (false) and `anything/sampling_c3plus_options.yaml` (true) |
 | 4.k | SolveSingleProjection (Bui eq 12) | COSMETIC (equivalent) | CONFIRMED via c3 lib — port `_project_componentwise` = reference C3Plus::SolveSingleProjection exactly (same weighted-eta-vs-lambda case selection + ≥0 clip) |
 | 4.l | ADMM convergence at runtime | LOAD-BEARING | CONFIRMED — port iters=25/25 on every solve; primal residual ~3.87 non-decreasing → NON-CONVERGENT (mechanically ties to 3.g Stewart-Trinkle rank-deficient F[γ,γ]) |
 | 4.m | Mode-switch branches | LOAD-BEARING | CONFIRMED-CONFORMANT (structure); port omits {xbox force_c3, achieved_fixed_goal, unsuccessful-sample-buffer, wall_offset}; port adds {kForceC3Watchdog, kToBetterRepos, kStayInRepos as distinct enum values} |
@@ -908,10 +908,11 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 ## 4.j — penalize_changes_in_u_across_solves
 
 - **Reference:** `c3.cc:302-310` — when `options_.penalize_input_change`, the input cost is rebuilt PER SOLVE as `2·R·u - 2·R·u_sol_prev` (i.e., `‖u - u_prev‖²_R` instead of `‖u‖²_R`). Reference `anything` YAML `penalize_changes_in_u_across_solves: true`; reference `push_t` YAML `false`.
-- **Port:** No analog. Port always uses `‖u‖²_R` (absolute penalty).
-- **Tag:** LOAD-BEARING for `anything`-analog tasks (like port's box pushing), inert for `push_t`-analog.
+- **Port pre-fix:** `admm_solver.py:123` was hardcoded `True` for both tasks; behaviorally correct for box, DIVERGENT for T.
+- **Port post-fix (commit 84823fe, 2026-07-17):** `admm_solver.py:123 self._penalize_input_change = penalize_input_change` (constructor arg, default `True`); `main.py:530 _penalize_input_change = (task_name != "push_t")` gates the value per task. Push_t now runs with `False` (matches reference); other tasks unchanged.
+- **Tag:** LOAD-BEARING → PARTIAL-REFERENCE-MATCH (T-task fully conforms; box unchanged since it was already correct).
 - **Confidence:** high.
-- **Tier 2 — NEW DIVERGENCE surfaced by c3 lib + config deep read.** For box pushing task the reference penalizes u changes → smoother control; port penalizes u absolutely → may generate jerkier control. Not runtime-verified but the STATIC divergence is clear.
+- **Tier 2 — CONFIRMED conformant post-fix.** The port scaffolding at `admm_solver.py:1022-1027` and `admm_solver.py:1539` was already wired to the flag; only the fixed-True default was DIVERGENT.
 
 ## 4.k — SolveSingleProjection (Bui eq 12)
 
@@ -1048,8 +1049,10 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.q | LCS h_is_zero LCP pre-solve | UNKNOWN | **RESOLVED-INERT-BY-CONFIG** — actuated pushing task has H ≠ 0, branch never fires reference-side |
 | 4.r | PUSHA_STAGE5_* env defaults | LOAD-BEARING iff EE-space | **CONFIRMED-INERT** for default R^7 box run |
 | 4.s | Port-only contact-entry gate | LOAD-BEARING → DISABLED-FOR-T | **REFERENCE-MATCH for T-push** (commit 08003e1 `use_contact_entry_gate: false` in `sampling_c3_kik_t.yaml`); pre-fix 24 block events over 60s; post-fix 0. Box-push YAML unchanged |
+| 4.t | `PursuedTargetSource` state | COSMETIC → REF-STRUCTURE-MATCH | Reference enum + state at `.h:60,505` mirrors kNoTarget/kPrevious/kNewSample/kFromBuffer. Port lacked. Landed 2026-07-17 commit 9a39972 as an additive telemetry field on the `[GS]` line, derived from the port's existing string-labels via `pursued_from_label(mode, best_src)`. `kFromBuffer` reserved — its emitter path is the reference `AddToUnsuccessfulBuffer` which the port does NOT have (see 4.u) |
+| 4.u | `AddToUnsuccessfulBuffer` failed-sample buffer | LOAD-BEARING (dispatcher-behavior) | Reference `sampling_based_c3_controller.cc:2161-2183` writes failed c3 attempts to a FIFO consumed by `GenerateSampleStates` at cc:905 to reject spatially-close candidates. Port has no analog. NOT implemented — write-only would be dead-weight; full read+write pair changes sampling behavior (out of scope per 2026-07-17 lock-in). Scope conversation candidate |
 
-19 entries → 3 REF-MATCH-for-T (4.a/4.c/4.s, all landed 2026-07-17 commit 08003e1) + 3 PARTIAL-REF-MATCH (4.b/4.l via T only) + 3 CONFIRMED-CONFORMANT + 4 NEW-DIVERGENCE (all surfaced by c3 lib clone) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 2 structurally-conformant. Zero remaining UNKNOWNs.
+21 entries → 4 REF-MATCH-for-T (4.a/4.c/4.s/4.t, landed 2026-07-17 commits 08003e1 + 9a39972) + 3 PARTIAL-REF-MATCH (4.b/4.j/4.l via T only) + 3 CONFIRMED-CONFORMANT + 4 NEW-DIVERGENCE (all surfaced by c3 lib clone) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 2 structurally-conformant + 1 LOAD-BEARING-open (4.u AddToUnsuccessfulBuffer). Zero remaining UNKNOWNs.
 
 ## 2.k caution result
 
