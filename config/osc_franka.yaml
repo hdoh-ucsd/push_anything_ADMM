@@ -34,10 +34,19 @@ osc:
   # it entirely — port relies on task tracking (Kp_cart=200) plus
   # nullspace posture (Kp_null=10) for arm posture, which is sufficient
   # without an over-strong elbow pin.
+  # Re-enabled 2026-07-17: reference values w_elbow=1, elbow_kp=200,
+  # elbow_kd=10, target=1.1 rad. Prior port ran W=0 per lock-in Option A
+  # (memory: project_reproduce_dairlib_restored_main_joint2_flag) after
+  # W=1/target=1.1 raised EE dramatically at commit ec7fc4a-era. Testing
+  # under today's conformance stack (EE-chain, u_limits, z-freeze,
+  # sampling_height=0.020) to see whether reference joint-2 target lifts
+  # mid-arm links above box top and eliminates the arm-link-brushing
+  # box-push observed on box_z020_063025 (81 n_pairs=2 events, 28mm
+  # translation via arm links not pusher tip).
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  W_joint2:            0.0    # DISABLED — pin harmful in port's Franka frame
-  joint2_target_rad:   0.675  # (unused when W_joint2=0; kept for spec-comparable diagnostic)
+  W_joint2:            1.0    # ref w_elbow=1
+  joint2_target_rad:   1.1    # ref target (osc_params.yaml:44)
   joint2_idx:            1
 
   # Reference EndEffectorW = diag(1,1,1).
