@@ -180,18 +180,24 @@ progress_params:
   pos_regression_threshold:            0.0    # DISABLED — port-only, reference has no such gate
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
-  # Reference anything/progress_params_c3plus.yaml:
-  #   progress_enforced_cost_drop:    0.5
-  #   progress_enforced_over_n_loops: 16   (16 planner ticks at ref dt=0.075)
-  # Use duration_s form to bypass params.py:239 100Hz compat shim (which
-  # would turn `_n_loops: 16` into 0.16 s = 2 ticks at port planner 13.3 Hz).
-  progress_enforced_cost_drop:        0.5
+  # Reference push_t/progress_params_c3plus.yaml:
+  #   progress_enforced_cost_drop:    0.01    (1 % drop — 50× looser than
+  #                                            reference anything's 0.5)
+  #   progress_enforced_over_n_loops: 16      (16 planner ticks at ref dt=0.075)
+  # Prior port value was 0.5 (anything default) — 50× too strict for the
+  # T-approach phase, fired kToReposUnproductive at step 17 (window fill)
+  # every run, blocked c3 mode for the rest of the run. Fixed 2026-07-17.
+  progress_enforced_cost_drop:        0.01
   progress_enforced_over_duration_s:  1.2
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
   # placement is more sensitive than gross translation).
-  cost_switching_threshold_distance: 0.05    # m
+  # Reference push_t/progress_params_c3plus.yaml:33 = 0.50 (10× the
+  # reference anything value of 0.05). Port previously had 0.05 (anything
+  # default) → T at 0.188 m never crossed → dispatcher used _position
+  # variants throughout. Fixed 2026-07-17.
+  cost_switching_threshold_distance: 0.50    # m
 
   # Reference-aligned arrival penalty (dairlib
   # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
