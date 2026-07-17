@@ -62,8 +62,8 @@ python main.py pushing \
     --solver c3plus --c3plus-projection lcp \
     --ee-space \
     --sampling-c3 config/sampling_c3_kik.yaml \
-    --admm-iter 25 \
-    --max-time 6 \
+    --admm-iter 3 \
+    --max-time 30 \
     --early-exit-goal-d 0.085 \
     --goal-settle-time 0.5 \
     --name "$STEM" \

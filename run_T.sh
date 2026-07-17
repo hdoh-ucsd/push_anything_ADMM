@@ -51,7 +51,7 @@ python main.py push_t \
     --ee-space \
     --sampling-c3 config/sampling_c3_kik_t.yaml \
     --admm-iter 3 \
-    --max-time 8 \
+    --max-time 30 \
     --name "$STEM" \
     --drake-frames-dir "results/${STEM}_frames" \
     --force-save-video \
