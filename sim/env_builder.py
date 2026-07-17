@@ -22,8 +22,15 @@ ROBOT_BASE_XYZ = [0.0, -0.6, 0.029]
 # at a task-specific safe-offset position (opposite goal direction, above
 # object top). Retained for continuity with prior compute_prepositioned
 # IK cascades.
+# Joint 2 (index 1) at 1.1 rad matches reference q_init_franka[1] = 1.1
+# (osc_params.yaml:44 elbow_kp target). Reference has zero posture error at
+# init; port previously had 0.675 giving a 0.43 rad error at t=0 which
+# joint-2 tracking (W=1, Kp=200) drove upward continuously → arm-fly-up
+# (ee_z reached 0.809 m in box_bugfix_100749, 0.624 m in box_frame3d_101625).
+# Aligning the IK seed pose with the joint-2 target zeros the posture error
+# at start so the OSC has no forced upward pull.
 _INITIAL_ARM_Q_SEED = np.array([
-    +0.552150, +0.675037, +0.976275, -2.246164, -0.188979, +3.044706, +0.785000,
+    +0.552150, +1.100000, +0.976275, -2.246164, -0.188979, +3.044706, +0.785000,
 ])
 # FK of the seed: EE at (0.000, 0.000, 0.200) — this is the OLD default
 # that placed EE directly over box CoM and caused the descend-through-box
