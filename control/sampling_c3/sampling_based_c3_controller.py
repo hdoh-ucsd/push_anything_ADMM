@@ -2605,6 +2605,17 @@ class SamplingC3MPC:
             if _x_seq is not None and len(_x_seq) > 1:
                 if _use_ee_space:
                     _p_ee_des = _x_seq[1][7:10].copy()
+                    # Reference `sampling_based_c3_controller.cc:1757-1759`
+                    # freezes the c3-mode EE-position target Z at
+                    # sampling_height + wall_offset on every horizon knot:
+                    #   knots(2, i) = sampling_params_.z_height + wall_offset
+                    # Prior port took Z from x_seq[1][9] (planner's next-tick
+                    # predicted EE z). Once real contact fired, the planner's
+                    # LCS included the contact pair; x_seq[1][9] retreated;
+                    # arm lost contact. Freeze Z at sampling_height to hold
+                    # contact height stable — matches reference OSC track_z.
+                    _sh = float(self.params.sampling_params.sampling_height)
+                    _p_ee_des[2] = _sh
                 else:
                     _q_full_next = current_q.copy()
                     _q_full_next[:self.n_u] = _x_seq[1][:self.n_u]
