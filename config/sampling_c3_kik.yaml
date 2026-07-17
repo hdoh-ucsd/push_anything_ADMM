@@ -222,18 +222,19 @@ sampling_params:
   ang_error_sample_retention:  0.05    # rad
 
   # Number of control loops a random ring sample buffer persists before
-  # being re-randomized. 0 disables (re-samples every loop — broken
-  # behavior verified in results/random_ring_20260518_192051: box motion
-  # 0 mm because IK tracker chases targets that jump 25+ cm/loop).
-  # 30 ≈ 0.3 sec at dt_ctrl=0.01s, ~IK convergence time on the ring.
-  # Buffer also force-refreshes on arrival (finished_repos fires) and
-  # on mode transitions that change n_strategy.
-  # Port-only tick-expiry mechanism. Reference has no such lifetime — the
+  # Port-only tick-expiry mechanism. Reference has NO such lifetime — the
   # sample buffer is purged only by pos/ang retention criteria (retention_
-  # 0.004 m / 0.05 rad, N_sample_buffer=200 above). Setting to a large
-  # sim-time value effectively disables the tick expiry (60 s > 8 s max_time
-  # in the current sanity runs).
-  sample_buffer_lifetime_s:    60.0
+  # 0.004 m / 0.05 rad, N_sample_buffer=200 above), and strategy samples
+  # are REGENERATED every tick (sampling_based_c3_controller.cc:1096-1117).
+  # Set to 0.0 to trigger the ablation path in
+  # control/sampling_c3/sampling_based_c3_controller.py:_get_persistent_samples,
+  # which bypasses the cache and calls generate_samples() every loop —
+  # matches reference behavior. A prior run (results/random_ring_20260518_192051)
+  # showed 0 mm box motion under lifetime=0 due to the IK tracker chasing
+  # jumping strategy samples, but that predates Bugs 1+2 (2026-07-17
+  # a4ebc65/224597a): with position tracking restored and Z-freeze gone,
+  # the c3-mode force channel handles the target jitter.
+  sample_buffer_lifetime_s:    0.0
 
   # Geometric parameters (interpretation depends on sampling_strategy).
   sampling_radius: 0.075        # m, candidate-ring radius — set to contact distance (box half-width 0.05 + EE radius 0.025) so IK targets land on the contact face
