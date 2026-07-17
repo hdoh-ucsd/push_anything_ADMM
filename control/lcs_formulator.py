@@ -68,7 +68,15 @@ class LCSFormulator:
         #   no box_ground_drag (Anitescu holds λ_n_gnd on its own)
         #   no normal-row patches (Stewart-Trinkle-specific, dead here)
         self._contact_model = "anitescu"
-        self._always_on_ee_box = True
+        # Phantom EE-box pair injection (port-only, no reference analog).
+        # When True and the natural sd_pairs list has no EE-BOX pair (real
+        # signed distance > lcs_formulator.py:245 2 mm threshold), inject the
+        # closest EE-BOX candidate anyway. Reference relies solely on the
+        # signed-distance threshold for admission. Default True preserves the
+        # T-push success regime; box path can turn it off via env.
+        import os as _os_awo
+        self._always_on_ee_box = (
+            _os_awo.environ.get("LCS_ALWAYS_ON_EE_BOX", "1") == "1")
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
         self.lcs_explicit_manipuland_ground_contacts = (
