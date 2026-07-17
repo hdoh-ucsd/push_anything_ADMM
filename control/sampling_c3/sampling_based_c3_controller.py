@@ -3308,23 +3308,21 @@ class SamplingC3MPC:
                     and hasattr(_x_seq_full, "shape")
                     and _x_seq_full.ndim == 2
                     and _x_seq_full.shape[0] >= _N_plan + 1
-                    and _x_seq_full.shape[1] >= 10):
-                # Build (3, N+1) knots = arm-XY-Z from x_seq, Z frozen at
-                # sampling_height per commit 201bb8e.
-                _knots_arm = np.array([
-                    _x_seq_full[i][7:10] for i in range(_N_plan + 1)
+                    and _x_seq_full.shape[1] >= 10
+                    and _N_plan >= 2):
+                # Match reference (cc:1493-1520): publish x_sol_[k] at
+                # time_vector_[k], NO ee_pos_now prepend. Drop x_seq[0]
+                # (planner initial state ≡ ee_pos_now — verified 1.11e-15
+                # at line 2602), else knot 0 = ee_pos_now @ t=sim_t and
+                # OSC's first eval returns p_err=0, killing tracking
+                # authority. First knot in the published trajectory is
+                # x_seq[1] (planner's first predicted state), letting the
+                # OSC see nonzero p_err from tick 1.
+                _knots = np.array([
+                    _x_seq_full[i][7:10] for i in range(1, _N_plan + 1)
                 ], dtype=float).T
-                _knots_arm[2, :] = _sh
-                # Prepend current EE at t=_sim_t_c3 so trajectory starts
-                # from actual state (avoids OSC target jump at planner tick).
-                _knots = np.hstack([
-                    np.asarray(ee_pos_now, dtype=float).reshape(3, 1),
-                    _knots_arm,
-                ])
-                _ts = [_sim_t_c3] + [
-                    _sim_t_c3 + (i + 1) * _dt_plan
-                    for i in range(_N_plan + 1)
-                ]
+                _knots[2, :] = _sh
+                _ts = [_sim_t_c3 + i * _dt_plan for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
             else:
                 # Legacy 2-knot fallback for R^7 path or missing x_seq.
