@@ -320,13 +320,16 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
             G_SP_E=ad.UnitInertia.SolidSphere(0.02),
         ),
     )
-    plant.RegisterCollisionGeometry(
-        flange_body,
-        ad.RigidTransform(np.array([0.0, 0.0, -0.0048])),
-        ad.Cylinder(0.0315, 0.0096),
-        "flange_collision",
-        ad.CoulombFriction(static_friction=_pusher_mu, dynamic_friction=_pusher_mu),
-    )
+    # Reference LCS-plant architecture (franka_sampling_c3_controller.cc:130-138)
+    # uses ONLY the tip sphere for planner contact — reference LCS plant is a
+    # floating sphere without any peg or flange. To mimic that on the port's
+    # single-plant setup we skip RegisterCollisionGeometry for the flange and
+    # peg bodies (visual kept so meshcat still shows them). Sim plant no
+    # longer simulates peg-box or flange-box contact, matching reference
+    # planner's mental model. Prior port had all three collision geometries;
+    # box_j2track_093539 showed 172 n_pairs=2 events driven by peg contact
+    # (per user observation: "the box touched the bar that connects the tip
+    # and arm").
     plant.RegisterVisualGeometry(
         flange_body,
         ad.RigidTransform(np.array([0.0, 0.0, -0.0048])),
@@ -354,13 +357,7 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
             G_SP_E=ad.UnitInertia.SolidSphere(0.03),
         ),
     )
-    plant.RegisterCollisionGeometry(
-        peg_body,
-        ad.RigidTransform(np.array([0.0, 0.0, -0.0508])),
-        ad.Cylinder(0.0127, 0.1016),
-        "peg_collision",
-        ad.CoulombFriction(static_friction=_pusher_mu, dynamic_friction=_pusher_mu),
-    )
+    # (see flange note above) — visual only, no collision.
     plant.RegisterVisualGeometry(
         peg_body,
         ad.RigidTransform(np.array([0.0, 0.0, -0.0508])),
