@@ -3279,7 +3279,19 @@ class SamplingC3MPC:
             # the traj at t ∈ [t_start, t_start+dt_ctrl] → interior
             # interpolation → p_ee_desired sweeps from ee_now to p_c3, and
             # v_ee_desired = (p_c3 - ee_now)/dt_ctrl throughout the window.
-            _sim_t_c3 = float(self._step - 1) * float(self._dt_ctrl)
+            # Bugfix: use Drake's actual plant clock (get_time()) instead of
+            # the step-counter estimate (self._step - 1) * dt_ctrl. The
+            # step-counter has ~1-tick offset from the plant clock due to
+            # the sub-tick OSC decoupling in main.py:846-857 — main advances
+            # plant time with _DT_OSC (1 ms) sub-steps while self._step
+            # increments per outer tick. Prior N-knot trajectory used the
+            # step-counter as start time; OSC evaluated at plant clock →
+            # trajectory time-range didn't include the plant-clock query →
+            # PiecewisePolynomial returned edge (last knot) values →
+            # OSC saw an incorrect target (previous run box_dual_095654:
+            # box moved 1 mm instead of ~485 mm).
+            _sim_t_c3 = float(plant_ctx.get_time()) if plant_ctx is not None \
+                else float(self._step - 1) * float(self._dt_ctrl)
             # Full-horizon c3-mode position trajectory (matches reference
             # sampling_based_c3_controller.cc:1757-1770 publishing N-knot
             # LcmTrajectory to OSC). Prior port built a 2-knot trajectory
