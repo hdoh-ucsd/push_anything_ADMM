@@ -126,15 +126,12 @@ class C3Solver:
         self._u_prev_solve = None
         # Reference rho_scale (c3.cc:389-390):
         #   w = w / rho_scale;  G = G * rho_scale;  (per ADMM iter)
-        # sampling_c3plus_options.yaml default: 3.
-        # Re-tested with all mode/progress/OSC fixes applied — still
-        # regresses (box orient 3.14 rad tumble, T pushed backward).
-        # Port's admm_iter=25 (vs reference 3) means 25×log(3)=27 more
-        # scaling would occur — huge ρ inflation over the iterations.
-        # Keep at 1.0. Reference-conformant value requires reference's
-        # admm_iter=3 first (out of scope: port hits 25/25 without
-        # monotonic convergence).
-        self._rho_scale = 1.0
+        # push_t/parameters/sampling_c3plus_options.yaml sets rho_scale: 3.
+        # Enabled 2026-07-17 after commit 4c3bad5 conformed admm_iter=25→3;
+        # the port now runs the reference's 3-iter geometric ρ ramp instead
+        # of the dead "adaptive-ρ every 10 iters" branch below (which the
+        # solve loop even self-flags as unreachable at admm_iter=3).
+        self._rho_scale = 3.0
         # 4.g — reference sampling_c3plus_options.yaml end_on_qp_step: false
         # → do an LCS rollout of x from x0 using solved (u, λ) after the
         # ADMM loop, so the returned x_seq is LCS-feasible even under
