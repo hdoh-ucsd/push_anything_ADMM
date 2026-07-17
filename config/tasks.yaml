@@ -32,7 +32,14 @@ tasks:
       w_box_rp:        50.0
       w_yaw:            0.0
       w_terminal:       5.0
-      z_ee_target:      0.05
+      # z_ee_target: planner-cost proxy z (task_costs.py:349 proxy_3d.z
+      # = self.z_ref). Must match sampling_height (0.064 above) so the
+      # planner drives arm to the SAME z the reposition tracker + IK
+      # place it at — +14 mm above box center = reference-conforming
+      # contact geometry. Was 0.05 (box center) which caused the arm
+      # to sink from sampling z=0.064 down to box-center z=0.05 during
+      # c3 mode, then further to z=0.019 under the LCS lam_n pull.
+      z_ee_target:      0.064
       d_push:           0.05
       w_ee_approach: 8000.0
       w_torque:         0.01
