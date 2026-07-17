@@ -59,7 +59,7 @@ PUSHA_EE_APPROACH_FACE_TARGET=1 \
 PUSHA_DISABLE_C3_OVERRIDE=1 \
 python main.py pushing \
     --task-id "$TASK_ID" \
-    --solver c3plus --c3plus-projection lcp \
+    --solver c3plus \
     --ee-space \
     --sampling-c3 config/sampling_c3_kik.yaml \
     --admm-iter 3 \
