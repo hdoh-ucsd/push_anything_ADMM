@@ -53,7 +53,14 @@ PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 \
 PUSHA_STAGE5_U_HORIZONTAL=10 \
 PUSHA_STAGE5_U_VERTICAL=3 \
 PUSHA_STAGE5_R_VECTOR=0.01,0.01,1 \
-LCS_ALWAYS_ON_EE_BOX=1 \
+# LCS_ALWAYS_ON_EE_BOX removed 2026-07-17 — port-only phantom-contact
+# injection (no reference analog); the planner LCS was admitting the EE-box
+# pair regardless of Drake's real signed distance. After the EE-chain fix
+# (commit 8d9220a) that gave 23 cm arm-tip separation, the arm parked at the
+# sampling setback (~80 mm east of box) with the planner reporting
+# `contact=Y lam_n=0.010` while Drake showed 0 contact for 400 ticks. Real
+# admission gate at lcs_formulator.py:245 (2 mm signed-distance threshold)
+# now controls entirely.
 PUSHA_FORCE_ROUTING=u_sol \
 PUSHA_EE_APPROACH_FACE_TARGET=1 \
 PUSHA_DISABLE_C3_OVERRIDE=1 \
