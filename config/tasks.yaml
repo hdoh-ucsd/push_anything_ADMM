@@ -137,6 +137,18 @@ tasks:
       w_box_z:        100.0
       w_box_rp:        50.0
       w_yaw:          800.0   # DOMINANT — the headline of this task
+      # Near-goal hessian-quaternion Q_block (reference push_t
+      # sampling_c3plus_options.yaml:74-75 and
+      # sampling_based_c3_controller.cc:1517-1570). When the wrapper's
+      # crossed_switching_threshold latches (obj-to-goal < 0.05m), the
+      # linear w_yaw quat block is REPLACED by the Hessian of squared
+      # quaternion-angle-difference cost. Linear form saturates near
+      # goal (dcost/dpsi → 0 as psi → 0); hessian form has non-zero
+      # curvature at the optimum, so the planner keeps driving yaw
+      # error down.
+      use_quaternion_dependent_cost:                    true
+      q_quaternion_dependent_weight:                    1000.0
+      q_quaternion_dependent_regularizer_fraction:      0.0
       w_terminal:       5.0
       z_ee_target:      0.034
       z_obj_target:     0.020   # T stays on ground (reference target z = init z)

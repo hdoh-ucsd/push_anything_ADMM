@@ -184,6 +184,26 @@ class QuadraticManipulationCost:
         # invalid for a unit quaternion.
         self.w_yaw         = float(c.get("w_yaw",            0.0))
         self._target_yaw   = 0.0   # updated each build() call via target_yaw kwarg
+
+        # Near-goal quaternion-dependent Q_block (reference
+        # sampling_based_c3_controller.cc:1517-1570). When enabled AND the
+        # wrapper's `crossed_switching_threshold` is True, `build_ee_space`
+        # replaces the linear w_yaw quat block with the Hessian-of-
+        # squared-quaternion-angle-difference cost. Guides yaw via a proper
+        # 3D rotation metric near goal; the linear w_yaw form saturates
+        # near the goal (its residual is sin((ψ-α)/2), curvature → 0).
+        # Reference push_t: use_quaternion_dependent_cost=true, weight=1000,
+        # regularizer_fraction=0.
+        self.use_quaternion_dependent_cost = bool(
+            c.get("use_quaternion_dependent_cost", False))
+        self.q_quaternion_dependent_weight = float(
+            c.get("q_quaternion_dependent_weight", 1000.0))
+        self.q_quaternion_dependent_regularizer_fraction = float(
+            c.get("q_quaternion_dependent_regularizer_fraction", 0.0))
+        # Mutable flag set by wrapper per tick. Enables the near-goal
+        # quat-dep cost override. Default False → no divergence for
+        # existing tasks / pre-crossed-threshold behavior.
+        self._crossed_switching_threshold = False
         self.w_torque      = float(c.get("w_torque",         0.01))
         self.w_terminal    = float(c.get("w_terminal",        5.0))
         self.z_ref         = float(c.get("z_ee_target",      0.05))
@@ -720,6 +740,44 @@ class QuadraticManipulationCost:
             Q[0:4, 0:4] += self.w_yaw * np.outer(cy, cy)
             x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
             x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
+
+        # --- Near-goal quaternion-dependent Q_block override ---
+        # Reference sampling_based_c3_controller.cc:1517-1570.
+        # When (a) `use_quaternion_dependent_cost` is set in cost config AND
+        # (b) the wrapper's `crossed_switching_threshold` is True (object is
+        # inside `cost_switching_threshold_distance` of the goal), REPLACE
+        # (not add to) the linear w_yaw quat block with the Hessian-of-
+        # squared-quaternion-angle-difference cost. Guides yaw via the
+        # proper 3D rotation metric near goal, where the linear residual
+        # saturates.
+        if (self.use_quaternion_dependent_cost
+                and self._crossed_switching_threshold
+                and plant_ctx is not None
+                and current_q is not None):
+            # Import lazily to keep this optional path zero-cost when disabled.
+            from control.quaternion_hessian import (
+                build_regularized_quaternion_cost,
+            )
+            # Current object quaternion (positions ps..ps+3 in q).
+            ps = self._obj_ps
+            q_now = np.array([
+                current_q[ps], current_q[ps + 1],
+                current_q[ps + 2], current_q[ps + 3],
+            ])
+            # Goal quaternion from target_yaw (yaw-only rotation about z).
+            a_half = 0.5 * float(target_yaw)
+            q_goal = np.array([np.cos(a_half), 0.0, 0.0, np.sin(a_half)])
+            Q_quat = build_regularized_quaternion_cost(
+                q_now, q_goal,
+                weight=self.q_quaternion_dependent_weight,
+                regularizer_fraction=
+                    self.q_quaternion_dependent_regularizer_fraction,
+            )
+            # Reference replaces (=) rather than adds. Do the same to avoid
+            # double-counting yaw cost (linear + hessian).
+            Q[0:4, 0:4] = Q_quat
+            # Keep x_ref quat set to goal (both cost forms reference the same
+            # goal quaternion in slot 0/3).
 
         # --- EE-approach cost (DIRECT — no arm Jacobian) ---
         if plant_ctx is not None and current_q is not None:
