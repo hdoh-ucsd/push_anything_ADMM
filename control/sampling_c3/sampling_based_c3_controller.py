@@ -1406,6 +1406,15 @@ class SamplingC3MPC:
                       f"{' + progress reset' if self._prev_mode == 'c3' else ''}",
                       flush=True)
         near_goal = self._crossed_switching_threshold
+        # Sync near-goal flag to quad_cost so build_ee_space activates the
+        # reference near-goal hessian-quaternion Q_block (task_costs.py
+        # `use_quaternion_dependent_cost` path, mirroring reference
+        # sampling_based_c3_controller.cc:1517-1570). The base_mpc call
+        # below re-reads this attribute per tick.
+        try:
+            self._quad_cost._crossed_switching_threshold = bool(near_goal)
+        except AttributeError:
+            pass
         # Reposition is "finished" iff the PWL tracker reports the EE within
         # tolerance of the target on the previous control step. Trajectory-
         # based signal from reposition.py:244 (is_at_target with 2 cm tol),
