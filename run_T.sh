@@ -50,7 +50,7 @@ python main.py push_t \
     --solver c3plus --c3plus-projection lcp \
     --ee-space \
     --sampling-c3 config/sampling_c3_kik_t.yaml \
-    --admm-iter 25 \
+    --admm-iter 3 \
     --max-time 8 \
     --name "$STEM" \
     --drake-frames-dir "results/${STEM}_frames" \
