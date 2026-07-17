@@ -813,7 +813,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | # | Divergence | Tier-1 tag | Tier-2 |
 |---|---|---|---|
 | 4.a | Solver class / projection algorithm | LOAD-BEARING | CONFIRMED — port `C3PlusMPC` + `componentwise` projection (script override `--c3plus-projection lcp` removed for T-push 2026-07-17, commit 08003e1); reference default MIQP (C3MIQP class) |
-| 4.b | admm_iter count | LOAD-BEARING → PARTIAL-REFERENCE-MATCH | CONFIRMED at runtime — T-push port 3 (commit 4c3bad5, matches reference); box-push port still 25; reference 3 (`admm_iter: 3` YAML) |
+| 4.b | admm_iter count | LOAD-BEARING → REFERENCE-MATCH | CONFIRMED at runtime — T-push port 3 (commit 4c3bad5) and box-push port 3 (commit 952c8a3) both match reference `admm_iter: 3` YAML for `push_t` and `anything`; single canonical setting across both tasks |
 | 4.c | rho / rho_scale | LOAD-BEARING → REFERENCE-MATCH | CONFIRMED — port `_rho_scale = 3.0` (commit 08003e1) applied per ADMM iter with initial `rho_init=100.0`; reference `rho_scale=3` per iter. Ramp trace: 100 → 300 → 900 → 2700 over 3 iters. Legacy "adaptive-ρ every 10 iters" branch retained but unreachable at admm_iter≤10. |
 | 4.d | Horizon N | LOAD-BEARING | CONFIRMED at runtime — port N=20; reference N=5 |
 | 4.e | Planning dt | LOAD-BEARING | CONFIRMED at runtime — port dt=0.05; reference dt=0.1; horizon_time port 1.0s vs reference 0.5s |
@@ -844,10 +844,10 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 ## 4.b — admm_iter count
 
 - **Reference:** `sampling_c3_options.yaml: admm_iter: 3` for both `anything` and `push_t`. Very few ADMM iterations because MIQP itself solves the LCP exactly at each iter — 3 outer iterations for ADMM refinement.
-- **Port:** `main.py:--admm-iter` argparse default = 3. T-push canonical `run_T.sh` passes `--admm-iter 3` since commit 4c3bad5 (2026-07-17). Box-push canonical `run_box.sh` still passes `--admm-iter 25` (C3+ componentwise projection is approximate; more iterations were needed to refine).
-- **Tag:** LOAD-BEARING → PARTIAL-REFERENCE-MATCH (T only).
+- **Port:** `main.py:--admm-iter` argparse default = 3. Both canonical scripts pass `--admm-iter 3`: T-push since commit 4c3bad5 (2026-07-17), box-push since commit 952c8a3 (2026-07-17). Prior box regime `--admm-iter 25` retired at that commit.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH.
 - **Confidence:** high.
-- **Tier 2 — post-fix runtime 2026-07-17 (T-push 60s):** `[MPC] ADMM max iters: 3` — matches reference. ADMM residuals: `primal 6.9→2.1 mono=True` on 818/818 solves (was `36→61 mono=False` at admm_iter=25 with rho_init=100). Tolerance `1e-3` still not reached in 3 iters (final primal ~1.68) — inherits reference's own non-convergence-tolerance behavior. Box-push residual metrics unchanged at admm_iter=25.
+- **Tier 2 — post-fix runtime 2026-07-17:** T-push at 3 iters produces `mono=True` on 100 % of ADMM solves with primal residual monotone-decreasing. Box-push at 3 iters not yet re-baselined; first run at HEAD `952c8a3` becomes the reference artefact. Tolerance `1e-3` typically not reached in 3 iters — matches reference's own admm_iter=3 non-convergence-tolerance regime.
 
 ## 4.c — rho / rho_scale
 
