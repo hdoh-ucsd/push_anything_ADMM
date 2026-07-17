@@ -560,9 +560,15 @@ def main():
     if args.solver == "c3plus":
         _c3plus_N  = 7
         _c3plus_dt = 0.075
+        # Reference push_t planning_dt_pose = 0.05 (2x finer than
+        # planning_dt_position = 0.1). Port base dt is already 0.075
+        # (between the two), so pose = 0.05 preserves the reference
+        # position→pose resolution jump.
+        _c3plus_dt_pose = 0.05
     else:
         _c3plus_N  = 5
         _c3plus_dt = 0.1
+        _c3plus_dt_pose = 0.1  # C3 baseline path — no regime swap
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
@@ -573,6 +579,8 @@ def main():
         admm_iter=args.admm_iter,
         math_diag=args.math_diag,
     )
+    if args.solver == "c3plus":
+        _mpc_kwargs["dt_pose"] = _c3plus_dt_pose
     if args.ee_space:
         _mpc_kwargs["use_ee_space"] = True
     mpc = _MPCClass(**_mpc_kwargs)

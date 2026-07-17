@@ -1422,6 +1422,13 @@ class SamplingC3MPC:
             self._quad_cost._crossed_switching_threshold = bool(near_goal)
         except AttributeError:
             pass
+        # Also sync to the base MPC so ci_mpc_c3plus.compute_control can
+        # swap planning_dt (dt_pose) and per-axis u-limits (POSE env
+        # vars) when the box is inside cost_switching_threshold_distance.
+        try:
+            self.base_mpc._crossed_switching_threshold = bool(near_goal)
+        except AttributeError:
+            pass
         # Reposition is "finished" iff the PWL tracker reports the EE within
         # tolerance of the target on the previous control step. Trajectory-
         # based signal from reposition.py:244 (is_at_target with 2 cm tol),
@@ -3302,6 +3309,12 @@ class SamplingC3MPC:
             _use_ee_space = bool(getattr(self.base_mpc, "use_ee_space", False))
             _x_seq_full = getattr(self.base_mpc, "last_x_seq", None)
             _dt_plan = float(getattr(self.base_mpc, "dt", 0.075))
+            # Near-goal (pose regime): planner uses dt_pose. Trajectory
+            # knot spacing must match so the OSC eval times land on the
+            # correct planner-predicted states.
+            if getattr(self.base_mpc, "_crossed_switching_threshold", False):
+                _dt_plan = float(
+                    getattr(self.base_mpc, "dt_pose", _dt_plan))
             _N_plan = int(getattr(self.base_mpc, "horizon", 5))
             if (_use_ee_space and _x_seq_full is not None
                     and hasattr(_x_seq_full, "shape")
