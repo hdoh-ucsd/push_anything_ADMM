@@ -7,8 +7,15 @@ Object geometry (box vs sphere) and physical properties come from tasks.yaml.
 import numpy as np
 import pydrake.all as ad
 
-# Panda base weld: arm sits 0.6 m behind table centre along -Y
-ROBOT_BASE_XYZ = [0.0, -0.6, 0.0]
+# Panda base weld: arm sits 0.6 m behind table centre along -Y and 29 mm
+# above ground/table top (matches reference kFrankaToGroundOffset = (0, 0,
+# -0.029) at sampling_c3_utils.h:32 — reference has Franka mounted 29 mm
+# above the ground origin). Prior port had z=0.0, mounting the arm flush
+# on the table top. The 29 mm elevation gives the arm the vertical range
+# reference relies on when tracking sampling_height / z_height at 0.002-0.005
+# (targets that would otherwise be below the port's tip-below-base reach
+# in the R^7 → R^3 EE-space projection).
+ROBOT_BASE_XYZ = [0.0, -0.6, 0.029]
 
 # IK seed for compute_safe_init_arm_q. Not used directly as the start
 # pose — `compute_safe_init_arm_q` runs IK from this seed to place the EE

@@ -980,7 +980,19 @@ def main():
     # ------------------------------------------------------------------
     final_q      = plant.GetPositions(plant_ctx)
     final_obj_xy = np.array([final_q[obj_x_idx], final_q[obj_y_idx]])
-    final_dist   = float(np.linalg.norm(final_obj_xy - target_xy))
+    # Reference-conformant 3D goal distance:
+    #   sampling_based_c3_controller.cc:768-770 uses .norm() on a 3-element
+    #   position segment (obj_x, obj_y, obj_z), summed across objects.
+    # Prior port dropped Z. For a box on the ground the Z contribution is
+    # small (obj_z stays near box_init_z=0.05), but including it matches
+    # reference's position_error metric exactly and catches lift-off cases.
+    _init_xyz = task_cfg.get("init_xyz", [0.0, 0.0, 0.05])
+    target_xyz = np.array(
+        [target_xy[0], target_xy[1], float(_init_xyz[2])], dtype=float)
+    final_obj_xyz = np.array(
+        [final_q[obj_x_idx], final_q[obj_y_idx], final_q[obj_z_idx]],
+        dtype=float)
+    final_dist   = float(np.linalg.norm(final_obj_xyz - target_xyz))
     # Geodesic orientation error vs goal: acos((tr(R_goal^T R_final)-1)/2).
     # Reference success gate for push_t is position<0.02m AND orient<0.1 rad.
     _final_quat = final_q[pos_start:pos_start + 4]  # [qw, qx, qy, qz]
