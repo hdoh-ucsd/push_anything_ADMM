@@ -626,7 +626,16 @@ def main():
             params=sc3_params,
             dt_ctrl=_dt_ctrl_pass,
             log_diag=True,
-            start_in_c3_mode=False,
+            # Reference `sampling_based_c3_controller.h:495` initializes
+            # `is_doing_c3_ = true` — controller bootstraps IN c3 mode. Once
+            # dropped to free (kToReposUnproductive/kToReposCost), the
+            # reference-conformant hysteresis (`hyst_repos_to_c3_frac=0.9`
+            # near-goal) requires c3_cost < 0.1·best_other to fire, which is
+            # unreachable in the observed cost distribution. Port previously
+            # started free → dispatcher never entered c3 (phantom-contact
+            # signature: real Drake force, zero planner λ recovery, zero
+            # coordinated push). Flipped to True to match reference.
+            start_in_c3_mode=True,
             rng=_rng,
             diagram=diagram,
         )
