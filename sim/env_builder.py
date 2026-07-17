@@ -288,23 +288,102 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
     )
 
     # ------------------------------------------------------------------
-    # Spherical pusher — rigidly welded to panda_link8, 5 cm along +z.
-    # Gives clean point contact with well-defined horizontal normals when
-    # approaching the box from the side (Dairlab C3 benchmark geometry).
-    # Fixed joint: no new DOF — q_arm stays 7-dim.
+    # Reference EE chain (dairlib_sampling_c3 examples/sampling_c3/urdf/
+    # end_effector_full.urdf @257e3ed): flange cylinder + peg cylinder +
+    # tip sphere welded to panda_link7 via kToolAttachmentFrame=[0,0,0.107]
+    # with 180° roll flip. Total ~23 cm of physical separation between
+    # panda_link7 and the tip sphere — arm-link collision geometries
+    # (Drake stock panda_arm.urdf: r=0.06 spheres per link) can't reach
+    # manipulands during normal EE-contact configurations. Reference does
+    # NOT use explicit collision-filter code (verified in franka_sim.cc);
+    # the geometric separation IS the filter.
+    #
+    # Prior port: bare sphere welded 5 cm past panda_link8. Too close to
+    # arm — box_nobs_044007 showed the arm links pushing the box directly
+    # (n_pairs=2-5 events during freeze regions, ee_box_normal=0 while
+    # box_p continued to drift).
     # ------------------------------------------------------------------
-    _pusher_inertia = ad.SpatialInertia(
-        mass=0.05,
-        p_PScm_E=np.zeros(3),
-        G_SP_E=ad.UnitInertia.SolidSphere(PUSHER_RADIUS),
-    )
-    pusher_body = plant.AddRigidBody(EE_BODY_NAME, panda_model, _pusher_inertia)
-    # Pusher-surface friction is task-configurable. Drake combines per-surface
-    # μ via harmonic mean: μ_eff = 2·μ_A·μ_B / (μ_A + μ_B). Reference
-    # end_effector_full.urdf: pusher μ=1.0. Reference push_t.sdf: T μ=0.3;
-    # combined EE-T μ_eff = 2·1.0·0.3/(1.3) = 0.462 (reproduces reference
-    # EE-T pair exactly). Box tasks keep box μ=0.3 → box-EE μ_eff=0.462 too.
     _pusher_mu = float(task_cfg.get("pusher_friction", 1.0))
+
+    # Flange (cylinder r=0.0315, L=0.0096, mass 0.0779 kg per reference URDF).
+    # Inertia uses a spherical approximation — the reference thin-disc cylinder
+    # yields a degenerate SpatialInertia that fails Drake's triangle-inequality
+    # check. Bodies are welded → rotational inertia is nearly inert for dynamics.
+    # Place body frame AT the CoM (p_PScm_E=0) — Drake's SpatialInertia
+    # constructor requires G_SP_E to be about the BODY FRAME ORIGIN, not Bcm;
+    # keeping origin=Bcm avoids the parallel-axis shift trap.
+    flange_body = plant.AddRigidBody(
+        "end_effector_flange", panda_model,
+        ad.SpatialInertia(
+            mass=0.0779312,
+            p_PScm_E=np.zeros(3),
+            G_SP_E=ad.UnitInertia.SolidSphere(0.02),
+        ),
+    )
+    plant.RegisterCollisionGeometry(
+        flange_body,
+        ad.RigidTransform(np.array([0.0, 0.0, -0.0048])),
+        ad.Cylinder(0.0315, 0.0096),
+        "flange_collision",
+        ad.CoulombFriction(static_friction=_pusher_mu, dynamic_friction=_pusher_mu),
+    )
+    plant.RegisterVisualGeometry(
+        flange_body,
+        ad.RigidTransform(np.array([0.0, 0.0, -0.0048])),
+        ad.Cylinder(0.0315, 0.0096),
+        "flange_visual",
+        [0.3, 0.3, 0.3, 1.0],
+    )
+    plant.WeldFrames(
+        plant.GetFrameByName("panda_link7", panda_model),
+        flange_body.body_frame(),
+        ad.RigidTransform(
+            ad.RotationMatrix(ad.RollPitchYaw(3.1415, 0.0, 0.0)),
+            np.array([0.0, 0.0, 0.107]),
+        ),
+    )
+
+    # Peg (cylinder r=0.0127, L=0.1016, mass 0.134 kg per reference URDF).
+    # Long thin cylinder — spherical approximation for the inertia is used to
+    # keep the SpatialInertia validation happy; welded bodies won't feel it.
+    peg_body = plant.AddRigidBody(
+        "end_effector_peg", panda_model,
+        ad.SpatialInertia(
+            mass=0.1340688,
+            p_PScm_E=np.zeros(3),
+            G_SP_E=ad.UnitInertia.SolidSphere(0.03),
+        ),
+    )
+    plant.RegisterCollisionGeometry(
+        peg_body,
+        ad.RigidTransform(np.array([0.0, 0.0, -0.0508])),
+        ad.Cylinder(0.0127, 0.1016),
+        "peg_collision",
+        ad.CoulombFriction(static_friction=_pusher_mu, dynamic_friction=_pusher_mu),
+    )
+    plant.RegisterVisualGeometry(
+        peg_body,
+        ad.RigidTransform(np.array([0.0, 0.0, -0.0508])),
+        ad.Cylinder(0.0127, 0.1016),
+        "peg_visual",
+        [0.3, 0.3, 0.3, 1.0],
+    )
+    plant.WeldFrames(
+        flange_body.body_frame(),
+        peg_body.body_frame(),
+        ad.RigidTransform(np.array([0.0, 0.0, -0.0096])),
+    )
+
+    # Tip sphere (reference r=0.0195, mass 0.057 kg). Kept as "pusher" name
+    # so downstream code (LCS filter, wrapper, OSC) works unchanged.
+    pusher_body = plant.AddRigidBody(
+        EE_BODY_NAME, panda_model,
+        ad.SpatialInertia(
+            mass=0.057,
+            p_PScm_E=np.zeros(3),
+            G_SP_E=ad.UnitInertia.SolidSphere(PUSHER_RADIUS),
+        ),
+    )
     plant.RegisterCollisionGeometry(
         pusher_body,
         ad.RigidTransform(),
@@ -320,9 +399,9 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         [0.2, 0.5, 1.0, 1.0],
     )
     plant.WeldFrames(
-        plant.GetFrameByName("panda_link8", panda_model),
+        peg_body.body_frame(),
         pusher_body.body_frame(),
-        ad.RigidTransform([0.0, 0.0, 0.05]),   # 5 cm past link8 along +z
+        ad.RigidTransform(np.array([0.0, 0.0, -0.1169])),
     )
 
     # ------------------------------------------------------------------
