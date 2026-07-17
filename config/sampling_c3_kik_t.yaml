@@ -43,6 +43,15 @@ W_force: 1.0
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
 use_commit_face_gate: false
 
+# Reference push_t/parameters/sampling_params.yaml does NOT set ee_z_close (only
+# anything/sampling_params.yaml sets it true for box). Drake default-inits
+# `bool ee_z_close` to false, so reference push_t runs with EE-Z gate bypassed.
+# Port default is True (params.py:844); explicit false here matches reference.
+# Without this, PWL rebuilds on dispatcher retargets keep lifting EE to
+# z_safe=77mm while the 44mm ceiling blocks c3 entry — arm never lands, never
+# pushes. Box path unaffected (its yaml stays silent, port default True holds).
+ee_z_close: false
+
 # T1b — reference 3-leg high-waypoint reposition (reposition.cc:394,
 # RepositionPiecewiseLinear). Activates the Stage A `RepositionTrajectory`
 # eval-based path (lift → traverse → descend at z_safe), replacing the
