@@ -3303,7 +3303,6 @@ class SamplingC3MPC:
             _x_seq_full = getattr(self.base_mpc, "last_x_seq", None)
             _dt_plan = float(getattr(self.base_mpc, "dt", 0.075))
             _N_plan = int(getattr(self.base_mpc, "horizon", 5))
-            _sh = float(self.params.sampling_params.sampling_height)
             if (_use_ee_space and _x_seq_full is not None
                     and hasattr(_x_seq_full, "shape")
                     and _x_seq_full.ndim == 2
@@ -3311,17 +3310,17 @@ class SamplingC3MPC:
                     and _x_seq_full.shape[1] >= 10
                     and _N_plan >= 2):
                 # Match reference (cc:1493-1520): publish x_sol_[k] at
-                # time_vector_[k], NO ee_pos_now prepend. Drop x_seq[0]
-                # (planner initial state ≡ ee_pos_now — verified 1.11e-15
-                # at line 2602), else knot 0 = ee_pos_now @ t=sim_t and
-                # OSC's first eval returns p_err=0, killing tracking
-                # authority. First knot in the published trajectory is
-                # x_seq[1] (planner's first predicted state), letting the
-                # OSC see nonzero p_err from tick 1.
+                # time_vector_[k] — raw solver output for all 3 axes, no
+                # sampling-height Z-freeze. Drop x_seq[0] (planner initial
+                # state ≡ ee_pos_now — verified 1.11e-15 at line 2602),
+                # else knot 0 = ee_pos_now @ t=sim_t and OSC's first eval
+                # returns p_err=0, killing tracking authority. First knot
+                # in the published trajectory is x_seq[1] (planner's first
+                # predicted state), letting the OSC see nonzero p_err from
+                # tick 1.
                 _knots = np.array([
                     _x_seq_full[i][7:10] for i in range(1, _N_plan + 1)
                 ], dtype=float).T
-                _knots[2, :] = _sh
                 _ts = [_sim_t_c3 + i * _dt_plan for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
             else:
