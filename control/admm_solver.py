@@ -344,6 +344,8 @@ class C3Solver:
               c_lcs:   np.ndarray | None = None,
               u_lower: np.ndarray | None = None,
               u_upper: np.ndarray | None = None,
+              ee_velocity_bounds: tuple | None = None,
+              ee_vel_state_indices: tuple = (16, 17, 18),
               ) -> tuple[np.ndarray, np.ndarray]:
         """
         Solve the C3 full-horizon trajectory optimisation.
@@ -386,6 +388,8 @@ class C3Solver:
                 N=N, admm_iter=admm_iter, torque_limit=torque_limit,
                 phi=phi,
                 u_lower=u_lower, u_upper=u_upper,
+                ee_velocity_bounds=ee_velocity_bounds,
+                ee_vel_state_indices=ee_vel_state_indices,
             )
 
         # ===== C3 (Phase 2 — paper-exact LCP projection) =====
@@ -887,6 +891,14 @@ class C3Solver:
                       phi:    np.ndarray | None = None,
                       u_lower: np.ndarray | None = None,
                       u_upper: np.ndarray | None = None,
+                      # 2026-07-18: reference sampling_c3plus_options.yaml:36
+                      # `ee_velocity_limits: [-0.14, 0.14]` applied as
+                      # AddLinearConstraint(..., STATE) at cc:1027-1034.
+                      # When passed, adds per-knot BoundingBoxConstraint on
+                      # state slots [ee_vel_state_indices] ∈ [lo, hi]. None →
+                      # no constraint (byte-identical to prior behavior).
+                      ee_velocity_bounds: tuple | None = None,
+                      ee_vel_state_indices: tuple = (16, 17, 18),
                       ) -> tuple[np.ndarray, np.ndarray]:
         """
         C3+ ADMM solve (Bui 2026 ICRA §IV-B.2).                      ← C3+ NEW
@@ -1123,6 +1135,29 @@ class C3Solver:
                 ui = i * TOT + SU
                 prog.AddBoundingBoxConstraint(
                     _u_lo, _u_hi, z_var[ui : ui + n_u],
+                )
+
+            # State velocity bounds (ee_velocity_limits). Reference cc:1027-1034
+            # applies at each knot: A · x_k ∈ [lo, hi] where A selects the EE
+            # velocity slots. Port equivalent: BoundingBoxConstraint on the
+            # same state indices at each knot plus the terminal state.
+            if ee_velocity_bounds is not None:
+                _ev_lo, _ev_hi = float(ee_velocity_bounds[0]), float(ee_velocity_bounds[1])
+                _ev_idx = list(ee_vel_state_indices)
+                _n_ev = len(_ev_idx)
+                _ev_lo_vec = np.full(_n_ev, _ev_lo)
+                _ev_hi_vec = np.full(_n_ev, _ev_hi)
+                for i in range(N):
+                    _base = i * TOT + SX
+                    prog.AddBoundingBoxConstraint(
+                        _ev_lo_vec, _ev_hi_vec,
+                        z_var[np.array(_ev_idx) + _base],
+                    )
+                # Terminal state (position N*TOT + n_x slots)
+                _base_terminal = N * TOT
+                prog.AddBoundingBoxConstraint(
+                    _ev_lo_vec, _ev_hi_vec,
+                    z_var[np.array(_ev_idx) + _base_terminal],
                 )
 
             cost_bd = prog.AddQuadraticCost(
