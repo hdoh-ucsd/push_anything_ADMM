@@ -157,7 +157,20 @@ tasks:
     # main.py:598-603 — the sampling-c3 yaml value is inert for push_t.
     sampling_height: 0.005
     cost:
-      w_obj_xy:    100000.0
+      # 2026-07-17: rescaled 100000 → 9000 to match reference
+      # `Q = w_Q · q_vector.asDiagonal()` where w_Q=45 and q_vector[obj_x]=200
+      # (`push_t/parameters/sampling_c3_options.yaml:65,70-71` — Q[obj_x,obj_x]
+      # = 45 · 200 = 9000). Port was writing 100000 directly (11.1× too
+      # translation-heavy), which held the C3+ QP at a local optimum on the
+      # wrong yaw face of the T stem: translation reward for +y push from
+      # link-frame (+0.08, −0.02) contact dominated the yaw penalty by 100:1
+      # (w_obj_xy=100k vs q_quaternion_dependent_weight=1000). With the
+      # rescale, the ratio matches reference's 9:1 near-goal — yaw penalty
+      # comparable to translation reward, wrong-direction yaw drops out of
+      # the QP's optimum. Verified in
+      # results/push_t_T_fix1_20260717_235306: final yaw sign flipped from
+      # +23° (wrong dir, baseline) to −9.5° (correct dir, CW toward −42°).
+      w_obj_xy:      9000.0
       w_obj_z:         10.0
       w_box_z:        100.0
       w_box_rp:        50.0

@@ -270,9 +270,18 @@ sampling_params:
 
   # Sample buffer (replay-best-on-c3-exit hysteresis).
   consider_best_buffer_sample_when_leaving_c3: true
-  N_sample_buffer:             5
-  pos_error_sample_retention:  0.05    # m
-  ang_error_sample_retention:  0.30    # rad
+  # 2026-07-17: rescaled to match reference push_t/parameters/sampling_params.yaml
+  # (N_sample_buffer=100, pos_error_sample_retention=0.003, ang_error=0.0349).
+  # Port previously used 5/0.05/0.30 — 17× coarser on position, 8.6× coarser
+  # on angle. In the T-push wrong-yaw bug (2026-07-17 investigation), stale
+  # face-2 (stem south, wrong-yaw) samples persisted for ~130 control loops
+  # because the T only translates 3.6 cm before the productive-c3 window,
+  # never triggering the 5 cm eviction. Reference's 3 mm threshold would
+  # evict them within ~10 loops. N_sample_buffer bumped to reference's 100
+  # so we don't cap the buffer during a normal 30 s run.
+  N_sample_buffer:           100
+  pos_error_sample_retention:  0.003   # m — reference value
+  ang_error_sample_retention:  0.0349  # rad = 2 deg — reference value
 
   # Number of control loops a random ring sample buffer persists before
   # being re-randomized. 0 disables (re-samples every loop — broken
