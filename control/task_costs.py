@@ -209,6 +209,34 @@ class QuadraticManipulationCost:
             c.get("q_quaternion_dependent_weight", 1000.0))
         self.q_quaternion_dependent_regularizer_fraction = float(
             c.get("q_quaternion_dependent_regularizer_fraction", 0.0))
+
+        # Reference-conforming Q construction — Q = w_Q · diag(q_vector).
+        # When `use_reference_q_vector: true` in cost config, build_ee_space
+        # replaces the per-weight base Q (w_obj_xy, w_obj_z, w_box_rp, w_yaw
+        # rank-1 outer product) with a diagonal built from the reference
+        # push_t/parameters/sampling_c3_options.yaml:65-75 layout, remapped
+        # from the reference's [ee_pos, quat, obj_pos, ee_vel, obj_ang_vel,
+        # obj_lin_vel] order into the port's [quat, obj_pos, ee_pos,
+        # obj_ang_vel, obj_lin_vel, ee_vel] order. Near-goal quaternion
+        # Hessian override still fires on top of this base; EE-approach and
+        # yaw rank-1 outer product are skipped when this flag is set
+        # (reference has neither).
+        self.use_reference_q_vector = bool(
+            c.get("use_reference_q_vector", False))
+        self.w_Q = float(c.get("w_Q", 1.0))
+        # Per-group q_vector lists in reference layout order.
+        self._q_vec_ee_pos      = list(c.get(
+            "q_vector_ee_pos",      [0.01, 0.01, 0.01]))
+        self._q_vec_obj_quat    = list(c.get(
+            "q_vector_obj_quat",    [0.1, 0.1, 0.1, 0.1]))
+        self._q_vec_obj_pos     = list(c.get(
+            "q_vector_obj_pos",     [200.0, 200.0, 120.0]))
+        self._q_vec_ee_vel      = list(c.get(
+            "q_vector_ee_vel",      [5.0, 5.0, 5.0]))
+        self._q_vec_obj_ang_vel = list(c.get(
+            "q_vector_obj_ang_vel", [0.05, 0.05, 0.05]))
+        self._q_vec_obj_lin_vel = list(c.get(
+            "q_vector_obj_lin_vel", [0.05, 0.05, 0.05]))
         # Mutable flag set by wrapper per tick. Enables the near-goal
         # quat-dep cost override. Default False → no divergence for
         # existing tasks / pre-crossed-threshold behavior.
@@ -737,13 +765,32 @@ class QuadraticManipulationCost:
         n_x = self.N_X_EE_SPACE
         n_u = self.N_U_EE_SPACE
 
-        # --- Base Q (object xy/z, roll/pitch) ---
+        # --- Base Q ---
         Q = np.zeros((n_x, n_x))
-        Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy
-        Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy
-        Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = self.w_obj_z + self.w_box_z
-        Q[self._NEW_OBJ_QX, self._NEW_OBJ_QX] = self.w_box_rp   # roll
-        Q[self._NEW_OBJ_QY, self._NEW_OBJ_QY] = self.w_box_rp   # pitch
+        if self.use_reference_q_vector:
+            # Reference-conforming path: Q_base = w_Q · diag(q_vector) with the
+            # per-group vectors placed at the port's state indices. Reference
+            # layout is [ee_pos(3), quat(4), obj_pos(3), ee_vel(3),
+            # obj_ang_vel(3), obj_lin_vel(3)]; port layout is [quat(4),
+            # obj_pos(3), ee_pos(3), obj_ang_vel(3), obj_lin_vel(3), ee_vel(3)].
+            q_diag = np.zeros(n_x)
+            q_diag[self._NEW_OBJ_QW:self._NEW_OBJ_QZ + 1] = self._q_vec_obj_quat
+            q_diag[self._NEW_OBJ_X]  = self._q_vec_obj_pos[0]
+            q_diag[self._NEW_OBJ_Y]  = self._q_vec_obj_pos[1]
+            q_diag[self._NEW_OBJ_Z]  = self._q_vec_obj_pos[2]
+            q_diag[self._NEW_PEE_SLOT]   = self._q_vec_ee_pos
+            q_diag[self._NEW_VBOX_OMEGA] = self._q_vec_obj_ang_vel
+            q_diag[self._NEW_VBOX_LIN_X] = self._q_vec_obj_lin_vel[0]
+            q_diag[self._NEW_VBOX_LIN_Y] = self._q_vec_obj_lin_vel[1]
+            q_diag[self._NEW_VBOX_LIN_Z] = self._q_vec_obj_lin_vel[2]
+            q_diag[self._NEW_VEE_SLOT]   = self._q_vec_ee_vel
+            Q[np.arange(n_x), np.arange(n_x)] = self.w_Q * q_diag
+        else:
+            Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy
+            Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy
+            Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = self.w_obj_z + self.w_box_z
+            Q[self._NEW_OBJ_QX, self._NEW_OBJ_QX] = self.w_box_rp   # roll
+            Q[self._NEW_OBJ_QY, self._NEW_OBJ_QY] = self.w_box_rp   # pitch
 
         # --- x_ref base ---
         x_ref = np.zeros(n_x)
@@ -752,11 +799,21 @@ class QuadraticManipulationCost:
         x_ref[self._NEW_OBJ_Z] = self.z_obj_target
 
         # --- Yaw target (linear-in-quaternion residual) ---
+        # Reference has no rank-1 outer-product yaw form; yaw is entirely
+        # handled by the near-goal quaternion Hessian override. Skip when the
+        # reference q_vector path is active to avoid double-counting yaw
+        # penalty (linear rank-1 + Hessian replacement).
         self._target_yaw = float(target_yaw)
-        if self.w_yaw > 0.0:
+        if self.w_yaw > 0.0 and not self.use_reference_q_vector:
             a_half = 0.5 * self._target_yaw
             cy = np.array([-np.sin(a_half), 0.0, 0.0, np.cos(a_half)])
             Q[0:4, 0:4] += self.w_yaw * np.outer(cy, cy)
+            x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
+            x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
+        elif self.use_reference_q_vector:
+            # Still need to seed x_ref with goal quaternion so the diagonal
+            # obj_quat penalty pulls toward the correct pose.
+            a_half = 0.5 * self._target_yaw
             x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
             x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
 
