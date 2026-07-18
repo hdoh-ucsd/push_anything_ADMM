@@ -249,8 +249,14 @@ def main():
                              "reached. Default: encode only on goal-reach.")
     parser.add_argument("--video-out", type=str, default=None, metavar="PATH.mp4",
                         help="Output path for the encoded Drake-frames mp4 "
-                             "(runs paint_mode_text.py post-sim). Requires "
+                             "(runs the paint HUD post-sim). Requires "
                              "--drake-frames-dir.")
+    parser.add_argument("--hud-video", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="Overlay the per-step log HUD (paint_full_hud.py) "
+                             "onto the encoded video. Default ON — pass "
+                             "--no-hud-video for the minimal mode-only pill "
+                             "(paint_mode_text.py).")
     parser.add_argument("--sampling-height", type=float, default=None, metavar="Z",
                         help="Override task_cfg['sampling_height'] in-memory. "
                              "Must be >= sphere radius 0.025 m.")
@@ -1052,18 +1058,31 @@ def main():
               f"(goal_reached={_goal_reached}, "
               f"force_save={args.force_save_video})")
         import subprocess as _sp
-        _paint = (Path(__file__).resolve().parent
-                  / "tools" / "visualizer" / "paint_mode_text.py")
-        _rc = _sp.run([
-            sys.executable, str(_paint),
-            "--frames-dir", str(drake_frames_dir),
-            "--output", str(_video_out_path),
-            "--fps", "30",
-        ]).returncode
-        if _rc == 0:
-            print(f"[VIDEO] mp4 saved -> {_video_out_path}")
+        _visualizer_dir = (Path(__file__).resolve().parent
+                           / "tools" / "visualizer")
+        if args.hud_video:
+            _paint = _visualizer_dir / "paint_full_hud.py"
+            _paint_argv = [
+                sys.executable, str(_paint),
+                "--frames-dir", str(drake_frames_dir),
+                "--log-path", str(_log_path),
+                "--output", str(_video_out_path),
+                "--fps", "30",
+            ]
         else:
-            print(f"[VIDEO] paint_mode_text.py failed rc={_rc}")
+            _paint = _visualizer_dir / "paint_mode_text.py"
+            _paint_argv = [
+                sys.executable, str(_paint),
+                "--frames-dir", str(drake_frames_dir),
+                "--output", str(_video_out_path),
+                "--fps", "30",
+            ]
+        _rc = _sp.run(_paint_argv).returncode
+        if _rc == 0:
+            print(f"[VIDEO] mp4 saved -> {_video_out_path}  "
+                  f"(hud={'full' if args.hud_video else 'minimal'})")
+        else:
+            print(f"[VIDEO] {_paint.name} failed rc={_rc}")
 
     # §7.74 side-load the log to a Windows sink (or any secondary path).
     if args.extra_log_path is not None:
