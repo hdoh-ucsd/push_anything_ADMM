@@ -270,7 +270,9 @@ sampling_params:
   sampling_strategy: kFaceNormal
 
   # Number of additional samples beyond (current + previous-repos-target).
-  num_additional_samples_c3:    3
+  # 2026-07-18 iter7: c3 3 → 2 to match push_t/parameters/sampling_params.yaml:19
+  # (reference push_t override; anything's shared default is different).
+  num_additional_samples_c3:    2
   num_additional_samples_repos: 1
 
   # Sample buffer (replay-best-on-c3-exit hysteresis).
