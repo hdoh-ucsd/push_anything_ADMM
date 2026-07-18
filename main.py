@@ -604,14 +604,13 @@ def main():
         _mpc_kwargs["dt_pose"] = _c3plus_dt_pose
     if args.ee_space:
         _mpc_kwargs["use_ee_space"] = True
-        # Reference sampling_c3plus_options.yaml:36 ee_velocity_limits:
-        # [-0.14, 0.14] (inherited from anything by push_t; applied via
-        # AddLinearConstraint(..., STATE) at cc:1027-1034). Enabled only
-        # for EE-space runs since the constraint targets EE velocity slots
-        # (indices 16-18 of the port's EE-space state layout).
-        # Task-conditional so joint-torque path stays unconstrained.
-        if task_name == "push_t":
-            _mpc_kwargs["ee_velocity_bounds"] = (-0.14, 0.14)
+        # Reference ee_velocity_limits state constraint (added in commit
+        # b877785) is available via ee_velocity_bounds kwarg. Disabled by
+        # default 2026-07-18: analysis of results/push_t_evel_20260718_155846
+        # showed the cap exposes the port's LCS-vs-Drake phantom-contact
+        # divergence — arm settles hovering above T (Drake F_W=0) because
+        # LCS predicts contact and the velocity cap prevents the QP from
+        # commanding the arm downward. Re-enable by adding kwarg per-task.
     mpc = _MPCClass(**_mpc_kwargs)
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
