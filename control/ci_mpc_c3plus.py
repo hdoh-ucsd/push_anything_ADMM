@@ -57,7 +57,8 @@ class C3PlusMPC:
                  torque_limit: float = 30.0,
                  admm_iter:    int   = 10,
                  math_diag:    bool  = False,
-                 use_ee_space: bool  = False):
+                 use_ee_space: bool  = False,
+                 ee_velocity_bounds: tuple | None = None):
         assert getattr(solver, 'mode', None) == 'c3plus', (
             "C3PlusMPC requires a C3Solver with mode='c3plus'. "
             "Use control.ci_mpc_c3.C3MPC for the baseline C3 path."
@@ -136,6 +137,13 @@ class C3PlusMPC:
         # the first tick (no previous plan).
         self.nominal_ee_accel  = 2.0
         self._x_pred_curr_plan = None
+        # Reference sampling_c3plus_options.yaml:36 ee_velocity_limits.
+        # Reference cc:1027-1034 applies as AddLinearConstraint(..., STATE)
+        # on state slots (n_q_+0, n_q_+1, n_q_+2) at each knot. In the port's
+        # EE-space layout, these are the EE velocity slots at indices
+        # (16, 17, 18). Anything default: [-0.14, 0.14] m/s.
+        # None → constraint disabled (byte-identical to prior behavior).
+        self.ee_velocity_bounds = ee_velocity_bounds
         # EE-space state layout (must match ci_mpc_c3plus.py:320 concatenation):
         #   [box_q(7), p_ee(3), box_v(6), v_ee(3)]  →  slices below.
         self._EE_POS_SLICE = slice(7, 10)
@@ -429,6 +437,7 @@ class C3PlusMPC:
             phi=phi,
             E=E_lcs, F=F_lcs, H=H_lcs, c_lcs=c_lcs,
             u_lower=_u_lo, u_upper=_u_hi,
+            ee_velocity_bounds=self.ee_velocity_bounds,
         )
 
         # 5. Store predicted trajectory + u[0] for next-step linearization

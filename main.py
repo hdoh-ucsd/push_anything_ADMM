@@ -604,6 +604,14 @@ def main():
         _mpc_kwargs["dt_pose"] = _c3plus_dt_pose
     if args.ee_space:
         _mpc_kwargs["use_ee_space"] = True
+        # Reference sampling_c3plus_options.yaml:36 ee_velocity_limits:
+        # [-0.14, 0.14] (inherited from anything by push_t; applied via
+        # AddLinearConstraint(..., STATE) at cc:1027-1034). Enabled only
+        # for EE-space runs since the constraint targets EE velocity slots
+        # (indices 16-18 of the port's EE-space state layout).
+        # Task-conditional so joint-torque path stays unconstrained.
+        if task_name == "push_t":
+            _mpc_kwargs["ee_velocity_bounds"] = (-0.14, 0.14)
     mpc = _MPCClass(**_mpc_kwargs)
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
