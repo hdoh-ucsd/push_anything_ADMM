@@ -363,6 +363,21 @@ class SamplingC3MPC:
         self._sample_buffer_age:        int                  = 0
         self._sample_buffer_n_strategy: Optional[int]        = None
 
+        # Reference-conformant sample bookkeeping. Mirrors dairlib
+        # `all_sample_locations_` / `all_sample_costs_` / `best_sample_index_`
+        # (systems/controllers/sampling_based_c3_controller.cc:216, :957, :1842).
+        # Rebuilt each tick after evaluate_samples. Index convention matches
+        # _build_samples layout:
+        #   [0]        = current EE
+        #   [1]        = prev repos target (only when _current_repos_target set)
+        #   [2..N+1]   = strategy samples
+        #   back()     = buffered best when leaving c3 (conditional)
+        # `labels` (parallel string vector) remains the source of truth for
+        # slot identity; these members exist for reference-compat inspection.
+        self._all_sample_locations:     list[np.ndarray]     = []
+        self._all_sample_costs:         list[float]          = []
+        self._best_sample_index:        Optional[int]        = None
+
         # B3c-prime selection audit (env-gated, lazy init at first :848 hit).
         # No env reads here — hot path stays cheap until C3_SEL_AUDIT is set.
         self._sel_audit_state:       object                = _SEL_AUDIT_UNINIT
@@ -1241,6 +1256,11 @@ class SamplingC3MPC:
             ee_pos_now, obj_xy, g_hat, self._prev_mode,
             obj_quat=obj_quat, yaw_delta=yaw_delta_samp)
 
+        # Reference-conformant bookkeeping (dairlib
+        # sampling_based_c3_controller.cc:945-949). `samples` == candidate EE
+        # 3-vectors == `all_sample_locations_` in the reference.
+        self._all_sample_locations = samples
+
         # 3. Evaluate every sample (per-sample C3 + alignment + travel)
         results = self.inner_solver.evaluate_samples(
             samples=samples,
@@ -1271,6 +1291,14 @@ class SamplingC3MPC:
 
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
+
+        # Reference-conformant bookkeeping (dairlib
+        # sampling_based_c3_controller.cc:957, :1842). `c_samples` is the raw
+        # argmin winner; the c3/free mode gate below may promote a different
+        # slot to `target_idx`, at which point `_best_sample_index` is
+        # overwritten to match (see :2343-nearby edit).
+        self._all_sample_costs  = c_samples
+        self._best_sample_index = k_star
 
         # === B3c-prime selection audit (env-gated, hot-path-cheap) ===========
         # Emit at the SOLE site where the full c_samples vector exists. Outside
@@ -1346,8 +1374,22 @@ class SamplingC3MPC:
         # test (kConfigCostDrop) is designed to detect C3-mode stalls;
         # free-mode ticks skew the front/back window.
         if self._prev_mode == "c3":
+            # Feed progress tracker the pure C3 quadratic cost, not the
+            # ranking score. Reference sampling_based_c3_controller.cc:2236-2240
+            # uses all_sample_costs_[kCurrentLocation] which for the reference
+            # is `c3_cost + travel_cost_per_meter * travel_dist(=0 for current)`
+            # = pure c3_cost, always ≥ 0. Port previously used c_curr (=
+            # c_samples[0] = c_C3_raw − w_align·align_score − w_rot·rot_score +
+            # w_travel·travel), which can go NEGATIVE (see w_align=30 000 in
+            # config/sampling_c3_kik.yaml — load-bearing for argmin ranking but
+            # pollutes progress tracking). Bonus fluctuation from align_score
+            # kept resetting steps_since_c3_improve so met_progress=Y fired
+            # every tick regardless of physical box motion — the 30 s/60 s
+            # stall analysis showed 17/57 mode transitions with the box stuck
+            # at x=0.083. Use c_C3_raw (pure quadratic, always ≥ 0) here; the
+            # bonus survives everywhere it matters for sample selection.
             self.progress.update(StepMetrics(
-                c3_cost     = c_curr,
+                c3_cost     = results[0].c_C3_raw,
                 config_cost = config_cost_now,
                 pos_error   = _final_goal_dist,
                 rot_error   = rot_error_now,
@@ -1691,6 +1733,28 @@ class SamplingC3MPC:
         if self._achieved_fixed_goal and mode == "c3":
             mode = "free"
             reason = SwitchReason.kToReposUnproductive
+
+        # Per-tick sample-selection trace. Env-gated (PUSHA_ALL_SAMP=1,
+        # default OFF). Answers "why doesn't the controller try other
+        # samples?" by dumping, for every tick: mode, switch reason, raw
+        # argmin (k_star), best-non-current index/cost, effective target
+        # under the c3/free mode gate, all labels, all c_samples. Emit AFTER
+        # the achieved_fixed_goal override so mode reflects the final
+        # decision. `target` here is the slot that the free-mode branch
+        # would reposition to (:2354-2357); in c3 mode the plan runs off
+        # base_mpc at k=0 rather than a sample, so `target` is informational.
+        import os as _os_asamp
+        if _os_asamp.environ.get("PUSHA_ALL_SAMP", "0") == "1":
+            _short = {"current": "cur", "prev_repos": "prv", "buffer": "buf"}
+            _lstr = ",".join(_short.get(lbl, lbl.replace("strat_", "s"))
+                             for lbl in labels)
+            _cstr = ",".join(f"{float(c):.3f}" for c in c_samples)
+            _tgt  = k_star if k_star != 0 else best_other_idx
+            _bo   = f"{best_other_idx}" if best_other_idx is not None else "-"
+            print(f"[ALL-SAMP] step={self._step} mode={mode} "
+                  f"reason={reason.name} k_star={k_star} best_other={_bo} "
+                  f"target={_tgt} labels=[{_lstr}] costs=[{_cstr}]",
+                  flush=True)
 
         # §7.56 Stage 1 — [COST-DECOMP] diagnostic. Gated by
         # PUSHA_COST_DECOMP_LOG=1 (default-OFF) so flag=0 stays byte-identical
@@ -2051,6 +2115,73 @@ class SamplingC3MPC:
                     # mode gate will read this and force exit if ≥ 5.
                     self._no_ee_box_streak += 1
 
+            # [CONTACT-CHECK] — verify _last_contact_info reflects the CURRENT
+            # plant_ctx (not a stale value from a surrogate solve at a
+            # non-current sample position). Compares LCS-cached signed
+            # distance for the EE-BOX pair against a live Drake query at the
+            # current plant_ctx. Env-gated (PUSHA_CONTACT_CHECK=1, default
+            # OFF). If consistent=N frequently, _last_contact_info is stale
+            # and any decision downstream keyed on `contact=Y` (sample
+            # ranking, `productive` classification, k*=0 preference) is
+            # being fed stale contact geometry.
+            import os as _os_cc
+            if _os_cc.environ.get("PUSHA_CONTACT_CHECK", "0") == "1":
+                try:
+                    _lcs_ee_box_info = None
+                    if _ci:
+                        for _info in _ci:
+                            if (isinstance(_info, dict)
+                                    and _info.get("tag") == "EE-BOX"):
+                                _lcs_ee_box_info = _info
+                                break
+                    _query_obj_live = (
+                        self.plant.get_geometry_query_input_port().Eval(plant_ctx))
+                    _sd_live = (
+                        _query_obj_live.ComputeSignedDistancePairwiseClosestPoints(
+                            max_distance=0.5))
+                    _ee_ids  = self.base_mpc.formulator._ee_geom_ids
+                    _box_ids = self.base_mpc.formulator._manipuland_geom_ids
+                    _drake_ee_box_dist = None
+                    for _sd in _sd_live:
+                        _has_ee  = (_sd.id_A in _ee_ids)  or (_sd.id_B in _ee_ids)
+                        _has_box = (_sd.id_A in _box_ids) or (_sd.id_B in _box_ids)
+                        if _has_ee and _has_box:
+                            _drake_ee_box_dist = float(_sd.distance)
+                            break
+                    _ee_pos_live = self.plant.CalcPointsPositions(
+                        plant_ctx, self.ee_frame, np.zeros(3), self.world_frame
+                    ).flatten()
+                    _box_pos_live = self.plant.EvalBodyPoseInWorld(
+                        plant_ctx, self.obj_body).translation()
+                    _lcs_val = (float(_lcs_ee_box_info["distance"])
+                                if _lcs_ee_box_info is not None else float("nan"))
+                    _drake_val = (float(_drake_ee_box_dist)
+                                  if _drake_ee_box_dist is not None
+                                  else float("nan"))
+                    _lcs_str = (f"{_lcs_val:+.5f}"
+                                if _lcs_ee_box_info is not None else "     nan")
+                    _drake_str = (f"{_drake_val:+.5f}"
+                                  if _drake_ee_box_dist is not None else "     nan")
+                    if (_lcs_ee_box_info is not None
+                            and _drake_ee_box_dist is not None):
+                        _delta_mm = 1000.0 * (_drake_val - _lcs_val)
+                        _consistent = "Y" if abs(_delta_mm) < 1.0 else "N"
+                    else:
+                        _delta_mm = float("nan")
+                        _consistent = "-"
+                    print(f"[CONTACT-CHECK] step={self._step} "
+                          f"lcs_dist={_lcs_str} drake_dist={_drake_str} "
+                          f"delta_mm={_delta_mm:+9.3f} consistent={_consistent} "
+                          f"ee_p=({_ee_pos_live[0]:+.4f},"
+                          f"{_ee_pos_live[1]:+.4f},{_ee_pos_live[2]:+.4f}) "
+                          f"box_p=({_box_pos_live[0]:+.4f},"
+                          f"{_box_pos_live[1]:+.4f},{_box_pos_live[2]:+.4f})",
+                          flush=True)
+                except Exception as _cc_exc:
+                    print(f"[CONTACT-CHECK] step={self._step} "
+                          f"ERROR={type(_cc_exc).__name__}: {_cc_exc}",
+                          flush=True)
+
             # Per-contact φ / λ_n breakdown (env-gated: LCS_CONTACT_BREAKDOWN=1).
             # Logs each contact pair admitted into the LCS this c3-mode tick —
             # Drake auto-admits plus any synthesized contacts (Stage 1 12-contact
@@ -2340,7 +2471,13 @@ class SamplingC3MPC:
                 self._current_repos_cost   = None
                 best_src = "current_fallback"
             else:
-                p_repos = results[target_idx].sample_pos
+                # Reference-conformant: read the winning EE 3-vector out of
+                # `_all_sample_locations` (mirrors dairlib
+                # sampling_based_c3_controller.cc:1842-1843
+                #   all_sample_locations_[best_sample_index_]
+                # ). Value is identical to `results[target_idx].sample_pos`.
+                self._best_sample_index = target_idx
+                p_repos = self._all_sample_locations[target_idx]
                 self._current_repos_target = p_repos.copy()
                 self._current_repos_cost   = c_samples[target_idx]
                 best_src = labels[target_idx]
@@ -3738,6 +3875,41 @@ class SamplingC3MPC:
                 lam_t          = _lam_t,
                 lam_des        = _lam_des,
             )
+            # [C3-VIZ] — port of reference c3_mode_visualizer.cc:69-108.
+            # Reference publishes an LCM traj that shows a pink dot at the EE
+            # when in c3 mode (and (0,0,0) when not). Port equivalent is a
+            # per-tick log line: is_c3_mode (1/0) + EE xyz. Downstream tools
+            # can grep [C3-VIZ] to reconstruct the mode-vs-EE trajectory
+            # without the full [STEP] parsing.
+            _is_c3 = 1 if mode == "c3" else 0
+            print(f"[C3-VIZ] step={self._step} t={(self._step - 1) * self._dt_ctrl:.3f}s "
+                  f"is_c3={_is_c3} "
+                  f"ee=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f})",
+                  flush=True)
+            # [WORKSPACE-VIOLATION] — port of reference cc:1476-1494
+            # CheckForWorkspaceLimitViolations. Reference DRAKE_DEMANDs (aborts)
+            # when EE exits its axis-aligned bounds or radius shell. Port
+            # logs a warning instead of aborting — an arm-flight bug
+            # (e.g. ee_z=1.18m in results/push_t_iter9_orient_20260718_145158)
+            # surfaces as a stream of [WORKSPACE-VIOLATION] lines, without
+            # killing the run mid-sim.
+            _sp = self.params.sampling_params
+            _wsp_xmin, _wsp_ymin = _sp.workspace_xy_min
+            _wsp_xmax, _wsp_ymax = _sp.workspace_xy_max
+            _wsp_zmin = _sp.workspace_z_min
+            _wsp_zmax = _sp.workspace_z_max
+            _viol = []
+            if ee_pos_now[0] < _wsp_xmin: _viol.append(f"x<{_wsp_xmin:.3f}")
+            if ee_pos_now[0] > _wsp_xmax: _viol.append(f"x>{_wsp_xmax:.3f}")
+            if ee_pos_now[1] < _wsp_ymin: _viol.append(f"y<{_wsp_ymin:.3f}")
+            if ee_pos_now[1] > _wsp_ymax: _viol.append(f"y>{_wsp_ymax:.3f}")
+            if ee_pos_now[2] < _wsp_zmin: _viol.append(f"z<{_wsp_zmin:.3f}")
+            if ee_pos_now[2] > _wsp_zmax: _viol.append(f"z>{_wsp_zmax:.3f}")
+            if _viol:
+                print(f"[WORKSPACE-VIOLATION] step={self._step} "
+                      f"ee=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}) "
+                      f"violations=[{','.join(_viol)}]",
+                      flush=True)
             # [GATE-EVOLVE] — one line per loop: cost-ratio trajectory + EE
             # geometric progress toward the perpendicular-contact optimal
             # target. The cost gate fires when curr/best_other < hyst frac
