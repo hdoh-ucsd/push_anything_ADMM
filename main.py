@@ -564,13 +564,20 @@ def main():
     #           N=7, planning_dt_position=planning_dt_pose=0.075
     #   c3    : anything/parameters/sampling_c3_options.yaml (N=5, dt=0.1)
     if args.solver == "c3plus":
-        _c3plus_N  = 7
-        _c3plus_dt = 0.075
-        # Reference push_t planning_dt_pose = 0.05 (2x finer than
-        # planning_dt_position = 0.1). Port base dt is already 0.075
-        # (between the two), so pose = 0.05 preserves the reference
-        # position→pose resolution jump.
-        _c3plus_dt_pose = 0.05
+        # 2026-07-18 iter4: push_t OVERRIDES anything's defaults —
+        # push_t/parameters/sampling_c3plus_options.yaml:20,53-54:
+        #   N: 5 (anything: 7)
+        #   planning_dt_position: 0.1 (anything: 0.075)
+        #   planning_dt_pose: 0.05
+        # Task-conditional so box path (uses anything defaults) stays put.
+        if task_name == "push_t":
+            _c3plus_N  = 5
+            _c3plus_dt = 0.1
+            _c3plus_dt_pose = 0.05
+        else:
+            _c3plus_N  = 7
+            _c3plus_dt = 0.075
+            _c3plus_dt_pose = 0.05
     else:
         _c3plus_N  = 5
         _c3plus_dt = 0.1
