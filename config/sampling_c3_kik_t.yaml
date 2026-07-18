@@ -223,21 +223,21 @@ progress_params:
   # above (1000-5000) are ~150x smaller than typical c_sample magnitudes
   # in this task (~165k-200k), causing mode chatter every 1-2 loops.
   use_relative_hysteresis:                true
-  # Bumped from the original seed (0.05/0.10) to upstream-jacktoy-like
-  # magnitudes (0.30/0.50) after WEST v9 showed: descent needs ≥50 free-mode
-  # steps to complete, but with frac=0.05 the kToC3Cost trigger fired every
-  # ~30 steps, fragmenting free mode into incomplete descents. The new
-  # values mean a ~50k cost gap (≈30% of 165k) is required to switch out.
-  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
-  # 0.6, 0.7, 0.9, 0.5, 0.7, 0.7. Port previously had 0.95/0.50/0.9/0.9/0.30/0.30
-  # — all port-only "tuned" values that starved c3 entry (0 switches in 8 s
-  # sim, T never pushed). Aligned to reference source-of-truth.
-  hyst_c3_to_repos_frac:                  0.6
-  hyst_c3_to_repos_frac_position:         0.7
+  # 2026-07-18: rescaled to push_t's OWN progress_params_c3plus.yaml (lines
+  # 59-64), NOT anything's shared defaults. Reference push_t OVERRIDES the
+  # anything defaults; the port had copied anything's (0.6, 0.7, 0.9, 0.5,
+  # 0.7, 0.7) instead of push_t's (0.4, 0.6, 0.9, 0.5, 0.3, 0.1).
+  # Load-bearing divergence: hyst_repos_to_repos_frac was 0.7 in port (fresh
+  # sample must beat prev_repos by 30% to retarget) vs 0.3 in reference
+  # (fresh must beat prev_repos by 70% — much easier). Fix-1 diagnosis
+  # (2026-07-18) showed 88% of steps pursued stale prev_repos while fresh
+  # face-3 samples existed in the buffer — the dispatcher wouldn't switch.
+  hyst_c3_to_repos_frac:                  0.4
+  hyst_c3_to_repos_frac_position:         0.6
   hyst_repos_to_c3_frac:                  0.9
   hyst_repos_to_c3_frac_position:         0.5
-  hyst_repos_to_repos_frac:               0.7
-  hyst_repos_to_repos_frac_position:      0.7
+  hyst_repos_to_repos_frac:               0.3
+  hyst_repos_to_repos_frac_position:      0.1
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
