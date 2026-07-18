@@ -196,7 +196,7 @@ def main():
     ap.add_argument("--frames-dir", required=True, type=Path)
     ap.add_argument("--log-path", required=True, type=Path)
     ap.add_argument("--output", required=True, type=Path)
-    ap.add_argument("--fps", type=int, default=30)
+    ap.add_argument("--fps", type=float, default=30.0)
     args = ap.parse_args()
 
     print(f"[HUD] parsing {args.log_path}")

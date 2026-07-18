@@ -1060,6 +1060,12 @@ def main():
         import subprocess as _sp
         _visualizer_dir = (Path(__file__).resolve().parent
                            / "tools" / "visualizer")
+        # Compute encode fps so video plays at 1× real-time (video_duration
+        # == max_time). Frames captured at stride N control-steps produce
+        # (steps_run / stride) frames total; encoding at (frame_count /
+        # max_time) fps yields sim_duration = playback_duration.
+        _frame_count = len(list(drake_frames_dir.glob("frame_*.png")))
+        _fps_dyn = max(1.0, _frame_count / max_time) if _frame_count else 30.0
         if args.hud_video:
             _paint = _visualizer_dir / "paint_full_hud.py"
             _paint_argv = [
@@ -1067,7 +1073,7 @@ def main():
                 "--frames-dir", str(drake_frames_dir),
                 "--log-path", str(_log_path),
                 "--output", str(_video_out_path),
-                "--fps", "30",
+                "--fps", f"{_fps_dyn:.3f}",
             ]
         else:
             _paint = _visualizer_dir / "paint_mode_text.py"
@@ -1075,7 +1081,7 @@ def main():
                 sys.executable, str(_paint),
                 "--frames-dir", str(drake_frames_dir),
                 "--output", str(_video_out_path),
-                "--fps", "30",
+                "--fps", f"{_fps_dyn:.3f}",
             ]
         _rc = _sp.run(_paint_argv).returncode
         if _rc == 0:
