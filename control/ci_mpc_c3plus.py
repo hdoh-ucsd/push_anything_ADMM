@@ -121,6 +121,25 @@ class C3PlusMPC:
         self._mpc_step         = 0
         self._math_setup_done  = False
         self._printed_force_diag = False
+        # Reference SamplingC3Controller::ClampEndEffectorAcceleration
+        # (sampling_based_c3_controller.cc:1457-1472). Each tick, the LCS x0's
+        # EE-position and EE-velocity slots are clamped to
+        # x_pred_curr_plan_[i] ± nominal_ee_accel · dt² (position) or dt
+        # (velocity). Prevents the LCS from seeing large EE-state jumps
+        # (which manifested in results/push_t_iter9_orient_20260718_145158
+        # as arm flying 1.5 m from T while LCS still reported phantom
+        # contact λ_n=1.7).
+        #
+        # Enabled by default; disable via nominal_ee_accel=0 or explicit flag.
+        # Reference push_t/parameters/sampling_c3plus_options.yaml:66
+        # nominal_ee_accel=2 (inherited from anything). No clamp applies on
+        # the first tick (no previous plan).
+        self.nominal_ee_accel  = 2.0
+        self._x_pred_curr_plan = None
+        # EE-space state layout (must match ci_mpc_c3plus.py:320 concatenation):
+        #   [box_q(7), p_ee(3), box_v(6), v_ee(3)]  →  slices below.
+        self._EE_POS_SLICE = slice(7, 10)
+        self._EE_VEL_SLICE = slice(16, 19)
 
         # Last predicted trajectory — set after every solve, used for Meshcat viz
         self.last_x_seq: np.ndarray | None = None   # (N+1, n_x)
@@ -318,6 +337,27 @@ class C3PlusMPC:
             )
             v_ee_now = J_ee_full @ current_v
             x0 = np.concatenate([box_q, p_ee_now, box_v, v_ee_now])
+            # ClampEndEffectorAcceleration: keep x0's EE slots within a
+            # bounded band around the previously-planned trajectory.
+            # Mirrors reference cc:1457-1472. Only fires when a previous plan
+            # exists AND clamping is enabled (nominal_ee_accel > 0).
+            if (self._x_pred_curr_plan is not None
+                    and self.nominal_ee_accel > 0.0):
+                _dt_c = min(0.1, _dt)     # matches reference approx_loop_dt
+                _delta_pos = self.nominal_ee_accel * _dt_c * _dt_c
+                _delta_vel = self.nominal_ee_accel * _dt_c
+                _ee_pos_plan = self._x_pred_curr_plan[self._EE_POS_SLICE]
+                _ee_vel_plan = self._x_pred_curr_plan[self._EE_VEL_SLICE]
+                x0[self._EE_POS_SLICE] = np.clip(
+                    _ee_pos_plan,
+                    x0[self._EE_POS_SLICE] - _delta_pos,
+                    x0[self._EE_POS_SLICE] + _delta_pos,
+                )
+                x0[self._EE_VEL_SLICE] = np.clip(
+                    _ee_vel_plan,
+                    x0[self._EE_VEL_SLICE] - _delta_vel,
+                    x0[self._EE_VEL_SLICE] + _delta_vel,
+                )
         else:
             x0 = np.concatenate([current_q, current_v])
 
@@ -394,6 +434,14 @@ class C3PlusMPC:
         # 5. Store predicted trajectory + u[0] for next-step linearization
         self.last_x_seq = x_seq        # (N+1, n_x)
         self._last_u    = u_seq[0].copy()
+        # Save the CURRENT plan's step-1 predicted state as x_pred_curr_plan_
+        # for next tick's ClampEndEffectorAcceleration. Reference cc:1453
+        # uses x_lcs_curr (after clamp), but for the port we cache x_seq[1]
+        # (the first-lookahead-step predicted state) so the clamp bounds
+        # next tick's actual reading against the plan's own extrapolation.
+        # For EE-space runs only; joint-torque path skips clamp entirely.
+        if self.use_ee_space and x_seq is not None and len(x_seq) > 1:
+            self._x_pred_curr_plan = np.asarray(x_seq[1], dtype=float).copy()
         # Plumb first-horizon λ for the impedance controller's feedforward
         # contact-force term. None until the first solve produces them.
         self.last_lambda_n_first = (
