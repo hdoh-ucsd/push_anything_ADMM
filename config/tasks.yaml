@@ -195,7 +195,14 @@ tasks:
       # error down.
       use_quaternion_dependent_cost:                    true
       q_quaternion_dependent_weight:                    1000.0
-      q_quaternion_dependent_regularizer_fraction:      0.0
+      # 2026-07-18: bumped 0.0 → 0.1 to fix yaw Hessian singularity found in
+      # results/push_t_iter9_orient_20260718_145158 analysis.
+      # `build_regularized_quaternion_cost` computes H then reg1=max(0, -min_eig)·I
+      # which shifts min eigenvalue to EXACTLY 0 (singular Q). One direction in
+      # quaternion space has zero cost → QP freezes yaw at whatever value
+      # dynamics settle to. reg2=q_goal·q_goal^T with fraction>0 adds curvature
+      # in the goal-quat direction, breaking the singularity.
+      q_quaternion_dependent_regularizer_fraction:      0.1
       w_terminal:       5.0
       z_ee_target:      0.034
       z_obj_target:     0.020   # T stays on ground (reference target z = init z)
