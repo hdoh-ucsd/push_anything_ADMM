@@ -132,7 +132,7 @@ def main() -> int:
                     help="Dir of frame_NNNNNN.png + mode_timeline.csv")
     ap.add_argument("--output", type=Path, required=True,
                     help="Output MP4 path")
-    ap.add_argument("--fps", type=int, default=30,
+    ap.add_argument("--fps", type=float, default=30.0,
                     help="Output frame rate (default 30)")
     ap.add_argument("--keep-painted", action="store_true",
                     help="Keep the painted PNG intermediate dir (debug)")
