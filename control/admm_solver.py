@@ -1175,6 +1175,33 @@ class C3Solver:
                   f"num_normals={num_normals} "
                   f"ee_box_pair_idx={_ee_box_pair_idx}", flush=True)
 
+        # PUSHA_MATH_ITER_LOG — per-ADMM-iter equation trace for teaching /
+        # writeup use. When set, emit the Bui 2026 LCS equations (5b, 5c,
+        # complementarity) and the Aydinoglu ADMM steps (7, 8, 9) at every
+        # iter of every solve. Per-knot values shown at k=0 (first
+        # "contact-rich stage") to keep line count manageable. Default OFF.
+        _math_iter_log = (_os_g.environ.get(
+            "PUSHA_MATH_ITER_LOG", "0") == "1")
+        # One-shot equation-form header on the first solve after enabling.
+        if _math_iter_log and not getattr(self, "_math_iter_header_done", False):
+            self._math_iter_header_done = True
+            print("[MATH.LCS] Bui 2026 discrete LCS (eq 5b, 5c, complementarity):",
+                  flush=True)
+            print("[MATH.LCS]   (5b)  x_{k+1} = A·x_k + B·u_k + D·λ_k + d",
+                  flush=True)
+            print("[MATH.LCS]   (5c)  η_k     = E·x_k + F·λ_k + H·u_k + c",
+                  flush=True)
+            print("[MATH.LCS]         0 ≤ λ_k ⊥ η_k ≥ 0",
+                  flush=True)
+            print("[MATH.ADMM] Aydinoglu 2024 ADMM steps (eq 7, 8, 9):",
+                  flush=True)
+            print("[MATH.ADMM]   (7)  z^{i+1}   = argmin_z Lρ(z, δ^i, ω^i)   — quadratic step (z-update)",
+                  flush=True)
+            print("[MATH.ADMM]   (8)  δ^{i+1}_k = argmin_δ Lρ(z^{i+1}, δ_k, ω^i_k), ∀k — projection (δ-update)",
+                  flush=True)
+            print("[MATH.ADMM]   (9)  ω^{i+1}_k = ω^i_k + z^{i+1}_k − δ^{i+1}_k, ∀k — dual (ω-update)",
+                  flush=True)
+
         for it in range(admm_iter):
             delta_prev = delta.copy()
 
@@ -1327,6 +1354,66 @@ class C3Solver:
                             self._last_lcp_res_max = float(max(lcp_residuals_block))
 
                 omega = omega + z_sol - delta
+
+            # PUSHA_MATH_ITER_LOG — emit Bui LCS (5b/5c/comp) + Aydinoglu
+            # ADMM (7/8/9) numeric values at k=0 for this iter. Gated to
+            # keep prod runs quiet. Header printed once outside the loop.
+            if _math_iter_log and 'z_sol' in dir():
+                _x_k    = z_sol[0:n_x]
+                _lam_k  = z_sol[n_x:n_x + n_lambda]
+                _u_k    = z_sol[n_x + n_lambda:n_x + n_lambda + n_u]
+                _eta_k  = z_sol[n_x + n_lambda + n_u
+                                :n_x + n_lambda + n_u + n_lambda]
+                _x_next = z_sol[TOT:TOT + n_x] if N > 1 else _x_k
+                # LCS (5b) breakdown: ||A·x||, ||B·u||, ||D·λ||, ||d||, ||x_{k+1}||
+                _Ax = float(np.linalg.norm(A @ _x_k))
+                _Bu = float(np.linalg.norm(B_ctrl @ _u_k))
+                _Dl = float(np.linalg.norm(D @ _lam_k)) if n_lambda > 0 else 0.0
+                _nd = float(np.linalg.norm(d))
+                _xn = float(np.linalg.norm(_x_next))
+                # LCS (5c) breakdown: ||E·x||, ||F·λ||, ||H·u||, ||c||, ||η||
+                if n_lambda > 0:
+                    _Ex = float(np.linalg.norm(E @ _x_k))
+                    _Fl = float(np.linalg.norm(F @ _lam_k))
+                    _Hu = float(np.linalg.norm(H @ _u_k))
+                    _nc = float(np.linalg.norm(c_lcs))
+                    _ne = float(np.linalg.norm(_eta_k))
+                    _comp = float(np.max(np.abs(_lam_k * _eta_k)))
+                    _min_l = float(np.min(_lam_k))
+                    _min_e = float(np.min(_eta_k))
+                else:
+                    _Ex = _Fl = _Hu = _nc = _ne = _comp = 0.0
+                    _min_l = _min_e = 0.0
+                # ADMM (7/8/9) norms
+                _z_norm = float(np.linalg.norm(z_sol))
+                _d_norm = float(np.linalg.norm(delta))
+                _w_norm = float(np.linalg.norm(omega))
+                _dw     = float(np.linalg.norm(z_sol - delta))
+                print(f"[MATH.LCS-5b] step={self._diag_step} it={it} k=0: "
+                      f"||A·x||={_Ax:.3e} ||B·u||={_Bu:.3e} "
+                      f"||D·λ||={_Dl:.3e} ||d||={_nd:.3e} "
+                      f"→ ||x_{{k+1}}||={_xn:.3e}",
+                      flush=True)
+                print(f"[MATH.LCS-5c] step={self._diag_step} it={it} k=0: "
+                      f"||E·x||={_Ex:.3e} ||F·λ||={_Fl:.3e} "
+                      f"||H·u||={_Hu:.3e} ||c||={_nc:.3e} "
+                      f"→ ||η_k||={_ne:.3e}",
+                      flush=True)
+                print(f"[MATH.LCS-COMP] step={self._diag_step} it={it} k=0: "
+                      f"max|λ·η|={_comp:.3e} min(λ)={_min_l:+.3e} "
+                      f"min(η)={_min_e:+.3e}",
+                      flush=True)
+                print(f"[MATH.ADMM-7] step={self._diag_step} it={it}: "
+                      f"z-update (quadratic) ||z||={_z_norm:.3e}",
+                      flush=True)
+                print(f"[MATH.ADMM-8] step={self._diag_step} it={it}: "
+                      f"δ-update (projection) ||δ||={_d_norm:.3e} "
+                      f"||z−δ||={_dw:.3e}",
+                      flush=True)
+                print(f"[MATH.ADMM-9] step={self._diag_step} it={it}: "
+                      f"ω-update (dual) ||ω||={_w_norm:.3e} "
+                      f"Δω=||z−δ||={_dw:.3e}",
+                      flush=True)
 
             # §7.67 — B1-A convergence probe: on the final iter, log
             # |z^λ_EE-BOX − δ^λ_EE-BOX| per component (λ_n + 4 λ_t) at k=0
