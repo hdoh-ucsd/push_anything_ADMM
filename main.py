@@ -244,6 +244,14 @@ def main():
                         help="After the goal is reached, continue the sim for SEC "
                              "seconds so the video shows the arrival before ending. "
                              "Default 1.0 s.  Requires --early-exit-goal-d.")
+    parser.add_argument("--early-exit-orient-err", type=float, default=None,
+                        metavar="RAD",
+                        help="Additional gate on --early-exit-goal-d: also require "
+                             "|target_yaw - current_yaw| <= RAD before starting the "
+                             "settle window. Reference push_t/goal_params.yaml:11 "
+                             "orientation_success_threshold=0.1 rad (5.7°). Ignored "
+                             "when --early-exit-goal-d is not set. Default: no orient "
+                             "gate (position-only).")
     parser.add_argument("--force-save-video", action="store_true",
                         help="Encode the Drake-frames mp4 even if the goal was NOT "
                              "reached. Default: encode only on goal-reach.")
@@ -979,12 +987,25 @@ def main():
         if args.early_exit_goal_d is not None:
             _ex_obj_xy = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
             _ex_gd = float(np.linalg.norm(_ex_obj_xy - target_xy))
-            if _goal_reach_step is None and _ex_gd <= args.early_exit_goal_d:
+            # Reference push_t/goal_params.yaml requires BOTH position AND
+            # orientation to succeed. When --early-exit-orient-err is set, also
+            # gate on |Δyaw| — matches reference SamplingC3Controller success
+            # check (position_success_threshold + orientation_success_threshold).
+            _orient_ok = True
+            _abs_dyaw = None
+            if args.early_exit_orient_err is not None:
+                _abs_dyaw = abs(_dyaw)  # already computed above from current box quat
+                _orient_ok = _abs_dyaw <= args.early_exit_orient_err
+            if _goal_reach_step is None and _ex_gd <= args.early_exit_goal_d and _orient_ok:
                 _goal_reach_step = step
                 _goal_reach_t = sim_time
                 _settle_until_t = sim_time + float(args.goal_settle_time)
+                _orient_note = (f" orient_err={_abs_dyaw:.4f}rad <= "
+                                f"{args.early_exit_orient_err:.4f}rad"
+                                if _abs_dyaw is not None else "")
                 print(f"[GOAL-REACH] step={step} t={sim_time:.3f}s "
-                      f"goal_d={_ex_gd:.4f}m <= threshold={args.early_exit_goal_d:.4f}m "
+                      f"goal_d={_ex_gd:.4f}m <= threshold={args.early_exit_goal_d:.4f}m"
+                      f"{_orient_note} "
                       f"-> settling +{args.goal_settle_time:.2f}s then breaking")
             if _goal_reach_step is not None and sim_time >= _settle_until_t:
                 print(f"[GOAL-SETTLE-DONE] step={step} t={sim_time:.3f}s "
