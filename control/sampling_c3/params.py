@@ -312,15 +312,6 @@ class SamplingParams:
     # boundary, not a shortcut. Adding the mesh sampler unlocks the shape zoo.
     object_shape:                        str   = "box"
 
-    # T-shape ONLY: include the two horizontal top-face patches (§9 Option B
-    # kMeshNormal top-press samples). Reference push_t uses
-    # kRandomOnPerimeter (side faces only); top-press is a port-only addition.
-    # When True, dispatcher may pick top-press samples that press down on the
-    # T's top and produce unintended horizontal push (traced 2026-07-18 to
-    # -y push from face-9 stem-top when +y goal was needed). Default False
-    # matches reference. Ignored for non-T shapes.
-    tshape_include_top_faces:            bool  = False
-
     # Face-selection bias toward goal-aligned faces (Stage 2B Mode-B fix).
     # When > 0, each face's draw probability is weighted by
     #   w_i = 1 + face_bias_strength * max(0, -n_world_i . g_hat_xy)

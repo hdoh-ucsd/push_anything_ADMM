@@ -333,31 +333,16 @@ def _face_normal_projection(n_samples:    int,
         # planar top patches; normal is +z regardless of obj_quat (T rotates
         # only about z). Body-frame centers rotate through R for world-frame
         # placement.
-        # 2026-07-18: gated on `params.tshape_include_top_faces`. Reference
-        # push_t uses kRandomOnPerimeter (side faces only); top-press is a
-        # port-only mechanism. When top-press samples win the dispatcher's
-        # cost gate, the arm descends onto the T's top and the contact-normal
-        # force pushes the T in an unintended horizontal direction (traced
-        # in results/push_t_orient_exit_20260718_143040: face-9 stem-top
-        # sample at link (-0.033, +0.013) produced -y push, opposite goal).
-        # Default False to match reference; flip on only when top-press is
-        # genuinely needed for a task.
-        _include_top = bool(getattr(params, "tshape_include_top_faces", False))
-        if _include_top:
-            _top_table = _TSHAPE_TOP_TABLE
-            _top_body_centers = np.column_stack([
-                _top_table[:, 0], _top_table[:, 1],
-                np.zeros(_top_table.shape[0])])
-            if obj_quat is not None:
-                top_world_centers = (R @ _top_body_centers.T).T
-            else:
-                top_world_centers = _top_body_centers
-            top_half_lens_xy = _top_table[:, 2:4]           # (N_top, 2)
-            n_top_faces = _top_table.shape[0]
+        _top_table = _TSHAPE_TOP_TABLE
+        _top_body_centers = np.column_stack([
+            _top_table[:, 0], _top_table[:, 1],
+            np.zeros(_top_table.shape[0])])
+        if obj_quat is not None:
+            top_world_centers = (R @ _top_body_centers.T).T
         else:
-            top_world_centers = np.zeros((0, 3))
-            top_half_lens_xy = np.zeros((0, 2))
-            n_top_faces = 0
+            top_world_centers = _top_body_centers
+        top_half_lens_xy = _top_table[:, 2:4]           # (N_top, 2)
+        n_top_faces = _top_table.shape[0]
         n_faces = n_side_faces + n_top_faces
     else:
         # Box path (regression-safe): 4 cardinal ±x/±y body-frame normals.
