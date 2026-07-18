@@ -392,14 +392,14 @@ reposition_params:
   # T1b — reference push_t value (0.0774 m). Source:
   #   dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml
   #   reposition.cc:394 RepositionPiecewiseLinear pwl_waypoint_height=0.0774.
-  # Puts sphere-center at 77.4 mm above ground = 37.4 mm above T top
+  # 2026-07-18 iter2: 0.0774 → 0.06 to match push_t/parameters/
+  # reposition_params.yaml:32 (`pwl_waypoint_height: 0.06`). Port previously
+  # cited "reference push_t value 0.0774" but that's `anything/`'s default;
+  # push_t OVERRIDES it. Same class of bug as commits fb07dc7 (hysteresis)
+  # and a93a6b4 (progress window).
+  # Puts sphere-center at 60 mm above ground = 20 mm above T top
   # (T half-height 0.02, T sits with base at ground so top at 0.04 m).
-  # Was 0.15 (kept for the box path where 0.15 = 25 mm clearance over the
-  # 0.10 m box top). The legacy horizon-budget note (0.40 m at N=20 × ds=0.02)
-  # applies to the legacy IK-guide path only; the Stage A `RepositionTrajectory`
-  # (activated by use_reposition_pwl_trajectory=true above) is eval-based
-  # (returns p_des, v_des at sim_t) with no per-step horizon budget.
-  pwl_waypoint_height: 0.0774   # m — reference push_t value
+  pwl_waypoint_height: 0.06   # m — reference push_t value
 
   # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
   # (Stage A, PUSHA_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
