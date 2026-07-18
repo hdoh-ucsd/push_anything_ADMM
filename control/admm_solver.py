@@ -113,9 +113,14 @@ class C3Solver:
         self._eye_total_dim  = -1       # sentinel: rebuild when total_dim changes
         self._eye_total      = None
         # ===== C3+ specific (Bui 2026 §IV-B.2) =====               ← C3+ NEW
-        # u_λ, u_η are the per-component G weights in eq (12). Default 1
-        # so √(u_λ/u_η) = 1 — the cleanest projection.
-        self._u_lambda           = 1.0
+        # u_λ, u_η are the per-component G weights in eq (12). Reference
+        # push_t/sampling_c3plus_options.yaml:120-125 sets u_lambda_list=20,
+        # u_eta_list=1 (ratio 20:1). Port previously hardcoded 1:1 — this
+        # matters for which projection case (λ→0 vs η→0) wins per component.
+        # Reference's 20:1 penalizes λ mismatches 20× more strongly than
+        # η — projection prefers case 1 (η wins, λ→0) more often, matching
+        # reference C3+ convergence behavior. Fixed 2026-07-18 iter9.
+        self._u_lambda           = 20.0
         self._u_eta              = 1.0
         # 4.j — reference penalize_changes_in_u_across_solves. When True,
         # the R-block cost becomes ‖u_k − u_prev_k‖²_R (matches c3.cc:302-310).
