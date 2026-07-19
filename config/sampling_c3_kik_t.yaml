@@ -362,7 +362,14 @@ sampling_params:
   # task). Box-task y_max = 0.13 remains in the base sampling_c3_kik.yaml.
   workspace_xy_min: [-0.5, -0.7]
   workspace_xy_max: [ 0.5,  0.30]
-  workspace_z_min:  0.02
+  # 2026-07-18: workspace_z_min 0.02 → -0.01 to match reference
+  # push_t/sampling_c3plus_options.yaml:32 workspace_limits z ∈ [-0.01, 0.3].
+  # Prior 0.02 rejected 81% of face-normal samples in
+  # results/push_t_eesamples_20260718_174044 because sampling_height=0.005
+  # (push_t/tasks.yaml:158) was below the port's 0.02 floor. Every empty
+  # sample refresh starved the dispatcher of new candidates and left it
+  # replaying prev_repos / buffered samples only.
+  workspace_z_min: -0.01
   workspace_z_max:  0.30
 
   filter_samples_for_safety: true

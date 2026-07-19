@@ -46,6 +46,12 @@ _DC_RE = re.compile(
     r"\[DRAKE-CONTACT\] step=(\d+) n_pairs=(\d+) "
     r"ee_box_normal=([+-]?[\d.]+)"
 )
+_EE_SAMP_RE = re.compile(
+    r"\[EE-SAMPLES\] step=(\d+) n=(\d+) (.+)"
+)
+_SAMPLE_ENTRY_RE = re.compile(
+    r"(\d+):(\w+)=\(([+-][\d.]+),([+-][\d.]+),([+-][\d.]+)\)"
+)
 
 
 def _load_mono_font(size: int) -> ImageFont.FreeTypeFont:
@@ -103,6 +109,22 @@ def parse_log(log_path: Path) -> Dict[int, dict]:
                 d = data.setdefault(step, {})
                 d["drake_F_ee_box"] = float(m.group(3))
                 d["drake_n_pairs"] = int(m.group(2))
+                continue
+            m = _EE_SAMP_RE.search(line)
+            if m:
+                step = int(m.group(1))
+                d = data.setdefault(step, {})
+                d["ee_samples_n"] = int(m.group(2))
+                _entries = []
+                for em in _SAMPLE_ENTRY_RE.finditer(m.group(3)):
+                    _entries.append({
+                        "k":     int(em.group(1)),
+                        "label": em.group(2),
+                        "xyz":   (float(em.group(3)),
+                                  float(em.group(4)),
+                                  float(em.group(5))),
+                    })
+                d["ee_samples"] = _entries
     return data
 
 
@@ -112,6 +134,39 @@ def _mode_dot_color(mode: str):
     if mode == "free":
         return (240, 180, 60, 255)   # amber
     return (180, 180, 180, 255)
+
+
+# Top-down Drake VTK camera (sim/env_builder.py:240-243 defaults).
+# Camera at (-0.10, -0.05, 1.05) looking straight down along world -Z, with a
+# 180° X-axis rotation of the camera body so world +X → image right, world +Y
+# → image up. FOV_y = 55° → focal = (H/2)/tan(FOV_y/2). Square pixels.
+_CAM_XYZ         = (-0.10, -0.05, 1.05)
+_CAM_W, _CAM_H   = 1280, 720
+_CAM_FOV_Y_RAD   = np.radians(55.0) if False else 0.9599310885968813
+_CAM_FOCAL       = 360.0 / 0.5205  # ≈ 691.6 pixels
+# Palette for sample slots, indexed by k (repeats after 6).
+_SAMPLE_PALETTE = [
+    (255,  85,  85, 255),   # red    — k=0 (current)
+    ( 85, 170, 255, 255),   # blue   — k=1 (prev_repos)
+    (240, 200,  60, 255),   # amber  — k=2 (strat_0)
+    ( 60, 200, 100, 255),   # green  — k=3 (strat_1)
+    (200, 100, 220, 255),   # purple — k=4 (strat_2)
+    ( 60, 220, 220, 255),   # cyan   — k=5 (buffer)
+]
+
+
+def _project_world_to_pixel(xyz):
+    """Return (u, v, in_frame) for a world-frame xyz sample."""
+    import numpy as _np
+    sx, sy, sz = float(xyz[0]), float(xyz[1]), float(xyz[2])
+    dz = _CAM_XYZ[2] - sz
+    if dz <= 1e-4:
+        return None, None, False
+    # Camera frame: X_cam = sx-cx, Y_cam = -(sy-cy), Z_cam = dz (positive fwd).
+    u =  _CAM_FOCAL * (sx - _CAM_XYZ[0]) / dz + _CAM_W / 2.0
+    v = -_CAM_FOCAL * (sy - _CAM_XYZ[1]) / dz + _CAM_H / 2.0
+    in_frame = (0 <= u < _CAM_W) and (0 <= v < _CAM_H)
+    return u, v, in_frame
 
 
 def paint_frame(img: Image.Image, step: int, info: dict, font, font_lg):
@@ -189,6 +244,27 @@ def paint_frame(img: Image.Image, step: int, info: dict, font, font_lg):
         indent = (2 * dot_r + 8) if i == 1 else 0
         draw.text((tx + indent, ty + i * line_h), l,
                   fill=(255, 255, 255, 255), font=font)
+
+    # ---- EE samples: project world xyz to pixel + draw colored dots -------
+    _samples = info.get("ee_samples") or []
+    for entry in _samples:
+        _k = int(entry["k"])
+        _lbl = entry["label"]
+        u, v, ok = _project_world_to_pixel(entry["xyz"])
+        if not ok:
+            continue
+        color = _SAMPLE_PALETTE[_k % len(_SAMPLE_PALETTE)]
+        r_dot = 8
+        # White ring for contrast
+        draw.ellipse([u - r_dot - 2, v - r_dot - 2,
+                      u + r_dot + 2, v + r_dot + 2],
+                     outline=(255, 255, 255, 255), width=2)
+        draw.ellipse([u - r_dot, v - r_dot, u + r_dot, v + r_dot],
+                     fill=color)
+        # Label to the right of the dot
+        draw.text((u + r_dot + 4, v - r_dot),
+                  f"{_k}:{_lbl}",
+                  fill=color, font=font)
 
 
 def main():
