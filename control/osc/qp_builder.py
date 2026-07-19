@@ -143,23 +143,25 @@ def build_and_solve_qp(
     u    = prog.NewContinuousVariables(n_u, "u")
 
     if use_force_tracking:
-        # λ_ext = external Cartesian force at the EE world point, treated
-        # as a QP decision variable (mirrors dairlib reference
-        # `inverse_dynamics_qp.cc:82` `lambda_e_`). Soft cost
-        # `W_force·‖λ_ext − λ_des‖²` pulls it toward `lambda_des`; the QP
-        # is forced to find a τ that produces that EE force.
+        # λ_ext = external Cartesian force at the EE world point, tracked
+        # as a *cost-only shadow variable* — mirrors the dairlib reference.
+        # Reference dispatch (operational_space_control.cc:407) calls
+        # `UpdateDynamics(x, active_contact_names, {})` — the empty third
+        # arg means external forces (lambda_e_) are NEVER injected into
+        # the dynamics constraint (inverse_dynamics_qp.cc:207-211 loop
+        # skipped). Only the cost `W_ee_lambda · ‖λ_e − λ_des‖²` couples
+        # λ_e to λ_des; the joint torques τ are computed as if no
+        # external reaction existed. This prevents the phantom-reaction
+        # slam when the planner routes a fictional u_sol force through
+        # ExternalForceTrackingData (see 2026-07-19 arm-slam probe;
+        # coupling λ_ext into dynamics made the arm accelerate opposite
+        # to λ_des whenever real contact was absent).
         lam_ext = prog.NewContinuousVariables(3, "lambda_ext")
-        # Dynamics:  M v̇ + bias = B u + F_ff_external + J_v^T λ_ext
-        #         ⇔  M v̇ − B u − J_v^T λ_ext = F_ff_external − bias
-        # J_v is the EE translational Jacobian (3, n_v) — its transpose
-        # maps a 3-D world-frame EE force to a generalized force on the
-        # arm DOFs (manipuland-DOF rows are zero since the EE point does
-        # not move under box DOFs). This is the executor's commanded
-        # contact force, separate from the LCS-reaction term in F_ff.
-        A_eq = np.hstack([M, -B, -J_v.T])         # (n_v, n_v + n_u + 3)
+        # Dynamics constraint identical to the non-force-tracking path.
+        A_eq = np.hstack([M, -B])                 # (n_v, n_v + n_u)
         b_eq = F_ff_external - bias               # (n_v,)
         prog.AddLinearEqualityConstraint(
-            A_eq, b_eq, np.concatenate([vdot, u, lam_ext]))
+            A_eq, b_eq, np.concatenate([vdot, u]))
     else:
         # Original path: λ_planned enters as a fixed RHS feedforward.
         lam_ext = None
