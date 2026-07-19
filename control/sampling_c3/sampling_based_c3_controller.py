@@ -417,79 +417,35 @@ class SamplingC3MPC:
                                 n_strategy: int,
                                 yaw_delta:  Optional[float] = None,
                                 ) -> list[np.ndarray]:
-        """Return strategy samples, caching across loops per
-        `sampling_params.sample_buffer_lifetime`.
+        """Generate fresh strategy samples every tick — reference conformant.
 
-        Refresh triggers (any of):
-          * buffer empty (first call after init / arrival)
-          * buffer age >= lifetime
-          * cached n_strategy differs from the request (mode transition)
+        Reference `GenerateSampleStates` (sampling_based_c3_controller.cc:900)
+        fires every control tick with no caching. The port previously cached
+        samples for `sample_buffer_lifetime_s` seconds as a stability
+        workaround, but that produced sample-slot duplicates (chosen sample
+        stayed in cache AND appeared as prev_repos next tick).
 
-        With `lifetime = 0` the buffer is bypassed (re-samples every loop,
-        the broken behavior we want to keep available for ablation).
+        2026-07-19 refactor: match reference. Cache-related state
+        (_sample_buffer, _sample_buffer_age, _sample_buffer_n_strategy,
+        _refresh_buffer_on_arrival) is now inert — kept for API surface
+        stability but no longer read.
         """
         sp = self.params.sampling_params
-        # 2026-06-25 reconciliation: sim-time _s field → integer ticks.
-        # At 100 Hz lifetime_s=0.30 → lifetime=30 (byte-equivalent prior int).
-        # At 1 kHz lifetime_s=0.30 → lifetime=300 (300 ms wall time, same).
-        _lifetime_s = float(getattr(sp, "sample_buffer_lifetime_s", 0.0))
-        lifetime = int(round(_lifetime_s / self._dt_ctrl))
-
-        # Ablation path: lifetime <= 0 → re-sample every loop.
-        if lifetime <= 0:
-            return generate_samples(
-                strategy  = sp.sampling_strategy,
-                n_samples = n_strategy,
-                obj_xy    = obj_xy,
-                params    = sp,
-                rng       = self._rng,
-                g_hat     = g_hat,
-                obj_quat  = obj_quat,
-                yaw_delta = yaw_delta,
-            )
-
-        # Refresh when:
-        #   1. buffer empty (init or arrival-forced)
-        #   2. age exceeded lifetime
-        #   3. cached fewer samples than requested (n_strategy INCREASED)
-        # 2026-07-19: Previously refreshed on ANY n_strategy change. That
-        # triggered a fresh call on every c3↔free mode flip (n changes
-        # 1→2 or 2→1), and each fresh call produced new random face
-        # samples. Rapid mode-switching (11 switches in
-        # results/push_t_liftfix_20260719_003029) caused sample thrashing:
-        # arm chased a new target every 4 ticks. Fix: refresh only when
-        # we need MORE samples than cached; a shrinking request just uses
-        # a subset of the existing cache (byte-consistent for the retained
-        # slots).
-        _cached_n = self._sample_buffer_n_strategy or 0
-        need_refresh = (
-            self._sample_buffer is None
-            or self._sample_buffer_age >= lifetime
-            or _cached_n < n_strategy
+        _samples = generate_samples(
+            strategy  = sp.sampling_strategy,
+            n_samples = n_strategy,
+            obj_xy    = obj_xy,
+            params    = sp,
+            rng       = self._rng,
+            g_hat     = g_hat,
+            obj_quat  = obj_quat,
+            yaw_delta = yaw_delta,
         )
-        if need_refresh:
-            self._sample_buffer = generate_samples(
-                strategy  = sp.sampling_strategy,
-                n_samples = n_strategy,
-                obj_xy    = obj_xy,
-                params    = sp,
-                rng       = self._rng,
-                g_hat     = g_hat,
-                obj_quat  = obj_quat,
-                yaw_delta = yaw_delta,
-            )
-            self._sample_buffer_n_strategy = n_strategy
-            self._sample_buffer_age = 0
-            if self.log_diag:
-                _ages = (self._step, n_strategy,
-                         [tuple(np.round(s, 4).tolist())
-                          for s in self._sample_buffer])
-                print(f"[PERSIST] step={_ages[0]} refresh "
-                      f"n_strategy={_ages[1]} samples={_ages[2]}")
-        self._sample_buffer_age += 1
-        # Return only the first n_strategy samples (in case cache holds more
-        # from a previous larger request).
-        return [s.copy() for s in self._sample_buffer[:n_strategy]]
+        if self.log_diag:
+            _tup = [tuple(np.round(s, 4).tolist()) for s in _samples]
+            print(f"[PERSIST] step={self._step} refresh "
+                  f"n_strategy={n_strategy} samples={_tup}")
+        return _samples
 
     def _refresh_buffer_on_arrival(self) -> None:
         """Force buffer refresh next loop. Called when finished_repos
@@ -879,50 +835,41 @@ class SamplingC3MPC:
         """
         sp = self.params.sampling_params
 
-        positions: list[np.ndarray] = [ee_pos_now.copy()]
-        labels:    list[str]        = ["current"]
+        # 2026-07-19 reference-conformant refactor
+        # (sampling_based_c3_controller.cc:898-938):
+        #   candidate_states = GenerateSampleStates(...)         # fresh
+        #   if (!is_doing_c3_ && !in_collision):
+        #       candidate_states.insert(begin, prev_repos)
+        #   candidate_states.insert(begin, current)
+        # The buffer slot is added SEPARATELY by AugmentSamplesWithBuffer
+        # (cc:2106) only when currently in c3 mode; that's now handled by
+        # _augment_samples_with_buffer, invoked by the caller AFTER cost
+        # evaluation. This method returns only the pre-cost sample bank.
+        positions: list[np.ndarray] = []
+        labels:    list[str]        = []
 
-        if self._current_repos_target is not None:
+        # prev_repos only in REPOS mode (matches reference's !is_doing_c3_).
+        # Reference also checks !in_collision; port skips that here — the
+        # workspace filter in generate_samples handles collision-avoidance for
+        # freshly generated samples, and prev_repos is a previously-cleared
+        # target so unlikely to be in collision.
+        if prev_mode == "free" and self._current_repos_target is not None:
             positions.append(self._current_repos_target.copy())
             labels.append("prev_repos")
 
+        # Strategy samples — always fresh, never cached (matches reference).
         n_strategy = (sp.num_additional_samples_c3 if prev_mode == "c3"
                       else sp.num_additional_samples_repos)
         strategy_samples = self._get_persistent_samples(
             obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
             obj_quat=obj_quat, yaw_delta=yaw_delta)
-        # 2026-07-19: dedupe strategy + buffer samples against existing slots.
-        # Reference regenerates samples every tick so duplicates are rare;
-        # port caches for sample_buffer_lifetime_s so a sample chosen as
-        # prev_repos ALSO stays in the strategy cache and in the persistent
-        # buffer — same position appears in multiple slots.
-        # Tolerance 10 mm matches face-3 half-width (0.02 m) — samples on the
-        # same T face within jitter range shouldn't count as distinct
-        # "alternatives" for the dispatcher's cost gate.
-        _dedup_tol = 0.010
-        _existing = list(positions)
-        _strat_idx = 0
-        for p in strategy_samples:
-            _is_dup = any(np.linalg.norm(np.asarray(p) - np.asarray(q))
-                          <= _dedup_tol for q in _existing)
-            if _is_dup:
-                continue
+        for i, p in enumerate(strategy_samples):
             positions.append(p)
-            labels.append(f"strat_{_strat_idx}")
-            _existing.append(p)
-            _strat_idx += 1
+            labels.append(f"strat_{i}")
 
-        if (sp.consider_best_buffer_sample_when_leaving_c3
-                and prev_mode == "c3"
-                and len(self.buffer) > 0):
-            best = self.buffer.best_with_position()
-            if best is not None:
-                _buf_p = best.position.copy()
-                _buf_dup = any(np.linalg.norm(np.asarray(_buf_p) - np.asarray(q))
-                               <= _dedup_tol for q in _existing)
-                if not _buf_dup:
-                    positions.append(_buf_p)
-                    labels.append("buffer")
+        # Insert current EE at the front (reference cc:938).
+        positions.insert(0, ee_pos_now.copy())
+        labels.insert(0, "current")
 
         return positions, labels
 
@@ -1327,6 +1274,36 @@ class SamplingC3MPC:
             c_samples[1] = (c_samples[1]
                             + self.params.progress_params.finished_reposition_cost)
             self._last_repos_finished = False   # match reference reset
+
+        # 3c. AugmentSamplesWithBuffer — reference sampling_based_c3_controller.cc:
+        # 2106-2158. Only fires when currently in c3 mode. If the best sample
+        # in the persistent buffer is (approximately) equal in cost AND
+        # position to the current best, don't augment. Otherwise append it to
+        # the candidate list for the c3-to-repos target decision.
+        sp = self.params.sampling_params
+        if (self._prev_mode == "c3"
+                and sp.consider_best_buffer_sample_when_leaving_c3
+                and len(self.buffer) > 0):
+            _best_buf = self.buffer.best_with_position()
+            if _best_buf is not None:
+                _lowest_new_cost = float(min(c_samples))
+                _best_new_idx = int(np.argmin(c_samples))
+                _best_new_pos = np.asarray(samples[_best_new_idx])
+                _buf_pos = np.asarray(_best_buf.position)
+                _cost_match = abs(_best_buf.cost - _lowest_new_cost) < 1e-5
+                _pos_match  = np.linalg.norm(_buf_pos - _best_new_pos) < 1e-5
+                if not (_cost_match and _pos_match):
+                    samples.append(_buf_pos)
+                    labels.append("buffer")
+                    c_samples.append(float(_best_buf.cost))
+                    # Extend results list with a placeholder so downstream
+                    # indexing stays valid; results[buf_idx] carries the
+                    # buffered SampleResult if it can be looked up, else None.
+                    results.append(_best_buf.result
+                                   if hasattr(_best_buf, "result") else None)
+            # Refresh mirrored bookkeeping after augmentation.
+            self._all_sample_locations = samples
+            self._last_sample_labels = labels
 
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
