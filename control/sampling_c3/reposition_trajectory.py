@@ -66,9 +66,22 @@ class RepositionTrajectory:
         self.t_start  = float(t_start)
         self.dt_plan  = float(dt_plan)
 
-        direct = float(np.linalg.norm(p_target - p_start))
-        if direct < float(straight_line_thresh):
-            # Sub-cm hop: direct line, no z_safe transit.
+        # 2026-07-19 reference-conformant straight-line dispatch.
+        # Reference `reposition.cc:44-56` routes to `RepositionStraightLine`
+        # when `xy_travel_distance < use_straight_line_traj_under_piecewise_
+        # linear` (0.008 m for push_t). Port previously used 3-D distance
+        # (`np.linalg.norm(p_target - p_start)`), so a sample below a
+        # near-target arm (arm at (target_xy, 0.06) → target (target_xy,
+        # 0.005): xy=0, 3D=55 mm > 8 mm) failed the check and dispatched
+        # to the lift-traverse-descend PWL branch.  The subsequent
+        # re-lift zig-zag (leg 1 pulls arm back to z_safe=0.06 before
+        # leg 3 descends) blocked physical descent.  Matching reference's
+        # xy-only test lets the arm proceed straight to target once xy
+        # is close.
+        xy_dist = float(np.linalg.norm(p_target[:2] - p_start[:2]))
+        if xy_dist < float(straight_line_thresh):
+            # Near-target: direct 2-knot straight line from p_start to
+            # p_target. No lift, no traverse, no zig-zag.
             self.knot_positions = np.stack([p_start, p_target], axis=1)  # (3, 2)
         else:
             lift_end     = np.array([p_start[0],  p_start[1],  z_safe])
