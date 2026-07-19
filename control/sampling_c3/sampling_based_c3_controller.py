@@ -3501,6 +3501,29 @@ class SamplingC3MPC:
                 _knots[2, :] = _sh_c3   # z-freeze every knot (ref cc:1757)
                 _ts = [_sim_t_c3 + i * _dt_plan for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
+                # 2026-07-19 trajectory-log for descent audit (c3 mode).
+                # x_seq layout for EE-space: [box_q(7), p_ee(3), box_v(6),
+                # v_ee(3)] → box_p at 4:7, ee_p at 7:10. Log the planner's
+                # predicted BOX trajectory and EE trajectory over the
+                # full horizon so we can see if the planner is intending
+                # to lift the T (or the arm) somewhere unexpected.
+                if self.log_diag:
+                    _ee_zs = [float(_x_seq_full[i][9])
+                              for i in range(1, _N_plan + 1)]
+                    _box_zs = [float(_x_seq_full[i][6])
+                               for i in range(1, _N_plan + 1)]
+                    _box_ys = [float(_x_seq_full[i][5])
+                               for i in range(1, _N_plan + 1)]
+                    _ee_zs_str  = ",".join(f"{z:+.4f}" for z in _ee_zs)
+                    _box_zs_str = ",".join(f"{z:+.4f}" for z in _box_zs)
+                    _box_ys_str = ",".join(f"{y:+.4f}" for y in _box_ys)
+                    print(f"[C3-TRAJ] step={self._step} "
+                          f"ee_now_z={float(ee_pos_now[2]):+.4f} "
+                          f"planned_ee_z=[{_ee_zs_str}] "
+                          f"planned_box_z=[{_box_zs_str}] "
+                          f"planned_box_y=[{_box_ys_str}] "
+                          f"z_frozen_to={_sh_c3:+.4f}",
+                          flush=True)
             else:
                 # Legacy 2-knot fallback for R^7 path or missing x_seq.
                 _p_c3_col = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
@@ -3769,6 +3792,26 @@ class SamplingC3MPC:
                 _p_des, _v_des, _done = self._pwl_traj.eval(_sim_t)
                 _p_ee_des = _p_des
                 _v_ee_des = _v_des
+                # 2026-07-19 trajectory-log for descent audit.  Emits the
+                # full knot z-profile at the planner tick so we can trace
+                # WHERE the arm is being commanded to go vs where it
+                # actually is.  Free-mode only (c3-mode uses x_seq via
+                # base_mpc — logged separately below).
+                if self.log_diag:
+                    _kz = self._pwl_traj.knot_positions[2, :].tolist()
+                    _kt = (self._pwl_traj.knot_times
+                           - self._pwl_traj.t_start).tolist()
+                    _kz_str = ",".join(f"{z:+.4f}" for z in _kz)
+                    _kt_str = ",".join(f"{t:.4f}" for t in _kt)
+                    print(f"[PWL-TRAJ] step={self._step} "
+                          f"ee_now_z={float(ee_pos_now[2]):+.4f} "
+                          f"p_des_now=({_p_des[0]:+.4f},"
+                          f"{_p_des[1]:+.4f},{_p_des[2]:+.4f}) "
+                          f"v_des_now=({_v_des[0]:+.4f},"
+                          f"{_v_des[1]:+.4f},{_v_des[2]:+.4f}) "
+                          f"knot_z=[{_kz_str}] "
+                          f"knot_t_rel=[{_kt_str}]",
+                          flush=True)
                 # §7.32 — FAITHFUL-DESIRED-STATE: static surface override
                 # dropped (free / PWL path); the PWL trajectory's own
                 # (_p_des, _v_des) is the free-mode analog of the
