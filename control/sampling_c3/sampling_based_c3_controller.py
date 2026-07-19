@@ -234,6 +234,14 @@ class SamplingC3MPC:
         self._pwl_traj: Optional[RepositionTrajectory] = None
         self._pwl_traj_built_for_target: Optional[np.ndarray] = None
         self._pwl_traj_last_build_step: int = -1
+        # Reference cc:1858-1863 x_pred_curr_plan_ for repos mode. Holds
+        # the planned EE position (row 0..2 of x_lcs) at the previous
+        # planner tick's forward-simulated point in the trajectory.
+        # Used by ClampEndEffectorAcceleration analog in the p_start
+        # computation below to march the reposition trajectory forward
+        # in prediction-space instead of restarting at the arm's actual
+        # (lagging) position each tick.
+        self._x_pred_repos_plan: Optional[np.ndarray] = None
         if self._use_pwl_traj:
             print("[STAGE-A-PWL] dispatcher: "
                   "use_reposition_pwl_trajectory=True", flush=True)
@@ -3612,6 +3620,11 @@ class SamplingC3MPC:
                 if self._prev_mode == "c3":
                     self._pwl_traj = None
                     self._pwl_traj_built_for_target = None
+                    # Reset the predicted p_start on c3→free transition so
+                    # the first repos build after leaving c3 starts from
+                    # the arm's actual (post-c3) position rather than an
+                    # outdated prediction from an earlier repos episode.
+                    self._x_pred_repos_plan = None
                 # Rebuild triggers (anti-churn — Refinement 3):
                 #   (a) no trajectory yet (first free entry after a c3→free
                 #       transition reset, OR sim start), OR
@@ -3693,8 +3706,32 @@ class SamplingC3MPC:
                         flush=True,
                     )
                 if _need_rebuild:
+                    # 2026-07-19 reference-conformant p_start.
+                    # Reference sampling_based_c3_controller.cc:1442 calls
+                    # ClampEndEffectorAcceleration BEFORE Reposition when
+                    # use_predicted_x0_repos is true.  That replaces the
+                    # actual EE position with the PREDICTED position from
+                    # the previous tick's trajectory (clamped to be within
+                    # nominal_ee_accel × dt² of actual).  Effect: p_start
+                    # marches forward in prediction-space at trajectory
+                    # speed even if the physical arm lags — descends past
+                    # the re-lift trap that keeps `p_start = ee_pos_now`
+                    # stuck at z ≈ z_safe.
+                    _nominal_ee_accel = float(getattr(
+                        self.base_mpc, "nominal_ee_accel", 2.0))
+                    if (self._x_pred_repos_plan is not None
+                            and _nominal_ee_accel > 0.0):
+                        _dt_c = min(0.1, float(self._dt_ctrl))
+                        _delta_pos = _nominal_ee_accel * _dt_c * _dt_c
+                        _p_start_ref = np.clip(
+                            np.asarray(self._x_pred_repos_plan, dtype=float),
+                            ee_pos_now - _delta_pos,
+                            ee_pos_now + _delta_pos,
+                        )
+                    else:
+                        _p_start_ref = np.asarray(ee_pos_now, dtype=float)
                     self._pwl_traj = RepositionTrajectory(
-                        p_start=ee_pos_now,
+                        p_start=_p_start_ref,
                         p_target=_p_target_arr,
                         z_safe=float(
                             self.params.reposition_params.pwl_waypoint_height),
@@ -3707,13 +3744,22 @@ class SamplingC3MPC:
                         # finished_reposition_flag (t_end-t_start ≤ dt_plan).
                         dt_plan=float(self._dt_ctrl),
                     )
+                    # Update the predicted state for NEXT tick's clamp.
+                    # Reference cc:1858-1863: sample the just-built trajectory
+                    # at `filtered_solve_time_` (average planner-solve time),
+                    # save as `x_pred_curr_plan_`. Port uses `_dt_ctrl` as the
+                    # analog since the port doesn't measure solve time.
+                    _p_pred_next, _, _ = self._pwl_traj.eval(
+                        float(_sim_t) + float(self._dt_ctrl))
+                    self._x_pred_repos_plan = np.asarray(
+                        _p_pred_next, dtype=float).copy()
                     self._pwl_traj_built_for_target = _p_target_arr.copy()
                     self._pwl_traj_last_build_step = int(self._step)
                     print(
                         f"[STAGE-A-PWL] step={self._step} "
                         f"sim_t={_sim_t:.3f} build "
-                        f"p_start=({ee_pos_now[0]:+.4f},"
-                        f"{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}) "
+                        f"p_start=({_p_start_ref[0]:+.4f},"
+                        f"{_p_start_ref[1]:+.4f},{_p_start_ref[2]:+.4f}) "
                         f"p_target=({_p_target_arr[0]:+.4f},"
                         f"{_p_target_arr[1]:+.4f},{_p_target_arr[2]:+.4f}) "
                         f"K={self._pwl_traj.knot_positions.shape[1]} "
