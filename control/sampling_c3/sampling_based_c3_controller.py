@@ -1520,21 +1520,19 @@ class SamplingC3MPC:
         # False (only T config sets it True), so line 1224's tracker.finished
         # remains the box's authoritative finished signal.
         if self._use_pwl_traj and self._pwl_traj is not None:
-            # Align to real sim time at compute_control entry (see the fix
-            # applied to _sim_t / _sim_t_c3). self._step was incremented at
-            # line 850, so the real sim clock is (self._step - 1) * dt_ctrl.
-            # Off-by-one here reports PWL.is_finished ONE planner tick early,
-            # which can prematurely fire kToC3ReachedReposTarget.
-            _sim_t_fin = float(self._step - 1) * float(self._dt_ctrl)
-            try:
-                _ee_now_fin = self.plant.CalcPointsPositions(
-                    plant_ctx, self.ee_frame, np.zeros(3),
-                    self.plant.world_frame(),
-                ).flatten()
-            except Exception:
-                _ee_now_fin = np.zeros(3)
-            finished_repos = self._pwl_traj.is_finished(
-                _sim_t_fin, _ee_now_fin, tol=0.020)
+            # 2026-07-19: reference-conformant finished_reposition_flag.
+            # Reference reposition.cc sets the flag at BUILD time inside the
+            # walking-loop: fires when total travel time <= 1 planner tick
+            # (single step_size covers the whole path). Port previously used
+            # an arm-distance predicate `is_finished(sim_t, ee_now, tol)`
+            # which held FALSE indefinitely when the arm hovered a few mm
+            # outside 20-mm tol — kToC3ReachedReposTarget never fired.
+            # The new attribute reads the reference build-time flag.
+            # Requires _need_rebuild=True every tick so the flag reflects
+            # the CURRENT p_start=ee_now (see also the rebuild-every-tick
+            # fix at the RepositionTrajectory build site).
+            finished_repos = bool(getattr(
+                self._pwl_traj, "finished_reposition_flag", False))
 
         # Contact-proximity entry gate: don't fire kToC3ReachedReposTarget
         # just because the IK arrived at the setback target — require the
@@ -3636,13 +3634,14 @@ class SamplingC3MPC:
                     else ee_pos_now
                 )
                 _p_target_arr = np.asarray(_p_target, dtype=float).reshape(3)
-                _need_rebuild = (
-                    self._pwl_traj is None
-                    or self._pwl_traj_built_for_target is None
-                    or float(np.linalg.norm(
-                        _p_target_arr
-                        - self._pwl_traj_built_for_target)) > 5e-3
-                )
+                # 2026-07-19: rebuild EVERY planner tick, matching reference
+                # sampling_based_c3_controller.cc:1330 which calls
+                # UpdateRepositioningExecutionTrajectory unconditionally.
+                # Prior port only rebuilt on target-change (>5 mm) — with a
+                # stale trajectory, `finished_reposition_flag` (which is set
+                # at build time from `t_end - t_start <= dt_plan`) also went
+                # stale and never fired mid-run.  Ref cc:1330 does not gate.
+                _need_rebuild = True
 
                 # Stage C landing-storm trace — gated, default-OFF.
                 # Window: step >= PUSHA_LANDING_TRACE_FROM (default 1600 at
@@ -3704,6 +3703,9 @@ class SamplingC3MPC:
                         straight_line_thresh=float(self.params
                             .reposition_params
                             .use_straight_line_traj_under_piecewise_linear),
+                        # dt_plan feeds RepositionTrajectory's ref-conformant
+                        # finished_reposition_flag (t_end-t_start ≤ dt_plan).
+                        dt_plan=float(self._dt_ctrl),
                     )
                     self._pwl_traj_built_for_target = _p_target_arr.copy()
                     self._pwl_traj_last_build_step = int(self._step)

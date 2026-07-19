@@ -52,7 +52,8 @@ class RepositionTrajectory:
                  z_safe: float,
                  speed: float,
                  t_start: float,
-                 straight_line_thresh: float = 0.008):
+                 straight_line_thresh: float = 0.008,
+                 dt_plan: float = 0.0):
         p_start  = np.asarray(p_start,  dtype=float).reshape(3)
         p_target = np.asarray(p_target, dtype=float).reshape(3)
         if speed <= 0.0:
@@ -63,6 +64,7 @@ class RepositionTrajectory:
         self.z_safe   = float(z_safe)
         self.speed    = float(speed)
         self.t_start  = float(t_start)
+        self.dt_plan  = float(dt_plan)
 
         direct = float(np.linalg.norm(p_target - p_start))
         if direct < float(straight_line_thresh):
@@ -91,6 +93,22 @@ class RepositionTrajectory:
         seg_durations = seg_lengths / self.speed       # (K-1,)
         cum = np.concatenate([[0.0], np.cumsum(seg_durations)])  # (K,)
         self.knot_times = self.t_start + cum
+
+        # 2026-07-19 reference-conformant finished_reposition_flag.
+        # Reference reposition.cc:462-465 (PiecewiseLinear branch) and
+        # :111 (StraightLine branch) both set the flag when the fill/
+        # trajectory-walking loop places its first knot at index 1 while
+        # NOT already at the goal — i.e., when total travel time fits in
+        # a single planner tick.  Effective condition (unified across
+        # both branches): total 3-leg (or direct-line) path length is
+        # covered by one step_size = speed * dt_plan.  Equivalently:
+        # (t_end - t_start) <= dt_plan.  Reference sets this per call to
+        # Reposition(...), which runs once per planner tick with
+        # p_start = current EE and p_target = best sample location.
+        self.finished_reposition_flag = bool(
+            self.dt_plan > 0.0
+            and float(self.knot_times[-1] - self.t_start)
+                <= float(self.dt_plan))
 
     @property
     def t_end(self) -> float:
