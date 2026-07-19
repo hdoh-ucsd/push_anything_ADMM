@@ -271,6 +271,20 @@ class SamplingParams:
     pos_error_sample_retention:          float = 0.05   # m
     ang_error_sample_retention:          float = 0.30   # rad
 
+    # Unsuccessful sample buffer (TODO #6 port — reference
+    # generate_samples.cc:181-205 SampleAvoidsBadSpots + cc:2161-2205
+    # AddToUnsuccessfulBuffer).  When a sample is judged unsuccessful
+    # (reference: free→c3 transition; port also fires on
+    # kToBetterRepos), its EE position is stored and future samples
+    # within `unsuccessful_radius` are rejected.  Off in the reference's
+    # push_t (avoid_choosing_unsuccessful_samples defaults false) but
+    # ON in reference's `anything` YAML.
+    avoid_choosing_unsuccessful_samples:  bool  = True
+    N_unsuccessful_sample_buffer:         int   = 20
+    unsuccessful_radius:                  float = 0.05    # m
+    unsuccessful_pos_error_sample_retention:  float = 0.10   # m
+    unsuccessful_ang_error_sample_retention:  float = 0.60   # rad
+
     # Geometry shared across multiple strategies
     sampling_radius:                     float = 0.13   # m, candidate-ring radius for cost eval (samples 1..n-1)
     repos_target_radius:                 float = 0.075  # m, IK proxy target — pusher just touching box

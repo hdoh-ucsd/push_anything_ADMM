@@ -149,3 +149,105 @@ class SampleBuffer:
     def snapshot(self) -> list[BufferedSample]:
         """Defensive copy for inspection / diagnostics."""
         return list(self._entries)
+
+
+# ---------------------------------------------------------------------------
+# Unsuccessful sample buffer
+# ---------------------------------------------------------------------------
+#
+# Mirrors reference dairlib_sampling_c3 SamplingC3Controller machinery:
+#   - AddToUnsuccessfulBuffer(x_lcs)            (cc:2161-2205)
+#   - PruneOutdatedSamplesFromBuffer(...)       (called from
+#                                                MaintainSampleBuffers cc:2006)
+#   - SampleAvoidsBadSpots(...)                 (generate_samples.cc:187-205)
+#
+# Purpose: mark the arm's EE position at the moment we abandon a repos target
+# (reference calls this at free→c3 transition; port also fires on
+# kToBetterRepos since our port rarely enters c3 mode).  Later ticks reject
+# any sample within `unsuccessful_radius` of any stored bad-spot entry,
+# preventing the sampler from re-selecting nearby positions that have
+# already been shown to be unproductive.
+
+
+class UnsuccessfulSampleBuffer:
+    """Bad-spots buffer with pose-based pruning.
+
+    Stores (ee_pos, obj_pos_xy, obj_quat) at insertion; drops entries whose
+    stored object pose has drifted past the retention thresholds.  Match
+    the reference contract at generate_samples.cc:187-205 —
+    `sample_avoids_bad_spots(p)` returns False iff p is within
+    `unsuccessful_radius` of any stored entry.
+    """
+
+    def __init__(self,
+                 capacity:                        int   = 20,
+                 unsuccessful_radius:             float = 0.05,
+                 unsuccessful_pos_retention:      float = 0.10,
+                 unsuccessful_ang_retention:      float = 0.60):
+        """
+        Parameters
+        ----------
+        capacity                    : max entries before FIFO eviction
+        unsuccessful_radius         : EE-position gate for
+                                      sample_avoids_bad_spots (m)
+        unsuccessful_pos_retention  : drop entry when |obj_pos_now -
+                                      entry.obj_pos_xy| > threshold (m)
+        unsuccessful_ang_retention  : drop entry when geodesic_angle >
+                                      threshold (rad)
+        """
+        self.capacity                    = int(capacity)
+        self.unsuccessful_radius         = float(unsuccessful_radius)
+        self.unsuccessful_pos_retention  = float(unsuccessful_pos_retention)
+        self.unsuccessful_ang_retention  = float(unsuccessful_ang_retention)
+        self._entries: list[BufferedSample] = []
+
+    def prune(self,
+              obj_pos_xy_now: np.ndarray,
+              obj_quat_now:   Optional[np.ndarray] = None) -> int:
+        """Drop entries whose stored pose has drifted past the retention
+        thresholds.  Returns the number of entries removed."""
+        before = len(self._entries)
+        kept: list[BufferedSample] = []
+        for s in self._entries:
+            d_pos = float(np.linalg.norm(obj_pos_xy_now - s.obj_pos_xy))
+            if d_pos > self.unsuccessful_pos_retention:
+                continue
+            if obj_quat_now is not None and s.obj_quat is not None:
+                d_ang = _quat_geodesic_angle(obj_quat_now, s.obj_quat)
+                if d_ang > self.unsuccessful_ang_retention:
+                    continue
+            kept.append(s)
+        self._entries = kept
+        return before - len(self._entries)
+
+    def append(self, sample: BufferedSample) -> None:
+        """Append, then evict oldest while over capacity."""
+        self._entries.append(sample)
+        while len(self._entries) > self.capacity:
+            self._entries.pop(0)
+
+    def sample_avoids_bad_spots(self, ee_candidate: np.ndarray) -> bool:
+        """Reference generate_samples.cc:187-205 sample_avoids_bad_spots.
+
+        Returns True iff `ee_candidate` is at least `unsuccessful_radius`
+        away from every stored bad-spot.  When the buffer is empty,
+        returns True (nothing to avoid).
+        """
+        p = np.asarray(ee_candidate, dtype=float).reshape(3)
+        for s in self._entries:
+            if float(np.linalg.norm(p - s.position)) \
+                    < self.unsuccessful_radius:
+                return False
+        return True
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __iter__(self):
+        return iter(self._entries)
+
+    def clear(self) -> None:
+        self._entries.clear()
+
+    def snapshot(self) -> list[BufferedSample]:
+        return list(self._entries)
