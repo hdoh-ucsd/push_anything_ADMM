@@ -40,7 +40,8 @@ from control.osc import OperationalSpaceController
 from control.osc.dynamics_helpers import ee_jacobian_translational
 from control.sampling_c3.reposition import PiecewiseLinearTracker
 from control.sampling_c3.reposition_trajectory import RepositionTrajectory
-from control.sampling_c3.sample_buffer import BufferedSample, SampleBuffer
+from control.sampling_c3.sample_buffer import (
+    BufferedSample, SampleBuffer, UnsuccessfulSampleBuffer)
 from control.sampling_c3.sampling import generate_samples
 from sim.env_builder import PUSHER_RADIUS
 
@@ -146,6 +147,25 @@ class SamplingC3MPC:
             pos_threshold = params.sampling_params.pos_error_sample_retention,
             ang_threshold = params.sampling_params.ang_error_sample_retention,
         )
+        # Unsuccessful-sample buffer — reference generate_samples.cc:181-205
+        # SampleAvoidsBadSpots + cc:2161-2205 AddToUnsuccessfulBuffer.
+        # Populated at retarget events (reference: free→c3; port also:
+        # kToBetterRepos).  When populated, filters generated samples to
+        # avoid EE positions within `unsuccessful_radius` of any stored
+        # bad spot.  See TODO #6 in docs/port-todo.md.
+        _sp = params.sampling_params
+        self.unsuccessful_buffer = UnsuccessfulSampleBuffer(
+            capacity                    = int(getattr(
+                _sp, "N_unsuccessful_sample_buffer", 20)),
+            unsuccessful_radius         = float(getattr(
+                _sp, "unsuccessful_radius", 0.05)),
+            unsuccessful_pos_retention  = float(getattr(
+                _sp, "unsuccessful_pos_error_sample_retention", 0.10)),
+            unsuccessful_ang_retention  = float(getattr(
+                _sp, "unsuccessful_ang_error_sample_retention", 0.60)),
+        )
+        self._avoid_unsuccessful = bool(getattr(
+            _sp, "avoid_choosing_unsuccessful_samples", True))
         # PiecewiseLinearTracker is the only reference-conformant tracker.
         # kIK (port-only) was deleted with reposition_ik.py.
         self.tracker = PiecewiseLinearTracker(
@@ -439,9 +459,16 @@ class SamplingC3MPC:
         stability but no longer read.
         """
         sp = self.params.sampling_params
-        _samples = generate_samples(
+        # Draw generously — up to 3× requested — so downstream filtering
+        # against the unsuccessful-buffer can reject bad-spot samples
+        # without leaving us short.  Reference generate_samples.cc:154 has
+        # a retry loop; port draws once and filters at the end.
+        _draw_n = int(n_strategy) * 3 if (
+            self._avoid_unsuccessful and len(self.unsuccessful_buffer) > 0
+        ) else int(n_strategy)
+        _raw_samples = generate_samples(
             strategy  = sp.sampling_strategy,
-            n_samples = n_strategy,
+            n_samples = _draw_n,
             obj_xy    = obj_xy,
             params    = sp,
             rng       = self._rng,
@@ -449,6 +476,27 @@ class SamplingC3MPC:
             obj_quat  = obj_quat,
             yaw_delta = yaw_delta,
         )
+        # Apply the unsuccessful-buffer filter — reference
+        # generate_samples.cc:181-205 SampleAvoidsBadSpots.  Only fires
+        # when `avoid_choosing_unsuccessful_samples` is on AND the buffer
+        # has entries.
+        if self._avoid_unsuccessful and len(self.unsuccessful_buffer) > 0:
+            _samples = []
+            _rejected = 0
+            for s in _raw_samples:
+                if self.unsuccessful_buffer.sample_avoids_bad_spots(s):
+                    _samples.append(s)
+                    if len(_samples) >= int(n_strategy):
+                        break
+                else:
+                    _rejected += 1
+            if self.log_diag and _rejected > 0:
+                print(f"[UNSUCC-FILTER] step={self._step} "
+                      f"rejected={_rejected} kept={len(_samples)} "
+                      f"buffer_size={len(self.unsuccessful_buffer)}",
+                      flush=True)
+        else:
+            _samples = _raw_samples[:int(n_strategy)]
         if self.log_diag:
             _tup = [tuple(np.round(s, 4).tolist()) for s in _samples]
             print(f"[PERSIST] step={self._step} refresh "
@@ -1756,6 +1804,49 @@ class SamplingC3MPC:
         if self._achieved_fixed_goal and mode == "c3":
             mode = "free"
             reason = SwitchReason.kToReposUnproductive
+
+        # Unsuccessful-buffer maintenance — reference cc:1276 & 1308 add
+        # arm's current EE-pos to the unsuccessful buffer at the free→c3
+        # transition (kToC3Cost / kToC3ReachedReposTarget).  Port also
+        # fires on kToBetterRepos: when the dispatcher abandons the
+        # previous repos target for a new one, the previous target is
+        # marked as "arm went here but it didn't produce progress" — the
+        # sample generator will avoid re-picking within
+        # `unsuccessful_radius` next tick.  This is off-reference in the
+        # trigger (reference only fires at c3 entry) but the buffer
+        # mechanism itself is byte-conformant with cc:2161-2205.
+        if self._avoid_unsuccessful and reason in (
+                SwitchReason.kToC3Cost,
+                SwitchReason.kToC3ReachedReposTarget,
+                SwitchReason.kToBetterRepos):
+            _obj_xy_now = np.array([
+                float(current_q[self._obj_x_idx]),
+                float(current_q[self._obj_y_idx]),
+            ])
+            _obj_quat_now = np.array([
+                float(current_q[self._obj_x_idx - 4]),
+                float(current_q[self._obj_x_idx - 3]),
+                float(current_q[self._obj_x_idx - 2]),
+                float(current_q[self._obj_x_idx - 1]),
+            ])
+            # Prune stale entries first (object may have drifted).
+            self.unsuccessful_buffer.prune(_obj_xy_now, _obj_quat_now)
+            # Add the arm's CURRENT EE position (reference cc:2177 uses
+            # candidate_states[0] which represents current arm state).
+            self.unsuccessful_buffer.append(BufferedSample(
+                position   = np.asarray(ee_pos_now, dtype=float).copy(),
+                cost       = float(c_curr),
+                obj_pos_xy = _obj_xy_now.copy(),
+                obj_quat   = _obj_quat_now.copy(),
+            ))
+            if self.log_diag:
+                print(f"[UNSUCC-ADD] step={self._step} "
+                      f"reason={reason.name} "
+                      f"ee_pos=({float(ee_pos_now[0]):+.4f},"
+                      f"{float(ee_pos_now[1]):+.4f},"
+                      f"{float(ee_pos_now[2]):+.4f}) "
+                      f"buffer_size={len(self.unsuccessful_buffer)}",
+                      flush=True)
 
         # Per-tick sample-selection trace. Env-gated (PUSHA_ALL_SAMP=1,
         # default OFF). Answers "why doesn't the controller try other
