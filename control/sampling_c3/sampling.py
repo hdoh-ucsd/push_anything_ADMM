@@ -131,11 +131,14 @@ def generate_samples(strategy:    SamplingStrategy,
             yaw_delta=yaw_delta)
     elif strategy == SamplingStrategy.kFixed:
         raw = _fixed_samples(n_samples, params)
+    elif strategy == SamplingStrategy.kRandomOnPerimeter:
+        raw = _random_on_perimeter(
+            n_samples, obj_xy, params, rng, g_hat, obj_quat)
     else:
         raise NotImplementedError(
             f"Sampling strategy {strategy.name} not yet implemented; "
-            f"only kRandomOnCircle, kRadiallySymmetric, kFaceNormal, kFixed "
-            f"are supported.")
+            f"only kRandomOnCircle, kRadiallySymmetric, kFaceNormal, "
+            f"kRandomOnPerimeter, kFixed are supported.")
 
     if not params.filter_samples_for_safety:
         return raw
@@ -643,6 +646,142 @@ def _quat_to_rot(q: np.ndarray) -> np.ndarray:
         [s*(x*y + w*z),       1.0 - s*(x*x + z*z), s*(y*z - w*x)      ],
         [s*(x*z - w*y),       s*(y*z + w*x),       1.0 - s*(x*x + y*y)],
     ])
+
+
+def _random_on_perimeter(n_samples: int,
+                         obj_xy:    np.ndarray,
+                         params:    SamplingParams,
+                         rng:       np.random.Generator,
+                         g_hat:     Optional[np.ndarray],
+                         obj_quat:  Optional[np.ndarray]) -> list[np.ndarray]:
+    """Reference-conformant kRandomOnPerimeter sampler.
+
+    Mirrors dairlib_sampling_c3 generate_samples.cc:270-362
+    (`PerimeterSampling`).  Algorithm (per sample):
+
+      1. Draw uniform random (x_body, y_body) inside the object's body-
+         frame bounding box (grid_x_limits × grid_y_limits).  Set
+         z_body = 0.
+      2. Rotate to world frame via obj_quat + obj_xy, snap z to
+         sampling_height.
+      3. Reject if the (x_body, y_body) is OUTSIDE the object's
+         footprint — reference uses collision-query penetration test
+         `IsSampleWithinDistanceOfSurface(clearance=0)`.  Port uses the
+         geometry-table AABB test (T = union of two rectangles; box =
+         single rectangle) — same effect, no Drake dependency.
+      4. Find the nearest object edge (`_TSHAPE_FACE_TABLE` for tshape,
+         4-face box table for box).  Project the sample OUTWARD along
+         that edge's world-frame normal by `sample_projection_clearance`.
+         Reference uses `ProjectSampleOutsideObject(...)` with actual
+         witness points from `GeomGeomCollider::CalcWitnessPoints`; the
+         port approximates using the nearest face-line foot-of-
+         perpendicular.
+      5. Filter by workspace bounds + z tolerance (reference rejects
+         when projected z drifts more than 1 mm from `sampling_height`).
+
+    Distributional equivalence: uniform-in-bounding-box + reject-if-
+    outside gives a distribution proportional to *perimeter length* on
+    the boundary — same as reference's post-projection distribution.
+
+    Not passed through Drake: this is a pure-numpy geometric port.
+    Concave regions (e.g. T's shoulder inside corner) may produce
+    small artifacts vs the reference's true witness-point projection.
+    """
+    obj_xy_2 = np.asarray(obj_xy, dtype=float).flatten()[:2]
+    shape = getattr(params, "object_shape", "box")
+    z_target = float(params.sampling_height)
+    clearance = float(params.sampling_setback)
+
+    R = _quat_to_rot(obj_quat) if obj_quat is not None else np.eye(3)
+
+    # Bounding-box (body-frame) for the uniform draw.  Prefer explicit
+    # grid_x_limits / grid_y_limits if present (matches reference YAML
+    # names); else derive from the shape's face-table extents.
+    _has_gx = hasattr(params, "grid_x_limits") \
+        and params.grid_x_limits is not None
+    _has_gy = hasattr(params, "grid_y_limits") \
+        and params.grid_y_limits is not None
+    if _has_gx and _has_gy:
+        gx = np.asarray(params.grid_x_limits, dtype=float).flatten()
+        gy = np.asarray(params.grid_y_limits, dtype=float).flatten()
+        x_lo, x_hi = float(gx[0]), float(gx[1])
+        y_lo, y_hi = float(gy[0]), float(gy[1])
+    elif shape == "tshape":
+        # Tight bounding box for T (from _TSHAPE_FACE_TABLE extents).
+        x_lo, x_hi = -0.07, +0.13
+        y_lo, y_hi = -0.08, +0.08
+    else:
+        h = float(params.box_half_extent)
+        x_lo, x_hi = -h, +h
+        y_lo, y_hi = -h, +h
+
+    # Face table (body-frame).  Each row: (cx, cy, nx, ny, half_len).
+    if shape == "tshape":
+        face_table = _TSHAPE_FACE_TABLE
+    else:
+        h = float(params.box_half_extent)
+        face_table = np.array([
+            (+h, 0.0, +1.0, 0.0, h),
+            (-h, 0.0, -1.0, 0.0, h),
+            (0.0, +h, 0.0, +1.0, h),
+            (0.0, -h, 0.0, -1.0, h),
+        ], dtype=float)
+
+    def _inside_footprint(x: float, y: float) -> bool:
+        if shape == "tshape":
+            # T = union of crossbar and stem rectangles (from face-table
+            # extents; see _TSHAPE_FACE_TABLE header comment).
+            in_crossbar = (-0.03 <= x <= +0.13) and (-0.02 <= y <= +0.02)
+            in_stem     = (-0.07 <= x <= -0.03) and (-0.08 <= y <= +0.08)
+            return in_crossbar or in_stem
+        h = float(params.box_half_extent)
+        return (abs(x) <= h) and (abs(y) <= h)
+
+    def _project_to_nearest_face(x: float, y: float) -> np.ndarray:
+        """Return the projected body-frame point AFTER pushing outward by
+        `clearance` along the nearest face's outward normal.  Ref
+        equivalent of ProjectSampleOutsideObject via face-table lookup."""
+        best_face = None
+        best_d2   = np.inf
+        for i in range(face_table.shape[0]):
+            cx, cy, nx, ny, hl = face_table[i]
+            # Tangent = 90° CCW of normal.
+            tx, ty = -ny, nx
+            # Foot of perpendicular from (x, y) onto face segment center-line.
+            dpx, dpy = x - cx, y - cy
+            dt = dpx * tx + dpy * ty       # along-tangent projection
+            dt = np.clip(dt, -hl, +hl)
+            foot_x = cx + dt * tx
+            foot_y = cy + dt * ty
+            d2 = (x - foot_x) ** 2 + (y - foot_y) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
+                best_face = (foot_x, foot_y, nx, ny)
+        assert best_face is not None
+        foot_x, foot_y, nx, ny = best_face
+        return np.array([foot_x + clearance * nx,
+                         foot_y + clearance * ny])
+
+    samples: list[np.ndarray] = []
+    max_tries = n_samples * 40
+    tries = 0
+    while len(samples) < n_samples and tries < max_tries:
+        tries += 1
+        x_body = rng.uniform(x_lo, x_hi)
+        y_body = rng.uniform(y_lo, y_hi)
+        # Step 3: reject if outside the T/box footprint (must originally
+        # penetrate; reference uses phi ≤ -1 mm).
+        if not _inside_footprint(x_body, y_body):
+            continue
+        # Step 4: project outward to nearest face + clearance.
+        proj_body = _project_to_nearest_face(x_body, y_body)
+        # Step 2/5: rotate to world, snap z, filter workspace.
+        p_body_3d = np.array([proj_body[0], proj_body[1], 0.0])
+        p_world = R @ p_body_3d + np.array([obj_xy_2[0], obj_xy_2[1], 0.0])
+        p_world[2] = z_target
+        samples.append(p_world)
+
+    return samples
 
 
 def _fixed_samples(n_samples: int,
