@@ -86,18 +86,44 @@ class RepositionTrajectory:
         else:
             lift_end     = np.array([p_start[0],  p_start[1],  z_safe])
             traverse_end = np.array([p_target[0], p_target[1], z_safe])
-            # Build knots, pruning zero-length legs.
-            knots = [p_start.copy()]
-            if abs(p_start[2] - z_safe) > 1e-3:
-                knots.append(lift_end)
-            if not np.allclose(traverse_end[:2], knots[-1][:2], atol=1e-9):
-                knots.append(traverse_end)
-            if abs(p_target[2] - z_safe) > 1e-3:
-                knots.append(p_target.copy())
+            # 2026-07-19 wasteful-lift skip.  Reference reposition.cc
+            # unconditionally adds the lift-to-waypoint knot whenever
+            # p_start.z != z_safe.  For push_t (arm frequently at
+            # z=0.02..0.06 near a T sample at z=0.005 with waypoint at
+            # 0.075) the port's rebuild-every-tick + 8-mm xy dispatch
+            # threshold caused a K=2⇔K=4 flip-flop: any small
+            # perturbation that pushed xy_dist across 8 mm re-added the
+            # lift knot, dragging arm from z=0.02 all the way up to
+            # z=0.075 before descending again.  54 such lifts over 300
+            # planner ticks in the heights run (traj-log
+            # push_t_show_traj_20260719_121953).
+            #
+            # Skip the lift knot when the arm is already below z_safe
+            # AND the target is below the arm (arm descending, no
+            # obstacle-clearance need).  In that case do a direct
+            # straight line from p_start to p_target — same shape the
+            # `xy_dist < straight_line_thresh` branch produces.  For
+            # arm-above-z_safe or target-above-arm cases, keep the
+            # reference-conformant lift-traverse-descend structure.
+            _arm_below_safe   = p_start[2] < z_safe - 1e-3
+            _target_below_arm = p_target[2] < p_start[2] - 1e-3
+            if _arm_below_safe and _target_below_arm:
+                self.knot_positions = np.stack(
+                    [p_start, p_target], axis=1)  # (3, 2)
             else:
-                # Target z == z_safe: last knot IS the target (no descend).
-                knots[-1] = p_target.copy()
-            self.knot_positions = np.stack(knots, axis=1)  # (3, K)
+                # Build knots, pruning zero-length legs.
+                knots = [p_start.copy()]
+                if abs(p_start[2] - z_safe) > 1e-3:
+                    knots.append(lift_end)
+                if not np.allclose(
+                        traverse_end[:2], knots[-1][:2], atol=1e-9):
+                    knots.append(traverse_end)
+                if abs(p_target[2] - z_safe) > 1e-3:
+                    knots.append(p_target.copy())
+                else:
+                    # Target z == z_safe: last knot IS the target (no descend).
+                    knots[-1] = p_target.copy()
+                self.knot_positions = np.stack(knots, axis=1)  # (3, K)
 
         # Knot times = t_start + cumulative leg-length / speed.
         seg_lengths = np.linalg.norm(
