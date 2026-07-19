@@ -107,7 +107,22 @@ class RepositionTrajectory:
             # reference-conformant lift-traverse-descend structure.
             _arm_below_safe   = p_start[2] < z_safe - 1e-3
             _target_below_arm = p_target[2] < p_start[2] - 1e-3
-            if _arm_below_safe and _target_below_arm:
+            # 2026-07-19: additional xy-proximity constraint on skip-lift.
+            # The original skip-lift condition (arm_below_safe AND
+            # target_below_arm) fires whenever arm is at any low z, but
+            # when xy_dist is LARGE, the direct diagonal from p_start to
+            # p_target passes THROUGH the object at low z — the arm
+            # collides with the object during transit (observed in
+            # push_t_show_run_20260719_134637 steps 240-254: arm crossed
+            # T's east face at z=0.02, pushing T further NE and blocking
+            # the corrective SW push).  Add an xy-proximity gate so we
+            # only skip lift when arm has already committed to descending
+            # near the target (xy within a T-half-extent so any transit
+            # stays within an already-committed contact region).
+            _xy_dist = float(np.linalg.norm(p_target[:2] - p_start[:2]))
+            _skip_lift_xy_thresh = 0.05   # 50 mm — half a T stem width
+            if (_arm_below_safe and _target_below_arm
+                    and _xy_dist < _skip_lift_xy_thresh):
                 self.knot_positions = np.stack(
                     [p_start, p_target], axis=1)  # (3, 2)
             else:
