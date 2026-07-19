@@ -637,6 +637,17 @@ def main():
             sc3_params.sampling_params.sampling_height = float(_task_sample_h)
             print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
                   f"(was {_was_sh:.3f}, per-task '{task_name}')")
+        # 2026-07-19: per-task pwl_waypoint_height override. Object top varies
+        # by task (T top 0.04, box top 0.10), so the PWL traverse height must
+        # be per-object to keep sphere-bottom above object top. tasks.yaml
+        # holds the geometric truth; sampling-c3 yaml value is inert when
+        # the per-task override is present.
+        _task_wp_h = task_cfg.get("pwl_waypoint_height")
+        if _task_wp_h is not None:
+            _was_wh = sc3_params.reposition_params.pwl_waypoint_height
+            sc3_params.reposition_params.pwl_waypoint_height = float(_task_wp_h)
+            print(f"[OVERRIDE] pwl_waypoint_height={float(_task_wp_h):.3f} "
+                  f"(was {_was_wh:.3f}, per-task '{task_name}')")
         # With safe-offset init (IK-derived), EE starts opposite goal at
         # safe altitude above object top — free-mode PWL descent has
         # clear space, arm doesn't clip through object on the way down.

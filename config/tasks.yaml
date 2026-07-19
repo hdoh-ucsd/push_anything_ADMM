@@ -13,18 +13,30 @@ tasks:
     goal_xy:  [0.3, 0.0]
     goal_yaw: 0.0
     color_rgba: [0.8, 0.2, 0.2, 1.0]
-    # D6: per-task push-point lowering. Sub-CoM contact (z=0.03 vs box CoM
-    # at z=0.05) gives a restoring tip moment when the EE has any vertical
-    # Reference push_t contacts object at ee_z = +14 mm above the object's
-    # link-origin (world-z 0.005 vs object center at world-z -0.009 per
-    # push_t/sim_params.yaml q_init_object). Port must MATCH this above-center
-    # contact geometry to inherit the reference's stable rolling-contact
-    # behavior — sub-center contact (previous 0.020 = 30 mm below center)
-    # applies a torque in the wrong direction and 2x reference magnitude,
-    # causing the 118° tumble observed in bug3_30s and prior runs.
-    # Port box center at world-z 0.050 (init_xyz above + half-extent 0.05),
-    # so +14 mm above center = world-z 0.064. Well within workspace_z_max.
-    sampling_height: 0.064
+    # 2026-07-17: lowered 0.064 → 0.050 (box COM height). Cube-specific
+    # override of the +14 mm-above-link-origin geometry inherited from the
+    # T reference (commit 618fb3e). Rationale: the cube's COM is at its
+    # geometric center (world-z 0.050), so contact at 0.064 sits 14 mm above
+    # COM and injects a forward-tumble torque on every push impulse (30 s
+    # trace analysis showed box airborne up to 12 mm during productive
+    # steps 88-168, [X-SEQ-PROBE] z-history in /tmp/hud_run.log). The T's
+    # +14 mm inheritance was motivated by ROLLING-CONTACT stability on the T
+    # crossbar, which doesn't apply to a cube where any above-COM contact
+    # produces tumble regardless of push direction.
+    # Combined with the 2026-07-17 kConfigCostDrop mode-switch fix
+    # (sampling_c3_params.yaml:42), each repos cycle was RE-INJECTING tumble
+    # torque; the 87-switch 30 s run tumbled 6.6° vs the pre-fix 0.6°.
+    # This edit removes the tumble source at the contact geometry level;
+    # z_ee_target below must track sampling_height (commit 4345950).
+    # Reference-inherited value (0.064) preserved in git for the T config,
+    # which uses `sampling_c3_kik_t.yaml` and its own sampling_height.
+    sampling_height: 0.050
+    # PWL waypoint height (sphere-center z) for over-box traverse. Box top
+    # at z=0.10 (10 cm cube CoM at 0.05). Sphere-center at 0.135 puts
+    # sphere-bottom 10 mm above box top for safe cross-over. Box-push
+    # rarely needs over-object transit (side samples reachable without
+    # cross-over) so a stricter clearance is fine here.
+    pwl_waypoint_height: 0.135   # box top 0.10 + pusher r 0.025 + 10 mm margin
     cost:
       w_obj_xy:    100000.0
       w_obj_z:         10.0
@@ -33,13 +45,11 @@ tasks:
       w_yaw:            0.0
       w_terminal:       5.0
       # z_ee_target: planner-cost proxy z (task_costs.py:349 proxy_3d.z
-      # = self.z_ref). Must match sampling_height (0.064 above) so the
-      # planner drives arm to the SAME z the reposition tracker + IK
-      # place it at — +14 mm above box center = reference-conforming
-      # contact geometry. Was 0.05 (box center) which caused the arm
-      # to sink from sampling z=0.064 down to box-center z=0.05 during
-      # c3 mode, then further to z=0.019 under the LCS lam_n pull.
-      z_ee_target:      0.064
+      # = self.z_ref). Must match sampling_height above so the planner
+      # drives arm to the SAME z the reposition tracker + IK place it at.
+      # Coupled with sampling_height edit above (2026-07-17: 0.064 →
+      # 0.050 for cube-COM contact, no-tumble geometry).
+      z_ee_target:      0.050
       d_push:           0.05
       w_ee_approach: 8000.0
       w_torque:         0.01
@@ -156,6 +166,13 @@ tasks:
     # NOTE: This value OVERRIDES sampling_c3_kik_t.yaml `sampling_height` via
     # main.py:598-603 — the sampling-c3 yaml value is inert for push_t.
     sampling_height: 0.005
+    # PWL waypoint height (sphere-center z) for the reposition trajectory's
+    # traverse leg above the object. Must be > T_top + pusher_radius
+    # (= 0.04 + 0.025 = 0.065) so the pusher sphere clears the T's top face
+    # during over-object traverse. Reference push_t uses 0.06 above its
+    # ground (z=-0.029), placing sphere-bottom 24 mm above T top — port
+    # (ground at z=0) needs its own value.
+    pwl_waypoint_height: 0.075   # T top 0.04 + pusher r 0.025 + 10 mm margin
     cost:
       # 2026-07-18: reference q_vector port available but currently disabled.
       # When `use_reference_q_vector: true`, control/task_costs.py
@@ -204,7 +221,17 @@ tasks:
       # in the goal-quat direction, breaking the singularity.
       q_quaternion_dependent_regularizer_fraction:      0.1
       w_terminal:       5.0
-      z_ee_target:      0.034
+      # 2026-07-19 z_ee_target 0.034 → 0.005. The old 0.034 came from an
+      # earlier mistaken frame-offset argument (see sampling_c3_kik_t.yaml
+      # :322 comment) that also broke sampling_height, which was later
+      # fixed to 0.005 but z_ee_target was left stale. The comment on this
+      # block (line 41-45 of pushing task) explicitly says z_ee_target
+      # must match sampling_height so the planner's EE-cost target
+      # agrees with the reposition tracker + kRandomOnPerimeter
+      # target z. Under the mismatch the planner drove arm to z=0.034
+      # while repos drove it to z=0.005, producing conflicting z-targets
+      # in the C3+ solve.
+      z_ee_target:      0.005
       z_obj_target:     0.020   # T stays on ground (reference target z = init z)
       d_push:           0.05
       w_ee_approach: 8000.0
