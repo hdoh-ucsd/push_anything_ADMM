@@ -377,6 +377,8 @@ class SamplingC3MPC:
         self._all_sample_locations:     list[np.ndarray]     = []
         self._all_sample_costs:         list[float]          = []
         self._best_sample_index:        Optional[int]        = None
+        # Parallel labels list for the [EE-SAMPLES] diagnostic tag.
+        self._last_sample_labels:       list[str]            = []
 
         # B3c-prime selection audit (env-gated, lazy init at first :848 hit).
         # No env reads here — hot path stays cheap until C3_SEL_AUDIT is set.
@@ -1260,6 +1262,8 @@ class SamplingC3MPC:
         # sampling_based_c3_controller.cc:945-949). `samples` == candidate EE
         # 3-vectors == `all_sample_locations_` in the reference.
         self._all_sample_locations = samples
+        # Parallel labels for the [EE-SAMPLES] diagnostic tag.
+        self._last_sample_labels = labels
 
         # 3. Evaluate every sample (per-sample C3 + alignment + travel)
         results = self.inner_solver.evaluate_samples(
@@ -3886,6 +3890,26 @@ class SamplingC3MPC:
                   f"is_c3={_is_c3} "
                   f"ee=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f})",
                   flush=True)
+            # [EE-SAMPLES] — port of reference `all_sample_locations_`
+            # (systems/controllers/sampling_based_c3_controller.h:186 + cc:216).
+            # Reference publishes the full sample set each tick as an LCM
+            # trajectory of xyz points; downstream tools plot them as dots
+            # around the object. Port equivalent: per-tick list of candidate
+            # EE positions with slot labels (parallel to `labels` list).
+            # Slot layout matches _build_samples: [current, prev_repos?,
+            # strat_0..strat_N-1, (buffer)?]. Populated in _sample_and_select
+            # right after _build_samples runs.
+            _samples = getattr(self, "_all_sample_locations", None) or []
+            if _samples:
+                _sample_labels = getattr(self, "_last_sample_labels", None) or [
+                    f"k{k}" for k in range(len(_samples))
+                ]
+                _parts = []
+                for _k, (_lbl, _p) in enumerate(zip(_sample_labels, _samples)):
+                    _parts.append(f"{_k}:{_lbl}=({float(_p[0]):+.4f},"
+                                  f"{float(_p[1]):+.4f},{float(_p[2]):+.4f})")
+                print(f"[EE-SAMPLES] step={self._step} n={len(_samples)} "
+                      + " ".join(_parts), flush=True)
             # [WORKSPACE-VIOLATION] — port of reference cc:1476-1494
             # CheckForWorkspaceLimitViolations. Reference DRAKE_DEMANDs (aborts)
             # when EE exits its axis-aligned bounds or radius shell. Port
