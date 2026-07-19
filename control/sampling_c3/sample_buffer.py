@@ -42,12 +42,19 @@ class BufferedSample:
                     pass None to disable the angular-retention check
     age_steps     : int — incremented each control loop (oldest dropped first
                     when capacity is exceeded)
+    result        : the full SampleResult (feasible, u_seq, x_seq, LCS mats)
+                    needed to re-inject this sample into the dispatcher's
+                    candidate list via AugmentSamplesWithBuffer. Optional
+                    for back-compat with call sites that only track position
+                    + cost; when None, buffer augmentation skips this entry.
     """
     position:      np.ndarray
     cost:          float
     obj_pos_xy:    np.ndarray
     obj_quat:      Optional[np.ndarray] = None
     age_steps:     int                  = 0
+    result:        Optional[object]     = None  # SampleResult; typed loosely
+                                                # to avoid circular import.
 
 
 # ---------------------------------------------------------------------------
