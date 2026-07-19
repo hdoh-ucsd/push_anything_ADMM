@@ -891,15 +891,15 @@ class SamplingC3MPC:
         strategy_samples = self._get_persistent_samples(
             obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
             obj_quat=obj_quat, yaw_delta=yaw_delta)
-        # 2026-07-19: dedupe strategy samples against existing slots
-        # (current, prev_repos). Reference regenerates samples every tick so
-        # duplicates are rare; port caches for sample_buffer_lifetime_s so a
-        # sample chosen as prev_repos ALSO stays in the strategy cache — same
-        # position appears in two slots. This confused the dispatcher (no true
-        # best_other alternative) and produced the "blue and yellow on same
-        # ee-sample" artifact seen in results/push_t_thrashfix_20260719_003544
-        # HUD frames. Threshold 5 mm matches Drake's LCS-admit precision.
-        _dedup_tol = 0.005
+        # 2026-07-19: dedupe strategy + buffer samples against existing slots.
+        # Reference regenerates samples every tick so duplicates are rare;
+        # port caches for sample_buffer_lifetime_s so a sample chosen as
+        # prev_repos ALSO stays in the strategy cache and in the persistent
+        # buffer — same position appears in multiple slots.
+        # Tolerance 10 mm matches face-3 half-width (0.02 m) — samples on the
+        # same T face within jitter range shouldn't count as distinct
+        # "alternatives" for the dispatcher's cost gate.
+        _dedup_tol = 0.010
         _existing = list(positions)
         _strat_idx = 0
         for p in strategy_samples:
@@ -917,8 +917,12 @@ class SamplingC3MPC:
                 and len(self.buffer) > 0):
             best = self.buffer.best_with_position()
             if best is not None:
-                positions.append(best.position.copy())
-                labels.append("buffer")
+                _buf_p = best.position.copy()
+                _buf_dup = any(np.linalg.norm(np.asarray(_buf_p) - np.asarray(q))
+                               <= _dedup_tol for q in _existing)
+                if not _buf_dup:
+                    positions.append(_buf_p)
+                    labels.append("buffer")
 
         return positions, labels
 
