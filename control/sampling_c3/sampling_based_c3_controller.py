@@ -958,32 +958,41 @@ class SamplingC3MPC:
         self.buffer.tick_age()
         self.buffer.prune(obj_xy_now, obj_quat_now=obj_quat)
 
-        # Append the best non-current feasible result so we remember it
-        # across the next mode switch.
-        # Reference MaintainSampleBuffers appends ALL non-current, non-
-        # repos-target samples per tick. Retested: bulk-add regressed box
-        # (goal_dist 0.109 → 0.171, orient 1.61 → 2.99 rad tumble) because
-        # port's `best_with_position()` finds the true min across all
-        # entries, and bulk-add pollutes the min-cost lookup with poorly-
-        # scoring strat samples. Reference's move-to-end + last-entry
-        # lookup avoids this. Port kept single-best-append until buffer
-        # retrieval semantics matched. See d453709 vs regression.
-        ranked = sorted(
-            ((r.c_sample, k) for k, r in enumerate(results)
-             if k > 0 and r.feasible),
-        )
-        if ranked:
-            _, best_k = ranked[0]
-            r = results[best_k]
+        # 2026-07-19: reference-conformant bulk-add.  Reference
+        # MaintainSampleBuffers (sampling_based_c3_controller.cc:2050-
+        # 2075) appends ALL non-current, non-repos-target samples per
+        # tick.  Prior single-best-append (d453709) was a workaround
+        # for the port's earlier broken buffer params (50 mm radius,
+        # 100 mm retention); those made bulk-add pollute the buffer
+        # with samples that persisted across huge object motions.  With
+        # the corrected reference params (10 mm radius, 6 mm retention
+        # — see e406072), the buffer prunes old entries as the object
+        # moves, so bulk-add gives dense per-pose sampling coverage
+        # matching reference.
+        #
+        # Reference skips index 0 (current) always, plus index 1
+        # (prev_repos_target) if in repos mode and the size check
+        # confirms it's the pursued target.  Port maps index 0 = current
+        # and index 1 = prev_repos when present (see _build_samples).
+        _sp = self.params.sampling_params
+        _skip_prev_repos = (
+            self._prev_mode == "free"
+            and len(results) == int(_sp.num_additional_samples_repos) + 2)
+        for k, r in enumerate(results):
+            if k == 0:                       # always skip current
+                continue
+            if k == 1 and _skip_prev_repos:  # skip prev_repos in repos mode
+                continue
+            if not r.feasible:
+                continue
             self.buffer.append(BufferedSample(
                 position   = r.sample_pos.copy(),
                 cost       = r.c_sample,
                 obj_pos_xy = obj_xy_now.copy(),
                 obj_quat   = obj_quat.copy(),
-                result     = r,   # 2026-07-19: carry the SampleResult so
+                result     = r,   # carry the SampleResult so
                                   # AugmentSamplesWithBuffer can re-inject
-                                  # this sample with its full plan (u_seq,
-                                  # x_seq, feasible flag, LCS matrices).
+                                  # this sample with its full plan.
             ))
         # Deep-log: periodic dump of both buffers (successful sample-buffer
         # + unsuccessful bad-spots buffer) so post-hoc analysis can trace
