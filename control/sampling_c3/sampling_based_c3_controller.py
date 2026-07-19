@@ -891,9 +891,26 @@ class SamplingC3MPC:
         strategy_samples = self._get_persistent_samples(
             obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
             obj_quat=obj_quat, yaw_delta=yaw_delta)
-        for i, p in enumerate(strategy_samples):
+        # 2026-07-19: dedupe strategy samples against existing slots
+        # (current, prev_repos). Reference regenerates samples every tick so
+        # duplicates are rare; port caches for sample_buffer_lifetime_s so a
+        # sample chosen as prev_repos ALSO stays in the strategy cache — same
+        # position appears in two slots. This confused the dispatcher (no true
+        # best_other alternative) and produced the "blue and yellow on same
+        # ee-sample" artifact seen in results/push_t_thrashfix_20260719_003544
+        # HUD frames. Threshold 5 mm matches Drake's LCS-admit precision.
+        _dedup_tol = 0.005
+        _existing = list(positions)
+        _strat_idx = 0
+        for p in strategy_samples:
+            _is_dup = any(np.linalg.norm(np.asarray(p) - np.asarray(q))
+                          <= _dedup_tol for q in _existing)
+            if _is_dup:
+                continue
             positions.append(p)
-            labels.append(f"strat_{i}")
+            labels.append(f"strat_{_strat_idx}")
+            _existing.append(p)
+            _strat_idx += 1
 
         if (sp.consider_best_buffer_sample_when_leaving_c3
                 and prev_mode == "c3"
