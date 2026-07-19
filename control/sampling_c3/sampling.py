@@ -29,7 +29,7 @@ from control.sampling_c3.params import SamplingParams, SamplingStrategy
 # tangential jitter range is reduced to keep the sample near the face
 # center. Other faces keep the existing uniform jitter.
 GOAL_ALIGN_THRESHOLD = 0.7          # cos > 0.7 → ~45° cone around goal
-CENTERED_JITTER_FRACTION = 0.0      # 0.2 → 0.0: removes ±10mm tangent re-roll on the goal-aligned face; centered contact stays centered across the active push (matches the failure-mode prediction at lines 251-256).
+CENTERED_JITTER_FRACTION = 0.2      # 2026-07-19: restored 0.0 → 0.2. With 0.0, multiple strategy samples on the goal-aligned face all landed at exact face center → identical positions. Traced in results/push_t_liftfix_20260719_003029: n=2 strategy samples both at (-0.0503, -0.1044, +0.005) at step 68. Dispatcher had no meaningful "best_other" alternative, arm hesitation observed. 0.2 restores tangent jitter within ±0.2·half_len (≈±16mm on crossbar's 0.08 half-len).
 
 
 # ---------------------------------------------------------------------------

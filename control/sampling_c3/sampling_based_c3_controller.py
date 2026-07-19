@@ -448,12 +448,24 @@ class SamplingC3MPC:
                 yaw_delta = yaw_delta,
             )
 
-        # Force refresh on mode-transition n_strategy change so the c3-mode
-        # (3 samples) and free-mode (1 sample) buffers don't get mixed.
+        # Refresh when:
+        #   1. buffer empty (init or arrival-forced)
+        #   2. age exceeded lifetime
+        #   3. cached fewer samples than requested (n_strategy INCREASED)
+        # 2026-07-19: Previously refreshed on ANY n_strategy change. That
+        # triggered a fresh call on every c3↔free mode flip (n changes
+        # 1→2 or 2→1), and each fresh call produced new random face
+        # samples. Rapid mode-switching (11 switches in
+        # results/push_t_liftfix_20260719_003029) caused sample thrashing:
+        # arm chased a new target every 4 ticks. Fix: refresh only when
+        # we need MORE samples than cached; a shrinking request just uses
+        # a subset of the existing cache (byte-consistent for the retained
+        # slots).
+        _cached_n = self._sample_buffer_n_strategy or 0
         need_refresh = (
             self._sample_buffer is None
             or self._sample_buffer_age >= lifetime
-            or self._sample_buffer_n_strategy != n_strategy
+            or _cached_n < n_strategy
         )
         if need_refresh:
             self._sample_buffer = generate_samples(
@@ -475,7 +487,9 @@ class SamplingC3MPC:
                 print(f"[PERSIST] step={_ages[0]} refresh "
                       f"n_strategy={_ages[1]} samples={_ages[2]}")
         self._sample_buffer_age += 1
-        return [s.copy() for s in self._sample_buffer]
+        # Return only the first n_strategy samples (in case cache holds more
+        # from a previous larger request).
+        return [s.copy() for s in self._sample_buffer[:n_strategy]]
 
     def _refresh_buffer_on_arrival(self) -> None:
         """Force buffer refresh next loop. Called when finished_repos
