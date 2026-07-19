@@ -241,7 +241,16 @@ progress_params:
   hyst_c3_to_repos_frac_position:         0.6
   hyst_repos_to_c3_frac:                  0.9
   hyst_repos_to_c3_frac_position:         0.5
-  hyst_repos_to_repos_frac:               0.3
+  # 2026-07-19: port-specific override 0.3 → 0.6. Reference push_t uses 0.3
+  # but reference's per-sample cost is more stable across ticks (parallel
+  # evaluation of a shared C3 sub-problem). Port's fresh-per-tick samples
+  # produce noisier costs; a 0.3 hysteresis fires kToBetterRepos ~1.1×/sec
+  # (34 retargets in 30s in results/push_t_refconf2_20260719_020345), so
+  # the arm never latches finished_repos and c3 never fires. 0.6 makes
+  # retargeting harder (fresh sample must beat prev_repos by 40% instead
+  # of 70%) so the arm can commit to a target long enough to reach it.
+  # OFF-REFERENCE — restores stability at the cost of exact conformance.
+  hyst_repos_to_repos_frac:               0.6
   hyst_repos_to_repos_frac_position:      0.1
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
