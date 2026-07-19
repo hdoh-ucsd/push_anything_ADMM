@@ -482,6 +482,8 @@ class OperationalSpaceController:
             print(f"[OSC-INIT]   q_nominal={np.round(self.q_nominal, 4).tolist()}")
             print(f"[OSC-INIT]   use_force_tracking={self.use_force_tracking}  "
                   f"W_force={self.gains.W_force}")
+            print(f"[OSC-INIT]   a_ee_cap={self.gains.a_ee_cap}  "
+                  f"(c3-mode a_ee_cap={self.gains_c3.a_ee_cap})")
 
         # τ_ff diagnostic — the EE-arm slice of the feedforward force,
         # signed so it represents the joint torque needed to counter the
