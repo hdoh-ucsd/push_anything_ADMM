@@ -3476,18 +3476,23 @@ class SamplingC3MPC:
                     and _x_seq_full.shape[0] >= _N_plan + 1
                     and _x_seq_full.shape[1] >= 10
                     and _N_plan >= 2):
-                # Match reference (cc:1493-1520): publish x_sol_[k] at
-                # time_vector_[k] — raw solver output for all 3 axes, no
-                # sampling-height Z-freeze. Drop x_seq[0] (planner initial
-                # state ≡ ee_pos_now — verified 1.11e-15 at line 2602),
-                # else knot 0 = ee_pos_now @ t=sim_t and OSC's first eval
-                # returns p_err=0, killing tracking authority. First knot
-                # in the published trajectory is x_seq[1] (planner's first
-                # predicted state), letting the OSC see nonzero p_err from
-                # tick 1.
+                # Match reference (cc:1757-1761): after building the raw
+                # knots from x_sol_[k], overwrite knots(2, i) = z_height +
+                # wall_offset on every horizon knot so the OSC z-target is
+                # constant. Reference keeps EE height stable while it
+                # traverses the perimeter of the object; without this
+                # freeze, the C3+ planner's raw x_seq z-slice (which is
+                # solving against an LCS with a phantom always-on EE-BOX
+                # row) drags the OSC setpoint upward, producing the c3-
+                # mode arm slam (max ee_z 0.86 m observed pre-fix).
+                # 2026-07-19 revision: prior port used raw z (comment on
+                # line 3479 misread reference); reference cc:1757-1761
+                # clearly z-freezes every knot.
                 _knots = np.array([
                     _x_seq_full[i][7:10] for i in range(1, _N_plan + 1)
                 ], dtype=float).T
+                _sh_c3 = float(self.params.sampling_params.sampling_height)
+                _knots[2, :] = _sh_c3   # z-freeze every knot (ref cc:1757)
                 _ts = [_sim_t_c3 + i * _dt_plan for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
             else:
