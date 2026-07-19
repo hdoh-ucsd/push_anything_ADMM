@@ -45,8 +45,17 @@ osc:
   # translation via arm links not pusher tip).
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  W_joint2:            1.0    # ref w_elbow=1
-  joint2_target_rad:   1.1    # ref target (osc_params.yaml:44)
+  # 2026-07-19: disable joint-2 posture cost. Reference frame's Franka
+  # mount is at a raised platform where joint2 sits at ~1.1 rad in the
+  # reach pose; port's Franka is welded at world origin, so IK-derived
+  # runtime poses land joint2 near ~0.325 rad. With W_joint2=1.0 and
+  # target=1.1 the posture cost injects `a_j2 = 200 × 0.775 = 155 rad/s²`
+  # of upward acceleration on joint 2 at every c3-mode tick — the direct
+  # cause of the c3-entry arm slam (arm swings up to z≈0.80 m before
+  # descending). Documented in memory
+  # project_reproduce_dairlib_restored_main_joint2_flag as "Option A".
+  W_joint2:            0.0    # was 1.0 (ref w_elbow), OFF for port frame
+  joint2_target_rad:   1.1    # (unused when W_joint2=0)
   joint2_idx:            1
 
   # Reference EndEffectorW = diag(1,1,1).
