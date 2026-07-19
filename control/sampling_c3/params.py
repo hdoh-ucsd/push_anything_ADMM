@@ -276,14 +276,18 @@ class SamplingParams:
     # AddToUnsuccessfulBuffer).  When a sample is judged unsuccessful
     # (reference: free→c3 transition; port also fires on
     # kToBetterRepos), its EE position is stored and future samples
-    # within `unsuccessful_radius` are rejected.  Off in the reference's
-    # push_t (avoid_choosing_unsuccessful_samples defaults false) but
-    # ON in reference's `anything` YAML.
+    # within `unsuccessful_radius` are rejected.
+    #
+    # Defaults match reference `anything/parameters/sampling_params.yaml`
+    # lines 32-36 (push_t doesn't override these).  Port initially used
+    # 5-17× coarser values that made the buffer effectively broken —
+    # positions 50 mm apart were treated as "same bad spot" and the
+    # 100 mm pos-retention held entries across the whole tabletop.
     avoid_choosing_unsuccessful_samples:  bool  = True
-    N_unsuccessful_sample_buffer:         int   = 20
-    unsuccessful_radius:                  float = 0.05    # m
-    unsuccessful_pos_error_sample_retention:  float = 0.10   # m
-    unsuccessful_ang_error_sample_retention:  float = 0.60   # rad
+    N_unsuccessful_sample_buffer:         int   = 10
+    unsuccessful_radius:                  float = 0.010   # m — ref
+    unsuccessful_pos_error_sample_retention:  float = 0.006   # m — ref
+    unsuccessful_ang_error_sample_retention:  float = 0.05    # rad — ref
 
     # Geometry shared across multiple strategies
     sampling_radius:                     float = 0.13   # m, candidate-ring radius for cost eval (samples 1..n-1)

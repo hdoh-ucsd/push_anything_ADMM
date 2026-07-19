@@ -476,24 +476,41 @@ class SamplingC3MPC:
             obj_quat  = obj_quat,
             yaw_delta = yaw_delta,
         )
+        # Log ALL raw samples emitted by generate_samples before any
+        # filtering — deep-log addition for direction-commit debugging.
+        # Each sample gets a keep/reject tag so we can reconstruct why
+        # certain faces of the object dominate the persisted target.
+        if self.log_diag:
+            _raw_str = ";".join(
+                f"({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f})"
+                for p in _raw_samples)
+            print(f"[SAMPLE-GEN] step={self._step} "
+                  f"n_requested={int(n_strategy)} "
+                  f"n_drawn={len(_raw_samples)} "
+                  f"raw=[{_raw_str}]",
+                  flush=True)
         # Apply the unsuccessful-buffer filter — reference
         # generate_samples.cc:181-205 SampleAvoidsBadSpots.  Only fires
         # when `avoid_choosing_unsuccessful_samples` is on AND the buffer
         # has entries.
         if self._avoid_unsuccessful and len(self.unsuccessful_buffer) > 0:
             _samples = []
-            _rejected = 0
+            _rejected = []
             for s in _raw_samples:
                 if self.unsuccessful_buffer.sample_avoids_bad_spots(s):
                     _samples.append(s)
                     if len(_samples) >= int(n_strategy):
                         break
                 else:
-                    _rejected += 1
-            if self.log_diag and _rejected > 0:
+                    _rejected.append(s)
+            if self.log_diag and len(_rejected) > 0:
+                _rej_str = ";".join(
+                    f"({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f})"
+                    for p in _rejected)
                 print(f"[UNSUCC-FILTER] step={self._step} "
-                      f"rejected={_rejected} kept={len(_samples)} "
-                      f"buffer_size={len(self.unsuccessful_buffer)}",
+                      f"rejected={len(_rejected)} kept={len(_samples)} "
+                      f"buffer_size={len(self.unsuccessful_buffer)} "
+                      f"rejected_pos=[{_rej_str}]",
                       flush=True)
         else:
             _samples = _raw_samples[:int(n_strategy)]
@@ -968,6 +985,24 @@ class SamplingC3MPC:
                                   # this sample with its full plan (u_seq,
                                   # x_seq, feasible flag, LCS matrices).
             ))
+        # Deep-log: periodic dump of both buffers (successful sample-buffer
+        # + unsuccessful bad-spots buffer) so post-hoc analysis can trace
+        # when entries accumulate/prune vs when the dispatcher's choices
+        # flip direction.
+        if self.log_diag and self._step <= 30:
+            _sb_entries = ";".join(
+                f"({s.position[0]:+.4f},{s.position[1]:+.4f},"
+                f"{s.position[2]:+.4f}|c={s.cost:.1f}|age={s.age_steps})"
+                for s in self.buffer)
+            _ub_entries = ";".join(
+                f"({s.position[0]:+.4f},{s.position[1]:+.4f},"
+                f"{s.position[2]:+.4f})"
+                for s in self.unsuccessful_buffer)
+            print(f"[BUFFER-STATE] step={self._step} "
+                  f"sample_buffer={len(self.buffer)}=[{_sb_entries}] "
+                  f"unsucc_buffer={len(self.unsuccessful_buffer)}="
+                  f"[{_ub_entries}]",
+                  flush=True)
 
     # ------------------------------------------------------------------
     # Main control entry
@@ -4206,7 +4241,9 @@ class SamplingC3MPC:
                 f"finished_repos={int(bool(finished_repos))}",
                 flush=True,
             )
-            if self._step % 20 == 0:
+            # First 30 ticks: emit every step for direction-commit debugging.
+            # After that, throttle to every 20 as before.
+            if self._step <= 30 or self._step % 20 == 0:
                 self._print_table_diag(self._step, samples, labels, results, k_star)
 
         # 10. Bookkeeping
