@@ -1275,35 +1275,16 @@ class SamplingC3MPC:
                             + self.params.progress_params.finished_reposition_cost)
             self._last_repos_finished = False   # match reference reset
 
-        # 3c. AugmentSamplesWithBuffer — reference sampling_based_c3_controller.cc:
-        # 2106-2158. Only fires when currently in c3 mode. If the best sample
-        # in the persistent buffer is (approximately) equal in cost AND
-        # position to the current best, don't augment. Otherwise append it to
-        # the candidate list for the c3-to-repos target decision.
-        sp = self.params.sampling_params
-        if (self._prev_mode == "c3"
-                and sp.consider_best_buffer_sample_when_leaving_c3
-                and len(self.buffer) > 0):
-            _best_buf = self.buffer.best_with_position()
-            if _best_buf is not None:
-                _lowest_new_cost = float(min(c_samples))
-                _best_new_idx = int(np.argmin(c_samples))
-                _best_new_pos = np.asarray(samples[_best_new_idx])
-                _buf_pos = np.asarray(_best_buf.position)
-                _cost_match = abs(_best_buf.cost - _lowest_new_cost) < 1e-5
-                _pos_match  = np.linalg.norm(_buf_pos - _best_new_pos) < 1e-5
-                if not (_cost_match and _pos_match):
-                    samples.append(_buf_pos)
-                    labels.append("buffer")
-                    c_samples.append(float(_best_buf.cost))
-                    # Extend results list with a placeholder so downstream
-                    # indexing stays valid; results[buf_idx] carries the
-                    # buffered SampleResult if it can be looked up, else None.
-                    results.append(_best_buf.result
-                                   if hasattr(_best_buf, "result") else None)
-            # Refresh mirrored bookkeeping after augmentation.
-            self._all_sample_locations = samples
-            self._last_sample_labels = labels
+        # 3c. AugmentSamplesWithBuffer — reference cc:2106-2158.
+        # DISABLED 2026-07-19: port's SampleBuffer entries store position +
+        # cost but not the full SampleResult (with feasible/A/B/D/etc.).
+        # Downstream code (results[i].feasible, results[i].u_seq) can't
+        # handle a synthesized placeholder without either extending
+        # BufferedSample to carry the full SampleResult (with C3 plan
+        # matrices), or re-evaluating the buffered sample via
+        # inner_solver.evaluate_sample each tick (defeats the point of
+        # the buffer). Left as scaffold; enable when SampleBuffer stores
+        # SampleResult.
 
         # 4. Pick winner (k* = argmin c_sample over all samples)
         k_star = int(np.argmin(c_samples))
