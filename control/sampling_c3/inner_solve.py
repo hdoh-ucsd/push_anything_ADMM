@@ -375,12 +375,38 @@ class InnerSolver:
             self.plant.SetPositions(plant_ctx, q_seed)
             self.plant.SetVelocities(plant_ctx, current_v)
         elif _ee_space:
-            # Skip the IK-to-arm-q step — the EE-space LCS doesn't need
-            # the arm to be at a sample-matching config. Plant context
-            # stays at (current_q, current_v).
-            q_seed   = current_q.copy()
-            ik_err   = 0.0
-            ik_iters = 0
+            # Per-sample LCS linearization: port of reference behavior at
+            # sampling_based_c3_controller.cc:1628-1644 (CreateLCSObjectsForSamples).
+            # Reference calls UpdateContext(plant, candidate_states[i]) BEFORE
+            # GenerateLCS() for each sample so each LCS reflects the hypothetical
+            # EE position's contact geometry (phi, J_n). For repos samples at
+            # sampling_setback=0.030m, phi > 0.002m → no EE-BOX pair admitted →
+            # higher C3 cost → curr_cost < best_other → kToC3Cost fires.
+            #
+            # Implementation: solve IK to place the pusher sphere at sample_pos,
+            # then set plant context to that arm config before linearize_discrete_ee_space.
+            # On IK failure, fall back to current_q (degrades to previous behavior
+            # for that sample). Note: x0 still uses sample_pos directly (line ~444)
+            # regardless of IK accuracy; only the contact geometry (phi, J_n) changes.
+            q_warm = ik_seed_one_step(self.plant, self.ee_frame,
+                                       current_q, sample_pos, plant_ctx,
+                                       n_arm_dofs=self.n_u)
+            try:
+                q_seed, ik_err, ik_iters = solve_ik_to_ee_pos(
+                    self.plant, self.ee_frame,
+                    p_target=sample_pos, q_init=q_warm,
+                    plant_ctx=plant_ctx, n_arm_dofs=self.n_u,
+                )
+            except Exception:
+                # IK failed — fall back to current arm config so that
+                # this sample's LCS uses current contact geometry (same
+                # as the previous behavior). A fallback is safe since the
+                # cost for this sample will be inflated by the shared-LCS
+                # bias only; the entry-gate will still fire on later ticks
+                # once IK succeeds for the arriving EE position.
+                q_seed   = current_q.copy()
+                ik_err   = float("inf")
+                ik_iters = 0
             self.plant.SetPositions(plant_ctx, q_seed)
             self.plant.SetVelocities(plant_ctx, current_v)
         else:
@@ -665,6 +691,16 @@ class InnerSolver:
             # Held follow-up: log _evexc when not feasible. For now we keep
             # the swallow to avoid a behavioural change in this commit.
             pass
+        finally:
+            # Exception safety: guarantee plant_ctx is restored to (current_q,
+            # current_v) regardless of solver outcome. Required because the
+            # per-sample LCS fix (elif _ee_space branch above) now temporarily
+            # mutates plant_ctx to the IK-solved config — without this finally,
+            # a solver exception would leave plant_ctx in the sample's arm-config
+            # state and corrupt all downstream ticks. Matches the reference's
+            # "after loop: reset context to x_lcs_curr" (cc:1673-1674).
+            self.plant.SetPositions(plant_ctx, current_q)
+            self.plant.SetVelocities(plant_ctx, current_v)
 
         # Geometric align_score: bonus for samples whose contact would push
         # the box in the goal direction. Replaces the prior LCS-admitted-
