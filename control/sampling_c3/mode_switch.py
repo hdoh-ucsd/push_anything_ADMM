@@ -169,21 +169,36 @@ def decide_mode(prev_mode:          str,
 
     # prev_mode == "free"
 
-    # Reference cc:1284-1303: c3 entry from free is COST-GATED, and the
-    # label is chosen after the cost gate passes:
-    #     if (best_other > curr + hyst_frac * best_other &&
-    #         (ee_z < z_height + clearance || !ee_z_close)) {
-    #         is_doing_c3_ = true;
-    #         if (repos_target_cost > finished_reposition_cost) {
-    #             reason = kToC3ReachedReposTarget;
-    #         } else {
-    #             reason = kToC3Cost;
-    #         }
-    #     }
-    # Port previously had a SEPARATE direct-flag c3 entry (fired when
-    # finished_repos flag set, bypassing cost gate). That fired c3 more
-    # aggressively than reference. Now cost-gated with post-gate label
-    # discrimination (finished_repos → kToC3ReachedReposTarget label).
+    # Reference order (cc:1236-1243 then cc:1284-1293):
+    #   1. Check repos-to-repos (would a new target be better?).
+    #      If so, inflate best_other_cost IN-PLACE by the repos-to-repos
+    #      hysteresis margin (reference cc:1241:
+    #        best_other_cost += hyst_repos_to_repos_frac * repos_target_cost).
+    #   2. Run c3-entry gate on the (possibly inflated) best_other_cost.
+    #   3. If c3 gate fires → return c3.
+    #   4. If c3 gate does NOT fire and the repos-to-repos condition held →
+    #      return kToBetterRepos.
+    #   5. Else → kStayInRepos.
+    #
+    # This ordering is critical: when finished_reposition_cost=1e9 inflates
+    # c_samples[1] (the current repos target), a fresh strategy sample at
+    # ~7000 becomes the new best_other.  Without inflation, c3 gate is
+    # blocked (curr~5000 + 0.9*7000 = 11200 > 7000).  With the
+    # repos-to-repos inflation applied first:
+    #   best_other_inflated = 7000 + 0.3 * 1e9 ≈ 3e8
+    #   c3 gate: 5000 + 0.9*3e8 = 2.7e8 < 3e8 → FIRES.
+    # See diagnosis-v2.md §5 for the full derivation.
+
+    _repos_to_repos_would_fire = False
+    if current_repos_cost is not None:
+        gap_repos = _hysteresis(params, "repos_to_repos",
+                                near_goal, current_repos_cost)
+        if best_other_cost + gap_repos < current_repos_cost:
+            # Inflate best_other_cost in-place (mirrors reference cc:1241).
+            best_other_cost += gap_repos
+            _repos_to_repos_would_fire = True
+
+    # c3-entry gate (reference cc:1284-1293) — runs AFTER potential inflation.
     if best_other_cost != float("inf") and ee_z_gate_pass:
         gap_back = _hysteresis(params, "repos_to_c3", near_goal,
                                best_other_cost)
@@ -192,11 +207,8 @@ def decide_mode(prev_mode:          str,
                       if finished_repos else SwitchReason.kToC3Cost)
             return "c3", _label
 
-    # 3. Re-target within repos mode (only if a current repos target exists)
-    if current_repos_cost is not None:
-        gap_repos = _hysteresis(params, "repos_to_repos",
-                                near_goal, current_repos_cost)
-        if best_other_cost + gap_repos < current_repos_cost:
-            return "free", SwitchReason.kToBetterRepos
+    # repos-to-repos: fire now if the condition held and c3 didn't win.
+    if _repos_to_repos_would_fire:
+        return "free", SwitchReason.kToBetterRepos
 
     return "free", SwitchReason.kStayInRepos
