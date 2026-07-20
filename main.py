@@ -1070,12 +1070,15 @@ def main():
         _method = "sampling-c3"
     else:
         _method = "baseline-C3"
+    _tight = (final_dist < 0.02 and orient_err < 0.1)
+    _loose = (final_dist < 0.05 and orient_err < 0.4)
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
           f"goal_dist={final_dist:.4f}m  "
           f"orient_err={orient_err:.4f}rad  "
           f"success={'YES' if final_dist < 0.05 else 'NO'}  "
-          f"ref_gate={'PASS' if (final_dist < 0.02 and orient_err < 0.1) else 'FAIL'}")
+          f"tight_goal={'PASS' if _tight else 'FAIL'}  "
+          f"loose_goal={'PASS' if _loose else 'FAIL'}")
 
     if html_path:
         meshcat.StopRecording()

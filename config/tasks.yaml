@@ -199,6 +199,17 @@ tasks:
       w_obj_xy:      9000.0
       w_obj_z:         10.0
       w_box_z:        100.0
+      # Near-goal (pose regime) obj-position weight overrides. Ported from
+      # reference push_t sampling_c3plus_options.yaml — reduces obj_pos xy
+      # by 0.80 and z by 0.48 when the wrapper's crossed_switching_threshold
+      # latches (obj-to-goal < cost_switching_threshold_distance = 0.05 m).
+      # Rationale: at pose regime the quaternion Hessian (line 213-222) drives
+      # yaw; keeping obj_pos xy weight at 9000 there would let translation
+      # compete with the yaw correction. Same 0.80/0.48 ratio the box config
+      # (tasks.yaml:62-63) uses. task_costs.py:build_ee_space applies the
+      # swap; the legacy build() path already had it.
+      w_obj_xy_pose: 7200.0    # 9000 × 0.80
+      w_box_z_pose:  48.0      # 100  × 0.48
       w_box_rp:        50.0
       w_yaw:          800.0   # DOMINANT — the headline of this task
       # Near-goal hessian-quaternion Q_block (reference push_t
@@ -220,7 +231,17 @@ tasks:
       # dynamics settle to. reg2=q_goal·q_goal^T with fraction>0 adds curvature
       # in the goal-quat direction, breaking the singularity.
       q_quaternion_dependent_regularizer_fraction:      0.1
-      w_terminal:       5.0
+      # w_terminal for the tshape path was formerly hardcoded to 1.0 (QN=Q)
+      # inside task_costs.py:1076 to match reference gamma=1.0 — so the old
+      # yaml value of 5.0 here was DEAD. That special-case was removed
+      # 2026-07-20; the yaml value is now live. Reference behavior is
+      # w_terminal:1.0.
+      #
+      # Tuning history:
+      #   1.0  → reference; goal_dist=9.6mm / orient_err=7.2° with Fix A.
+      #   20.0 → over-committed terminal pull; caused 100-s mid-run stall
+      #          at goal_dist≈70mm (regressed to 25.7mm / 11.4°). Reverted.
+      w_terminal:       1.0
       # 2026-07-19 z_ee_target 0.034 → 0.005. The old 0.034 came from an
       # earlier mistaken frame-offset argument (see sampling_c3_kik_t.yaml
       # :322 comment) that also broke sampling_height, which was later

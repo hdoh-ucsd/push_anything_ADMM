@@ -206,12 +206,33 @@ def paint_frame(img: Image.Image, step: int, info: dict, font, font_lg):
         )
     k = info.get("k_star")
     tgt = info.get("target")
-    if k is not None:
-        lines.append(f"k*={k}   target={tgt}   reason={info.get('reason','-')}")
+    costs = info.get("costs")
     labels = info.get("labels")
+    # Dispatcher score of the winning sample: c* = costs[k*]. This is the
+    # planner_cost + w_align·alignment + w_travel·travel that decided the
+    # c3-vs-repos vote this tick. Falls back to "?" if the log's cost list
+    # is shorter than k_star (should not happen; defensive).
+    c_star_str = "?"
+    label_star = None
+    if costs and k is not None:
+        _cost_parts = costs.split(",")
+        if 0 <= k < len(_cost_parts):
+            try:
+                c_star_str = f"{float(_cost_parts[k]):+.0f}"
+            except ValueError:
+                pass
+        if labels:
+            _label_parts = [s.strip() for s in labels.split(",")]
+            if 0 <= k < len(_label_parts):
+                label_star = _label_parts[k]
+    if k is not None:
+        _lbl_suffix = f" [{label_star}]" if label_star else ""
+        lines.append(
+            f"k*={k}{_lbl_suffix}  c*={c_star_str}  "
+            f"target={tgt}   reason={info.get('reason','-')}"
+        )
     if labels:
         lines.append(f"samples: [{labels}]")
-    costs = info.get("costs")
     if costs:
         parts = costs.split(",")
         short = ", ".join(f"{float(x):+.0f}" for x in parts[:6])

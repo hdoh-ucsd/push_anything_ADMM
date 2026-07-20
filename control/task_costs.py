@@ -786,9 +786,27 @@ class QuadraticManipulationCost:
             q_diag[self._NEW_VEE_SLOT]   = self._q_vec_ee_vel
             Q[np.arange(n_x), np.arange(n_x)] = self.w_Q * q_diag
         else:
-            Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy
-            Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy
-            Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = self.w_obj_z + self.w_box_z
+            # Near-goal (pose regime) obj-position weight swap — parity with
+            # legacy build() at :336-340. Reference push_t
+            # sampling_c3plus_options.yaml has q_vector_position (far) and
+            # q_vector (near) with obj_pos slots dropping 250→200 (×0.80 for
+            # xy) and 250→120 (×0.48 for z) when
+            # crossed_cost_switching_threshold_ latches. The port's
+            # build_ee_space previously fired the quaternion-Hessian override
+            # but left obj_pos weights untouched, so the yaw Hessian had to
+            # compete against a still-huge xy penalty. Wiring the swap here
+            # matches the reference mechanism; the swap is a no-op when
+            # cost config sets w_obj_xy_pose == w_obj_xy (backward-compat).
+            if self._crossed_switching_threshold:
+                Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy_pose
+                Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy_pose
+                Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = (self.w_obj_z
+                                                       + self.w_box_z_pose)
+            else:
+                Q[self._NEW_OBJ_X, self._NEW_OBJ_X] = self.w_obj_xy
+                Q[self._NEW_OBJ_Y, self._NEW_OBJ_Y] = self.w_obj_xy
+                Q[self._NEW_OBJ_Z, self._NEW_OBJ_Z] = (self.w_obj_z
+                                                       + self.w_box_z)
             Q[self._NEW_OBJ_QX, self._NEW_OBJ_QX] = self.w_box_rp   # roll
             Q[self._NEW_OBJ_QY, self._NEW_OBJ_QY] = self.w_box_rp   # pitch
 
@@ -1049,14 +1067,17 @@ class QuadraticManipulationCost:
         else:
             R = self.w_torque * np.eye(n_u)
 
-        # Terminal weight: for tshape (push_t), match reference behavior. The
-        # reference (sampling_based_c3_controller.cc:1507-1515 UpdateCostMatrices
-        # with gamma=1.0) sets Q_[N] = Q_[N-1] — no horizon-endpoint amplifier.
-        # Port's w_terminal=5.0 (tasks.yaml:136) has no reference analog; force
-        # QN = Q on the tshape path. Other tasks (box/sphere/cube) retain the
-        # port's w_terminal scaling.
-        if self._object_shape == "tshape":
-            QN = Q.copy()
-        else:
-            QN = self.w_terminal * Q
+        # Terminal weight: QN = w_terminal · Q, always. Caller drives shape
+        # via config/tasks.yaml.
+        #   w_terminal=1.0 → QN=Q → matches reference behavior for tshape
+        #     (sampling_based_c3_controller.cc:1507-1515 UpdateCostMatrices,
+        #     gamma=1.0 → Q_[N] = Q_[N-1]).
+        #   w_terminal>1.0 → terminal-knot amplifier for tight-goal tuning;
+        #     off-reference. Explicit opt-in via yaml keeps the reference
+        #     conformance testable — set w_terminal:1.0 to recover reference.
+        # 2026-07-20: former `if _object_shape == 'tshape': QN=Q` hardcode
+        # removed; the T-push YAML w_terminal (was dead) is now live. Kept
+        # the box/sphere/cube path effectively unchanged since their YAMLs
+        # keep the pre-existing w_terminal scaling.
+        QN = self.w_terminal * Q
         return Q, R, QN, x_ref
