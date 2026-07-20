@@ -44,3 +44,6 @@ scripts/verify_deck_numbers.py
 # The author keeps them locally and pastes relevant ones into Claude
 # conversations as needed.
 docs/
+
+# Local Claude Code settings (developer-scoped hooks, permissions)
+.claude/settings.local.json

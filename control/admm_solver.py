@@ -1184,6 +1184,14 @@ class C3Solver:
         primal_hist = []
         dual_hist   = []
         rho_hist    = []
+        # Per-iter (raw QP cost, augmented penalty, augmented Lagrangian,
+        # horizon-max η_n, horizon-max λ_n) — populated when either
+        # PUSHA_MATH_ITER_LOG or PUSHA_ADMM_RESID_CSV would consume them.
+        cost_hist   = []
+        pen_hist    = []
+        lrho_hist   = []
+        eta_max_hist = []
+        lam_max_hist = []
         tol         = 1e-3
         actual_iters = admm_iter
         u_lam_w = self._u_lambda
@@ -1222,6 +1230,17 @@ class C3Solver:
         # "contact-rich stage") to keep line count manageable. Default OFF.
         _math_iter_log = (_os_g.environ.get(
             "PUSHA_MATH_ITER_LOG", "0") == "1")
+        # Pull the resid-CSV gate up so the per-iter cost/slack computation
+        # (populating cost_hist/eta_max_hist/lam_max_hist) can be skipped
+        # entirely when nothing consumes it — keeps the surrogate solves in
+        # sample-eval hot loops free of extra O(total_dim²) matvecs.
+        _resid_csv_hoisted     = _os_g.environ.get("PUSHA_ADMM_RESID_CSV", "")
+        _resid_min_iter_hoisted = int(_os_g.environ.get(
+            "PUSHA_ADMM_RESID_MIN_ITER", "20"))
+        _need_cost = bool(
+            _math_iter_log
+            or (_resid_csv_hoisted and admm_iter >= _resid_min_iter_hoisted)
+        )
         # One-shot equation-form header on the first solve after enabling.
         if _math_iter_log and not getattr(self, "_math_iter_header_done", False):
             self._math_iter_header_done = True
@@ -1244,6 +1263,11 @@ class C3Solver:
 
         for it in range(admm_iter):
             delta_prev = delta.copy()
+            # Snapshot ω before the ω-update at end-of-iter so the cost
+            # log can evaluate `pen = (ρ/2)||z − δ_prev + ω_pre||²` — the
+            # augmented penalty at the point OSQP actually minimized.
+            omega_pre  = omega.copy() if _need_cost else omega
+            rho_iter   = rho  # ρ used to build this iter's QP (pre-scale)
 
             with timed("admm.qp_build"):
                 q_total = q_ref - rho * (delta - omega)
@@ -1394,6 +1418,72 @@ class C3Solver:
                             self._last_lcp_res_max = float(max(lcp_residuals_block))
 
                 omega = omega + z_sol - delta
+
+            # ---- Per-iter cost + η-slack stats -----------------------------
+            # Populated when either PUSHA_MATH_ITER_LOG or PUSHA_ADMM_RESID_CSV
+            # would consume them. `f(z)` is the raw planning cost at the new
+            # z; `pen` is the ADMM augmented penalty evaluated at OSQP's
+            # minimizer (δ_prev and ω_pre are what q_total was built from);
+            # `L_ρ = f + pen` is the full augmented Lagrangian, the object
+            # ADMM is descending. η stats read the just-projected delta.
+            _have_zsol = ('z_sol' in dir())
+            if _need_cost and _have_zsol:
+                _f_raw   = (0.5 * float(z_sol @ P @ z_sol)
+                            + float(q_ref @ z_sol))
+                _z_shift = z_sol - delta_prev + omega_pre
+                _pen     = 0.5 * rho_iter * float(_z_shift @ _z_shift)
+                _L_rho   = _f_raw + _pen
+                cost_hist.append(_f_raw)
+                pen_hist.append(_pen)
+                lrho_hist.append(_L_rho)
+                if n_lambda > 0 and num_normals > 0:
+                    _n_t_iter = n_lambda - 2 * num_normals   # 4·n_c under ST
+                    _en_max_h = 0.0
+                    _et_max_h = 0.0
+                    _en_min_h = float('inf')
+                    _ln_max_h = 0.0
+                    _active_h = 0    # knots with any λ_n > 1e-6 (engaged)
+                    for _k_kn in range(N):
+                        _base_e = _k_kn * TOT + SE
+                        _base_l = _k_kn * TOT + SL
+                        _en_k = delta[_base_e + num_normals
+                                      : _base_e + 2 * num_normals]
+                        _et_k = delta[_base_e + 2 * num_normals
+                                      : _base_e + 2 * num_normals + _n_t_iter]
+                        _ln_k = delta[_base_l + num_normals
+                                      : _base_l + 2 * num_normals]
+                        _en_max_h = max(_en_max_h, float(_en_k.max()))
+                        _et_max_h = max(_et_max_h, float(_et_k.max()))
+                        _en_min_h = min(_en_min_h, float(_en_k.min()))
+                        _ln_max_k = float(_ln_k.max())
+                        _ln_max_h = max(_ln_max_h, _ln_max_k)
+                        if _ln_max_k > 1e-6:
+                            _active_h += 1
+                    if not np.isfinite(_en_min_h):
+                        _en_min_h = 0.0
+                else:
+                    _en_max_h = _et_max_h = _en_min_h = _ln_max_h = 0.0
+                    _active_h = 0
+                eta_max_hist.append(_en_max_h)
+                lam_max_hist.append(_ln_max_h)
+                if _math_iter_log:
+                    _dcost = (cost_hist[-1] - cost_hist[-2]
+                              if len(cost_hist) >= 2 else 0.0)
+                    print(f"[MATH.COST] step={self._diag_step} it={it}: "
+                          f"f(z)={_f_raw:+.4e} "
+                          f"pen=(ρ/2)‖z−δ+ω‖²={_pen:.4e} "
+                          f"L_ρ={_L_rho:+.4e} "
+                          f"Δf={_dcost:+.3e} ρ={rho_iter:.2f}",
+                          flush=True)
+                    print(f"[MATH.η] step={self._diag_step} it={it} "
+                          f"horizon (post-δ-update): "
+                          f"η_n_max={_en_max_h:.3e} "
+                          f"η_t_max={_et_max_h:.3e} "
+                          f"η_min={_en_min_h:+.3e} "
+                          f"λ_n_max={_ln_max_h:.3e} "
+                          f"engaged_knots(λ_n>1e-6)={_active_h}/{N}",
+                          flush=True)
+            # ----------------------------------------------------------------
 
             # PUSHA_MATH_ITER_LOG — emit Bui LCS (5b/5c/comp) + Aydinoglu
             # ADMM (7/8/9) numeric values at k=0 for this iter. Gated to
@@ -1590,15 +1680,26 @@ class C3Solver:
         if n_lambda > 0 and primal_hist:
             mono = all(primal_hist[i] >= primal_hist[i+1]
                        for i in range(len(primal_hist)-1))
+            # Optional cost + slack tail (only populated when _need_cost was on).
+            _cost_tail = ""
+            if cost_hist:
+                _cost_tail = (f"  f: {cost_hist[0]:+.3e}->{cost_hist[-1]:+.3e}"
+                              f"  L_ρ: {lrho_hist[0]:+.3e}->{lrho_hist[-1]:+.3e}"
+                              f"  η_max_h={max(eta_max_hist):.2e}"
+                              f"  λ_n_max_h={max(lam_max_hist):.2e}")
             print(f"[ADMM-C3+] primal: {primal_hist[0]:.4f}->{primal_hist[-1]:.4f}  "
                   f"dual: {dual_hist[0]:.4f}->{dual_hist[-1]:.4f}  "
-                  f"mono={mono}  iters={actual_iters}/{admm_iter}  rho={rho:.1f}")
+                  f"mono={mono}  iters={actual_iters}/{admm_iter}  rho={rho:.1f}"
+                  f"{_cost_tail}")
 
         # §7.37 measurement scaffold (default-OFF). When
-        # PUSHA_ADMM_RESID_CSV=PATH is set, append per-iter (pr, dr, rho)
-        # for each rich-mode solve (admm_iter >= PUSHA_ADMM_RESID_MIN_ITER,
-        # default 20) to a CSV. Surrogate sample-eval solves are skipped.
-        # No behaviour change when the env var is unset.
+        # PUSHA_ADMM_RESID_CSV=PATH is set, append per-iter (pr, dr, rho,
+        # f_raw, pen, L_rho, eta_max_h, lam_n_max_h) for each rich-mode
+        # solve (admm_iter >= PUSHA_ADMM_RESID_MIN_ITER, default 20) to a
+        # CSV. Surrogate sample-eval solves are skipped. No behaviour
+        # change when the env var is unset — env is re-read here for
+        # backwards compat with any external monitor that inspects
+        # `_resid_csv` / `_resid_min_iter` names.
         import os as _os_r
         _resid_csv = _os_r.environ.get("PUSHA_ADMM_RESID_CSV", "")
         _resid_min_iter = int(_os_r.environ.get("PUSHA_ADMM_RESID_MIN_ITER", "20"))
@@ -1609,15 +1710,29 @@ class C3Solver:
                 _need_header = not _os_r.path.exists(_resid_csv)
                 if _need_header:
                     with open(_resid_csv, "w") as _f:
-                        _f.write("solve_idx,n_lambda,iter,pr,dr,rho,converged,iters_used,admm_iter\n")
+                        _f.write("solve_idx,n_lambda,iter,pr,dr,rho,"
+                                 "f_raw,pen,L_rho,eta_max_h,lam_n_max_h,"
+                                 "converged,iters_used,admm_iter\n")
             self._resid_csv_solve_idx += 1
             _solve_idx = self._resid_csv_solve_idx
             _conv_flag = int(actual_iters < admm_iter)
+            # cost_hist/eta_max_hist/lam_max_hist should always be populated
+            # when this branch fires (_need_cost was true given admm_iter
+            # ≥ _resid_min_iter_hoisted matches _resid_min_iter here). Fall
+            # back to NaN if a caller ever races the env var mid-solve.
+            def _hget(_h, _i):
+                return _h[_i] if _i < len(_h) else float('nan')
             with open(_resid_csv, "a") as _f:
                 for _i in range(len(primal_hist)):
                     _f.write(f"{_solve_idx},{n_lambda},{_i+1},"
                              f"{primal_hist[_i]:.6e},{dual_hist[_i]:.6e},"
-                             f"{rho_hist[_i]:.6f},{_conv_flag},"
+                             f"{rho_hist[_i]:.6f},"
+                             f"{_hget(cost_hist,_i):.6e},"
+                             f"{_hget(pen_hist,_i):.6e},"
+                             f"{_hget(lrho_hist,_i):.6e},"
+                             f"{_hget(eta_max_hist,_i):.6e},"
+                             f"{_hget(lam_max_hist,_i):.6e},"
+                             f"{_conv_flag},"
                              f"{actual_iters},{admm_iter}\n")
 
         # D2: surface ADMM convergence + non-converged warning. Consumed

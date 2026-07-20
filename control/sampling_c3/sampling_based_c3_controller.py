@@ -1631,8 +1631,39 @@ class SamplingC3MPC:
             # Requires _need_rebuild=True every tick so the flag reflects
             # the CURRENT p_start=ee_now (see also the rebuild-every-tick
             # fix at the RepositionTrajectory build site).
-            finished_repos = bool(getattr(
+            _flag_build = bool(getattr(
                 self._pwl_traj, "finished_reposition_flag", False))
+            # 2026-07-19 (T-push tight-goal debug): T stall analysis
+            # (results/push_t_near_goal_Q_180s.txt, 0/1800 c3-mode steps)
+            # showed the build-time flag NEVER fires in 180 s. Root cause:
+            # rebuild every tick with p_start=ee_now toward a same-tick
+            # sample target ~5-15 cm away, so `(t_end-t_start) > dt_plan`
+            # always — flag semantically requires arm to be within
+            # `pwl_speed*dt_plan` ≈ 1.35 cm at BUILD time.
+            #
+            # Comment above already flags the underlying issue: "the T-shape
+            # setback is inside the vertical bar's sphere-swept envelope
+            # (BUG 2), so physical descent stalls with ‖p_target − ee_now‖
+            # ≈ 20 mm rather than 5 mm — the trajectory is effectively
+            # arrived but the physical residual holds above 5 mm
+            # indefinitely." Restore the euclidean predicate as an OR-fallback
+            # at the same 20 mm tolerance the IK tracker uses at
+            # reposition_ik.py:1299 (`finished` = ‖p_target − ee_now‖ ≤ 0.02).
+            # OR'd, not replacing: preserves reference build-time semantics
+            # when the arm genuinely finishes the path fast, adds a physical-
+            # arrival trigger for the T-collision-stall case.
+            _tol_arr    = 0.020
+            _p_target   = np.asarray(self._pwl_traj.p_target)
+            _euclid_arr = (float(np.linalg.norm(_p_target - ee_pos_now))
+                           <= _tol_arr)
+            finished_repos = _flag_build or _euclid_arr
+            if self.log_diag and _euclid_arr and not _flag_build:
+                _d_now = float(np.linalg.norm(_p_target - ee_pos_now))
+                print(f"[REPOS-ARR-EUCLID] step={self._step} "
+                      f"‖p_target−ee‖={_d_now*1000:.1f}mm "
+                      f"≤ tol={_tol_arr*1000:.1f}mm — "
+                      f"finished_repos=True via euclidean fallback "
+                      f"(build_flag={_flag_build})", flush=True)
 
         # Contact-proximity entry gate: don't fire kToC3ReachedReposTarget
         # just because the IK arrived at the setback target — require the
