@@ -931,19 +931,49 @@ class SamplingC3MPC:
         # workspace filter in generate_samples handles collision-avoidance for
         # freshly generated samples, and prev_repos is a previously-cleared
         # target so unlikely to be in collision.
-        if prev_mode == "free" and self._current_repos_target is not None:
+        # Achieved-fixed-goal exception: skip prev_repos add. Reference
+        # (cc:928-936) still inserts prev_repos, but its cost fn is
+        # c3_cost + travel_cost_per_meter × xy_travel only, so a far retreat
+        # eventually wins on structural grounds. The port's cost fn adds a
+        # large `align_bonus = w_align × align_score` term (inner_solve.py:762,
+        # w_align default 30000) that biases heavily toward near-box samples;
+        # if prev_repos (near-object, high align) stays in the candidate set
+        # once retreat samples appear, best_other selects prev_repos and the
+        # arm never migrates. Skipping prev_repos here + replacing strategy
+        # samples with retreat copies below makes the sample list
+        # [current, retreat, retreat, ...] so best_other = retreat.
+        if (prev_mode == "free" and self._current_repos_target is not None
+                and not getattr(self, "_achieved_fixed_goal", False)):
             positions.append(self._current_repos_target.copy())
             labels.append("prev_repos")
 
         # Strategy samples — always fresh, never cached (matches reference).
         n_strategy = (sp.num_additional_samples_c3 if prev_mode == "c3"
                       else sp.num_additional_samples_repos)
-        strategy_samples = self._get_persistent_samples(
-            obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
-            obj_quat=obj_quat, yaw_delta=yaw_delta)
-        for i, p in enumerate(strategy_samples):
-            positions.append(p)
-            labels.append(f"strat_{i}")
+        # Reference sampling_based_c3_controller.cc:887-897: when
+        # achieved_fixed_goal_ is set, candidate_states is populated with
+        # N identical copies of a fixed retreat position (reference literal
+        # `head(3) << 0.3, 0.4, 0.1`) INSTEAD of calling GenerateSampleStates,
+        # so the reposition tracker drives the arm off the object.
+        # Port previously called `_get_persistent_samples` unconditionally,
+        # so post-latch samples remained clustered around the object; the
+        # reposition IK kept its target adjacent to the object and micro-
+        # motions nudged it back out of the tight-goal thresholds
+        # (observed in results/tight_goal_p8_dtpose_180s.txt:
+        # latch at step 1238 with dist=0.0198m rot_err=0.0103rad;
+        # drift to dist=0.035m rot_err=0.206rad by step 1800).
+        if getattr(self, "_achieved_fixed_goal", False):
+            retreat = np.asarray(sp.retreat_ee_position, dtype=float)
+            for i in range(n_strategy):
+                positions.append(retreat.copy())
+                labels.append(f"strat_{i}")
+        else:
+            strategy_samples = self._get_persistent_samples(
+                obj_xy=obj_xy, g_hat=g_hat, n_strategy=n_strategy,
+                obj_quat=obj_quat, yaw_delta=yaw_delta)
+            for i, p in enumerate(strategy_samples):
+                positions.append(p)
+                labels.append(f"strat_{i}")
 
         # Insert current EE at the front (reference cc:938).
         positions.insert(0, ee_pos_now.copy())
