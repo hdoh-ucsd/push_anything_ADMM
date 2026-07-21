@@ -263,7 +263,8 @@ class InnerSolver:
                  dt:             float,
                  torque_limit:   float,
                  base_admm_iter: int,
-                 params:         SamplingC3Params):
+                 params:         SamplingC3Params,
+                 dt_pose:        Optional[float] = None):
         self.plant       = plant
         self.world_frame = plant.world_frame()
         self.ee_frame    = ee_frame
@@ -273,6 +274,14 @@ class InnerSolver:
         self.quad_cost   = quad_cost
         self.horizon       = int(horizon)
         self.dt            = float(dt)
+        # Reference-conformant dt swap near-goal. When
+        # `quad_cost._crossed_switching_threshold` is True, per-sample cost-LCS
+        # builds use dt_pose (finer resolution, matches reference
+        # `GetLCSFactoryOptions(crossed_)` semantics at
+        # sampling_based_c3_controller.cc:2537-2553). Wrapper syncs the flag
+        # onto quad_cost each tick (sampling_based_c3_controller.py:1581).
+        # Defaults to `dt` (no swap) for backward compat.
+        self.dt_pose       = float(dt_pose) if dt_pose is not None else float(dt)
         self.torque_limit  = float(torque_limit)
         self.base_admm_iter   = int(base_admm_iter)
         self.surrogate_iter   = int(params.surrogate_admm_iters)
@@ -438,6 +447,16 @@ class InnerSolver:
         Q = R = QN = x_ref = x0 = None
         _cost_lcs_probe = None       # populated only when cost-LCS ranking active
 
+        # Reference-conformant dt swap: `GetLCSFactoryOptions(crossed_)`
+        # at cc:2537-2553 returns `planning_dt_pose` when the flag is True.
+        # quad_cost._crossed_switching_threshold is set each tick by
+        # wrapper.py:1581. When flag is False (position regime or attribute
+        # absent), self.dt is used — bit-identical to prior behavior.
+        _dt_effective = (self.dt_pose
+                         if getattr(self.quad_cost,
+                                    "_crossed_switching_threshold", False)
+                         else self.dt)
+
         _buf = io.StringIO()
         ctx = redirect_stdout(_buf) if suppress_io else _NullContext()
         try:
@@ -448,7 +467,7 @@ class InnerSolver:
                      E_lcs, F_lcs, H_lcs, c_lcs,
                      J_n, J_t, phi, mu) = \
                         self.formulator.linearize_discrete_ee_space(
-                            plant_ctx, self.dt)
+                            plant_ctx, _dt_effective)
                     nhats = list(self.formulator._last_nhats)
                     ee_box_contacts = list(
                         getattr(self.formulator, "_last_ee_box_contacts", [])
@@ -475,7 +494,7 @@ class InnerSolver:
                     (A, B, D, d,
                      E_lcs, F_lcs, H_lcs, c_lcs,
                      J_n, J_t, phi, mu) = \
-                        self.formulator.linearize_discrete(plant_ctx, self.dt)
+                        self.formulator.linearize_discrete(plant_ctx, _dt_effective)
                     nhats = list(self.formulator._last_nhats)
                     ee_box_contacts = list(
                         getattr(self.formulator, "_last_ee_box_contacts", [])
@@ -616,7 +635,7 @@ class InnerSolver:
                          E_c, F_c, H_c, c_lcs_c,
                          J_n_c, J_t_c, phi_c, mu_c) = \
                             self.formulator.linearize_discrete_ee_space(
-                                plant_ctx, self.dt, n_ee_top_k=2,
+                                plant_ctx, _dt_effective, n_ee_top_k=2,
                                 force_top_k_ee_box=True)
                         # Cost-LCS admission audit for the crux instrumentation
                         # (task 2): number of EE-manipuland rows in the actual
