@@ -517,8 +517,19 @@ def main():
     # EE-manipuland pair + shape-appropriate manipuland-ground witnesses
     # (3 for tshape, 4 for box). All configured by LCSFormulator defaults.
     _obj_shape_for_defaults = str(task_cfg.get("object_type", "box"))
+    # Reference sampling_c3plus_options.yaml:44 mu_per_pair_type[1]:
+    # the EE-manipuland contact uses the Drake-combined friction
+    # `2·μ_ee·μ_manip / (μ_ee + μ_manip)`, not the raw manipuland
+    # material μ. Port previously passed `task_cfg["friction"]` (raw
+    # manipuland μ) which under-estimates the friction cone at the
+    # primary push contact — for push_t (μ_manip=0.3, μ_ee=1.0) the
+    # combined is 0.4615 vs the passed 0.3 (35% under-estimation).
+    # For box (μ_manip=1.0, μ_ee=1.0) combined equals 1.0 → byte-identical.
+    _mu_manip  = float(task_cfg["friction"])
+    _mu_pusher = float(task_cfg.get("pusher_friction", 1.0))
+    _mu_lcs    = 2.0 * _mu_manip * _mu_pusher / (_mu_manip + _mu_pusher)
     formulator = LCSFormulator(
-        plant, mu=task_cfg["friction"], obj_body=obj_body,
+        plant, mu=_mu_lcs, obj_body=obj_body,
         plant_ad=plant_ad, context_ad=context_ad,
         object_shape=_obj_shape_for_defaults,
     )
