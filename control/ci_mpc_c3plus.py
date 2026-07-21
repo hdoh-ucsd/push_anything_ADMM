@@ -416,6 +416,13 @@ class C3PlusMPC:
                     _ee_box_idx = _i
                     break
         self.solver._ee_box_pair_idx = _ee_box_idx
+        # Reference-conformant g_lambda regime switch. Reference push_t
+        # sampling_c3plus_options.yaml has g_lambda_list=[2,...] (pose) vs
+        # g_lambda_position_list=[1,...] (position) — 2× stronger ADMM
+        # complementarity enforcement at λ/η slots when near-goal. The
+        # crossed flag is synced onto solver each tick so _solve_c3plus
+        # can build the appropriate diagonal G-scaling for its P_total.
+        self.solver._pose_regime = bool(self._crossed_switching_threshold)
         # §7.67 — one-shot diagnostic: which tags did we see + n_c
         if not getattr(self, "_b1a_tag_dump_done", False):
             self._b1a_tag_dump_done = True

@@ -1053,7 +1053,23 @@ class C3Solver:
             # The η = E x + F λ + H u + c equality below replaces the
             # `q_ref[λ_n] += w_comp · phi_gap` hack used by C3.
 
-            P_total = P + rho * _eye_total
+            # Reference-conformant g_lambda regime switch. Reference push_t
+            # sampling_c3plus_options.yaml has g_lambda_list=[2,...] (pose)
+            # vs g_lambda_position_list=[1,...] (position). Port matches the
+            # 2× ratio by boosting rho at λ+η slots when near-goal; other
+            # slots (x, u) stay at 1× ρ (matches port's uniform baseline —
+            # a partial port of reference w_G · g_vector formulation).
+            # ci_mpc_c3plus.py:418+ syncs `_pose_regime` onto self each tick.
+            _pose_regime = bool(getattr(self, "_pose_regime", False))
+            if _pose_regime and n_lambda > 0:
+                _G_diag_regime = np.ones(total_dim)
+                for _i_kn in range(N):
+                    _base_r = _i_kn * TOT
+                    _G_diag_regime[_base_r + SL : _base_r + SL + n_lambda] = 2.0
+                    _G_diag_regime[_base_r + SE : _base_r + SE + n_lambda] = 2.0
+                P_total = P + rho * np.diag(_G_diag_regime)
+            else:
+                P_total = P + rho * _eye_total
             P_sym   = 0.5 * (P_total + P_total.T) + 1e-8 * _eye_total
 
             # ---------------------------------------------------------------
@@ -1659,17 +1675,22 @@ class C3Solver:
                     cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
                 elif (it + 1) % 10 == 0:
                     # Legacy Boyd §3.4.1 primal/dual balance step (rho_scale
-                    # disabled → fall back to this).
+                    # disabled → fall back to this). Preserve the pose-regime
+                    # diagonal G-scaling if it was active for the initial P.
+                    if _pose_regime and n_lambda > 0:
+                        _rebuild_G = np.diag(_G_diag_regime)
+                    else:
+                        _rebuild_G = _eye_total
                     if pr > 10.0 * dr and rho < 1000.0:
                         rho   *= 2.0
                         omega /= 2.0
-                        P_total2 = P + rho * _eye_total
+                        P_total2 = P + rho * _rebuild_G
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
                         cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
                     elif dr > 10.0 * pr and rho > 0.1:
                         rho   /= 2.0
                         omega *= 2.0
-                        P_total2 = P + rho * _eye_total
+                        P_total2 = P + rho * _rebuild_G
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
                         cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
