@@ -136,6 +136,11 @@ class SamplingC3MPC:
             quad_cost=self._quad_cost,
             horizon=self._horizon,
             dt=self._dt,
+            # Pass dt_pose from base_mpc so per-sample cost-LCS builds use
+            # the reference-conformant fine dt near-goal (ci_mpc_c3plus.py:76
+            # holds dt_pose separately; wrapper syncs the crossed flag onto
+            # quad_cost each tick).
+            dt_pose=getattr(base_mpc, "dt_pose", self._dt),
             torque_limit=self._tlim,
             base_admm_iter=self._admm_iter,
             params=params,
