@@ -450,8 +450,8 @@ def main():
     # ------------------------------------------------------------------
     print("[C3] Building Drake environment ...")
     _add_cam = args.drake_frames_dir is not None
-    diagram, plant, panda_model, _, meshcat, plant_ad, context_ad = \
-        build_environment(task_cfg, add_camera=_add_cam)
+    (diagram, plant, panda_model, _, meshcat, plant_ad, context_ad,
+     drake_video_writer) = build_environment(task_cfg, add_camera=_add_cam)
 
     drake_cam = None
     drake_frames_dir = None
@@ -1120,6 +1120,21 @@ def main():
         with open(html_path, "w") as f:
             f.write(html)
         print(f"[VIDEO] Saved replay to {html_path}")
+
+    # 2026-07-22: reference-style pydrake.visualization.VideoWriter finalize.
+    # Mirrors process_lcm_logs.py:501-509 make_video pattern — Drake wrote
+    # frames into memory during sim via ConnectRgbdSensor; Save() flushes
+    # them to disk as MP4. Filename comes from env var (default set in
+    # env_builder.py), letting run scripts point at their `_ref.mp4` output.
+    if drake_video_writer is not None:
+        try:
+            drake_video_writer.Save()
+            print(f"[VIDEO] pydrake.visualization.VideoWriter → "
+                  f"{drake_video_writer._filename} saved  "
+                  f"(ref process_lcm_logs.py:501-509)", flush=True)
+        except Exception as _vw_err:
+            print(f"[VIDEO] VideoWriter.Save() failed: "
+                  f"{type(_vw_err).__name__}: {_vw_err}", flush=True)
 
     if mode_timeline_fp is not None:
         mode_timeline_fp.close()
