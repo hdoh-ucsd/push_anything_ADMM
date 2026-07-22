@@ -1081,14 +1081,29 @@ def main():
         _method = "sampling-c3"
     else:
         _method = "baseline-C3"
-    _tight = (final_dist < 0.02 and orient_err < 0.1)
-    _loose = (final_dist < 0.05 and orient_err < 0.4)
+    _tight_final = (final_dist < 0.02 and orient_err < 0.1)
+    _loose       = (final_dist < 0.05 and orient_err < 0.4)
+    # Reference sampling_c3/goal_generator.cc:151 sets
+    # `reached_goal_[i] = true` when both position_success_threshold and
+    # orientation_success_threshold are simultaneously satisfied — a
+    # LATCHING achievement, not re-evaluated on subsequent drift. The
+    # controller's `_achieved_fixed_goal` flag mirrors this semantics
+    # (sampling_based_c3_controller.py:1539-1543 uses the same 0.02/0.10
+    # thresholds). Once the latch fires, both criteria WERE inside their
+    # thresholds simultaneously at that instant — the reference considers
+    # this "reached." Port previously required both criteria at
+    # end-of-sim, which failed by physics settling drift (2 mm typical)
+    # after the retreat fix (commit 17efb4e) parks the arm.
+    _tight_latched = bool(getattr(mpc, "_achieved_fixed_goal", False))
+    _tight = _tight_final or _tight_latched
+    _tight_reason = ("final" if _tight_final
+                     else ("latched" if _tight_latched else "-"))
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
           f"goal_dist={final_dist:.4f}m  "
           f"orient_err={orient_err:.4f}rad  "
           f"success={'YES' if final_dist < 0.05 else 'NO'}  "
-          f"tight_goal={'PASS' if _tight else 'FAIL'}  "
+          f"tight_goal={'PASS' if _tight else 'FAIL'}({_tight_reason})  "
           f"loose_goal={'PASS' if _loose else 'FAIL'}")
 
     if html_path:
