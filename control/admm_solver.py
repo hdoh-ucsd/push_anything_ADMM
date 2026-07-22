@@ -2288,6 +2288,7 @@ class C3Solver:
                   f"u_axis=({_axis_str}){self.u_unit_str} "
                   f"λ_n_max={lam_n_max:.3f} η_n_max={eta_n_max:.3f} "
                   f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter} "
+                  f"proj={self.c3plus_projection} "
                   f"lcp_res_max={self._last_lcp_res_max:.2e}")
         else:
             print(f"[C3+] step={self._diag_step} n_λ=0  "
