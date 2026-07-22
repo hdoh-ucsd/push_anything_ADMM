@@ -74,7 +74,7 @@ class C3PlusMPC:
         # brake a fast-moving box in time. None → falls back to dt (=
         # bit-identical to prior behavior when the caller doesn't set it).
         self.dt_pose       = float(dt_pose) if dt_pose is not None else dt
-        # Mutable per-tick flag written by the wrapper (SamplingC3MPC).
+        # Mutable per-tick flag written by the wrapper (SamplingC3Controller).
         # When True, compute_control uses dt_pose + POSE u-limits.
         self._crossed_switching_threshold = False
         # When use_ee_space=True, `torque_limit` is reinterpreted as the

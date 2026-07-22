@@ -282,7 +282,7 @@ class PiecewiseLinearTracker:
         u_pd = u_p + u_i + u_d
 
         # Gravity-comp is owned by the main loop, not the tracker; emit a
-        # task-only torque. (Note: under the SamplingC3MPC wrapper this
+        # task-only torque. (Note: under the SamplingC3Controller wrapper this
         # tracker's `u` is overwritten by the OSC executor at wrapper.py
         # line ~1608, so this only matters when PWL is used standalone.)
         _u_raw = u_pd
