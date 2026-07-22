@@ -54,11 +54,27 @@ class LCSFormulator:
 
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
-                 object_shape: str = "box"):
+                 object_shape: str = "box",
+                 mu_per_pair_type: dict | None = None):
+        """
+        mu_per_pair_type : optional dict mapping contact-pair tag
+            ("EE-BOX", "BOX-GND", "EE-GND") to a per-pair friction
+            coefficient. When set, overrides the scalar `mu` on a
+            per-pair basis in `extract_lcs_contacts`. Reference:
+            sampling_c3plus_options.yaml:44 `mu_per_pair_type`.
+        """
         self.plant = plant
         self.mu    = float(mu)
         self._obj_body = obj_body
         self._object_shape = str(object_shape)
+        self._mu_per_pair_type = (
+            {str(k): float(v) for k, v in mu_per_pair_type.items()}
+            if mu_per_pair_type else None
+        )
+        if self._mu_per_pair_type is not None:
+            print(f"[LCS-MU-PER-PAIR] loaded overrides: "
+                  f"{self._mu_per_pair_type}  (scalar fallback mu={self.mu})",
+                  flush=True)
 
         # Reference dairlib push_anything_dev@257e3ed:
         #   contact_model = 'anitescu' (sampling_c3_options.yaml:9)
