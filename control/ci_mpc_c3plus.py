@@ -137,6 +137,21 @@ class C3PlusMPC:
         # the first tick (no previous plan).
         self.nominal_ee_accel  = 2.0
         self._x_pred_curr_plan = None
+        # Reference sampling_c3plus_options.yaml:14 solve_time_filter_alpha,
+        # cc:1394-1397 `filtered_solve_time_ = (1-alpha)·solve_time +
+        # alpha·prev`. Reference feeds this filtered wall-time into
+        # ClampEndEffectorAcceleration (cc:1460 `approx_loop_dt =
+        # min(0.1, filtered_solve_time_)`). Port previously used the
+        # fixed planning_dt as `_dt_c`, which gave delta_pos = 5 mm for
+        # push_t (planning_dt_pose=0.05) vs reference's ~18 mm at the
+        # port's actual ~96 ms wall time. Result: port CLIPS x0 to
+        # current more often; reference lets x_pred_curr_plan_ drive
+        # x0 more (more anticipatory).
+        # Initial value = planning_dt so the first solve behaves like
+        # the prior (planning_dt-based) clamp until wall-time samples
+        # arrive.
+        self._solve_time_filter_alpha = 0.95
+        self._filtered_solve_time     = float(self.dt)
         # Reference sampling_c3plus_options.yaml:36 ee_velocity_limits.
         # Reference cc:1027-1034 applies as AddLinearConstraint(..., STATE)
         # on state slots (n_q_+0, n_q_+1, n_q_+2) at each knot. In the port's
@@ -356,9 +371,16 @@ class C3PlusMPC:
             # bounded band around the previously-planned trajectory.
             # Mirrors reference cc:1457-1472. Only fires when a previous plan
             # exists AND clamping is enabled (nominal_ee_accel > 0).
+            # Reference cc:1460 `approx_loop_dt = min(0.1,
+            # filtered_solve_time_)` — use actual wall-clock filtered
+            # solve time, NOT the planning discretization dt. Prior port
+            # used planning_dt (0.05 s for pose regime) giving
+            # delta_pos = 5 mm; reference at port's ~96 ms wall time
+            # would give delta_pos ~ 18 mm — reference allows the
+            # prediction to drive x0 more often (more anticipatory).
             if (self._x_pred_curr_plan is not None
                     and self.nominal_ee_accel > 0.0):
-                _dt_c = min(0.1, _dt)     # matches reference approx_loop_dt
+                _dt_c = min(0.1, self._filtered_solve_time)
                 _delta_pos = self.nominal_ee_accel * _dt_c * _dt_c
                 _delta_vel = self.nominal_ee_accel * _dt_c
                 _ee_pos_plan = self._x_pred_curr_plan[self._EE_POS_SLICE]
@@ -435,6 +457,8 @@ class C3PlusMPC:
                   f"tags={_tags}  ee_box_idx={_ee_box_idx}", flush=True)
 
         # 4. Full-horizon C3+ ADMM solve — forwards slack expression (E, F, H, c)
+        import time as _time_solve
+        _t0_solve = _time_solve.perf_counter()
         u_seq, x_seq = self.solver.solve(
             x0, A, B_ctrl, D, d, J_n, J_t, mu,
             Q, R, QN, x_ref,
@@ -446,6 +470,26 @@ class C3PlusMPC:
             u_lower=_u_lo, u_upper=_u_hi,
             ee_velocity_bounds=self.ee_velocity_bounds,
         )
+        _solve_wall_s = _time_solve.perf_counter() - _t0_solve
+        # Reference sampling_based_c3_controller.cc:1394-1397 filter.
+        # solve_time_filter_alpha = 0.95 (sampling_c3plus_options.yaml:14).
+        _alpha = self._solve_time_filter_alpha
+        self._filtered_solve_time = (
+            (1.0 - _alpha) * _solve_wall_s
+            + _alpha * self._filtered_solve_time
+        )
+        # First-few-solves diagnostic so the parameter is visible in logs.
+        if not hasattr(self, "_filtered_solve_time_logged"):
+            self._filtered_solve_time_logged = 0
+        if self._filtered_solve_time_logged < 3:
+            _dt_c_next = min(0.1, self._filtered_solve_time)
+            _delta_pos_next = self.nominal_ee_accel * _dt_c_next * _dt_c_next
+            print(f"[C3+] filtered_solve_time={self._filtered_solve_time*1000:.2f}ms "
+                  f"(this solve={_solve_wall_s*1000:.2f}ms alpha={_alpha:.2f}) "
+                  f"next-tick clamp: _dt_c={_dt_c_next*1000:.2f}ms "
+                  f"delta_pos={_delta_pos_next*1000:.2f}mm  "
+                  f"(ref cc:1394,1460)", flush=True)
+            self._filtered_solve_time_logged += 1
 
         # 5. Store predicted trajectory + u[0] for next-step linearization
         self.last_x_seq = x_seq        # (N+1, n_x)
