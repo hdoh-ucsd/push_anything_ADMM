@@ -620,6 +620,21 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 - **Tag:** LOAD-BEARING (different friction cones per contact pair).
 - **Confidence:** high.
 - **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] mu=0.4 (single scalar; reference uses mu_per_pair_type array)`. For `pushing` task, port `mu=0.4` (task_cfg). Reference-analog computation: pusher-box μ ≈ 0.42 (harmonic of `pusher_friction=0.4` × `box_friction=0.4` → 0.4; matches). But box-ground: port also uses 0.4, reference uses 0.375 (harmonic of box=0.4 × table-URDF-μ ≠ 0.4). Divergence is small (0.4 vs 0.375) but the STRUCTURAL divergence (one scalar vs per-pair vector) matters when the two contact types have very different physical μ (e.g., high-friction manipuland vs low-friction ground). See `push_t` config where `mu_per_pair_type=[0.4165, 1, 0.4615]` — EE-T is μ=1.0, T-ground is μ=0.4615, both HIGHER than pushing's 0.4.
+- **Update 2026-07-21 (commit 1e0cbde):** LANDED via `mu_per_pair_type` dict wired through `LCSFormulator.__init__` → `_mu_for_tag(tag)` → per-pair `mus` vector returned by `extract_lcs_contacts`. `push_t` yaml adopts reference literal `EE-BOX: 1.0, BOX-GND: 0.4615, EE-GND: 0.4165`. `pushing` yaml has no `mu_per_pair_type` → scalar-mu path (byte-identical). Structural divergence RESOLVED for T-push; other tasks continue using scalar μ.
+
+## 3.qp_alpha — `qp_projection_alpha` slack parameter
+
+- **Reference:** `sampling_c3plus_options.yaml:24` sets `qp_projection_alpha: 0.01`. Consumed by `/root/reference_repos/c3/core/c3_qp.cc:49` in the QP-based projection variant:
+  ```cpp
+  double alpha = options_.qp_projection_alpha.value_or(0.01);
+  New_U.block(n_x_, n_x_, n_lambda_, n_lambda_) = alpha * F;
+  prog.AddQuadraticCost((1 - alpha) * F, ...);
+  ```
+- **Port C3+ path:** `control/admm_solver.py::_project_componentwise` (line 843) uses the Bui 2026 case-analysis projection (`sqrt(u_lambda / u_eta)` weight ratio) — matches reference `c3_plus.cc::SolveSingleProjection` line 205-212. Neither consumes `qp_projection_alpha`.
+- **Reference C3+ path:** `/root/reference_repos/c3/core/c3_plus.cc` grep for `qp_projection_alpha` returns 0 hits.
+- **Tag:** DOCUMENTED-INERT for the port's active solver path.
+- **Confidence:** high.
+- **Tier 2:** Reference `sampling_c3plus_options.yaml:8` sets `projection_type: 'C3+'` for push_t, and `main.py:569 args.solver == "c3plus"` for the port (invoked with `--solver c3plus` in `run_T_180.sh:50`). Both use C3+ exclusively → `qp_projection_alpha` never enters either projection body. Divergence is inert for the runtime configuration; would become load-bearing only if `projection_type: 'QP'` were selected (which no example config in either repo does). Verified 2026-07-21 during H+G plan execution.
 
 ## 3.j — `box_ground_drag` viscous A-matrix modification
 
