@@ -246,7 +246,14 @@ class C3PlusMPC:
                   f"√(u_λ/u_η)={np.sqrt(self.solver._u_lambda / self.solver._u_eta):.3f}  "
                   f"w_G_ee_contact={self.solver._w_G_ee_contact:.1f} "
                   f"(declared, NOT applied in v1)")
-            print(f"[MATH.setup] Friction coefficient μ={mu:.4f}")
+            # μ may be scalar or ndarray (per-pair, ref
+            # sampling_c3plus_options.yaml:44 mu_per_pair_type). Format
+            # generically.
+            _mu_str = (f"{float(mu):.4f}" if np.isscalar(mu)
+                       or (hasattr(mu, "ndim") and mu.ndim == 0)
+                       else np.array2string(np.asarray(mu),
+                                            precision=4, suppress_small=True))
+            print(f"[MATH.setup] Friction coefficient μ={_mu_str}")
             print(f"[MATH.setup] Torque limit: ±{self.torque_limit:.1f} Nm")
 
         # ---- [MATH.LCS] step 1 (once-per-solve seed) + every 50 MPC steps ----

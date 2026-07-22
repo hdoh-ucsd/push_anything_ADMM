@@ -448,9 +448,20 @@ class LCSFormulator:
     # ------------------------------------------------------------------
     def _mu_for_tag(self, tag: str) -> float:
         """Return per-pair-type μ using self._mu_per_pair_type override
-        if present, otherwise fall back to the scalar self.mu."""
+        if present, otherwise fall back to the scalar self.mu.
+
+        Tag normalization: synthesized manipuland-ground rows use the
+        shape-prefixed tags "BOX-VERT-{i}" / "T-VERT-{i}" (see
+        _synthesize_manipuland_ground_contacts). These are collapsed
+        onto "BOX-GND" for lookup so the yaml `mu_per_pair_type`
+        map only needs the three canonical keys
+        (EE-BOX / BOX-GND / EE-GND).
+        """
         if self._mu_per_pair_type is not None:
-            v = self._mu_per_pair_type.get(tag)
+            _lookup = tag
+            if tag.startswith("BOX-VERT") or tag.startswith("T-VERT"):
+                _lookup = "BOX-GND"
+            v = self._mu_per_pair_type.get(_lookup)
             if v is not None:
                 return float(v)
         return float(self.mu)
@@ -1831,13 +1842,17 @@ class LCSFormulator:
                 E_t_an = np.zeros((n_c, n_lam_an))
                 for i in range(n_c):
                     E_t_an[i, 4*i : 4*(i+1)] = 1.0
-                # anitescu_mu_vec: μ replicated 2·dirs per contact
+                # anitescu_mu_vec: μ replicated 2·dirs per contact.
+                # μ can be a scalar (uniform) or an ndarray of shape (n_c,)
+                # (per-pair, ref sampling_c3plus_options.yaml:44
+                # mu_per_pair_type). Indexed lookup handles both.
+                _mu_arr = np.broadcast_to(np.asarray(mu), (n_c,))
                 anitescu_mu_vec = np.zeros(n_lam_an)
                 for i in range(n_c):
                     anitescu_mu_vec[
                         2 * NUM_FRICTION_DIRECTIONS * i :
                         2 * NUM_FRICTION_DIRECTIONS * (i + 1)
-                    ] = mu
+                    ] = float(_mu_arr[i])
                 anitescu_mu_diag = np.diag(anitescu_mu_vec)
                 # J_c folding (analog of lcs_factory.cc:246):
                 #   J_c = E_t^T·J_n + diag(μ)·J_t
