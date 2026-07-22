@@ -2304,11 +2304,13 @@ class SamplingC3Controller:
                     print(f"  Offset projected onto g_hat:           {1000*float(_off[0]*g_hat[0]+_off[1]*g_hat[1]):7.2f} mm")
             # Rich mode: delegate to base_mpc (it will print its standard
             # [ADMM]/[C3]/[MATH.*] diagnostics). On entry from free we wipe
-            # the PI integral and reset the progress tracker so the
-            # next-cycle timeout starts from scratch.
+            # the IK tracker's PI integral. Progress-metric reset is NOT
+            # done here — reference sampling_based_c3_controller.cc:1189
+            # resets ResetProgressMetrics() on entry to REPOSITIONING
+            # (c3->free), not on entry to c3. The port's c3->free block
+            # (line ~4361) now mirrors that reference behavior.
             if self._prev_mode == "free":
                 self.tracker.reset()
-                self.progress.reset()
             u_opt = self.base_mpc.compute_control(
                 current_q, current_v, plant_ctx, target_xy,
                 target_yaw=target_yaw,
@@ -2990,6 +2992,30 @@ class SamplingC3Controller:
             if _x_seq is not None and len(_x_seq) > 1:
                 if _use_ee_space:
                     _p_ee_des = _x_seq[1][7:10].copy()
+                    # Bug 3 guard (2026-07-22): if LCS predicted unphysical
+                    # one-step EE displacement, clip to a plausible target.
+                    # Franka arm max EE Cartesian velocity is ~1 m/s; with
+                    # planning dt=0.1 s the max plausible one-step move is
+                    # ~0.1 m. Use 0.15 m as the safety threshold (50 % margin).
+                    # p41 showed the LCS can produce >>1 m predictions after
+                    # _EE_MASS was miscalibrated — the OSC then chases an
+                    # impossible target and the T becomes uncontrollable.
+                    # Clip, log once per instance.
+                    _plan_move = np.asarray(_p_ee_des, dtype=float) - np.asarray(
+                        ee_pos_now, dtype=float)
+                    _plan_mag  = float(np.linalg.norm(_plan_move))
+                    if _plan_mag > 0.15:
+                        _dir = _plan_move / _plan_mag
+                        _p_ee_des = np.asarray(ee_pos_now, dtype=float) + 0.15 * _dir
+                        if not getattr(self, "_xseq_plausibility_warned", False):
+                            print(
+                                f"[X-SEQ-GUARD] step={self._step} planner "
+                                f"predicted |Δp_ee|={_plan_mag:.3f}m > 0.15m — "
+                                f"clipped to 0.15m. Likely LCS mis-calibration "
+                                f"(e.g., _EE_MASS or dt). See p41 forensic.",
+                                flush=True,
+                            )
+                            self._xseq_plausibility_warned = True
                     # Reference `sampling_based_c3_controller.cc:1757-1759`
                     # freezes the c3-mode EE-position target Z at
                     # sampling_height + wall_offset on every horizon knot:
@@ -3162,6 +3188,7 @@ class SamplingC3Controller:
                                    "_object_shape", "box")
             _cinfo_gate = getattr(self.base_mpc.formulator,
                                    "_last_contact_info", None)
+            _ee_pair_admitted = False
             if (_lam_n is not None
                     and hasattr(_lam_n, "size")
                     and _lam_n.size > 0):
@@ -3171,15 +3198,36 @@ class SamplingC3Controller:
                     _ee_idxs_gate = [i for i, info in enumerate(_cinfo_gate)
                                      if isinstance(info, dict)
                                      and info.get("tag", "") == "EE-BOX"]
+                    _ee_pair_admitted = bool(_ee_idxs_gate)
                     if _ee_idxs_gate:
                         _lam_n_mag = float(np.sum(np.abs(_lam_n[_ee_idxs_gate])))
                     else:
                         _lam_n_mag = 0.0
                 else:
                     _lam_n_mag = float(np.sum(np.abs(_lam_n)))
+                    # Box path / fallback: no per-pair tag scan available,
+                    # so admission is inferred from the fact that _lam_n has
+                    # nonzero size AND cinfo indicates at least one pair.
+                    _ee_pair_admitted = (
+                        _cinfo_gate is not None and len(_cinfo_gate) > 0)
             else:
                 _lam_n_mag = 0.0
-            if _lam_n_mag > 0.05:
+            # Bug 1 fix (2026-07-22, gated 2026-07-22 v2): the p41 pattern
+            # was "LCS admits EE-BOX pair AND planner says λ_n=0" for many
+            # consecutive c3 steps while Drake reality remains in contact.
+            # Root cause: LCS conditioning (17.5x-amplified D rows) caused
+            # planner to disengage. Fallback via nominal_push_force is
+            # WRONG on healthy runs — during legitimate approach/transit
+            # the planner correctly commands small/zero λ. Gate the
+            # fallback on the same "suspicious conditioning" flag Bug 2
+            # emits (dt/m_ee > 0.5). Under normal port config
+            # (m_ee=1.0, dt=0.1 → ratio=0.1), the gate is False and this
+            # block is byte-identical to pre-fix behavior. Under future
+            # qvector-migration attempts where m_ee is rescaled, the
+            # fallback kicks in as intended.
+            _suspicious_cond = (
+                getattr(self.base_mpc.formulator, "_dt_mee_warned", False))
+            if _lam_n_mag > 0.05 or (_ee_pair_admitted and _suspicious_cond):
                 _lam_des = self._derive_force_command(
                     _lam_n, g_hat_3d, plant_ctx=plant_ctx)
             else:
@@ -4353,10 +4401,16 @@ class SamplingC3Controller:
             # Prevents stale z-target if the object shifted vertically during
             # a c3 stint (e.g., box tilted then relaxed).
             self._c3_geom_z_target = None
+            # Reference sampling_based_c3_controller.cc:1189 resets progress
+            # metrics on entry to repositioning. Without this, a freshly-entered
+            # free stint carries the c3-stint's accumulated steps_since_improve,
+            # so any brief free->c3 re-entry immediately re-triggers
+            # kToReposUnproductive instead of getting a fresh grinding budget.
+            self.progress.reset()
             if self.log_diag:
                 print(f"[RICH-EXIT-REFRESH] step={self._step} "
                       f"mode {self._prev_mode}->{mode} reason={reason.name} "
-                      f"forcing buffer refresh + clearing prev_repos")
+                      f"forcing buffer refresh + clearing prev_repos + progress reset")
         self._prev_mode              = mode
         self.last_mode               = mode
         self.last_switch_reason      = reason

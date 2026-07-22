@@ -850,29 +850,30 @@ class QuadraticManipulationCost:
             ])
             # Reference weight: w_Q * q_vector[0:3] = 50 * 0.01 = 0.5 per axis.
             # Use the port's `q_vec_ee_pos * w_Q` (defaults [0.01,0.01,0.01]*45=0.45)
-            # to match reference structure regardless of `use_reference_q_vector`.
-            _w_ee = float(self.w_Q) * np.asarray(self._q_vec_ee_pos, dtype=float)
-            for _i, _slot in enumerate(range(7, 10)):
-                Q[_slot, _slot] += _w_ee[_i]
+            # to match reference structure. Skip when `use_reference_q_vector`
+            # is set — the base Q assignment at line 796 already writes this
+            # exact weight into Q[7:10], so adding again would double-count.
+            if not self.use_reference_q_vector:
+                _w_ee = float(self.w_Q) * np.asarray(self._q_vec_ee_pos, dtype=float)
+                for _i, _slot in enumerate(range(7, 10)):
+                    Q[_slot, _slot] += _w_ee[_i]
 
-        # --- Yaw target (linear-in-quaternion residual) ---
+        # --- Yaw target ---
         # Reference has no rank-1 outer-product yaw form; yaw is entirely
-        # handled by the near-goal quaternion Hessian override. Skip when the
-        # reference q_vector path is active to avoid double-counting yaw
-        # penalty (linear rank-1 + Hessian replacement).
+        # handled by the near-goal quaternion Hessian override (line ~886).
+        # Always seed x_ref quaternion from target_yaw so BOTH the (optional)
+        # port-only linear form and the reference Hessian form have a proper
+        # goal-quat reference — the Hessian cost `(x - x_ref)^T Q_quat (x - x_ref)`
+        # only drives x toward q_goal if x_ref = q_goal.
         self._target_yaw = float(target_yaw)
+        a_half = 0.5 * self._target_yaw
+        x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
+        x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
+        # Optional linear rank-1 form — port-only far-goal add-on. Set
+        # w_yaw:0 in tasks.yaml to match reference (Hessian-only) behavior.
         if self.w_yaw > 0.0 and not self.use_reference_q_vector:
-            a_half = 0.5 * self._target_yaw
             cy = np.array([-np.sin(a_half), 0.0, 0.0, np.cos(a_half)])
             Q[0:4, 0:4] += self.w_yaw * np.outer(cy, cy)
-            x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
-            x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
-        elif self.use_reference_q_vector:
-            # Still need to seed x_ref with goal quaternion so the diagonal
-            # obj_quat penalty pulls toward the correct pose.
-            a_half = 0.5 * self._target_yaw
-            x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
-            x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
 
         # --- Near-goal quaternion-dependent Q_block override ---
         # Reference sampling_based_c3_controller.cc:1517-1570.

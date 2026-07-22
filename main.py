@@ -565,6 +565,12 @@ def main():
     # other dimensions (state, input, cost) constant.
     if args.ee_space:
         _solver_n_x, _solver_n_u = 19, 3
+        # 2026-07-22 qvector migration attempts (p44-p46) all failed:
+        # coordinated 4-tuple (m_ee=0.057, u=50, qvec=True, w_Q=50) at
+        # admm_iter=25 caused dual residual to explode 1000×/solve.
+        # Root cause: port uses scalar ρ ADMM augmentation; reference
+        # uses per-slot G matrix. Without matching the G structure, the
+        # amplified qvector cost cannot be balanced. Reverted to p38.
         _torque_limit = 30.0    # Newtons under EE-space (EE-force cap)
     else:
         _solver_n_x, _solver_n_u = n_x, n_u
@@ -805,6 +811,29 @@ def main():
         if not (np.all(np.isfinite(current_q)) and np.all(np.isfinite(current_v))):
             print(f"[WARN] NaN in state at t={sim_time:.3f}s — stopping.")
             break
+        # ---- Object-position blowup abort (Bug 4 safety net) --------------
+        # 2026-07-22: p41 diverged silently over 145s because obj_z hit
+        # -107km without triggering NaN. Any LCS-parameter experiment can
+        # produce sim divergence; without this abort the run wastes 10+ min
+        # of compute and produces misleading logs. Threshold TIGHTENED
+        # 1.0 → 0.5m after p44 attempts got WSL-killed at drift ~0.9m before
+        # Bug 4 could fire (Drake contact solver bogs down as T sinks,
+        # allowing WSL OOM/CPU kill before the sim reaches the abort).
+        # Table-top push should never displace object > 0.5m; anything past
+        # that is divergent. TEMPORARY: remove once qvector migration is
+        # implemented properly (per user directive 2026-07-22).
+        _obj_now = np.array([current_q[obj_x_idx],
+                             current_q[obj_y_idx],
+                             current_q[obj_z_idx]])
+        _obj_init = np.asarray(task_cfg["init_xyz"], dtype=float)
+        _drift = float(np.linalg.norm(_obj_now - _obj_init))
+        if _drift > 0.5:
+            raise RuntimeError(
+                f"[ABORT] Object position blowup at t={sim_time:.3f}s: "
+                f"obj={_obj_now.tolist()} vs init={_obj_init.tolist()} "
+                f"drift={_drift:.3f}m > 1.0m — sim numerically diverged. "
+                "See main.py Bug 4 safety net."
+            )
         arm_q = current_q[:n_u]
         if np.any(arm_q < _Q_LO - 0.05) or np.any(arm_q > _Q_HI + 0.05):
             violating = np.where(
