@@ -95,7 +95,7 @@ _CROSSED_RE = re.compile(
 _RESULT_RE = re.compile(
     r"^\[RESULT\] method=(\S+)\s+"
     r"final_obj_xy=\(([-\d.]+), ([-\d.]+)\)\s+"
-    r"goal_dist=([\d.]+)m\s+orient_err=([\d.]+)rad\s+"
+    r"translational_error=([\d.]+)m\s+rotational_error=([\d.]+)rad\s+"
     r"success=(\w+)\s+tight_goal=(\S+)\s+loose_goal=(\S+)")
 
 # -------------------------------------------------------------------- colors
@@ -369,7 +369,7 @@ def render_panel(state: RunState, panel_w: int, H: int,
     trend = ("↓" if state.d10 < -1e-4
              else ("↑" if state.d10 > 1e-4 else "→"))
     _draw(draw, (x, y),
-          f"goal_dist={state.goal_dist*1000:7.3f}mm  "
+          f"translational_error={state.goal_dist*1000:7.3f}mm  "
           f"d10={state.d10*1000:+7.3f}mm  trend={trend}",
           font, fill=C_INFO); y += line_h
     _draw(draw, (x, y),
