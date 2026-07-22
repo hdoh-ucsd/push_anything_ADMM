@@ -528,10 +528,15 @@ def main():
     _mu_manip  = float(task_cfg["friction"])
     _mu_pusher = float(task_cfg.get("pusher_friction", 1.0))
     _mu_lcs    = 2.0 * _mu_manip * _mu_pusher / (_mu_manip + _mu_pusher)
+    _mu_per_pair = task_cfg.get("mu_per_pair_type", None)
+    if _mu_per_pair is not None:
+        print(f"[TASK] mu_per_pair_type override active: {_mu_per_pair} "
+              f"(scalar fallback mu={_mu_lcs:.4f})", flush=True)
     formulator = LCSFormulator(
         plant, mu=_mu_lcs, obj_body=obj_body,
         plant_ad=plant_ad, context_ad=context_ad,
         object_shape=_obj_shape_for_defaults,
+        mu_per_pair_type=_mu_per_pair,
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
