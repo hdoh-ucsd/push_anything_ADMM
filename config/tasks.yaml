@@ -220,7 +220,13 @@ tasks:
       q_vector_ee_vel:        [5.0, 5.0, 5.0]
       q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
       q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
-      w_obj_xy:      9000.0
+      # 2026-07-22 xy bumped to reference parity. Reference push_t
+      # sampling_c3plus_options.yaml position regime: q_vector_position[8:10]=250
+      # × w_Q=50 = 12500 per axis. Port was 9000 (~72% of ref). p43 diagnosis:
+      # planner commanded 0.72N west push against 4.53N static-friction
+      # threshold on 1kg T (μ=0.462) — insufficient because Q_xy gradient too
+      # weak. Matches the z-tracking fix pattern (position regime target 12500).
+      w_obj_xy:     12500.0
       w_obj_z:         10.0
       # 2026-07-22 z-tracking bumped to reference parity. Reference push_t
       # sampling_c3plus_options.yaml position regime: q_vector_position[10]=250
@@ -246,7 +252,10 @@ tasks:
       # compete with the yaw correction. Same 0.80/0.48 ratio the box config
       # (tasks.yaml:62-63) uses. task_costs.py:build_ee_space applies the
       # swap; the legacy build() path already had it.
-      w_obj_xy_pose: 7200.0    # 9000 × 0.80
+      # 2026-07-22 pose xy bumped to reference parity (p47).
+      # Reference push_t q_vector[8:10]=200 × w_Q=50 = 10000 per axis pose.
+      # Ratio to position regime preserved (10000/12500 = 0.80).
+      w_obj_xy_pose: 10000.0  # 12500 × 0.80, matches ref pose q_vec[8:10]×w_Q
       # 2026-07-22 pose-regime z bumped to reference parity. Reference push_t
       # sampling_c3plus_options.yaml pose regime: q_vector[10]=120 × w_Q=50 =
       # 6000 obj_z weight. Port was w_obj_z + w_box_z_pose = 10 + 48 = 58

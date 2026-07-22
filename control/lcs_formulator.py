@@ -84,6 +84,17 @@ class LCSFormulator:
         #   no box_ground_drag (Anitescu holds λ_n_gnd on its own)
         #   no normal-row patches (Stewart-Trinkle-specific, dead here)
         self._contact_model = "anitescu"
+        # Reference c3/core/lcs.cc:46 ScaleComplementarityDynamics.
+        # Reference push_t/parameters/sampling_c3plus_options.yaml:11
+        # `scale_lcs: true`. Rescales the LCS complementarity block so
+        # ||D|| == ||A|| — improves ADMM conditioning by keeping state and
+        # λ-direction gradients balanced. Without it, port's 3-iter ADMM
+        # converges only on state, leaves λ under-updated → planner |u|
+        # stuck at ~1N regardless of goal_dist (p43 diagnosis). Default
+        # True matches reference push_t.
+        import os as _os_scl
+        self._scale_lcs = (
+            _os_scl.environ.get("PUSHA_SCALE_LCS", "1") == "1")
         # Phantom EE-box pair injection (port-only, no reference analog).
         # When True and the natural sd_pairs list has no EE-BOX pair (real
         # signed distance > lcs_formulator.py:245 2 mm threshold), inject the
@@ -1947,6 +1958,37 @@ class LCSFormulator:
             F_lcs = F_an
             H_lcs = H_an
             c_lcs = c_an
+
+        # -----------------------------------------------------------------
+        # 5.5. Reference-conformant LCS scaling (scale_lcs: true).
+        # -----------------------------------------------------------------
+        # Mirrors c3/core/lcs.cc:46 ScaleComplementarityDynamics.
+        # scale = ||A|| / ||D||;  D *= scale;  E/=scale;  c/=scale;  H/=scale.
+        # Algebraically preserves 0 ≤ λ ⊥ Ex+Fλ+Hu+c ≥ 0 and x_{k+1} = ...
+        # (D*scale·λ · 1/scale-nothing... actually the state-update D·λ term
+        # gets D_new·λ_new where λ_new = λ_old/scale — but the port passes
+        # the raw λ_seq from ADMM which now solves for a rescaled λ. The
+        # planner's λ output is scaled; the wrapper's contact-force use
+        # (_derive_force_command → OSC feedforward) reads λ_n as-is. This
+        # matches reference: reference downstream also sees the scaled λ.
+        # Guard against zero D (no contact predicted this tick — leave
+        # matrices unscaled to avoid divide-by-zero).
+        if self._scale_lcs:
+            _A_norm = float(np.linalg.norm(A))
+            _D_norm = float(np.linalg.norm(D))
+            if _D_norm > 1e-12:
+                _scale = _A_norm / _D_norm
+                D     = D * _scale
+                E_lcs = E_lcs / _scale
+                H_lcs = H_lcs / _scale
+                c_lcs = c_lcs / _scale
+                # One-shot log so we can verify the scaling is active.
+                if not getattr(self, "_scale_lcs_logged", False):
+                    print(f"[LCS-SCALE] scale_lcs active: ||A||={_A_norm:.3f} "
+                          f"||D_raw||={_D_norm:.3f} scale={_scale:.3f} "
+                          f"(D scaled UP, E/H/c scaled DOWN by same factor)",
+                          flush=True)
+                    self._scale_lcs_logged = True
 
         # -----------------------------------------------------------------
         # 6. Stash for diagnostics + return (mirror R^7 path's API).
