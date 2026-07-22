@@ -15,7 +15,18 @@ import pydrake.all as ad
 # reference relies on when tracking sampling_height / z_height at 0.002-0.005
 # (targets that would otherwise be below the port's tip-below-base reach
 # in the R^7 → R^3 EE-space projection).
-ROBOT_BASE_XYZ = [0.0, -0.6, 0.029]
+# 2026-07-21: aligned to reference sampling_c3_utils.cc:24-26
+# `plant->WeldFrames(world, panda_link0, X_WI=Identity)` — Franka base
+# at world origin. Reference operates with T-init at (0.5, 0, -0.009)
+# (0.5 m directly +x from arm) and goal at (0.482, 0.187, -0.009).
+# The 29 mm z offset is retained (was port-only elevation for tip-
+# below-base reach; reference has ground at z=-0.029 and arm at z=0,
+# equivalent 29mm arm-above-ground separation).
+# Prior port value (0, -0.6, 0.029) placed arm 0.6 m in -y direction
+# from origin, forcing T-push operations to happen in the arm's rear
+# workspace where +y-reach is kinematically limited to ~0.30 m
+# (workspace_xy_max_y=0.30 = the dominant failure envelope).
+ROBOT_BASE_XYZ = [0.0, 0.0, 0.029]
 
 # IK seed for compute_safe_init_arm_q. Not used directly as the start
 # pose — `compute_safe_init_arm_q` runs IK from this seed to place the EE
