@@ -99,9 +99,13 @@ def _box_sdf(cfg: dict) -> str:
       </inertial>
       <collision name="collision">
         <geometry><box><size>{sx} {sy} {sz}</size></box></geometry>
-        <surface>
-          <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
-        </surface>
+        <!-- 2026-07-22: <surface><friction><ode><mu*> tags removed.
+             They were duplicating the friction data already declared in
+             <drake:proximity_properties><drake:mu_dynamic>, and Drake
+             silently ignored them ("...tags are ignored" warning per
+             collision element on every load). Only drake:mu_dynamic is
+             consumed for LCS friction; the ODE mu tags contributed
+             nothing except log noise. -->
         <drake:proximity_properties>
           <drake:compliant_hydroelastic/>
           <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
@@ -139,9 +143,13 @@ def _sphere_sdf(cfg: dict) -> str:
       </inertial>
       <collision name="collision">
         <geometry><sphere><radius>{rad}</radius></sphere></geometry>
-        <surface>
-          <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
-        </surface>
+        <!-- 2026-07-22: <surface><friction><ode><mu*> tags removed.
+             They were duplicating the friction data already declared in
+             <drake:proximity_properties><drake:mu_dynamic>, and Drake
+             silently ignored them ("...tags are ignored" warning per
+             collision element on every load). Only drake:mu_dynamic is
+             consumed for LCS friction; the ODE mu tags contributed
+             nothing except log noise. -->
         <drake:proximity_properties>
           <drake:compliant_hydroelastic/>
           <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
@@ -202,9 +210,13 @@ def _tshape_sdf(cfg: dict) -> str:
       <collision name="vertical_bar">
         <pose>0.05 0 0 0 0 0</pose>
         <geometry><box><size>0.16 0.04 0.04</size></box></geometry>
-        <surface>
-          <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
-        </surface>
+        <!-- 2026-07-22: <surface><friction><ode><mu*> tags removed.
+             They were duplicating the friction data already declared in
+             <drake:proximity_properties><drake:mu_dynamic>, and Drake
+             silently ignored them ("...tags are ignored" warning per
+             collision element on every load). Only drake:mu_dynamic is
+             consumed for LCS friction; the ODE mu tags contributed
+             nothing except log noise. -->
         <drake:proximity_properties>
           <drake:compliant_hydroelastic/>
           <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
@@ -216,9 +228,13 @@ def _tshape_sdf(cfg: dict) -> str:
       <collision name="horizontal_bar">
         <pose>-0.05 0 0 0 0 1.5708</pose>
         <geometry><box><size>0.16 0.04 0.04</size></box></geometry>
-        <surface>
-          <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
-        </surface>
+        <!-- 2026-07-22: <surface><friction><ode><mu*> tags removed.
+             They were duplicating the friction data already declared in
+             <drake:proximity_properties><drake:mu_dynamic>, and Drake
+             silently ignored them ("...tags are ignored" warning per
+             collision element on every load). Only drake:mu_dynamic is
+             consumed for LCS friction; the ODE mu tags contributed
+             nothing except log noise. -->
         <drake:proximity_properties>
           <drake:compliant_hydroelastic/>
           <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
