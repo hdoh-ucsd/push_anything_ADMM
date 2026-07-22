@@ -446,6 +446,16 @@ class LCSFormulator:
         return phis_s, J_n_rows_s, J_t_rows_s, ci_s
 
     # ------------------------------------------------------------------
+    def _mu_for_tag(self, tag: str) -> float:
+        """Return per-pair-type μ using self._mu_per_pair_type override
+        if present, otherwise fall back to the scalar self.mu."""
+        if self._mu_per_pair_type is not None:
+            v = self._mu_per_pair_type.get(tag)
+            if v is not None:
+                return float(v)
+        return float(self.mu)
+
+    # ------------------------------------------------------------------
     def extract_lcs_contacts(self, context,
                              # 0.002 m is the validated Pareto-optimal value.
                              # An ablation at 0.040 m (results/thresh40_west_*)
@@ -621,6 +631,12 @@ class LCSFormulator:
 
         W = self.plant.world_frame()
         phis, J_n_rows, J_t_rows = [], [], []
+        # Per-pair μ vector — aligned with `phis` (one entry per admitted
+        # pair). Populated from `self._mu_per_pair_type` (if set) using
+        # the pair's tag ("EE-BOX" | "BOX-GND" | "EE-GND" | "OTHER").
+        # Falls back to the scalar `self.mu` when the map is unset or
+        # the tag is not present. Reference: sampling_c3plus_options.yaml:44.
+        mus: list = []
 
         # Stored for diagnostic access by the MPC controller
         self._last_nhats: list  = []   # world-frame normals (force-on-box direction)
@@ -691,6 +707,7 @@ class LCSFormulator:
                 "p_BCb": np.array(sdp.p_BCb),
                 "distance": float(sdp.distance),
             })
+            mus.append(self._mu_for_tag(_tag))
             # One-line contact-mode log for the T port validation. Emits per
             # EE-manipuland admission: which element was contacted + φ. Muted
             # for non-EE-BOX pairs to avoid ground-contact spam.
@@ -746,6 +763,9 @@ class LCSFormulator:
             self._last_contact_info.extend(ci_s)
             for ci in ci_s:
                 self._last_nhats.append(ci["nhat_onto_box"])
+                # Synthesized rows are all manipuland ↔ ground; use the
+                # BOX-GND per-pair μ (or scalar fallback).
+                mus.append(self._mu_for_tag(ci.get("tag", "BOX-GND")))
             # ee_box_contacts list is for the rotation-bonus scorer (EE-BOX
             # pairs only) — synthesized BOX-VERT contacts do not contribute.
 
@@ -791,14 +811,20 @@ class LCSFormulator:
                 np.zeros(0),
                 np.zeros((0, self.n_v)),
                 np.zeros((0, self.n_v)),
-                self.mu,
+                np.zeros(0),
             )
+
+        if not getattr(self, "_mu_per_pair_first_logged", False):
+            _tags = [info.get("tag", "?") for info in self._last_contact_info]
+            print(f"[LCS-MU-PER-PAIR] first admission: tags={_tags} "
+                  f"mus={mus}  scalar_fallback_mu={self.mu}", flush=True)
+            self._mu_per_pair_first_logged = True
 
         return (
             np.array(phis),
             np.vstack(J_n_rows),    # (n_c, n_v)
             np.vstack(J_t_rows),    # (4*n_c, n_v)
-            self.mu,
+            np.asarray(mus, dtype=float),   # (n_c,) per-pair μ
         )
 
     # ------------------------------------------------------------------
@@ -1198,7 +1224,13 @@ class LCSFormulator:
                 E_t[i, 4 * i : 4 * (i + 1)] = 1.0
 
             # γ rows (slot SG : SG+n_c) — no x, u, c dependence.
-            F_lcs[SG:SG + n_c,  SLN:SLN + n_c]  = mu * np.eye(n_c)
+            # μ can be a scalar (uniform) OR an ndarray of shape (n_c,)
+            # containing per-pair coefficients (ref
+            # sampling_c3plus_options.yaml:44 mu_per_pair_type). Use
+            # np.diag(mu) which handles both — scalar broadcasts to
+            # μ·I, array uses each entry on the diagonal.
+            F_lcs[SG:SG + n_c,  SLN:SLN + n_c]  = np.diag(
+                np.broadcast_to(np.asarray(mu), (n_c,)))
             F_lcs[SG:SG + n_c,  SLT:SLT + n_t]  = -E_t
 
             # λ_n rows (slot SLN : SLN+n_c).
@@ -1670,7 +1702,13 @@ class LCSFormulator:
                 E_t[i, 4 * i : 4 * (i + 1)] = 1.0
 
             # γ rows (state-independent, identical to R^7 path).
-            F_lcs[SG:SG + n_c,  SLN:SLN + n_c]  = mu * np.eye(n_c)
+            # μ can be a scalar (uniform) OR an ndarray of shape (n_c,)
+            # containing per-pair coefficients (ref
+            # sampling_c3plus_options.yaml:44 mu_per_pair_type). Use
+            # np.diag(mu) which handles both — scalar broadcasts to
+            # μ·I, array uses each entry on the diagonal.
+            F_lcs[SG:SG + n_c,  SLN:SLN + n_c]  = np.diag(
+                np.broadcast_to(np.asarray(mu), (n_c,)))
             F_lcs[SG:SG + n_c,  SLT:SLT + n_t]  = -E_t
 
             # λ_n rows: η_n = φ/dt + J_n · v_{k+1}
