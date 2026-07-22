@@ -565,6 +565,39 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         builder.Connect(scene_graph.get_query_output_port(),
                         rgbd.query_object_input_port())
 
+        # 2026-07-22: Reference-style video path (opt-in via
+        # PUSHA_USE_DRAKE_VIDEO_WRITER=1). Mirrors reference
+        # examples/sampling_c3/process_lcm_logs.py:457-461 which uses
+        # pydrake.visualization.VideoWriter with backend="cv2". Drake
+        # accumulates frames from the RgbdSensor at `fps` automatically;
+        # main.py calls video_writer.Save() at end-of-sim. Alternative
+        # to the port's default PNG-per-tick + ffmpeg pipeline (which
+        # remains active when the env var is unset).
+        if _os_cam.environ.get("PUSHA_USE_DRAKE_VIDEO_WRITER", "0") == "1":
+            from pydrake.visualization import VideoWriter as _DrakeVideoWriter
+            _vid_fps = float(_os_cam.environ.get(
+                "PUSHA_DRAKE_VIDEO_FPS", "16.0"))
+            # Reference uses backend="cv2" (process_lcm_logs.py:459).
+            # Requires opencv-python installed (`pip install opencv-python`).
+            # Fallback: PIL backend supports gif/apng/webp but NOT mp4.
+            _vid_backend = _os_cam.environ.get(
+                "PUSHA_DRAKE_VIDEO_BACKEND", "cv2")
+            _vid_filename = _os_cam.environ.get(
+                "PUSHA_DRAKE_VIDEO_FILENAME",
+                "results/_drake_video_writer_output.mp4")
+            _drake_video_writer = _DrakeVideoWriter(
+                filename=_vid_filename, fps=_vid_fps, backend=_vid_backend)
+            builder.AddSystem(_drake_video_writer)
+            _drake_video_writer.ConnectRgbdSensor(
+                builder=builder, sensor=rgbd)
+            print(f"[C3] PUSHA_USE_DRAKE_VIDEO_WRITER=1 — "
+                  f"pydrake.visualization.VideoWriter added "
+                  f"(filename={_vid_filename} fps={_vid_fps} "
+                  f"backend={_vid_backend})  ref: "
+                  f"process_lcm_logs.py:457-461", flush=True)
+        else:
+            _drake_video_writer = None
+
     diagram = builder.Build()
 
     # ------------------------------------------------------------------
@@ -576,7 +609,12 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
     plant_ad   = plant.ToAutoDiffXd()
     context_ad = plant_ad.CreateDefaultContext()
 
-    return diagram, plant, panda_model, object_model, meshcat, plant_ad, context_ad
+    # 2026-07-22: 8th return element is the reference-style
+    # pydrake.visualization.VideoWriter instance when
+    # PUSHA_USE_DRAKE_VIDEO_WRITER=1 (else None).
+    return (diagram, plant, panda_model, object_model, meshcat,
+            plant_ad, context_ad,
+            _drake_video_writer if add_camera else None)
 
 
 # ---------------------------------------------------------------------------
