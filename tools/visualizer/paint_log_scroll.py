@@ -53,6 +53,9 @@ _STICKY_TAGS = {
     "[§7.70]",
     "[ENV]  init arm q",
     "[C3] PUSHA_USE_DRAKE_VIDEO_WRITER",
+    "[CONSENSUS-BIND]",
+    "[CONSENSUS-DEF]",
+    "[CONSENSUS]",
 }
 _ROLLING_TAGS = {
     "[STEP]",
@@ -72,6 +75,9 @@ _TAG_COLORS = {
     "[MATH.setup]":            (255, 220, 100),   # yellow
     "[LCS-MU-PER-PAIR]":       (255, 180, 255),   # magenta
     "[TASK]":                  (255, 180, 255),   # magenta
+    "[CONSENSUS-BIND]":        (180, 255, 220),   # aqua
+    "[CONSENSUS-DEF]":         (180, 255, 220),   # aqua
+    "[CONSENSUS]":             (255, 255, 180),   # pale yellow
 }
 _DEFAULT_COLOR = (200, 200, 200)
 
