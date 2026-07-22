@@ -65,25 +65,17 @@ class C3Solver:
 
     def __init__(self, n_x: int, n_u: int, rho: float = 1.0,
                  math_diag: bool = False, mode: str = "c3",
-                 c3plus_projection: str = "componentwise",
                  penalize_input_change: bool = True):
         assert mode in ("c3", "c3plus"), f"unknown solver mode: {mode}"
-        # C3+ δ-projection variant (only consulted when mode='c3plus'):
-        #   'componentwise' : Bui 2026 eq (12) per-scalar-pair test —
-        #                     the paper's no-feasibility-guarantee class
-        #                     (paper §V-B3). FAST (~µs) but lets non-
-        #                     converged z carry fictional λ.
-        #   'lcp'           : Aydinoglu §V-B.3.b LCP-projection retrofit
-        #                     applied to the C3+ structure (η-slack kept,
-        #                     LCP enforces 0≤λ⊥η≥0 per timestep using F).
-        #                     Feasibility-guaranteed per iteration.
-        #                     SLOWER (Lemke pivot per ADMM iter per knot).
-        # Default 'componentwise' preserves prior behavior for unflagged
-        # callers. Multi-seed verification of 'lcp' is pending.
-        assert c3plus_projection in ("componentwise", "lcp"), (
-            f"unknown c3plus_projection: {c3plus_projection}"
-        )
-        self.c3plus_projection = c3plus_projection
+        # C3+ δ-projection is the paper's `componentwise` (Bui 2026
+        # eq 12) per-scalar-pair test — matches reference
+        # sampling_c3plus_options.yaml projection_type: 'C3+'. The
+        # port previously carried an alternate LCP-projection variant
+        # (Aydinoglu §V-B.3.b retrofit); it was reference-nonconformant
+        # and empirically convergence-limited at admm_iter=3, so it was
+        # removed. If a formal C3+ vs C3-classic study is needed later,
+        # use --solver c3 (which still runs an LCP-based δ-step from
+        # control/lcp_solver.py, matching the classic paper exactly).
         self.n_x        = n_x
         self.n_u        = n_u
         self.rho        = rho
@@ -107,7 +99,6 @@ class C3Solver:
         self._w_comp    = 0.0
         self._solver    = ad.OsqpSolver()
         self._diag_step = 0
-        self._last_lcp_res_max = float('nan')
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
         self._eye_total_dim  = -1       # sentinel: rebuild when total_dim changes
@@ -1410,98 +1401,52 @@ class C3Solver:
                     # ===== δ-update (C3+ NEW): x and u pass through =====
                     delta = z_sol + omega
 
-                    # ===== δ-update on (λ, η): two variants =====
-                    #   componentwise (Bui eq 12)  : per-scalar-pair, no F coupling
-                    #   lcp           (Aydinoglu)  : per-knot LCP solve, F coupling,
-                    #                                δ_η = F·δ_λ + (E·δ_x + H·δ_u + c)
-                    # Both produce δ_λ ≥ 0 and δ_η ≥ 0 with complementarity, but
-                    # only the LCP variant guarantees δ satisfies the η equality
-                    # (which is the QP equality constraint at OSQP-feasibility).
-                    # The componentwise variant lets δ_λ and δ_η disagree from the
-                    # affine expression — which is the mechanism that let the v6
-                    # planner harvest fictional λ_n=7.5.
+                    # ===== δ-update on (λ, η): Bui 2026 eq (12) =====
+                    # Componentwise per-scalar-pair projection. Matches
+                    # reference sampling_c3plus_options.yaml
+                    # projection_type: 'C3+'. See _project_componentwise.
                     if n_lambda > 0:
-                        use_lcp = (self.c3plus_projection == "lcp")
-                        if use_lcp:
-                            # Local import — Drake-dependent (mirrors C3 path).
-                            from control.lcp_solver import solve_lcp
-                        lcp_residuals_block: list[float] = []
-                        # Per-iter case histogram for [CONSENSUS] view. Bui
-                        # eq (12) has three cases: 1=η wins (λ→0), 2=λ wins
-                        # (η→0), 3=both zero. Counts are per-slot summed
-                        # across all knots.
-                        # Case histogram split into normal-λ (N) and
-                        # tangent-λ (T) sub-slots so the panel can render
-                        # them independently. Under ST layout, one knot's λ
-                        # block is [γ (num_normals) | λ_n (num_normals) |
-                        # λ_t (n_lambda − 2·num_normals)]. Anitescu-folded
-                        # variants may not split cleanly; when
-                        # 2·num_normals > n_lambda the N/T buckets collapse
-                        # into a single "ALL" bucket.
-                        _proj_N = [0, 0, 0]   # λ_n case counts
-                        _proj_T = [0, 0, 0]   # λ_t case counts
-                        _proj_G = [0, 0, 0]   # γ case counts (ST only)
+                        # Per-iter case histogram for [CONSENSUS] view.
+                        # Split into λ_n (N) and λ_t (T) sub-slots (γ slots
+                        # bucketed separately, not rendered).
+                        _proj_N = [0, 0, 0]
+                        _proj_T = [0, 0, 0]
+                        _proj_G = [0, 0, 0]
                         _proj_case1 = 0
                         _proj_case2 = 0
                         _proj_case3 = 0
                         _N_lo_off = num_normals
                         _N_hi_off = 2 * num_normals
-                        _T_hi_off = n_lambda
                         for i in range(N):
                             li = i * TOT + SL
                             ei = i * TOT + SE
-                            xi = i * TOT          # x slot start
-                            ui = i * TOT + n_x + n_lambda  # u slot start
                             lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
                             eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
-                            if use_lcp:
-                                # Same LCP recipe as the C3 path's δ-step:
-                                # q_lcp = E·δ_x + H·δ_u + c with δ_* = z + ω.
-                                d_x_iter = z_sol[xi:xi+n_x] + omega[xi:xi+n_x]
-                                d_u_iter = z_sol[ui:ui+n_u] + omega[ui:ui+n_u]
-                                q_lcp    = E @ d_x_iter + H @ d_u_iter + c_lcs
-                                d_lam, lcp_res = solve_lcp(F, q_lcp)
-                                # δ_η derived from F·δ_λ + q makes the LCP
-                                # solution consistent with the η equality
-                                # constraint of C3+ (Bui eq 5c).
-                                d_eta = F @ d_lam + q_lcp
-                                # Numerical floor: tiny negative from Lemke
-                                # round-off → clamp.
-                                d_eta = np.maximum(d_eta, 0.0)
-                                lcp_residuals_block.append(lcp_res)
-                            else:
-                                d_lam, d_eta = self._project_componentwise(
-                                    lam_blk, eta_blk, u_lam_w, u_eta_w)
-                                # Count Bui eq (12) cases (only for
-                                # componentwise; LCP path has no case
-                                # decomposition). Threshold 1e-12 avoids
-                                # counting numerical zeros.
-                                _sqrt_ratio = float(np.sqrt(
-                                    (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
-                                    / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
-                                for _j in range(n_lambda):
-                                    _lo = float(lam_blk[_j])
-                                    _eo = float(eta_blk[_j])
-                                    _c1 = (_eo >= 0.0) and (_eo >= _sqrt_ratio * _lo)
-                                    _c2 = (_lo >= 0.0) and (_eo <  _sqrt_ratio * _lo)
-                                    if _c1:
-                                        _case_idx = 0
-                                    elif _c2:
-                                        _case_idx = 1
-                                    else:
-                                        _case_idx = 2
-                                    # Split by slot position in the λ block.
-                                    if _j < _N_lo_off:
-                                        _proj_G[_case_idx] += 1
-                                    elif _j < _N_hi_off:
-                                        _proj_N[_case_idx] += 1
-                                    else:
-                                        _proj_T[_case_idx] += 1
-                                # Total counts (kept for the SUM line
-                                # backward compat).
-                                _proj_case1 = _proj_N[0]+_proj_T[0]+_proj_G[0]
-                                _proj_case2 = _proj_N[1]+_proj_T[1]+_proj_G[1]
-                                _proj_case3 = _proj_N[2]+_proj_T[2]+_proj_G[2]
+                            d_lam, d_eta = self._project_componentwise(
+                                lam_blk, eta_blk, u_lam_w, u_eta_w)
+                            _sqrt_ratio = float(np.sqrt(
+                                (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
+                                / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
+                            for _j in range(n_lambda):
+                                _lo = float(lam_blk[_j])
+                                _eo = float(eta_blk[_j])
+                                _c1 = (_eo >= 0.0) and (_eo >= _sqrt_ratio * _lo)
+                                _c2 = (_lo >= 0.0) and (_eo <  _sqrt_ratio * _lo)
+                                if _c1:
+                                    _case_idx = 0
+                                elif _c2:
+                                    _case_idx = 1
+                                else:
+                                    _case_idx = 2
+                                if _j < _N_lo_off:
+                                    _proj_G[_case_idx] += 1
+                                elif _j < _N_hi_off:
+                                    _proj_N[_case_idx] += 1
+                                else:
+                                    _proj_T[_case_idx] += 1
+                            _proj_case1 = _proj_N[0]+_proj_T[0]+_proj_G[0]
+                            _proj_case2 = _proj_N[1]+_proj_T[1]+_proj_G[1]
+                            _proj_case3 = _proj_N[2]+_proj_T[2]+_proj_G[2]
                             delta[li:li+n_lambda] = d_lam
                             delta[ei:ei+n_lambda] = d_eta
                         # Expose case counts + N/T split for the [CONSENSUS]
@@ -1511,9 +1456,6 @@ class C3Solver:
                         self._last_proj_case_N = tuple(_proj_N)
                         self._last_proj_case_T = tuple(_proj_T)
                         self._last_proj_n_slots = int(N * n_lambda)
-                        # Stash LCP residual for diagnostics on the LCP path.
-                        if use_lcp and lcp_residuals_block:
-                            self._last_lcp_res_max = float(max(lcp_residuals_block))
 
                 # Capture omega BEFORE the dual update so [CONSENSUS] can
                 # print w_before / delta_w / w_after per eq (9).
@@ -1625,8 +1567,7 @@ class C3Solver:
                     rho * np.linalg.norm(_delta_le - _delta_le_prev))
                 _case_hist = getattr(self, "_last_proj_case_hist", (0, 0, 0))
                 _n_slots = getattr(self, "_last_proj_n_slots", 0)
-                _proj_mode = self.c3plus_projection
-                print(f"[CONSENSUS] i={it} mode=c3plus proj={_proj_mode} SUM:  "
+                print(f"[CONSENSUS] i={it} mode=c3plus proj=componentwise SUM:  "
                       f"r_prim_stacked = sqrt(Σ r_prim_k²) = "
                       f"{_r_prim_stacked:.6e}  "
                       f"r_dual = rho·||δ-δ_prev|| = {_r_dual_stacked:.6e}  "
@@ -1940,11 +1881,8 @@ class C3Solver:
             _gap_eta = float(np.sqrt(_gap_eta_sq))
             _case_N = getattr(self, "_last_proj_case_N", (0, 0, 0))
             _case_T = getattr(self, "_last_proj_case_T", (0, 0, 0))
-            _lcp_str = (f"{self._last_lcp_res_max:.2e}"
-                        if self.c3plus_projection == "lcp"
-                        else "nan(componentwise)")
             print(f"[CONSENSUS-STEP] step={self._diag_step} "
-                  f"mode=c3plus proj={self.c3plus_projection} "
+                  f"mode=c3plus proj=componentwise "
                   f"rho_start={rho_hist[0]:.1f} rho_end={rho:.1f} "
                   f"iters={actual_iters}/{admm_iter} "
                   f"primal={primal_hist[0]:.4e}->{primal_hist[-1]:.4e} "
@@ -1953,8 +1891,7 @@ class C3Solver:
                   f"gap=[x={_gap_x:.2e} lam={_gap_lam:.2e} "
                   f"u={_gap_u:.2e} eta={_gap_eta:.2e}] "
                   f"proj_case_N=[{_case_N[0]},{_case_N[1]},{_case_N[2]}] "
-                  f"proj_case_T=[{_case_T[0]},{_case_T[1]},{_case_T[2]}] "
-                  f"lcp_res_max={_lcp_str}",
+                  f"proj_case_T=[{_case_T[0]},{_case_T[1]},{_case_T[2]}]",
                   flush=True)
 
         # §7.37 measurement scaffold (default-OFF). When
@@ -2423,9 +2360,7 @@ class C3Solver:
                   f"|u[0]|={np.linalg.norm(u_seq[0]):.2f}{self.u_unit_str} "
                   f"u_axis=({_axis_str}){self.u_unit_str} "
                   f"λ_n_max={lam_n_max:.3f} η_n_max={eta_n_max:.3f} "
-                  f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter} "
-                  f"proj={self.c3plus_projection} "
-                  f"lcp_res_max={self._last_lcp_res_max:.2e}")
+                  f"primal={pr_last:.3f} iters={actual_iters}/{admm_iter}")
         else:
             print(f"[C3+] step={self._diag_step} n_λ=0  "
                   f"|u[0]|={np.linalg.norm(u_seq[0]):.3f} {self.u_unit_str}")

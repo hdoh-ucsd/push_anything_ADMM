@@ -71,14 +71,13 @@ _C3P_RE = re.compile(
     r"^\[C3\+\] step=(\d+) \|u\[0\]\|=([\d.]+)N "
     r"u_axis=\(([+-][\d.]+),([+-][\d.]+),([+-][\d.]+)\)N "
     r"λ_n_max=([\d.]+) η_n_max=([\d.]+) "
-    r"primal=([-\d.]+) iters=(\d+)/(\d+) "
-    r"proj=(\w+) lcp_res_max=([\S]+)")
+    r"primal=([-\d.]+) iters=(\d+)/(\d+)")
 _ADMM_RE = re.compile(
     r"^\[ADMM-C3\+\] step=(\d+) primal: ([\d.eE+-]+)->([\d.eE+-]+)\s+"
     r"dual: ([\d.eE+-]+)->([\d.eE+-]+)\s+"
     r"mono=(\w+)\s+iters=(\d+)/(\d+)")
 _CONS_STEP_RE = re.compile(
-    r"^\[CONSENSUS-STEP\] step=(\d+) mode=c3plus proj=(\w+) "
+    r"^\[CONSENSUS-STEP\] step=(\d+) mode=c3plus proj=componentwise "
     r"rho_start=([\d.eE+-]+) rho_end=([\d.eE+-]+) "
     r"iters=(\d+)/(\d+) "
     r"primal=([\d.eE+-]+)->([\d.eE+-]+) "
@@ -87,8 +86,7 @@ _CONS_STEP_RE = re.compile(
     r"gap=\[x=([\d.eE+-]+) lam=([\d.eE+-]+) "
     r"u=([\d.eE+-]+) eta=([\d.eE+-]+)\] "
     r"proj_case_N=\[(\d+),(\d+),(\d+)\] "
-    r"proj_case_T=\[(\d+),(\d+),(\d+)\] "
-    r"lcp_res_max=(\S+)")
+    r"proj_case_T=\[(\d+),(\d+),(\d+)\]")
 _ACHIEVED_RE = re.compile(
     r"^\[ACHIEVED-FIXED-GOAL\] step=(\d+) final_goal_dist=([\d.]+)m "
     r"rot_err=([\d.]+)rad crossed=(\w+)")
@@ -172,8 +170,6 @@ class RunState:
         self.c3_lam_n_max: float = 0.0
         self.c3_eta_n_max: float = 0.0
         self.c3_iters: str = "?/?"
-        self.c3_proj: str = "?"
-        self.c3_lcp_res_max: str = "nan"
 
         # CONSENSUS-STEP
         self.cs_rho_start: float = 0.0
@@ -190,7 +186,6 @@ class RunState:
         self.cs_gap_eta: float = 0.0
         self.cs_case_N: Tuple[int, int, int] = (0, 0, 0)
         self.cs_case_T: Tuple[int, int, int] = (0, 0, 0)
-        self.cs_lcp_res_max: str = "nan"
 
         # EVENTS — timeline of transitions the run has produced up to now.
         # Each element: (t, tag, short_msg, color)
@@ -279,28 +274,25 @@ class RunState:
             self.c3_lam_n_max = float(m.group(6))
             self.c3_eta_n_max = float(m.group(7))
             self.c3_iters = f"{m.group(9)}/{m.group(10)}"
-            self.c3_proj = m.group(11)
-            self.c3_lcp_res_max = m.group(12)
             return
         m = _CONS_STEP_RE.match(line)
         if m:
-            self.cs_rho_start = float(m.group(3))
-            self.cs_rho_end = float(m.group(4))
-            self.cs_iters = f"{m.group(5)}/{m.group(6)}"
-            self.cs_primal_start = float(m.group(7))
-            self.cs_primal_end = float(m.group(8))
-            self.cs_dual_start = float(m.group(9))
-            self.cs_dual_end = float(m.group(10))
-            self.cs_mono = m.group(11)
-            self.cs_gap_x = float(m.group(12))
-            self.cs_gap_lam = float(m.group(13))
-            self.cs_gap_u = float(m.group(14))
-            self.cs_gap_eta = float(m.group(15))
-            self.cs_case_N = (int(m.group(16)), int(m.group(17)),
-                              int(m.group(18)))
-            self.cs_case_T = (int(m.group(19)), int(m.group(20)),
-                              int(m.group(21)))
-            self.cs_lcp_res_max = m.group(22)
+            self.cs_rho_start = float(m.group(2))
+            self.cs_rho_end = float(m.group(3))
+            self.cs_iters = f"{m.group(4)}/{m.group(5)}"
+            self.cs_primal_start = float(m.group(6))
+            self.cs_primal_end = float(m.group(7))
+            self.cs_dual_start = float(m.group(8))
+            self.cs_dual_end = float(m.group(9))
+            self.cs_mono = m.group(10)
+            self.cs_gap_x = float(m.group(11))
+            self.cs_gap_lam = float(m.group(12))
+            self.cs_gap_u = float(m.group(13))
+            self.cs_gap_eta = float(m.group(14))
+            self.cs_case_N = (int(m.group(15)), int(m.group(16)),
+                              int(m.group(17)))
+            self.cs_case_T = (int(m.group(18)), int(m.group(19)),
+                              int(m.group(20)))
             return
         m = _ACHIEVED_RE.match(line)
         if m:
@@ -366,7 +358,7 @@ def render_panel(state: RunState, panel_w: int, H: int,
     # ------------------ RUN ------------------
     header("── RUN ──")
     line1 = (f"step={state.step:<5} t={state.t:6.2f}s  "
-             f"mode={state.mode:<5} proj={state.c3_proj:<12} "
+             f"mode={state.mode:<5} proj=componentwise  "
              f"seed={state.seed}")
     _draw(draw, (x, y), line1, font, fill=C_HEADER); y += line_h
     line2 = f"git={state.git} flags=[{state.flags[:60]}]"
@@ -426,12 +418,8 @@ def render_panel(state: RunState, panel_w: int, H: int,
     _draw(draw, (x, y),
           f"iters={state.c3_iters}  qp_status=solved",
           font, fill=C_TEXT); y += line_h
-    lcp_txt = state.c3_lcp_res_max
-    lcp_color = C_BAD if lcp_txt == "nan" else (
-        C_DIM if lcp_txt.startswith("nan(") else C_INFO)
-    _draw(draw, (x, y),
-          f"lcp_res_max={lcp_txt}",
-          font, fill=lcp_color); y += line_h + 4
+    # (LCP-projection variant removed 2026-07-22 — componentwise-only.)
+    _draw(draw, (x, y), " ", font, fill=C_DIM); y += line_h + 4
 
     # ------------------ CONSENSUS ------------------
     header("── CONSENSUS (latest) ──")
