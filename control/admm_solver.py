@@ -1166,6 +1166,50 @@ class C3Solver:
         # ---------------------------------------------------------------
         # ADMM iterations
         # ---------------------------------------------------------------
+        # 2026-07-22: paper-notation [CONSENSUS] instrumentation
+        # (Bui et al. 2026, arXiv:2510.19974v2, eq (6)+(9)+(10)).
+        # One-shot symbol-binding and definition emission at first
+        # C3+ solve when PUSHA_CONSENSUS_LOG=1. Per-iter [CONSENSUS]
+        # blocks below decompose r_prim per sub-block [x, lam, u, eta]
+        # and substitute real values into eq (9)'s dual update. Guarded
+        # so overhead is byte-identical when the flag is unset.
+        import os as _os_consensus
+        _consensus_log_on = (
+            _os_consensus.environ.get("PUSHA_CONSENSUS_LOG", "0") == "1")
+        if _consensus_log_on and not getattr(
+                self, "_consensus_bind_printed", False):
+            self._consensus_bind_printed = True
+            print("[CONSENSUS-BIND] x=z_sol[i*TOT+SX:i*TOT+SL]  "
+                  "lam=z_sol[i*TOT+SL:i*TOT+SU]  "
+                  "u=z_sol[i*TOT+SU:i*TOT+SE]  "
+                  "eta=z_sol[i*TOT+SE:(i+1)*TOT]  "
+                  "delta_*=delta[same slots]  w=omega[same slots]",
+                  flush=True)
+            print("[CONSENSUS-DEF] eq(6): z_k = delta_k, for all k=0..N-1 ; "
+                  "z_k = [x, lam, u, eta] , delta_k = [dx, dlam, du, deta]",
+                  flush=True)
+            print("[CONSENSUS-DEF] eq(9): w_k^{i+1} = w_k^i + "
+                  "( z_k^{i+1} - delta_k^{i+1} )",
+                  flush=True)
+            print(f"[CONSENSUS-DEF] eq(10) penalty term: rho * "
+                  f"|| z_k - delta_k^i + w_k^i ||^2_G ,  "
+                  f"G(ee-obj lam,eta)={self._w_G_ee_contact} , else=1  "
+                  f"[current rho={rho:.1f} N={N} n_x={n_x} n_lambda="
+                  f"{n_lambda} n_u={n_u}]",
+                  flush=True)
+            self._consensus_solve_number = 0
+        elif _consensus_log_on:
+            self._consensus_solve_number = getattr(
+                self, "_consensus_solve_number", 0) + 1
+        # Only emit per-iter [CONSENSUS] blocks on the FIRST c3+ solve
+        # of the run (avoids log spam). To dump another solve, set env
+        # PUSHA_CONSENSUS_DUMP_SOLVE_N to a specific solve number.
+        _consensus_target_solve = int(_os_consensus.environ.get(
+            "PUSHA_CONSENSUS_DUMP_SOLVE_N", "0"))
+        _emit_consensus_this_solve = (_consensus_log_on and
+                                       getattr(self, "_consensus_solve_number",
+                                               0) == _consensus_target_solve)
+
         delta      = np.zeros(total_dim)
         omega      = np.zeros(total_dim)
         delta_prev = np.zeros(total_dim)
@@ -1417,7 +1461,96 @@ class C3Solver:
                         if use_lcp and lcp_residuals_block:
                             self._last_lcp_res_max = float(max(lcp_residuals_block))
 
+                # Capture omega BEFORE the dual update so [CONSENSUS] can
+                # print w_before / delta_w / w_after per eq (9).
+                _omega_before_dual = (omega.copy() if _emit_consensus_this_solve
+                                       else None)
                 omega = omega + z_sol - delta
+
+            # ---- [CONSENSUS] per-iter, per-knot block-decomposed view ------
+            # Emits iters 0, 1, and last (actual_iters-1). Substitutes real
+            # values into eq (6) agreement and eq (9) dual update, per
+            # sub-block [x, lam, u, eta]. Rules from the plan:
+            #   - x, u blocks project through identity → gaps and w must be ~0
+            #   - G-weight applies to ee-obj lam,eta components; unweighted
+            #     gap is what maps to the paper's r_prim.
+            #   - r_prim_k here must equal Tier-1 r_prim in the [ADMM-C3+]
+            #     line at the same iter (self-check).
+            if _emit_consensus_this_solve and (
+                    it == 0 or it == 1 or it == admm_iter - 1):
+                _tol = float('nan')
+                _pr_stack_sq = 0.0
+                for k_out in range(N):
+                    _base = k_out * TOT
+                    _x_z    = z_sol[_base + SX : _base + SL]
+                    _x_d    = delta[_base + SX : _base + SL]
+                    _lam_z  = z_sol[_base + SL : _base + SU]
+                    _lam_d  = delta[_base + SL : _base + SU]
+                    _u_z    = z_sol[_base + SU : _base + SE]
+                    _u_d    = delta[_base + SU : _base + SE]
+                    _eta_z  = z_sol[_base + SE : _base + TOT]
+                    _eta_d  = delta[_base + SE : _base + TOT]
+
+                    _gap_x   = float(np.linalg.norm(_x_z   - _x_d))
+                    _gap_lam = float(np.linalg.norm(_lam_z - _lam_d))
+                    _gap_u   = float(np.linalg.norm(_u_z   - _u_d))
+                    _gap_eta = float(np.linalg.norm(_eta_z - _eta_d))
+                    _rprim_k_sq = (_gap_x**2 + _gap_lam**2
+                                   + _gap_u**2 + _gap_eta**2)
+                    _rprim_k = float(np.sqrt(_rprim_k_sq))
+                    _pr_stack_sq += _rprim_k_sq
+
+                    # eq (9) substituted: w_before + (z - delta) = w_after
+                    _wx_before   = _omega_before_dual[_base + SX : _base + SL]
+                    _wlam_before = _omega_before_dual[_base + SL : _base + SU]
+                    _wu_before   = _omega_before_dual[_base + SU : _base + SE]
+                    _weta_before = _omega_before_dual[_base + SE : _base + TOT]
+                    _dw_x    = _x_z   - _x_d
+                    _dw_lam  = _lam_z - _lam_d
+                    _dw_u    = _u_z   - _u_d
+                    _dw_eta  = _eta_z - _eta_d
+                    _wx_after   = _wx_before   + _dw_x
+                    _wlam_after = _wlam_before + _dw_lam
+                    _wu_after   = _wu_before   + _dw_u
+                    _weta_after = _weta_before + _dw_eta
+
+                    print(f"[CONSENSUS] i={it} k={k_out}", flush=True)
+                    print(f"  # eq(6) agreement, per sub-block:", flush=True)
+                    print(f"  gap_x   = || x   - dx   || = {_gap_x:.6e}",
+                          flush=True)
+                    print(f"  gap_lam = || lam - dlam || = {_gap_lam:.6e}",
+                          flush=True)
+                    print(f"  gap_u   = || u   - du   || = {_gap_u:.6e}",
+                          flush=True)
+                    print(f"  gap_eta = || eta - deta || = {_gap_eta:.6e}",
+                          flush=True)
+                    print(f"  r_prim_k = || z_k - delta_k || = {_rprim_k:.6e} "
+                          f"# stacked; sums to r_prim in Tier-1 [ADMM-C3+]",
+                          flush=True)
+                    print(f"  # eq(9) dual update, substituted:", flush=True)
+                    print(f"  w_before = [wx={float(np.linalg.norm(_wx_before)):.3e} "
+                          f"wlam={float(np.linalg.norm(_wlam_before)):.3e} "
+                          f"wu={float(np.linalg.norm(_wu_before)):.3e} "
+                          f"weta={float(np.linalg.norm(_weta_before)):.3e}]",
+                          flush=True)
+                    print(f"  delta_w  = ( z_k - delta_k ) = "
+                          f"[{float(np.linalg.norm(_dw_x)):.3e} "
+                          f"{float(np.linalg.norm(_dw_lam)):.3e} "
+                          f"{float(np.linalg.norm(_dw_u)):.3e} "
+                          f"{float(np.linalg.norm(_dw_eta)):.3e}]",
+                          flush=True)
+                    print(f"  w_after  = w_before + delta_w = "
+                          f"[{float(np.linalg.norm(_wx_after)):.3e} "
+                          f"{float(np.linalg.norm(_wlam_after)):.3e} "
+                          f"{float(np.linalg.norm(_wu_after)):.3e} "
+                          f"{float(np.linalg.norm(_weta_after)):.3e}]",
+                          flush=True)
+                # Self-check: sqrt of Σ r_prim_k² should equal r_prim in the
+                # Tier-1 [ADMM-C3+] line at this iter.
+                print(f"[CONSENSUS] i={it} SUM: r_prim_stacked = "
+                      f"sqrt(Σ r_prim_k²) = {float(np.sqrt(_pr_stack_sq)):.6e} "
+                      f"# must equal Tier-1 [ADMM-C3+] primal for this iter",
+                      flush=True)
 
             # ---- Per-iter cost + η-slack stats -----------------------------
             # Populated when either PUSHA_MATH_ITER_LOG or PUSHA_ADMM_RESID_CSV
