@@ -1426,6 +1426,13 @@ class C3Solver:
                             # Local import — Drake-dependent (mirrors C3 path).
                             from control.lcp_solver import solve_lcp
                         lcp_residuals_block: list[float] = []
+                        # Per-iter case histogram for [CONSENSUS] view. Bui
+                        # eq (12) has three cases: 1=η wins (λ→0), 2=λ wins
+                        # (η→0), 3=both zero. Counts are per-slot summed
+                        # across all knots.
+                        _proj_case1 = 0
+                        _proj_case2 = 0
+                        _proj_case3 = 0
                         for i in range(N):
                             li = i * TOT + SL
                             ei = i * TOT + SE
@@ -1451,8 +1458,31 @@ class C3Solver:
                             else:
                                 d_lam, d_eta = self._project_componentwise(
                                     lam_blk, eta_blk, u_lam_w, u_eta_w)
+                                # Count Bui eq (12) cases (only for
+                                # componentwise; LCP path has no case
+                                # decomposition). Threshold 1e-12 avoids
+                                # counting numerical zeros.
+                                _sqrt_ratio = float(np.sqrt(
+                                    (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
+                                    / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
+                                for _j in range(n_lambda):
+                                    _lo = float(lam_blk[_j])
+                                    _eo = float(eta_blk[_j])
+                                    _c1 = (_eo >= 0.0) and (_eo >= _sqrt_ratio * _lo)
+                                    _c2 = (_lo >= 0.0) and (_eo <  _sqrt_ratio * _lo)
+                                    if _c1:
+                                        _proj_case1 += 1
+                                    elif _c2:
+                                        _proj_case2 += 1
+                                    else:
+                                        _proj_case3 += 1
                             delta[li:li+n_lambda] = d_lam
                             delta[ei:ei+n_lambda] = d_eta
+                        # Expose case counts + total slots for the [CONSENSUS]
+                        # emission below.
+                        self._last_proj_case_hist = (
+                            _proj_case1, _proj_case2, _proj_case3)
+                        self._last_proj_n_slots = int(N * n_lambda)
                         # Stash LCP residual for diagnostics on the LCP path.
                         if use_lcp and lcp_residuals_block:
                             self._last_lcp_res_max = float(max(lcp_residuals_block))
@@ -1542,10 +1572,40 @@ class C3Solver:
                           f"{float(np.linalg.norm(_weta_after)):.3e}]",
                           flush=True)
                 # Self-check: sqrt of Σ r_prim_k² should equal r_prim in the
-                # Tier-1 [ADMM-C3+] line at this iter.
-                print(f"[CONSENSUS] i={it} SUM: r_prim_stacked = "
-                      f"sqrt(Σ r_prim_k²) = {float(np.sqrt(_pr_stack_sq)):.6e} "
-                      f"# must equal Tier-1 [ADMM-C3+] primal for this iter",
+                # Tier-1 [ADMM-C3+] line at this iter. Plus r_dual (paper's
+                # dual residual = rho·||delta - delta_prev||) and the
+                # per-case histogram from Bui eq (12).
+                _r_prim_stacked = float(np.sqrt(_pr_stack_sq))
+                # r_dual over lam+eta slots (matches Tier-1 dual exactly;
+                # x and u δs also change across iters but are not part of
+                # the paper's consensus dual residual).
+                _lam_eta_slots = []
+                for _k in range(N):
+                    _base = _k * TOT
+                    _lam_eta_slots.append(delta[_base + SL:_base + SU])
+                    _lam_eta_slots.append(delta[_base + SE:_base + TOT])
+                _delta_le = np.concatenate(_lam_eta_slots)
+                _lam_eta_slots_prev = []
+                for _k in range(N):
+                    _base = _k * TOT
+                    _lam_eta_slots_prev.append(
+                        delta_prev[_base + SL:_base + SU])
+                    _lam_eta_slots_prev.append(
+                        delta_prev[_base + SE:_base + TOT])
+                _delta_le_prev = np.concatenate(_lam_eta_slots_prev)
+                _r_dual_stacked = float(
+                    rho * np.linalg.norm(_delta_le - _delta_le_prev))
+                _case_hist = getattr(self, "_last_proj_case_hist", (0, 0, 0))
+                _n_slots = getattr(self, "_last_proj_n_slots", 0)
+                _proj_mode = self.c3plus_projection
+                print(f"[CONSENSUS] i={it} mode=c3plus proj={_proj_mode} SUM:  "
+                      f"r_prim_stacked = sqrt(Σ r_prim_k²) = "
+                      f"{_r_prim_stacked:.6e}  "
+                      f"r_dual = rho·||δ-δ_prev|| = {_r_dual_stacked:.6e}  "
+                      f"proj_case_hist(1,2,3)=({_case_hist[0]},"
+                      f"{_case_hist[1]},{_case_hist[2]})/{_n_slots}  "
+                      f"# r_prim must equal Tier-1 [ADMM-C3+] primal for "
+                      f"this iter",
                       flush=True)
 
             # ---- Per-iter cost + η-slack stats -----------------------------
