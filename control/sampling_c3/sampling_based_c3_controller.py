@@ -1908,6 +1908,23 @@ class SamplingC3MPC:
             params             = self.params.progress_params,
             ee_z_gate_pass     = _ee_z_gate_pass,
         )
+        # 2026-07-22: expose the applied hysteresis margin so [GS] can
+        # print the decision arithmetic (best_other + gap vs curr_cost)
+        # rather than just the raw costs. Answers "why is a cheaper raw
+        # sample rejected" without requiring re-derivation from yaml.
+        from control.sampling_c3.mode_switch import _hysteresis as _hyst_fn
+        if self._prev_mode == "c3":
+            self._last_hyst_kind = "c3_to_repos"
+            self._last_hyst_ref  = float(c_curr)
+        else:
+            self._last_hyst_kind = "repos_to_c3"
+            self._last_hyst_ref  = (float(best_other_cost)
+                                     if best_other_cost != float("inf")
+                                     else float(c_curr))
+        self._last_hyst_gap  = float(_hyst_fn(
+            self.params.progress_params, self._last_hyst_kind,
+            near_goal, self._last_hyst_ref))
+        self._last_near_goal = bool(near_goal)
 
         # Reference achieved_fixed_goal_ override (cc:1160-1164, 1279-1283):
         # if goal met, force mode=free so arm stops pushing.
@@ -4577,6 +4594,26 @@ class SamplingC3MPC:
         # mode + best_src labels and update the state field. Emitted below.
         from control.sampling_c3.mode_switch import pursued_from_label
         self._pursued_target_source = pursued_from_label(mode, best_src)
+        # 2026-07-22: decision arithmetic so the reader can see WHY a
+        # cheaper raw sample is rejected. `hyst_kind` labels which of the
+        # {c3_to_repos, repos_to_c3, repos_to_repos} margin was applied;
+        # `gap` is the value from _hysteresis(); `lhs vs rhs` is the
+        # exact comparison the mode-switch used.
+        _hyst_kind = getattr(self, "_last_hyst_kind", "?")
+        _hyst_gap  = getattr(self, "_last_hyst_gap", float("nan"))
+        _near      = getattr(self, "_last_near_goal", False)
+        if mode == "c3" and self._prev_mode == "c3":
+            # stay-in-c3 arithmetic: best_other + gap < c3 was FALSE
+            _lhs = float(best_other_cost) if best_other_cost != float("inf") else float("nan")
+            _rhs = float(c_samples[0])
+            _cmp = f"best_other({_lhs:.2f})+gap({_hyst_gap:.2f})={_lhs+_hyst_gap:.2f} vs c3({_rhs:.2f})"
+        elif mode == "free" and self._prev_mode == "free":
+            # stay-in-free arithmetic: best_other > curr + gap was FALSE
+            _lhs = float(best_other_cost) if best_other_cost != float("inf") else float("nan")
+            _rhs = float(c_samples[0])
+            _cmp = f"best_other({_lhs:.2f}) vs curr({_rhs:.2f})+gap({_hyst_gap:.2f})={_rhs+_hyst_gap:.2f}"
+        else:
+            _cmp = "transition"
         print(f"[GS] step={step} mode={mode} switch={switch_reason.name} "
               f"best_k={best_k} best_src={best_src} "
               f"pursued={self._pursued_target_source.name} "
@@ -4584,7 +4621,9 @@ class SamplingC3MPC:
               f"best_other={best_other_str} "
               f"met_progress={'Y' if met_progress else 'N'} "
               f"steps_since_improve={steps_since_improve} "
-              f"switches={self._n_switches}")
+              f"switches={self._n_switches} "
+              f"hyst[{_hyst_kind}]={_hyst_gap:.2f}({'pose' if _near else 'pos'}) "
+              f"decision: {_cmp}")
 
     def _print_table_diag(self, step, samples, labels, results, k_star):
         print(f"[GS-table] step={step}")

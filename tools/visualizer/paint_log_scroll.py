@@ -315,10 +315,19 @@ def main():
             prev_step = step
             info = step_info_map.get(step)
             img = Image.open(path)
+            # Merge header_lines into sticky_lines once (they contain
+            # early-boot diagnostics like [CONSENSUS-BIND] / [CONSENSUS-DEF]
+            # and per-iter [CONSENSUS] blocks that fire BEFORE the first
+            # [STEP] line, so they never make it into the by_step buckets).
+            if i == 0:
+                for hl in header_lines:
+                    fam = _line_family(hl)
+                    if fam == "sticky" and hl not in sticky_lines:
+                        sticky_lines.append(hl)
             out = annotate_frame(img, step, info,
                                  list(rolling),
                                  sticky_lines,
-                                 header_lines[:0],  # skip header lines
+                                 [],  # header already merged above
                                  font_small, font_tiny,
                                  args.left_max_chars,
                                  # Only show RESULT on the last few frames.
