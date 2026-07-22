@@ -1344,6 +1344,13 @@ class LCSFormulator:
     # ≈ 2.5e-3 for m_ee=1.0. Paper-typical effective EE mass; the downstream
     # OSC is what realizes the actual joint torque from u, so this is a
     # planner-internal scaling, not a physical claim.
+    # 2026-07-22 qvector migration attempts (p41, p44-p46) all diverged.
+    # Coordinated tuple (m_ee=0.057 + u=50 + qvec=True + w_Q=50) produces
+    # ill-conditioned ADMM: p46 at admm_iter=25 showed dual residual
+    # exploding 1000× per solve. Root cause is structural: port uses
+    # scalar ρ ADMM augmentation, reference uses per-slot G matrix.
+    # Without matching G, no combination of parameters yields convergent
+    # ADMM under the reference qvector. Reverted to 1.0.
     _EE_MASS = 1.0   # kg
 
     def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
@@ -1661,6 +1668,26 @@ class LCSFormulator:
         # v_ee rows: ∂v_ee_{k+1}/∂u = dt / m_ee · I.
         B_ctrl[self.V_EE_SLOT, :] = (dt / m_ee) * np.eye(3)
         # box_q rows and box_v rows: zero (u doesn't enter box dynamics).
+
+        # Bug 2 safety: LCS conditioning warning (2026-07-22). When
+        # dt/m_ee exceeds ~0.5, the D matrix's V_EE_SLOT rows amplify
+        # contact λ into large predicted v_ee kicks per step — planner
+        # tends to disengage (u=0) to avoid the predicted state cost,
+        # while Drake reality remains in contact. p41 experiment blew
+        # up silently for this reason (m_ee=0.057 → dt/m_ee=1.75).
+        # Warn once per LCSFormulator instance.
+        _dt_over_mee = dt / m_ee
+        if (_dt_over_mee > 0.5
+                and not getattr(self, "_dt_mee_warned", False)):
+            print(
+                f"[LCS-COND-WARN] dt/m_ee = {_dt_over_mee:.3f} "
+                f"(dt={dt:.3f}s, m_ee={m_ee:.4f}kg) — B_ctrl[V_EE] and "
+                f"D[V_EE,λ] rows amplified; planner may disengage due to "
+                f"velocity-cost inflation. If not intended, revisit "
+                f"lcs_formulator.py:_EE_MASS. See p41 forensic report.",
+                flush=True,
+            )
+            self._dt_mee_warned = True
 
         # 4e. D — contact force coupling on state.
         # D has zero columns in γ slot.
