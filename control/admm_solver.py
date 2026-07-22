@@ -1168,16 +1168,13 @@ class C3Solver:
         # ---------------------------------------------------------------
         # 2026-07-22: paper-notation [CONSENSUS] instrumentation
         # (Bui et al. 2026, arXiv:2510.19974v2, eq (6)+(9)+(10)).
-        # One-shot symbol-binding and definition emission at first
-        # C3+ solve when PUSHA_CONSENSUS_LOG=1. Per-iter [CONSENSUS]
-        # blocks below decompose r_prim per sub-block [x, lam, u, eta]
-        # and substitute real values into eq (9)'s dual update. Guarded
-        # so overhead is byte-identical when the flag is unset.
+        # DEFAULT ON — one-shot symbol-binding and definition emission
+        # at first C3+ solve of the run, plus per-iter [CONSENSUS]
+        # blocks below (iters 0/1/last) that decompose r_prim per
+        # sub-block [x, lam, u, eta]. ~50 lines total per run — not
+        # spam.  Override the target solve with PUSHA_CONSENSUS_DUMP_SOLVE_N.
         import os as _os_consensus
-        _consensus_log_on = (
-            _os_consensus.environ.get("PUSHA_CONSENSUS_LOG", "0") == "1")
-        if _consensus_log_on and not getattr(
-                self, "_consensus_bind_printed", False):
+        if not getattr(self, "_consensus_bind_printed", False):
             self._consensus_bind_printed = True
             print("[CONSENSUS-BIND] x=z_sol[i*TOT+SX:i*TOT+SL]  "
                   "lam=z_sol[i*TOT+SL:i*TOT+SU]  "
@@ -1198,17 +1195,16 @@ class C3Solver:
                   f"{n_lambda} n_u={n_u}]",
                   flush=True)
             self._consensus_solve_number = 0
-        elif _consensus_log_on:
+        else:
             self._consensus_solve_number = getattr(
                 self, "_consensus_solve_number", 0) + 1
-        # Only emit per-iter [CONSENSUS] blocks on the FIRST c3+ solve
-        # of the run (avoids log spam). To dump another solve, set env
-        # PUSHA_CONSENSUS_DUMP_SOLVE_N to a specific solve number.
+        # Emit per-iter [CONSENSUS] blocks on the FIRST c3+ solve of the
+        # run (avoids log spam). Override with PUSHA_CONSENSUS_DUMP_SOLVE_N.
         _consensus_target_solve = int(_os_consensus.environ.get(
             "PUSHA_CONSENSUS_DUMP_SOLVE_N", "0"))
-        _emit_consensus_this_solve = (_consensus_log_on and
-                                       getattr(self, "_consensus_solve_number",
-                                               0) == _consensus_target_solve)
+        _emit_consensus_this_solve = (
+            getattr(self, "_consensus_solve_number", 0)
+            == _consensus_target_solve)
 
         delta      = np.zeros(total_dim)
         omega      = np.zeros(total_dim)
