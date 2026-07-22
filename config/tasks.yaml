@@ -199,6 +199,14 @@ tasks:
       w_obj_xy:      9000.0
       w_obj_z:         10.0
       w_box_z:        100.0
+      # Reference goal_params.yaml:14 ee_target_z_offset_above_object.
+      # When > 0, build_ee_space sets x_ref[EE_pos] = obj_curr_xyz +
+      # [0, 0, ee_target_z_offset] with Q[EE_pos] = w_Q * q_vec_ee_pos,
+      # matching franka_sampling_c3_controller.cc:440 target_state_mux
+      # port 0 semantics. Pulls the arm to hover above the T center as
+      # the T moves, preventing lateral drift near-goal that pushes
+      # T out of the tight_goal region.
+      ee_target_z_offset_above_object: 0.06
       # Near-goal (pose regime) obj-position weight overrides. Ported from
       # reference push_t sampling_c3plus_options.yaml — reduces obj_pos xy
       # by 0.80 and z by 0.48 when the wrapper's crossed_switching_threshold
