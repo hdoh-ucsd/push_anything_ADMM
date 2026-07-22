@@ -372,6 +372,24 @@ def main():
     else:
         stem = f"{task_name}_{run_stamp}"
 
+    # 2026-07-22: [RUN-META] once per run so the dashboard's RUN region
+    # has a durable file-log source for git/seed/flags (no live-process
+    # reads inside paint_log_dashboard.py).
+    try:
+        import subprocess as _sp_meta
+        _git_head = _sp_meta.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=_sp_meta.DEVNULL).decode().strip()
+    except Exception:
+        _git_head = "unknown"
+    _seed_str = str(args.seed) if args.seed is not None else "unseeded"
+    _flags = (f"solver={args.solver} ee_space={args.ee_space} "
+              f"admm_iter={args.admm_iter} "
+              f"c3plus_projection={args.c3plus_projection} "
+              f"max_time={args.max_time}")
+    print(f"[RUN-META] git={_git_head} seed={_seed_str} task={task_name} "
+          f"stem={stem} flags=[{_flags}]", flush=True)
+
     # Resolve recording paths.  --no-record wins; otherwise AUTO sentinels
     # produce shared-stem filenames, "" maps to legacy default-named files,
     # and any other string is taken as an explicit path.  MP4 capture is
