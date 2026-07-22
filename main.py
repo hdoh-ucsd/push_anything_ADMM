@@ -1120,8 +1120,8 @@ def main():
                      else ("latched" if _tight_latched else "-"))
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
-          f"goal_dist={final_dist:.4f}m  "
-          f"orient_err={orient_err:.4f}rad  "
+          f"translational_error={final_dist:.4f}m  "
+          f"rotational_error={orient_err:.4f}rad  "
           f"success={'YES' if final_dist < 0.05 else 'NO'}  "
           f"tight_goal={'PASS' if _tight else 'FAIL'}({_tight_reason})  "
           f"loose_goal={'PASS' if _loose else 'FAIL'}")
