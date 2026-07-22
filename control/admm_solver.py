@@ -831,7 +831,7 @@ class C3Solver:
     # C3+  (Bui 2026 ICRA §IV-B.2 — slack-variable reformulation)
     # ==================================================================
     @staticmethod
-    def _project_componentwise(lam: np.ndarray,
+    def _project_C3Plus(lam: np.ndarray,
                                eta: np.ndarray,
                                u_lambda: float = 1.0,
                                u_eta:    float = 1.0
@@ -1404,7 +1404,7 @@ class C3Solver:
                     # ===== δ-update on (λ, η): Bui 2026 eq (12) =====
                     # Componentwise per-scalar-pair projection. Matches
                     # reference sampling_c3plus_options.yaml
-                    # projection_type: 'C3+'. See _project_componentwise.
+                    # projection_type: 'C3+'. See _project_C3Plus.
                     if n_lambda > 0:
                         # Per-iter case histogram for [CONSENSUS] view.
                         # Split into λ_n (N) and λ_t (T) sub-slots (γ slots
@@ -1422,7 +1422,7 @@ class C3Solver:
                             ei = i * TOT + SE
                             lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
                             eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
-                            d_lam, d_eta = self._project_componentwise(
+                            d_lam, d_eta = self._project_C3Plus(
                                 lam_blk, eta_blk, u_lam_w, u_eta_w)
                             _sqrt_ratio = float(np.sqrt(
                                 (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
@@ -1567,7 +1567,7 @@ class C3Solver:
                     rho * np.linalg.norm(_delta_le - _delta_le_prev))
                 _case_hist = getattr(self, "_last_proj_case_hist", (0, 0, 0))
                 _n_slots = getattr(self, "_last_proj_n_slots", 0)
-                print(f"[CONSENSUS] i={it} mode=c3plus proj=componentwise SUM:  "
+                print(f"[CONSENSUS] i={it} mode=c3plus proj=C3+ SUM:  "
                       f"r_prim_stacked = sqrt(Σ r_prim_k²) = "
                       f"{_r_prim_stacked:.6e}  "
                       f"r_dual = rho·||δ-δ_prev|| = {_r_dual_stacked:.6e}  "
@@ -1882,7 +1882,7 @@ class C3Solver:
             _case_N = getattr(self, "_last_proj_case_N", (0, 0, 0))
             _case_T = getattr(self, "_last_proj_case_T", (0, 0, 0))
             print(f"[CONSENSUS-STEP] step={self._diag_step} "
-                  f"mode=c3plus proj=componentwise "
+                  f"mode=c3plus proj=C3+ "
                   f"rho_start={rho_hist[0]:.1f} rho_end={rho:.1f} "
                   f"iters={actual_iters}/{admm_iter} "
                   f"primal={primal_hist[0]:.4e}->{primal_hist[-1]:.4e} "
@@ -2380,13 +2380,13 @@ def project_lorentz(lam_n: float,
     return C3Solver._project_single_contact(lam_n, lam_t, mu)
 
 
-def project_componentwise_eq12(lam: "np.ndarray",
+def project_C3Plus_eq12(lam: "np.ndarray",
                                eta: "np.ndarray",
                                u_lambda: float = 1.0,
                                u_eta:    float = 1.0
                                ) -> "tuple[np.ndarray, np.ndarray]":
-    """Public wrapper around C3Solver._project_componentwise for testing.   ← C3+ NEW
+    """Public wrapper around C3Solver._project_C3Plus for testing.   ← C3+ NEW
 
     Implements Bui 2026 ICRA eq (12) — the C3+ δ-update closed form.
     """
-    return C3Solver._project_componentwise(lam, eta, u_lambda, u_eta)
+    return C3Solver._project_C3Plus(lam, eta, u_lambda, u_eta)

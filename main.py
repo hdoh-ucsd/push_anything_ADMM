@@ -581,7 +581,7 @@ def main():
                           penalize_input_change=_penalize_input_change)
     print(f"[C3] Solver mode: {args.solver}  "
           f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'}, "
-          f"c3+ projection: {'componentwise (Bui 2026 eq 12)' if args.solver == 'c3plus' else 'n/a (mode=c3)'})")
+          f"c3+ projection: {'C3+ (Bui 2026 eq 12 case-analysis)' if args.solver == 'c3plus' else 'n/a (mode=c3)'})")
     # Geometry hints for PUSHA_BOX_DPUSH_FIX (default-OFF, box-shape only).
     _obj_shape = str(task_cfg.get("object_type", ""))
     if _obj_shape == "box":
