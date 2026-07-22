@@ -311,15 +311,16 @@ def main():
                              "componentwise δ-projection. v1 implements "
                              "normal-direction complementarity only — "
                              "friction LCS is a TODO.")
-    parser.add_argument("--c3plus-projection", choices=["componentwise", "lcp"],
-                        default="componentwise",
-                        help="C3+ δ-step projection variant. "
-                             "'componentwise' = Bui 2026 eq (12) per-pair test "
-                             "(paper's no-feasibility-guarantee class; FAST). "
-                             "'lcp' = Aydinoglu §V-B.3.b LCP-projection retrofit "
-                             "applied to the C3+ η-slack structure "
-                             "(feasibility-guaranteed; SLOWER per iter). "
-                             "Only consulted when --solver c3plus.")
+    # NOTE (2026-07-22): --c3plus-projection removed. The port previously
+    # exposed a `lcp` variant (Aydinoglu §V-B.3.b LCP retrofit on the
+    # C3+ η-slack structure) alongside the paper's `componentwise`
+    # (Bui 2026 eq 12) projection. The LCP variant was port-added
+    # (reference push_t uses projection_type: 'C3+' == componentwise
+    # exclusively) and empirically convergence-limited at reference's
+    # admm_iter=3 (p28 dashboard capture: gap_lam median 12.8, tight_goal
+    # FAIL). Componentwise is the reference C3+ projection and delivers
+    # tight_goal PASS at admm_iter=3. The LCP path is gone; only the
+    # componentwise projection remains inside _solve_c3plus.
     parser.add_argument("--ee-space", action="store_true",
                         help="Use the paper-aligned EE-space LCS planner "
                              "(Push-Anything §IV-A): x ∈ ℝ^19, u ∈ ℝ^3 EE force. "
@@ -385,7 +386,6 @@ def main():
     _seed_str = str(args.seed) if args.seed is not None else "unseeded"
     _flags = (f"solver={args.solver} ee_space={args.ee_space} "
               f"admm_iter={args.admm_iter} "
-              f"c3plus_projection={args.c3plus_projection} "
               f"max_time={args.max_time}")
     print(f"[RUN-META] git={_git_head} seed={_seed_str} task={task_name} "
           f"stem={stem} flags=[{_flags}]", flush=True)
@@ -578,13 +578,10 @@ def main():
     solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
                           math_diag=args.math_diag,
                           mode=args.solver,
-                          c3plus_projection=args.c3plus_projection,
                           penalize_input_change=_penalize_input_change)
-    _proj_label = (args.c3plus_projection
-                   if args.solver == "c3plus" else "n/a (mode=c3)")
     print(f"[C3] Solver mode: {args.solver}  "
           f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'}, "
-          f"c3+ projection: {_proj_label})")
+          f"c3+ projection: {'componentwise (Bui 2026 eq 12)' if args.solver == 'c3plus' else 'n/a (mode=c3)'})")
     # Geometry hints for PUSHA_BOX_DPUSH_FIX (default-OFF, box-shape only).
     _obj_shape = str(task_cfg.get("object_type", ""))
     if _obj_shape == "box":
