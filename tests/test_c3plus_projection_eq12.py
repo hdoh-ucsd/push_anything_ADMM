@@ -146,10 +146,10 @@ def test_unequal_weights_weights_other_direction():
 # -----------------------------------------------------------------------
 
 def test_module_import_matches_inline():
-    """The exposed project_componentwise_eq12 helper should agree with the
+    """The exposed project_C3Plus_eq12 helper should agree with the
     inline reimplementation. Skips cleanly if pydrake is not available."""
     try:
-        from control.admm_solver import project_componentwise_eq12
+        from control.admm_solver import project_C3Plus_eq12
     except Exception:
         pytest.skip("control.admm_solver requires pydrake; skipping")
 
@@ -157,6 +157,6 @@ def test_module_import_matches_inline():
     lam = rng.uniform(-3, 3, size=50)
     eta = rng.uniform(-3, 3, size=50)
     dl_inline, de_inline = project_eq12(lam, eta)
-    dl_module, de_module = project_componentwise_eq12(lam, eta)
+    dl_module, de_module = project_C3Plus_eq12(lam, eta)
     assert np.allclose(dl_inline, dl_module)
     assert np.allclose(de_inline, de_module)

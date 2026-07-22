@@ -5,8 +5,8 @@ Adds a slack variable η to the LCS so that the complementarity condition
 0 ≤ λ ⊥ η ≥ 0 is expressed as a hard equality
     η_t = E x_t + F λ_t + H u_t + c
 inside the QP, rather than the soft penalty C3 uses. The δ-update becomes
-the closed-form Bui 2026 eq (12) componentwise projection on (λ, η)
-pairs (see C3Solver._project_componentwise) instead of C3's Lorentz cone
+the closed-form Bui 2026 eq (12) C3+ projection on (λ, η)
+pairs (see C3Solver._project_C3Plus) instead of C3's Lorentz cone
 projection on (λ_n, λ_t).
 
 This file owns the C3+-specific control loop:

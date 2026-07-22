@@ -77,7 +77,7 @@ _ADMM_RE = re.compile(
     r"dual: ([\d.eE+-]+)->([\d.eE+-]+)\s+"
     r"mono=(\w+)\s+iters=(\d+)/(\d+)")
 _CONS_STEP_RE = re.compile(
-    r"^\[CONSENSUS-STEP\] step=(\d+) mode=c3plus proj=componentwise "
+    r"^\[CONSENSUS-STEP\] step=(\d+) mode=c3plus proj=C3+ "
     r"rho_start=([\d.eE+-]+) rho_end=([\d.eE+-]+) "
     r"iters=(\d+)/(\d+) "
     r"primal=([\d.eE+-]+)->([\d.eE+-]+) "
@@ -358,7 +358,7 @@ def render_panel(state: RunState, panel_w: int, H: int,
     # ------------------ RUN ------------------
     header("── RUN ──")
     line1 = (f"step={state.step:<5} t={state.t:6.2f}s  "
-             f"mode={state.mode:<5} proj=componentwise  "
+             f"mode={state.mode:<5} proj=C3+  "
              f"seed={state.seed}")
     _draw(draw, (x, y), line1, font, fill=C_HEADER); y += line_h
     line2 = f"git={state.git} flags=[{state.flags[:60]}]"
