@@ -158,16 +158,17 @@ tasks:
       EE-BOX:  1.0
       BOX-GND: 0.4615
       EE-GND:  0.4165
-    init_xyz: [0.0, 0.0, 0.02]     # link origin at combined CoM; T half-height 0.02 → base on ground
-    # Reference target — push_t/parameters/goal_params.yaml:30-31 frame-transformed.
-    # Reference init T pose (sim_params.yaml:15): q_init_object = [1,0,0,0, 0.5, 0, -0.009]
-    #   (identity orientation, world x=0.5, y=0, z=-0.009 with ref ground at z=-0.029).
-    # Reference target: fixed_target_position = [0.48199167, 0.18745379, -0.009],
-    #                   fixed_target_orientation = [-0.9327733, 0, 0, 0.36046353].
-    # Relative displacement in ref: (target - init) = (-0.01801, +0.18745, 0).
-    # Port init is at (0, 0, 0.02) with ground at z=0 → same relative displacement
-    # applies. Yaw = 2·atan2(0.36046353, -0.9327733) mod 2π = -0.73790 rad ≈ -42.28°.
-    goal_xy:  [-0.018, 0.187]
+    # Reference sim_params.yaml:15 q_init_object = [1,0,0,0, 0.5, 0, -0.009]
+    # → T init at world (0.5, 0, -0.009) with reference ground at z=-0.029.
+    # 2026-07-21: adopted reference-frame coordinates directly (was (0,0,0.02)
+    # in the port's old y=-0.6 arm frame). Port ground at z=0 with arm at
+    # z=0.029 → T CoM at z=0.02 (T half-height 0.02) is on ground.
+    init_xyz: [0.5, 0.0, 0.02]
+    # Reference target: fixed_target_position = [0.48199167, 0.18745379, -0.009]
+    # fixed_target_orientation = [-0.9327733, 0, 0, 0.36046353].
+    # Yaw = 2·atan2(0.36046353, -0.9327733) mod 2π = -0.73790 rad ≈ -42.28°.
+    # 2026-07-21: adopted reference-frame absolute goal_xy directly.
+    goal_xy:  [0.482, 0.187]
     goal_yaw: -0.7379    # rad = -42.28°, from reference push_t target quaternion
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     # Contact regime matched to reference push_t/parameters/sampling_params.yaml:5

@@ -373,11 +373,14 @@ sampling_params:
   yaw_face_bias_strength: 500.0
 
   # Robot workspace bounds; samples failing this are pruned.
-  # T-task: y_max raised to 0.30 to accommodate T-face samples on the +y stem
-  # and crossbar-top faces once the T rotates (yaw target = +45° in this
-  # task). Box-task y_max = 0.13 remains in the base sampling_c3_kik.yaml.
-  workspace_xy_min: [-0.5, -0.7]
-  workspace_xy_max: [ 0.5,  0.30]
+  # 2026-07-21: adopted reference workspace_limits directly from
+  # sampling_c3plus_options.yaml:29-31 after moving Franka base from
+  # (0,-0.6,0.029) to reference-conformant (0,0,0.029). Reference:
+  #   [x, y, z, lb, ub] triples: [x∈0.15..0.75, y∈-0.6..0.6, z∈-0.01..0.3]
+  # Prior port y_max=0.30 was the kinematic overshoot envelope; with
+  # arm at world origin the reference y_max=0.6 is well within reach.
+  workspace_xy_min: [ 0.15, -0.6]
+  workspace_xy_max: [ 0.75,  0.6]
   # 2026-07-18: workspace_z_min 0.02 → -0.01 to match reference
   # push_t/sampling_c3plus_options.yaml:32 workspace_limits z ∈ [-0.01, 0.3].
   # Prior 0.02 rejected 81% of face-normal samples in

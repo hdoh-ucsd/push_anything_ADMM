@@ -401,16 +401,13 @@ class SamplingParams:
     # Retreat position when achieved_fixed_goal_ latches.
     # Reference sampling_based_c3_controller.cc:887-897: when the object
     # is at goal, all candidate_states are replaced with a fixed
-    # "get out of the way" position `head(3) << 0.3, 0.4, 0.1` so the
-    # reposition tracker drives the arm off the object instead of
-    # hovering next to it and nudging it out of alignment.
-    # Reference literal (0.3, 0.4, 0.1) is outside the port's T
-    # workspace (y_max=0.30); default here is a port-legal analogue
-    # that is well inside both box (y_max=0.507) and T (y_max=0.30)
-    # workspaces and far from both task goals (box goal (0.3, 0.0),
-    # T goal (-0.018, 0.187)).
+    # "get out of the way" position `head(3) << 0.3, 0.4, 0.1`.
+    # 2026-07-21: with Franka base moved to reference-conformant world
+    # origin (was port-only y=-0.6) and T workspace widened to reference
+    # (y∈-0.6..0.6, x∈0.15..0.75), the reference literal (0.3, 0.4, 0.1)
+    # is now workspace-legal and adopted directly.
     retreat_ee_position:                 list  = field(
-        default_factory=lambda: [0.3, -0.3, 0.15])
+        default_factory=lambda: [0.3, 0.4, 0.1])
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingParams":
