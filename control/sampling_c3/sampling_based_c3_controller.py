@@ -1,5 +1,5 @@
 """
-SamplingC3MPC — top-level outer controller.
+SamplingC3Controller — top-level outer controller.
 
 Wraps an existing C3MPC and orchestrates:
   - per-step generation of K candidate EE positions (via sampling.py)
@@ -64,7 +64,7 @@ MAX_APPROACH_STEP      = 0.010
 _SEL_AUDIT_UNINIT = object()
 
 
-class SamplingC3MPC:
+class SamplingC3Controller:
     """Replaces the legacy GlobalSamplingC3MPC. Accepts a single
     SamplingC3Params object instead of a dozen individual kwargs."""
 

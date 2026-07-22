@@ -9,14 +9,14 @@ from control.sampling_c3.params import (
     SamplingParams,
     SamplingStrategy,
 )
-from control.sampling_c3.sampling_based_c3_controller import SamplingC3MPC
+from control.sampling_c3.sampling_based_c3_controller import SamplingC3Controller
 
 __all__ = [
     "ProgressMetric",
     "ProgressParams",
     "RepositionParams",
     "RepositioningTrajectoryType",
-    "SamplingC3MPC",
+    "SamplingC3Controller",
     "SamplingC3Params",
     "SamplingParams",
     "SamplingStrategy",

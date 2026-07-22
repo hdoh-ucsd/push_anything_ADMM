@@ -59,7 +59,7 @@ from control.admm_solver import C3Solver
 from control.task_costs import QuadraticManipulationCost
 from control.ci_mpc_c3 import C3MPC
 from control.ci_mpc_c3plus import C3PlusMPC
-from control.sampling_c3 import SamplingC3MPC, SamplingC3Params
+from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +340,7 @@ def main():
                              "'X,Y' in meters (comma-separated). Overrides any "
                              "value from tasks.yaml or --task-id.")
     parser.add_argument("--seed", type=int, default=None, metavar="INT",
-                        help="Contact-free sweep: seed the SamplingC3MPC rng "
+                        help="Contact-free sweep: seed the SamplingC3Controller rng "
                              "for deterministic sampling-circle angle draws. "
                              "Only takes effect with --sampling-c3.")
     args = parser.parse_args()
@@ -696,7 +696,7 @@ def main():
         _dt_ctrl_pass = _c3plus_dt if args.solver == "c3plus" else 0.1
         # W_force reference value (LambdaEndEffectorW = I_3, scalar 1.0).
         sc3_params.W_force = 1.0
-        mpc = SamplingC3MPC(
+        mpc = SamplingC3Controller(
             base_mpc=mpc,
             plant=plant,
             ee_frame=ee_frame,
@@ -715,7 +715,7 @@ def main():
             rng=_rng,
             diagram=diagram,
         )
-        print(f"[GS] SamplingC3MPC enabled (config: {_yaml_path})")
+        print(f"[GS] SamplingC3Controller enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
               f"num_add_c3={sc3_params.sampling_params.num_additional_samples_c3} "
               f"num_add_repos={sc3_params.sampling_params.num_additional_samples_repos}")
@@ -1063,7 +1063,7 @@ def main():
                 break
 
     print("[C3] Simulation complete.")
-    if isinstance(mpc, SamplingC3MPC):
+    if isinstance(mpc, SamplingC3Controller):
         mpc.print_perf_summary()
 
     # ------------------------------------------------------------------
