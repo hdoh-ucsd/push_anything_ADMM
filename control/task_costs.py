@@ -252,6 +252,21 @@ class QuadraticManipulationCost:
         self.z_obj_target  = float(c.get("z_obj_target",    self.z_ref))
         self.d_push        = float(c.get("d_push",           0.10))
         self.w_ee_approach = float(c.get("w_ee_approach",   800.0))
+        # Reference `goal_generator.cc:113-114` semantics: EE-position LCS
+        # reference tracks the CURRENT object position (not the goal) with a
+        # fixed z-offset above the object center. Reference push_t
+        # `goal_params.yaml:14`: ee_target_z_offset_above_object = 0.06.
+        # When > 0, `build_ee_space` writes:
+        #   x_ref[7:10] = [obj_curr_x, obj_curr_y, obj_curr_z + z_offset]
+        #   Q[7:10, 7:10] += w_Q * q_vec_ee_pos (small; matches ref weight)
+        # so the planner gently pulls the arm to hover directly above the
+        # T center as the T moves — the missing counterpart to `2.k`
+        # (which pins EE orientation via OSC).
+        # Default 0.0 preserves the port's prior behavior (§7.31 note:
+        # "EE-approach cost SKIPPED"). Set >0 in tasks.yaml push_t block
+        # to activate.
+        self.ee_target_z_offset = float(c.get(
+            "ee_target_z_offset_above_object", 0.0))
         # Lateral-alignment clamp scale (metres). The proxy shift at
         # build_ee_space()::~739 (and the legacy build()::~438) saturates at
         # `extra_shift = -perp_vec * min(1.0, perp_magnitude / scale)`. Smaller
@@ -815,6 +830,30 @@ class QuadraticManipulationCost:
         x_ref[self._NEW_OBJ_X] = target_xy[0]
         x_ref[self._NEW_OBJ_Y] = target_xy[1]
         x_ref[self._NEW_OBJ_Z] = self.z_obj_target
+
+        # --- Reference EE-position tracking (goal_generator.cc:113-114) ---
+        # Reference build: x_lcs_des[0:3] = obj_curr_xyz + [0, 0, z_offset]
+        # (see franka_sampling_c3_controller.cc:440 target_state_mux
+        # port 0 → ee_target from CalcEndEffectorTarget).
+        # Port state layout has EE-pos at slots 7:10 (reference layout has
+        # it at 0:3). Weight matches reference q_vector[0:3] * w_Q
+        # (default 0.01 * w_Q). Only activates when
+        # `ee_target_z_offset_above_object > 0` in cost config.
+        if (self.ee_target_z_offset > 0.0
+                and plant_ctx is not None
+                and current_q is not None):
+            _obj_curr_z = float(current_q[self._obj_z_idx])
+            x_ref[self._NEW_PEE_SLOT] = np.array([
+                float(current_q[self._obj_x_idx]),
+                float(current_q[self._obj_y_idx]),
+                _obj_curr_z + self.ee_target_z_offset,
+            ])
+            # Reference weight: w_Q * q_vector[0:3] = 50 * 0.01 = 0.5 per axis.
+            # Use the port's `q_vec_ee_pos * w_Q` (defaults [0.01,0.01,0.01]*45=0.45)
+            # to match reference structure regardless of `use_reference_q_vector`.
+            _w_ee = float(self.w_Q) * np.asarray(self._q_vec_ee_pos, dtype=float)
+            for _i, _slot in enumerate(range(7, 10)):
+                Q[_slot, _slot] += _w_ee[_i]
 
         # --- Yaw target (linear-in-quaternion residual) ---
         # Reference has no rank-1 outer-product yaw form; yaw is entirely
