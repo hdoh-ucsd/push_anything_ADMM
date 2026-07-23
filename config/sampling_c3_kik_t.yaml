@@ -330,6 +330,17 @@ sampling_params:
   sampling_setback:        0.020   # m, reference push_t/parameters/sampling_params.yaml:15 (sample_projection_clearance=0.02)
   sample_reject_clearance: 0.005   # m, applied only for object_shape=box
 
+  # 2026-07-22 kRandomOnPerimeter sampling window — reference parity.
+  # Reference push_t/parameters/sampling_params.yaml:39-40 bounds. Port
+  # previously fell back to hardcoded tshape defaults ([-0.07, +0.13] × [-0.08,
+  # +0.08]) in sampling.py:711 that sampled the crossbar's far-east tip and
+  # missed the west-of-stem region reference explicitly samples. p48-p52
+  # repro study: 5 runs of same code produced 4× trans_error spread and
+  # only 1/5 tight_goal PASS — divergence traced to sampling window
+  # differences producing inconsistent contact geometries.
+  grid_x_limits: [-0.12, 0.08]   # reference push_t/parameters/sampling_params.yaml:39
+  grid_y_limits: [-0.08, 0.08]   # reference push_t/parameters/sampling_params.yaml:40
+
   # Face-selection bias toward goal-aligned faces (Stage 2B infrastructure).
   # NEUTRALIZED 2026-06-01 after the β=2 sweep produced pre-registered
   # outcome 2: SC-modeB-convert PASSED (seeds 1,2 converted) but
