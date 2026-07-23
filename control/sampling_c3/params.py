@@ -319,6 +319,14 @@ class SamplingParams:
     sampling_setback:                    float = 0.030  # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
     sample_reject_clearance:             float = 0.005  # m, post-projection minimum gap to box surface
 
+    # kRandomOnPerimeter sampling window (body-frame bounding box).
+    # Reference push_t/parameters/sampling_params.yaml:39-40 grid_x/y_limits.
+    # When None, sampling.py:709-716 falls back to shape-hardcoded defaults
+    # ([-0.07, +0.13] × [-0.08, +0.08] for tshape) which do NOT match ref.
+    # Setting explicit values via yaml override enables ref-conformant window.
+    grid_x_limits:                       list | None = None
+    grid_y_limits:                       list | None = None
+
     # Object-shape selector for the kFaceNormal sampler.
     #   "box"    → 4 cardinal ±x/±y body-frame face patches (unchanged, regression-safe)
     #   "tshape" → 8-patch T-shape face table (single-body-collapsed T; see
