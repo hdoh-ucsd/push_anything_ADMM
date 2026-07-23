@@ -713,6 +713,17 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
+    # ---- Parallel sample evaluation (port-todo #1) -----------------------
+    # Port of reference `num_outer_threads`
+    # (sampling_c3plus_options.yaml:6, sampling_based_c3_controller.cc:415-422,
+    # :971 `#pragma omp parallel for num_threads(num_threads_to_use_)`).
+    # When > 1, InnerSolver.evaluate_samples dispatches per-sample
+    # C3 evaluations across a pool of thread-owned (plant_ctx, LCSFormulator,
+    # C3Solver) kits via concurrent.futures.ThreadPoolExecutor. Default 1
+    # preserves bit-identical serial behaviour. Reference push_t sets 4;
+    # our default is 1 pending the pool warm-up cost measurement.
+    num_threads_to_use: int = 1
+
     # ---- Explicit manipuland-ground contact synthesis (§9 Option A) ------
     # When > 0, LCSFormulator.extract_lcs_contacts appends N synthesized
     # manipuland-bottom-face ↔ ground contact rows (in addition to Drake's
@@ -1067,6 +1078,9 @@ class SamplingC3Params:
             w_travel             = float(raw.get("w_travel", 200.0)),
             w_rot                = float(raw.get("w_rot", 0.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
+            num_threads_to_use   = int(raw.get(
+                "num_threads_to_use",
+                raw.get("num_outer_threads", 1))),  # ref name alias
             lcs_explicit_manipuland_ground_contacts = int(raw.get(
                 "lcs_explicit_manipuland_ground_contacts", 0)),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
