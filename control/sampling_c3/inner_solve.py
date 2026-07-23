@@ -34,8 +34,12 @@ plan" output when the wrapper delegates to base_mpc).
 """
 from __future__ import annotations
 
+import copy
 import io
 import os
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -43,6 +47,8 @@ from typing import List, Optional
 import numpy as np
 import pydrake.all as ad
 
+from control.admm_solver import C3Solver
+from control.lcs_formulator import LCSFormulator
 from control.sampling_c3.ik import ik_seed_one_step, solve_ik_to_ee_pos
 from control.sampling_c3.params import SamplingC3Params
 
@@ -343,6 +349,29 @@ class InnerSolver:
         # Solve-count perf counters
         self.full_solves:  int = 0
         self.cheap_solves: int = 0
+
+        # ---- Parallel sample eval (port-todo #1) -------------------------
+        # Reference `num_outer_threads` (sampling_c3plus_options.yaml:6).
+        # `_num_threads_to_use` = requested pool size; 1 = serial. Env var
+        # PUSHA_NUM_THREADS_TO_USE overrides the YAML for A/B smoke tests
+        # without reloading configs.
+        _env_nt = os.environ.get("PUSHA_NUM_THREADS_TO_USE", "").strip()
+        if _env_nt:
+            try:
+                self._num_threads_to_use = max(1, int(_env_nt))
+            except ValueError:
+                self._num_threads_to_use = int(
+                    getattr(params, "num_threads_to_use", 1))
+        else:
+            self._num_threads_to_use = int(
+                getattr(params, "num_threads_to_use", 1))
+        # Pool state: `_worker_kits` = list of (InnerSolver-clone, plant_ctx);
+        # `_worker_queue` = Queue passing kits between threads.
+        # Lazily populated on first parallel dispatch to avoid paying
+        # per-worker LCSFormulator init cost when the caller is single-thread.
+        self._worker_kits:  list = []
+        self._worker_queue: Optional[queue.Queue] = None
+        self._worker_lock:  threading.Lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Single-sample evaluation
@@ -869,6 +898,89 @@ class InnerSolver:
     # Batch
     # ------------------------------------------------------------------
 
+    def _lazy_init_worker_kits(self, n_workers: int) -> None:
+        """Idempotent pool init.  Builds `n_workers` (InnerSolver-clone,
+        plant_ctx) kits and (re)populates `_worker_queue`.  Caller must
+        hold `_worker_lock`.
+
+        Each kit owns its own `plant_ctx`, `LCSFormulator` (with its own
+        autodiff context + `_last_contact_info` cache), and `C3Solver`
+        (with its own `_u_prev_solve` + `_last_lambda_*`).  Kits share the
+        (thread-safe read-only) `plant`, `plant_ad`, `params`, and (for
+        the mutation-idempotent case) the `quad_cost` — reference C++
+        similarly shares the `Q_/R_/G_/U_` cost matrices across the
+        `#pragma omp parallel for` loop at cc:971.
+        """
+        if (len(self._worker_kits) == n_workers
+                and self._worker_queue is not None):
+            # Drain any already-checked-out kits back into the queue for
+            # this dispatch.
+            self._worker_queue = queue.Queue()
+            for kit in self._worker_kits:
+                self._worker_queue.put(kit)
+            return
+
+        self._worker_kits = []
+        self._worker_queue = queue.Queue()
+
+        _formulator_attrs_to_sync = (
+            "_always_on_ee_box", "_scale_lcs", "_contact_model",
+            "_ref_pair_admission_planner_lcs", "_box_drag_c",
+            "_normal_compliance_k", "_normal_velocity_level",
+            "_normal_phi_clamp_v_cap", "_ground_z", "_box_half_extents",
+            "lcs_explicit_manipuland_ground_contacts",
+        )
+        _solver_attrs_to_sync = (
+            "_u_lambda", "_u_eta", "_end_on_qp_step", "_rho_scale",
+            "_use_g_matrix", "_w_G", "_g_lambda", "_g_eta", "_g_x", "_g_u",
+            "_w_G_ee_contact",
+        )
+
+        for _ in range(n_workers):
+            ctx_i    = self.plant.CreateDefaultContext()
+            ctx_ad_i = self.formulator.plant_ad.CreateDefaultContext()
+
+            formulator_i = LCSFormulator(
+                plant           = self.plant,
+                mu              = self.formulator.mu,
+                obj_body        = self.formulator._obj_body,
+                plant_ad        = self.formulator.plant_ad,
+                context_ad      = ctx_ad_i,
+                object_shape    = self.formulator._object_shape,
+                mu_per_pair_type= self.formulator._mu_per_pair_type,
+            )
+            for _attr in _formulator_attrs_to_sync:
+                if hasattr(self.formulator, _attr):
+                    setattr(formulator_i, _attr,
+                            getattr(self.formulator, _attr))
+
+            solver_i = C3Solver(
+                n_x                    = self.solver.n_x,
+                n_u                    = self.solver.n_u,
+                rho                    = self.solver.rho,
+                mode                   = self.solver.mode,
+                math_diag              = False,
+                penalize_input_change  = self.solver._penalize_input_change,
+            )
+            for _attr in _solver_attrs_to_sync:
+                if hasattr(self.solver, _attr):
+                    setattr(solver_i, _attr, getattr(self.solver, _attr))
+
+            # Shallow InnerSolver clone — shares plant/params/quad_cost;
+            # swaps in per-worker formulator+solver.  Clones MUST NOT
+            # recurse into their own pool (num_threads_to_use = 1) or
+            # nested dispatches would deadlock the queue.
+            clone = copy.copy(self)
+            clone.formulator            = formulator_i
+            clone.solver                = solver_i
+            clone._num_threads_to_use   = 1
+            clone._worker_kits          = []
+            clone._worker_queue         = None
+            clone._worker_lock          = threading.Lock()
+
+            self._worker_kits.append((clone, ctx_i))
+            self._worker_queue.put((clone, ctx_i))
+
     def evaluate_samples(self,
                          samples:       List[np.ndarray],
                          current_q:     np.ndarray,
@@ -877,14 +989,28 @@ class InnerSolver:
                          target_xy:     np.ndarray,
                          ee_pos_now:    np.ndarray,
                          g_hat_3d:      np.ndarray,
-                         threading:     bool = False,
+                         use_threading: Optional[bool] = None,
                          target_yaw:    float = 0.0) -> List[SampleResult]:
-        """Sequential by default. `threading=True` is reserved for future
-        parallelisation; raises NotImplementedError until profiled."""
-        if threading:
-            raise NotImplementedError(
-                "Parallel sample evaluation not yet implemented. "
-                "Profile the sequential K=4 baseline first.")
+        """Evaluate every sample.
+
+        Dispatch:
+        - Serial when `use_threading` is False, when the pool size is 1,
+          or when there is only one sample (nothing to parallelise).
+        - Parallel when `self._num_threads_to_use > 1` (or explicit
+          `use_threading=True`): k=0 runs serially FIRST (so its full
+          diagnostic stream stays visible), then k>=1 dispatch through
+          a `ThreadPoolExecutor` fed from `_worker_queue`, matching
+          reference `sampling_based_c3_controller.cc:971`
+          (`#pragma omp parallel for num_threads(num_threads_to_use_)`).
+
+        The parallel path suppresses stdout globally around the pool
+        because `contextlib.redirect_stdout` swaps `sys.stdout`
+        process-wide, so per-worker suppression via `suppress_io` would
+        race across threads.
+        """
+        _resolved_threading = (use_threading
+                               if use_threading is not None
+                               else self._num_threads_to_use > 1)
 
         # Delta-1 audit (read-only, default-OFF): when PUSHA_SAMP_LCS_DUMP=1,
         # emit a [SAMP-LCS] line per sample with sample_idx, sample_pos, the
@@ -898,6 +1024,88 @@ class InnerSolver:
         import hashlib as _hl_d1
         _samp_lcs_dump = bool(_os_d1.environ.get("PUSHA_SAMP_LCS_DUMP", ""))
 
+        # --- Parallel dispatch -------------------------------------------
+        if _resolved_threading and len(samples) > 1:
+            results: list[Optional[SampleResult]] = [None] * len(samples)
+            # k=0 runs serially and keeps its diagnostic stream.
+            results[0] = self.evaluate_sample(
+                sample_pos    = samples[0],
+                current_q     = current_q,
+                current_v     = current_v,
+                plant_ctx     = plant_ctx,
+                target_xy     = target_xy,
+                ee_pos_now    = ee_pos_now,
+                g_hat_3d      = g_hat_3d,
+                is_current_ee = True,
+                full_iters    = True,
+                suppress_io   = False,
+                target_yaw    = target_yaw,
+            )
+
+            n_workers = min(self._num_threads_to_use, len(samples) - 1)
+            with self._worker_lock:
+                self._lazy_init_worker_kits(n_workers)
+
+            def _run_one(k_idx: int, p_sample):
+                clone, ctx = self._worker_queue.get()
+                try:
+                    self.plant.SetPositions(ctx, current_q)
+                    self.plant.SetVelocities(ctx, current_v)
+                    r = clone.evaluate_sample(
+                        sample_pos    = p_sample,
+                        current_q     = current_q,
+                        current_v     = current_v,
+                        plant_ctx     = ctx,
+                        target_xy     = target_xy,
+                        ee_pos_now    = ee_pos_now,
+                        g_hat_3d      = g_hat_3d,
+                        is_current_ee = False,
+                        full_iters    = False,
+                        suppress_io   = True,
+                        target_yaw    = target_yaw,
+                    )
+                    return k_idx, r
+                finally:
+                    self._worker_queue.put((clone, ctx))
+
+            _buf = io.StringIO()
+            with redirect_stdout(_buf):
+                with ThreadPoolExecutor(max_workers=n_workers) as pool:
+                    futures = [pool.submit(_run_one, k, p)
+                               for k, p in enumerate(samples[1:], start=1)]
+                    for f in as_completed(futures):
+                        k_idx, r = f.result()
+                        results[k_idx] = r
+
+            if _samp_lcs_dump:
+                for k, r in enumerate(results):
+                    if r is None:
+                        continue
+                    if r.J_n is not None:
+                        _n_c   = int(r.J_n.shape[0])
+                        _phi_m = (float(np.min(r.phi))
+                                  if r.phi is not None and r.phi.size > 0
+                                  else float("nan"))
+                        _jh    = _hl_d1.sha1(r.J_n.tobytes()).hexdigest()[:8]
+                        _er    = r.ee_pos_resolved
+                        _p     = samples[k]
+                        print(f"[SAMP-LCS] sample_idx={k} "
+                              f"is_current={int(r.is_current_ee)} "
+                              f"sample_pos=({_p[0]:+.4f},{_p[1]:+.4f},"
+                              f"{_p[2]:+.4f}) "
+                              f"ee_pos_resolved=({_er[0]:+.4f},{_er[1]:+.4f},"
+                              f"{_er[2]:+.4f}) "
+                              f"n_c={_n_c} phi_min={_phi_m:+.5f} "
+                              f"J_n_hash={_jh}", flush=True)
+                    else:
+                        _p = samples[k]
+                        print(f"[SAMP-LCS] sample_idx={k} "
+                              f"sample_pos=({_p[0]:+.4f},{_p[1]:+.4f},"
+                              f"{_p[2]:+.4f}) "
+                              f"n_c=NULL (LCS not built)", flush=True)
+            return results  # type: ignore[return-value]
+
+        # --- Serial path (bit-identical to prior behavior) ---------------
         results: list[SampleResult] = []
         for k, p in enumerate(samples):
             r = self.evaluate_sample(
