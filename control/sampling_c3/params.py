@@ -391,6 +391,26 @@ class SamplingParams:
     workspace_z_min:                     float = 0.02
     workspace_z_max:                     float = 0.30
 
+    # Port of reference `robot_radius_limits` (dairlib
+    # sampling_c3plus_options.yaml:32). Radius shell on EE sqrt(x²+y²).
+    # Reference `SamplingC3Controller::CheckForWorkspaceLimitViolations`
+    # (sampling_based_c3_controller.cc:1487-1493) DRAKE_DEMANDs
+    # r_min² < x² + y² < r_max². Default here is effectively unbounded
+    # (0..100 m) so legacy callers see no behaviour change unless the yaml
+    # sets an explicit shell. push_t and jacktoy reference yaml both use
+    # [0.25, 0.75]; anything c3plus uses [0.28, 0.75].
+    robot_radius_limits:                 list  = field(
+        default_factory=lambda: [0.0, 100.0])
+
+    # Port of reference `CheckForWorkspaceLimitViolations` DRAKE_DEMAND
+    # (sampling_based_c3_controller.cc:1476-1494). When True, the workspace
+    # + radius check raises RuntimeError on first violation (matching
+    # reference's abort-on-exit intent). When False, the port keeps the
+    # existing soft-log `[WORKSPACE-VIOLATION]` behaviour (per port-todo #5
+    # note: "Consider adding a hard-abort mode when running non-interactively
+    # — a production run should fail-fast").
+    strict_workspace:                    bool  = False
+
     # Safety filter — drop samples that fail workspace or surface-clearance check
     filter_samples_for_safety:           bool  = True
 

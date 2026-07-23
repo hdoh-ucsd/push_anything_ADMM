@@ -4288,15 +4288,15 @@ class SamplingC3Controller:
             # [WORKSPACE-VIOLATION] — port of reference cc:1476-1494
             # CheckForWorkspaceLimitViolations. Reference DRAKE_DEMANDs (aborts)
             # when EE exits its axis-aligned bounds or radius shell. Port
-            # logs a warning instead of aborting — an arm-flight bug
-            # (e.g. ee_z=1.18m in results/push_t_iter9_orient_20260718_145158)
-            # surfaces as a stream of [WORKSPACE-VIOLATION] lines, without
-            # killing the run mid-sim.
+            # logs a warning by default; when
+            # `params.sampling_params.strict_workspace=True`, raises
+            # RuntimeError after logging (reference-conformant hard abort).
             _sp = self.params.sampling_params
             _wsp_xmin, _wsp_ymin = _sp.workspace_xy_min
             _wsp_xmax, _wsp_ymax = _sp.workspace_xy_max
             _wsp_zmin = _sp.workspace_z_min
             _wsp_zmax = _sp.workspace_z_max
+            _r_min, _r_max = _sp.robot_radius_limits
             _viol = []
             if ee_pos_now[0] < _wsp_xmin: _viol.append(f"x<{_wsp_xmin:.3f}")
             if ee_pos_now[0] > _wsp_xmax: _viol.append(f"x>{_wsp_xmax:.3f}")
@@ -4304,11 +4304,22 @@ class SamplingC3Controller:
             if ee_pos_now[1] > _wsp_ymax: _viol.append(f"y>{_wsp_ymax:.3f}")
             if ee_pos_now[2] < _wsp_zmin: _viol.append(f"z<{_wsp_zmin:.3f}")
             if ee_pos_now[2] > _wsp_zmax: _viol.append(f"z>{_wsp_zmax:.3f}")
+            # Radius shell on sqrt(x²+y²) — reference
+            # cc:1488-1493 checks x²+y² against r_min² and r_max².
+            _r_ee = float((ee_pos_now[0] * ee_pos_now[0]
+                           + ee_pos_now[1] * ee_pos_now[1]) ** 0.5)
+            if _r_ee < _r_min: _viol.append(f"r<{_r_min:.3f}")
+            if _r_ee > _r_max: _viol.append(f"r>{_r_max:.3f}")
             if _viol:
-                print(f"[WORKSPACE-VIOLATION] step={self._step} "
-                      f"ee=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},{ee_pos_now[2]:+.4f}) "
-                      f"violations=[{','.join(_viol)}]",
-                      flush=True)
+                _msg = (f"[WORKSPACE-VIOLATION] step={self._step} "
+                        f"ee=({ee_pos_now[0]:+.4f},{ee_pos_now[1]:+.4f},"
+                        f"{ee_pos_now[2]:+.4f}) r={_r_ee:.4f} "
+                        f"violations=[{','.join(_viol)}]")
+                print(_msg, flush=True)
+                if _sp.strict_workspace:
+                    raise RuntimeError(
+                        "CheckForWorkspaceLimitViolations aborted run "
+                        "(reference DRAKE_DEMAND intent); " + _msg)
             # [GATE-EVOLVE] — one line per loop: cost-ratio trajectory + EE
             # geometric progress toward the perpendicular-contact optimal
             # target. The cost gate fires when curr/best_other < hyst frac

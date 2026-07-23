@@ -402,6 +402,18 @@ sampling_params:
   workspace_z_min: -0.01
   workspace_z_max:  0.30
 
+  # Port of reference sampling_c3plus_options.yaml:32
+  # (dairlib push_t): radius shell on EE sqrt(x²+y²). Reference
+  # CheckForWorkspaceLimitViolations DRAKE_DEMANDs r_min² < x²+y² < r_max².
+  robot_radius_limits: [0.25, 0.75]
+
+  # Port-todo #5 (2026-07-22 arc). When true, workspace or radius exit
+  # raises RuntimeError on first violation, matching reference
+  # DRAKE_DEMAND intent (sampling_based_c3_controller.cc:1476-1494).
+  # push_t canonical opts in — production sim should fail-fast when the
+  # arm starts flying (e.g. ee_z ≫ 0.3), not stream 400+ warning lines.
+  strict_workspace: true
+
   filter_samples_for_safety: true
 
 
