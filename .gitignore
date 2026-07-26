@@ -30,6 +30,10 @@ milestones/
 results/
 profiling/results/
 experiments/
+# Per-run diagnostic streams the controller rewrites every launch.
+audit_output/lambda_trace.csv
+audit_output/lambda_horizon_trace.csv
+audit_output/lcs_filter_audit.txt
 # Step 8/9 transient probe scripts (one-shot diagnostics; on-disk only)
 scripts/probe_9_1_2_deflection.py
 scripts/probe_autodiff.py
