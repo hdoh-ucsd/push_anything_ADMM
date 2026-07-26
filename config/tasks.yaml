@@ -290,13 +290,9 @@ tasks:
       # error down.
       use_quaternion_dependent_cost:                    true
       q_quaternion_dependent_weight:                    1000.0
-      # 2026-07-18: bumped 0.0 → 0.1 to fix yaw Hessian singularity found in
-      # results/push_t_iter9_orient_20260718_145158 analysis.
-      # `build_regularized_quaternion_cost` computes H then reg1=max(0, -min_eig)·I
-      # which shifts min eigenvalue to EXACTLY 0 (singular Q). One direction in
-      # quaternion space has zero cost → QP freezes yaw at whatever value
-      # dynamics settle to. reg2=q_goal·q_goal^T with fraction>0 adds curvature
-      # in the goal-quat direction, breaking the singularity.
+      # 2026-07-22 (v3): kept at 0.1 (port-side). Reference is 0.0. p63/64
+      # showed 0.0 alone regresses (trans 37-61mm). Testing 0.1 combined
+      # with G-matrix (p69+) to see if 4/5 baseline holds under Full Ref.
       q_quaternion_dependent_regularizer_fraction:      0.1
       # w_terminal for the tshape path was formerly hardcoded to 1.0 (QN=Q)
       # inside task_costs.py:1076 to match reference gamma=1.0 — so the old
