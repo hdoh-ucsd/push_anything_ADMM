@@ -494,14 +494,31 @@ class C3PlusMPC:
         # 5. Store predicted trajectory + u[0] for next-step linearization
         self.last_x_seq = x_seq        # (N+1, n_x)
         self._last_u    = u_seq[0].copy()
-        # Save the CURRENT plan's step-1 predicted state as x_pred_curr_plan_
-        # for next tick's ClampEndEffectorAcceleration. Reference cc:1453
-        # uses x_lcs_curr (after clamp), but for the port we cache x_seq[1]
-        # (the first-lookahead-step predicted state) so the clamp bounds
-        # next tick's actual reading against the plan's own extrapolation.
+        # Save x_pred_curr_plan_ for next tick's ClampEndEffectorAcceleration.
+        # Reference sampling_based_c3_controller.cc:1723-1732 sets this by
+        # linear interpolation into the plan trajectory at fraction
+        # (filtered_solve_time / dt):
+        #     last_idx = filtered_solve_time / dt
+        #     frac     = (filtered_solve_time / dt) - last_idx
+        #     x_pred_curr_plan = knots[last_idx] + frac·(knots[last_idx+1] - knots[last_idx])
+        # This anticipates where the arm SHOULD be by the time the next tick
+        # fires (accounting for solve wall time). Prior port cached x_seq[1]
+        # directly — TIME-BEHIND reality when wall time > dt, causing the
+        # clamp to fight nondeterminism instead of damping it.
         # For EE-space runs only; joint-torque path skips clamp entirely.
         if self.use_ee_space and x_seq is not None and len(x_seq) > 1:
-            self._x_pred_curr_plan = np.asarray(x_seq[1], dtype=float).copy()
+            _dt_pred = self.dt_pose if self._crossed_switching_threshold else self.dt
+            _idx_f = float(self._filtered_solve_time) / _dt_pred
+            _last_idx = int(_idx_f)
+            _frac = _idx_f - _last_idx
+            _N_knots = len(x_seq)
+            if _last_idx < _N_knots - 1:
+                _pred = (np.asarray(x_seq[_last_idx], dtype=float)
+                         + _frac * (np.asarray(x_seq[_last_idx + 1], dtype=float)
+                                    - np.asarray(x_seq[_last_idx], dtype=float)))
+            else:
+                _pred = np.asarray(x_seq[_N_knots - 1], dtype=float)
+            self._x_pred_curr_plan = _pred.copy()
         # Plumb first-horizon λ for the impedance controller's feedforward
         # contact-force term. None until the first solve produces them.
         self.last_lambda_n_first = (
