@@ -449,10 +449,12 @@ def main():
 
     # ---- Structured log header -------------------------------------------
     _cost = task_cfg.get("cost", {})
+    # Read PUSHA_RHO once for both the log header and the C3Solver ctor.
+    _rho_init = float(os.environ.get("PUSHA_RHO", "100.0"))
     print(f"[ENV]  Mass: {task_cfg.get('mass', '?')} kg   "
           f"Friction mu: {task_cfg.get('friction', '?')}")
     print(f"[MPC]  Horizon: 5   dt: 0.1 s   ADMM max iters: {args.admm_iter}"
-          f"   rho_init: 100.0")
+          f"   rho_init: {_rho_init}")
     print(f"[MPC]  Force limit: 30.0 Nm")
     print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
     print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
@@ -581,7 +583,11 @@ def main():
     # penalize_input_change: reference push_t/sampling_c3plus_options.yaml
     # sets `false`; reference anything/*.yaml sets `true`. Task-gated.
     _penalize_input_change = (task_name != "push_t")
-    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=100.0,
+    # _rho_init is defined earlier (log-header block); PUSHA_RHO env override
+    # for the item-#7 ρ-sweep investigation. See
+    # docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md
+    # (arc 1). Default 100.0 preserves the port's tuned regime.
+    solver     = C3Solver(n_x=_solver_n_x, n_u=_solver_n_u, rho=_rho_init,
                           math_diag=args.math_diag,
                           mode=args.solver,
                           penalize_input_change=_penalize_input_change)
