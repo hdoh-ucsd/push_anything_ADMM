@@ -1,4 +1,0 @@
-HEAD=524ecf0fe3135956684ad78f2baef4df04bdadd8
-branch=reproduce-dairlib
-date=2026-07-13T18:03:53-07:00
-invocation=Phase-1 T seed=0 (Cartesian-force OSC default; phase-2 sweep bundle minus stale flag; math-diag OFF for speed)

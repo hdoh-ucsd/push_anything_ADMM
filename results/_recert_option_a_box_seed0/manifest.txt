@@ -1,5 +1,0 @@
-HEAD=561374fe19977a3647f4f61fe4a79633ce7ffad7
-branch=main
-date=2026-07-13T22:21:03-07:00
-invocation=Option A re-cert box seed=0 (W_joint2=0.0), port canonical env bundle, --max-time 8
-expected=~75.3% closure
