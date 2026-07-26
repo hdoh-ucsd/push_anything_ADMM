@@ -143,6 +143,37 @@ class C3Solver:
         self._w_G_ee_contact     = 1000.0
         self._eye_total_c3p_dim  = -1
         self._eye_total_c3p      = None
+        # Reference-conformant per-slot G matrix for ADMM augmentation.
+        # Reference c3_options.h:189 G = w_G · diag(g_vector). Reference
+        # push_t/parameters/sampling_c3plus_options.yaml:70-101:
+        #   w_G: 0.01
+        #   g_x = 0 (all state slots)  → no state augmentation
+        #   g_u = 0 (all input slots)  → no input augmentation
+        #   g_lambda = 2 (all λ slots)
+        #   g_eta    = 1 (all η slots)
+        # Port previously applied uniform ρ (scalar) to ALL slots, meaning
+        # state/input got 100× more augmentation than reference (rho=100 vs
+        # ref 0) and λ got 50× more (100 vs 2). This ill-conditioned the
+        # ADMM. When enabled, replaces `rho * I` with `rho * diag(G_diag)`
+        # in the P and q_total updates. Default True for c3+ mode.
+        # Env-gate: PUSHA_USE_G_MATRIX=1 to enable (default OFF).
+        # 2026-07-22 test (p68/p69): full ref G with g_x=g_u=0 destabilizes
+        # port ADMM — T physically tipped in p69, trans regressed in p68.
+        # Reference-conformance for G matrix requires additional structural
+        # changes (possibly per-slot ρ scaling, dt-dependent G tuning, or
+        # different QP formulation) that were not in scope this session.
+        # Keeping code as research infrastructure; default OFF preserves
+        # p58-p62 4/5 baseline.
+        import os as _os_g
+        self._use_g_matrix = (
+            _os_g.environ.get("PUSHA_USE_G_MATRIX", "0") == "1")
+        self._w_G          = 0.01
+        self._g_lambda     = 2.0
+        self._g_eta        = 1.0
+        self._g_x          = 0.0   # reference has zero state augmentation
+        self._g_u          = 0.0   # reference has zero input augmentation
+        self._g_diag_c3p_cache: np.ndarray | None = None
+        self._g_diag_c3p_shape: tuple | None = None
         # First-horizon contact force from the most recent solve. Read by
         # the impedance controller (Aydinoglu eq. 36 τ_ff = J_c^T λ_d).
         # _last_lambda_n_first : (num_normals,) — non-negative normal forces.
@@ -993,6 +1024,39 @@ class C3Solver:
                   f"λ=[{SL}:{SU})  u=[{SU}:{SE})  η=[{SE}:{TOT})")
 
         # ---------------------------------------------------------------
+        # Reference-conformant G matrix (c3_options.h:189, applied every
+        # iter). Precompute the per-slot G_diag vector for the current
+        # problem shape; cache to avoid rebuilding each solve.
+        _shape_key = (total_dim, N, TOT, n_x, n_lambda, n_u, SL, SU, SE)
+        if (self._use_g_matrix
+                and self._g_diag_c3p_shape != _shape_key):
+            _gd = np.zeros(total_dim)
+            _wG = float(self._w_G)
+            _gx = float(self._g_x) * _wG
+            _gL = float(self._g_lambda) * _wG
+            _gu = float(self._g_u) * _wG
+            _gE = float(self._g_eta) * _wG
+            # Per-knot layout: [x, λ, u, η] at offsets [0, SL, SU, SE).
+            for _k_kn in range(N):
+                _base = _k_kn * TOT
+                _gd[_base + 0 : _base + n_x]                    = _gx
+                _gd[_base + SL : _base + SL + n_lambda]         = _gL
+                _gd[_base + SU : _base + SU + n_u]              = _gu
+                _gd[_base + SE : _base + SE + n_lambda]         = _gE
+            # Terminal x_N at end of vector.
+            _gd[N * TOT : N * TOT + n_x] = _gx
+            self._g_diag_c3p_cache = _gd
+            self._g_diag_c3p_shape = _shape_key
+            if not getattr(self, "_g_matrix_banner", False):
+                self._g_matrix_banner = True
+                print(f"[G-MATRIX] active: w_G={_wG} g_x={self._g_x} "
+                      f"g_λ={self._g_lambda} g_u={self._g_u} g_η={self._g_eta}  "
+                      f"→ per-slot: x={_gx} λ={_gL} u={_gu} η={_gE}  "
+                      f"(effective at rho=100: x=0 λ=2.0 η=1.0)",
+                      flush=True)
+        _use_g = self._use_g_matrix and self._g_diag_c3p_cache is not None
+
+        # ---------------------------------------------------------------
         # LCS scaling — reference c3.cc:81, 204-212 + lcs.cc:46-58.
         # ScaleComplementarityDynamics: scale = ||A[0]|| / ||D[0]||;
         # D *= scale, E /= scale, c /= scale, H /= scale. Renormalizes
@@ -1044,7 +1108,15 @@ class C3Solver:
             # The η = E x + F λ + H u + c equality below replaces the
             # `q_ref[λ_n] += w_comp · phi_gap` hack used by C3.
 
-            P_total = P + rho * _eye_total
+            # Reference-conformant G-matrix augmentation: replaces uniform
+            # rho*I with rho*diag(G) where G has per-slot weights (0 on
+            # state/input, w_G·g_λ on λ, w_G·g_η on η). Matches c3.cc AD
+            # step exactly. Falls back to uniform ρ if _use_g False.
+            if _use_g:
+                _P_aug = rho * np.diag(self._g_diag_c3p_cache)
+            else:
+                _P_aug = rho * _eye_total
+            P_total = P + _P_aug
             P_sym   = 0.5 * (P_total + P_total.T) + 1e-8 * _eye_total
 
             # ---------------------------------------------------------------
@@ -1301,7 +1373,11 @@ class C3Solver:
             rho_iter   = rho  # ρ used to build this iter's QP (pre-scale)
 
             with timed("admm.qp_build"):
-                q_total = q_ref - rho * (delta - omega)
+                # Ref-conformant G-matrix: element-wise per-slot weighting.
+                if _use_g:
+                    q_total = q_ref - rho * self._g_diag_c3p_cache * (delta - omega)
+                else:
+                    q_total = q_ref - rho * (delta - omega)
 
                 # §7.67 — final-iter G-weighting override.
                 if _b1a_active and it == admm_iter - 1:
@@ -1813,7 +1889,12 @@ class C3Solver:
                     _delta_rho = rho * (_rs - 1.0)
                     rho   *= _rs
                     omega /= _rs
-                    np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_rho)
+                    if _use_g:
+                        # Ref-conformant: scale by per-slot G_diag.
+                        _delta_diag = _delta_rho * self._g_diag_c3p_cache
+                        np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_diag)
+                    else:
+                        np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_rho)
                     cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
                 elif (it + 1) % 10 == 0:
                     # Legacy Boyd §3.4.1 primal/dual balance step (rho_scale
@@ -1821,13 +1902,17 @@ class C3Solver:
                     if pr > 10.0 * dr and rho < 1000.0:
                         rho   *= 2.0
                         omega /= 2.0
-                        P_total2 = P + rho * _eye_total
+                        _aug = (rho * np.diag(self._g_diag_c3p_cache)
+                                if _use_g else rho * _eye_total)
+                        P_total2 = P + _aug
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
                         cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
                     elif dr > 10.0 * pr and rho > 0.1:
                         rho   /= 2.0
                         omega *= 2.0
-                        P_total2 = P + rho * _eye_total
+                        _aug = (rho * np.diag(self._g_diag_c3p_cache)
+                                if _use_g else rho * _eye_total)
+                        P_total2 = P + _aug
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
                         cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
