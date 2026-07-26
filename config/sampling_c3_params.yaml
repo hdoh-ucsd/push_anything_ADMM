@@ -39,14 +39,25 @@ surrogate_admm_iters: 3
 progress_params:
   # Which progress metric drives the timeout decision.
   # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kConfigCostDrop
-  track_c3_progress_via: kPosOrRotCost
+  # Reference-conformance (2026-07-17): matches
+  # `dairlib push_t/progress_params_c3plus.yaml:30 track_c3_progress_via: 3`
+  # (= kConfigCostDrop). The prior kPosOrRotCost caused pos_error micro-
+  # oscillation to reset _steps_since_pos_improve every tick, so
+  # met_progress=Y fired the whole run and mode-switch never left c3 even
+  # when the box was physically stalled at x=0.083 (see 30 s trace analysis).
+  # kConfigCostDrop uses a windowed FRACTIONAL drop threshold instead —
+  # nanometer wobble no longer masks a real stall.
+  track_c3_progress_via: kConfigCostDrop
 
   # Number of control loops to wait before declaring "no progress" timeout.
   num_control_loops_to_wait:           60
   num_control_loops_to_wait_position:  30
 
   # kConfigCostDrop variant: required object-config cost drop over N loops.
-  progress_enforced_cost_drop:    0.0
+  # Reference push_t/progress_params_c3plus.yaml:44
+  # progress_enforced_cost_drop: 0.01 (1 % config-cost drop over the window).
+  # Prior 0.0 was a no-op (any drop → met_progress=Y).
+  progress_enforced_cost_drop:    0.01
   progress_enforced_over_n_loops: 30
 
   # When the box-to-goal distance falls below this, switch to the
