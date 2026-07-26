@@ -31,6 +31,17 @@ w_travel: 200.0
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
 
+# ----------------------------------------------------------------------------
+# Force-tracking OSC executor overrides
+# ----------------------------------------------------------------------------
+# 2026-07-17: raise min_push_force floor 2.0 → 4.0 N. Rationale: after the
+# sampling_height=0.050 fix (tasks.yaml:27), Drake ee-box contact force peaks
+# jumped to 7.9 N and mean 0.85 N. Planner-vs-executor gap is smaller, so the
+# executor can push harder without exceeding what Drake supplies. Prior 2.0 N
+# floor was set to avoid clipping the arm through the box before the tumble
+# fix; that risk is gone at COM contact geometry. Nominal_push_force stays
+# at 5.0 (planner still gets to plan up to that when its |Σλ_n| exceeds 4.0).
+min_push_force: 4.0
 
 # ----------------------------------------------------------------------------
 # Progress + mode-switch hysteresis
