@@ -50,6 +50,13 @@ use_commit_face_gate: false
 # reads) → kToC3ReachedReposTarget never fired → T stalled. Disable to match.
 use_contact_entry_gate: false
 
+# Explicit off for the inner surface-distance metric variant. Reference has
+# no such gate (params.py:841 "Port-only surface-distance entry gate").
+# INERT while `use_contact_entry_gate: false` because it lives inside the
+# outer gate's branch (sampling_based_c3_controller.py:1724), but making it
+# explicit avoids future confusion if the outer gate is ever re-enabled.
+use_surface_entry_gate: false
+
 # Reference push_t/parameters/sampling_params.yaml does NOT set ee_z_close (only
 # anything/sampling_params.yaml sets it true for box). Drake default-inits
 # `bool ee_z_close` to false, so reference push_t runs with EE-Z gate bypassed.
