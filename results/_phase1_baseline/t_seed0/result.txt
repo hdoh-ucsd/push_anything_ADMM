@@ -1,1 +1,0 @@
-[RESULT] method=sampling-c3  final_obj_xy=(-0.0012, 0.0051)  goal_dist=0.1827m  orient_err=0.7162rad  success=NO  ref_gate=FAIL
