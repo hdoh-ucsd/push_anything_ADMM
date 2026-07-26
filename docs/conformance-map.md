@@ -9,7 +9,9 @@
 
 Evidence is separate from verdict — instrumented run outputs live under `audit_output/<subsystem>_tier2/`, never in this doc.
 
-**Status:** Subsystem (1) Executor Tier-1 approved 2026-07-14; Tier-2 landed 2026-07-14. Subsystems (2)–(5) pending. **2026-07-17 update:** Subsystem (4) rows 4.a, 4.b, 4.c, 4.l reach reference-match for T-push (commit 08003e1 + prior 4c3bad5); new row 4.s added for port-only surface-entry gate (now disabled for T). Box-push retains prior regime — subsystem (4) audit for box unchanged.
+**Status:** All 5 subsystems Tier-1 + Tier-2 landed 2026-07-14. **2026-07-17 update:** Subsystem (4) rows 4.a, 4.b, 4.c, 4.l reach reference-match for T-push (commit 08003e1 + prior 4c3bad5); new row 4.s added for port-only surface-entry gate (now disabled for T).
+
+**2026-07-25 refresh (`main` @ `f484607`):** Subsystem (3) contact-model cluster (3.g/3.h/3.n/3.p) + drag band-aid (3.j) all flipped to REFERENCE-MATCH — port default `_contact_model = "anitescu"` (`lcs_formulator.py:86`); `_box_drag_c = 0.0`; n_lambda = 4·n_c runtime-confirmed on p62 baseline. Subsystem (4) horizon+dt (4.d/4.e) now task-conditional (T=5×0.1, box=7×0.075) — both REFERENCE-MATCH per their respective YAMLs (`main.py:611-629`). The 2026-07-14 map's "contact-model cluster is UNRESOLVED / coupled re-tune HOLD" prognosis is stale — that cluster is closed. What remains from the two-cluster prognosis is only the executor-overdrive cluster (subsystem 1) and port-todo #7 (coupled ρ/G/Q; investigation 2026-07-23).
 
 ---
 
@@ -595,23 +597,23 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 ## 3.g — Contact model (Stewart-Trinkle vs Anitescu)
 
 - **Reference:** `sampling_c3_options.yaml`: `contact_model: 'anitescu'` for BOTH `anything` and `push_t`. Anitescu with `num_friction_directions=2` → 2D linearized friction cone folded into a single λ block of size `2·num_friction·n_c = 4·n_c`. Single PSD F block (per lcs_formulator.py:174-191 comment on the reference's `lcs_factory.cc:235-275`).
-- **Port:** `lcs_formulator.py:186-191` — default `_contact_model = 'stewart_trinkle'`. Env `LCS_CONTACT_MODEL` opt-in to switch. Stewart-Trinkle: 3-block λ = `[γ (n_c) ; λ_n (n_c) ; λ_t (4·n_c)]` of total size `6·n_c`. F matrix has γ-γ block that is rank-deficient by construction.
-- **Tag:** LOAD-BEARING.
+- **Port (2026-07-25):** `lcs_formulator.py:86` — default `_contact_model = 'anitescu'` (flipped since the 2026-07-14 audit read; pre-flip default was `'stewart_trinkle'`). Anitescu factory implemented at `lcs_formulator.py:1875-1959` — `J_c = E_t^T·J_n + diag(μ)·J_t`, single PSD F = `dt·J_c·M⁻¹·J_c^T` (mirrors reference `c3/multibody/lcs_factory.cc:496-545`). ST path retained under env `LCS_CONTACT_MODEL=stewart_trinkle` for regression-diff use.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH.
 - **Confidence:** high.
-- **Tier 2 — port-side runtime capture:**
+- **Tier 2 — port-side runtime capture (2026-07-25, p62 baseline):**
   ```
-  [ADMIT-T2] contact_model='stewart_trinkle' (reference default='anitescu';
-             port default='stewart_trinkle'; env_LCS_CONTACT_MODEL=<unset>)
+  [DEBUG-C3+] n_contacts=4, n_lambda=16          ← 4·n_c Anitescu (ST would be 24)
+  [§7.67 B1-A] flag ON but SKIPPED — _is_st_c3p=False
   ```
-  **CONFIRMED**: port default runs Stewart-Trinkle unless explicitly overridden. Reference default runs Anitescu. Different λ dimensions, different projection semantics, different friction-cone formulations. The port's §7.24/§7.26/§7.27 normal-row patch flags (3.n) are Stewart-Trinkle-specific — under Anitescu they become no-ops (per source comment). So enabling Anitescu (`LCS_CONTACT_MODEL=anitescu`) would also nullify those three patches.
+  **REFERENCE-MATCH confirmed at runtime.** Anitescu single-PSD F block eliminates the γ-γ rank-deficiency that drove non-convergence under ST. The port's §7.24/§7.26/§7.27 normal-row patch flags (3.n) are Stewart-Trinkle-specific and become NO-OPs by construction under Anitescu — see (3.n).
 
 ## 3.h — num_friction_directions
 
 - **Reference:** `sampling_c3_options.yaml: num_friction_directions: 2`. Anitescu 2D cone → 2 friction directions per contact folded into 4·n_c λ.
-- **Port:** implicit 4 (polyhedral pyramid `{t1, -t1, t2, -t2}` at `lcs_formulator.py:815-824`). Under Stewart-Trinkle this gives `n_t = 4·n_c`; the corresponding Anitescu equivalent would be `n_friction_dirs = 2`.
-- **Tag:** LOAD-BEARING (ties to 3.g).
+- **Port (2026-07-25):** Anitescu factory uses `NUM_FRICTION_DIRECTIONS = 2` (`lcs_formulator.py:1876`) → 2·dirs = 4 tangent-direction λ's per contact folded into `4·n_c` block. Matches reference exactly.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH (ties to 3.g).
 - **Confidence:** high.
-- **Tier 2:** CONFIRMED via source-read. Port's 4-edge polyhedron matches Anitescu num_friction=2 in terms of the underlying friction cone discretization, but the ST-vs-Anitescu wrapping (γ slack; folded J_c = E_t^T·J_n + diag(μ)·J_t) changes the λ semantics.
+- **Tier 2:** REFERENCE-MATCH confirmed at runtime — `n_lambda=16` at `n_c=4` (see 3.g / 3.p). The pre-flip ST 4-edge polyhedron (`{t1, -t1, t2, -t2}` at `lcs_formulator.py:815-824`) is now inert on the default path — walked only if `LCS_CONTACT_MODEL=stewart_trinkle` is explicitly set.
 
 ## 3.i — μ per-pair vs uniform
 
@@ -639,10 +641,10 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 ## 3.j — `box_ground_drag` viscous A-matrix modification
 
 - **Reference:** No analog. Reference LCS relies on `λ_n_gnd tracking gravity` and `μ·λ_n_gnd` friction to physically decelerate the manipuland.
-- **Port:** `lcs_formulator.py:56, 120, 1228-1234` — `box_ground_drag: float = 10.0` (constructor default). Injects `A[v_box_xy_diag] -= c·dt` viscous drag onto the box's translational velocity block. Per the source comment (line 1219-1227): "the ADMM componentwise projection cannot sustain λ_n_gnd at the m·g level needed to apply μ·λ_n_gnd friction over the prediction horizon; without this damping the predicted box trajectory coasts at the post-impact velocity for the full horizon (observed: −388 mm in 1 s vs executed ~−4 mm)."
-- **Tag:** LOAD-BEARING (active by default, port-only).
+- **Port (2026-07-25):** `lcs_formulator.py:108` — `self._box_drag_c = 0.0`. The band-aid is disabled by default. Application sites at `lcs_formulator.py:1196-1209` and `:1667-1673` are guarded by `if self._box_drag_c > 0.0` — no A-matrix modification occurs on the default path. Constructor comment at line 84 documents that Anitescu holds `λ_n_gnd` on its own, obsoleting the drag.
+- **Tag:** LOAD-BEARING (port-only band-aid) → OBSOLETED (default OFF; would fire only if `_box_drag_c` is externally set > 0).
 - **Confidence:** high.
-- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] box_ground_drag=10.0 (port-only viscous A-matrix modification; reference has no analog — LCS λ_n_gnd tracking is the reference mechanism)`. **This is a port-only band-aid for the ADMM's inability to sustain contact λ**. Structurally load-bearing: without it, the port's LCS predicts unrealistic box coasting; with it, the LCS predicts artificially fast box decay. Neither matches reference physics. Coupled to (4) ADMM projection semantics — a properly-converging ADMM would obviate the need for this drag.
+- **Tier 2:** OBSOLETED by the 3.g Anitescu flip. Previous rationale (ADMM under ST can't sustain λ_n_gnd at m·g → box coasts predicted → drag added) is null under Anitescu's single PSD F block. Guarded application sites (`_box_drag_c > 0.0`) mean re-enabling requires an explicit code change; no yaml/env knob currently exposes it.
 
 ## 3.k — `LCS_ALWAYS_ON_EE_BOX` (port-only)
 
@@ -673,18 +675,14 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 **Applying the 2.k caution — verify each mechanism individually.**
 
 - **Reference:** No analog. Reference Anitescu doesn't have separate normal rows to patch (single folded λ block).
-- **Port:** three env-gated patches on the Stewart-Trinkle normal row:
-  1. `LCS_NORMAL_COMPLIANCE_K` (`lcs_formulator.py:132-139`) — additive `k·I` on F_lcs diagonal at EE-BOX normal contact. Default 0.0 = OFF.
-  2. `LCS_NORMAL_VELOCITY_LEVEL` (`lcs_formulator.py:149-150`) — drops the `φ/dt` position-forcing term from `c_lcs[SLN+ee_box_idx]`. Default False = OFF.
-  3. `LCS_NORMAL_PHI_CLAMP` (`lcs_formulator.py:164-172`) — clamps `phi/dt ≥ -v_cap` (depth-asymmetric saturation). Default None = OFF.
-- **Tag:** LOAD-BEARING iff ANY enabled; each independently opt-in.
+- **Port (2026-07-25):** three legacy patches on the (now-inert) Stewart-Trinkle normal row, all defaulted OFF at `lcs_formulator.py:115-117`:
+  1. `_normal_compliance_k = 0.0` — additive `k·I` on F_lcs diagonal at EE-BOX normal contact.
+  2. `_normal_velocity_level = False` — drops the `φ/dt` position-forcing term from `c_lcs[SLN+ee_box_idx]`.
+  3. `_normal_phi_clamp_v_cap = None` — clamps `phi/dt ≥ -v_cap` (depth-asymmetric saturation).
+  Per the constructor comment at `lcs_formulator.py:112-114`, these are "all no-ops under Anitescu (no separate normal row)" — kept as dead defaults so downstream code doesn't need conditional guards.
+- **Tag:** LOAD-BEARING iff ANY enabled → NO-OPS BY CONSTRUCTION under the current default (`_contact_model="anitescu"`).
 - **Confidence:** high.
-- **Tier 2 — port-side runtime capture (individually verified per 2.k caution):**
-  ```
-  [ADMIT-T2] normal_compliance_k=0.0  normal_velocity_level=False  normal_phi_clamp=None
-             (port-only diagnostic normal-row patches — ALL default OFF)
-  ```
-  **All THREE mechanisms individually confirmed INERT at runtime.** No hidden live mechanism underneath the "inert" tag. Passes the 2.k caution check. If Anitescu is enabled (`LCS_CONTACT_MODEL=anitescu`), all three become NO-OPs by construction (no separate normal row to patch, per source comment `lcs_formulator.py:184-186`).
+- **Tier 2:** Doubly-inert — (a) all three fields default OFF, (b) their code paths live in the ST branch which is not walked at runtime. No hidden live mechanism. If a future user opts back to ST (`LCS_CONTACT_MODEL=stewart_trinkle`), these patches would matter again; on the default Anitescu path they cannot.
 
 ## 3.o — `LCS_EXPLICIT_MANIPULAND_GND` synthesis (port-only)
 
@@ -697,10 +695,10 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 ## 3.p — LCS λ-dimension formula
 
 - **Reference:** Anitescu with `num_friction=2` → `n_lambda = 2·num_friction·n_c = 4·n_c`. For `anything` (n_c=6): n_lambda = 24. For `push_t` planner (n_c=4): n_lambda = 16.
-- **Port:** Stewart-Trinkle → `n_lambda = 6·n_c`. For the default box run at `n_c=1` (only BOX-GND): n_lambda = 6. If Drake later admits an EE-BOX pair, n_c=2, n_lambda=12.
-- **Tag:** LOAD-BEARING (directly changes ADMM solve dimension, projection semantics, `F` matrix structure).
+- **Port (2026-07-25):** Anitescu default → `n_lambda = 4·n_c`. Runtime on the T-push p62 baseline: `n_c=4, n_lambda=16` (log line: `[DEBUG-C3+] n_contacts=4, n_lambda=16`). Matches reference push_t planner formula exactly.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH.
 - **Confidence:** high.
-- **Tier 2:** RUNTIME-CONFIRMED via `[ADMIT-T2] call=0 n_c=1 tags=['BOX-GND'] n_lambda_ST=6`. Reference-analog (Anitescu num_friction=2) would give `n_lambda = 4·1 = 4` for the same 1-pair admission. **The port ADMM projection thus operates on a 50%-larger λ vector**, with a different (rank-deficient γ-γ) F block. Belongs conceptually with 3.g.
+- **Tier 2:** REFERENCE-MATCH confirmed. Pre-flip ST formula (`6·n_c` → 24 for n_c=4) is walked only under explicit `LCS_CONTACT_MODEL=stewart_trinkle` opt-in. Belongs conceptually with 3.g.
 
 ## 3.q — Tangential-Jacobian basis construction
 
@@ -720,8 +718,8 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 ## Coupling observed (from code + Tier-2 evidence)
 
 - **3.a ↔ 3.b ↔ 3.k ↔ 3.l ↔ 3.m** — the whole pair-selection stack. Reference uses a single mechanism (pre-specified + N-closest). Port uses FIVE mechanisms glued together: (a) 2 mm threshold, (b) geometry-set filter, (c) optional always-on injection, (d) optional top-K for cost LCS, (e) optional top-K for planner LCS (tshape-only). **Consolidation candidate**: could collapse to a single reference-conformant path (always-on + top-K for both planner and cost LCS, ALL tasks), but this changes n_c semantics run-to-run — COUPLED with (4) ADMM which currently expects variable n_c.
-- **3.d ↔ 3.j** — the 1-pair BOX-GND admission (3.d) is why `box_ground_drag=10.0` (3.j) was introduced. With 1 pair (single ground witness) and Stewart-Trinkle's non-converging ADMM projection, the LCS can't sustain μ·λ_n_gnd → box coasts predicted → drag term is the artificial fix. Reference's 3-pair witness + Anitescu doesn't need this. **The drag disappears IF (3.d) admits ≥ 3 pairs AND (3.g) switches to Anitescu.**
-- **3.g ↔ 3.h ↔ 3.n ↔ 3.p** — contact model cluster. Switching (3.g) to Anitescu automatically: (h) folds friction into single 4·n_c block, (n) makes all three normal-row patches no-ops by construction, (p) changes n_lambda from 6·n_c to 4·n_c. **Coupled subset — cannot flip individually.**
+- **3.d ↔ 3.j** — the 1-pair BOX-GND admission (3.d) is why `box_ground_drag=10.0` (3.j) was introduced. With 1 pair (single ground witness) and Stewart-Trinkle's non-converging ADMM projection, the LCS can't sustain μ·λ_n_gnd → box coasts predicted → drag term is the artificial fix. Reference's 3-pair witness + Anitescu doesn't need this. **RESOLVED 2026-07-25:** (3.g) is now Anitescu on the default path, `_box_drag_c=0.0`, drag is not applied.
+- **3.g ↔ 3.h ↔ 3.n ↔ 3.p** — contact-model cluster. **RESOLVED 2026-07-25.** (3.g) flipped to Anitescu on the default path → (h) num_friction=2 folded, (n) three normal-row patches double-inert (default + no-op), (p) n_lambda = 4·n_c runtime-confirmed at 16 (was 24 under ST). Coupled subset flipped as a unit.
 - **3.i ↔ 3.d ↔ 3.g** — μ per-pair (3.i) is meaningful only when there are multiple contact pair TYPES (3.d admits both EE-BOX and BOX-GND) AND the contact model supports per-λ friction (3.g Anitescu folds μ into J_c = E_t^T·J_n + diag(μ)·J_t; ST doesn't fold this way).
 - **3.j (box_ground_drag) ↔ subsystem (4) ADMM** — port-only band-aid symptomatic of ADMM non-convergence. Belongs to the coupled band-aid subset that only resolves when (4) reaches a properly-converging ADMM projection.
 - **3.a (threshold) ↔ (2) reposition ↔ (4) mode-switch** — the 2 mm threshold means the LCS "sees" EE-BOX only in the final millimeter of approach. This drives the dispatcher's mode-switch timing (`kToC3ReachedReposTarget` fires only near contact) and interacts with the reposition finished-flag semantics (2.l) — CROSS-SUBSYSTEM coupling to (2) and (4).
@@ -745,19 +743,19 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 | 3.d | Manipuland-ground count + method | LOAD-BEARING | **CONFIRMED** — port 1 auto pair vs reference 3 pre-specified sphere witnesses |
 | 3.e | Object-wall admission | LOAD-BEARING (anything) | **REFERENCE-CONFIRMED** 2 wall pairs; port has NONE (effectively COSMETIC for pushing task) |
 | 3.f | Arm-self/arm-table exclusion | COSMETIC | **CONFIRMED conformant** — both exclude |
-| 3.g | Contact model (ST vs Anitescu) | LOAD-BEARING | **CONFIRMED at runtime** — port default `stewart_trinkle`; reference default `anitescu` |
-| 3.h | num_friction_directions | LOAD-BEARING | **CONFIRMED** — port 4-edge polyhedron (ST); reference `num_friction_directions=2` (Anitescu) |
-| 3.i | μ per-pair vs uniform | LOAD-BEARING | **CONFIRMED runtime** — port `mu=0.4` single scalar; reference 5-value array |
-| 3.j | `box_ground_drag` viscous A-mod | LOAD-BEARING (port-only) | **CONFIRMED at runtime** — 10.0 ACTIVE by default; reference has no analog |
+| 3.g | Contact model (ST vs Anitescu) | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — port default `anitescu` (`lcs_formulator.py:86`); ST kept as env opt-in |
+| 3.h | num_friction_directions | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — Anitescu factory uses `NUM_FRICTION_DIRECTIONS=2` (matches reference) |
+| 3.i | μ per-pair vs uniform | LOAD-BEARING | **CONFIRMED runtime** — port `mu=0.4` single scalar; reference 5-value array. Updated 2026-07-21 (commit 1e0cbde): T-push adopts reference literal per-pair array; other tasks scalar. |
+| 3.j | `box_ground_drag` viscous A-mod | LOAD-BEARING (port-only) → OBSOLETED | **DEFAULT OFF 2026-07-25** — `_box_drag_c=0.0`; obsoleted by 3.g flip |
 | 3.k | `LCS_ALWAYS_ON_EE_BOX` | LOAD-BEARING iff on | **CONFIRMED-INERT** (env unset) |
 | 3.l | `force_top_k_ee_box` (kwarg) | LOAD-BEARING | **CONFIRMED** — planner LCS: False; cost LCS: True (belongs to (4)) |
 | 3.m | `ref_pair_admission_planner_lcs` | LOAD-BEARING iff on | **CONFIRMED-INERT** (yaml unset) |
-| 3.n | Normal-row patches × 3 | LOAD-BEARING iff on | **CONFIRMED-INERT all 3 individually** (2.k caution passed) |
+| 3.n | Normal-row patches × 3 | LOAD-BEARING iff on → NO-OPS UNDER ANITESCU | **DOUBLY INERT 2026-07-25** — all 3 default OFF AND their code path is not walked under Anitescu default |
 | 3.o | `LCS_EXPLICIT_MANIPULAND_GND` | LOAD-BEARING iff on | **CONFIRMED-INERT** (default 0) |
-| 3.p | LCS λ-dimension formula | LOAD-BEARING | **CONFIRMED at runtime** — port ST 6·n_c; reference Anitescu 4·n_c |
+| 3.p | LCS λ-dimension formula | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — n_lambda = 4·n_c runtime-confirmed (16 at n_c=4); was 6·n_c under ST |
 | 3.q | Tangential-Jacobian basis | UNKNOWN | **COSMETIC-EQUIVALENT via c3 lib clone** — both agents produce a 4-edge polyhedral pyramid tangent basis with isotropic μ; specific tangent-axis orientation differs but is friction-cone-invariant under isotropic μ |
 
-**17 entries → all 17 resolved.** Breakdown after c3 lib clone: 5 CONFIRMED at runtime + 7 CONFIRMED-INERT (all opt-in default OFF, 2.k caution passed) + 2 CONFIRMED-CONFORMANT (both agents match: 3.c, 3.f) + 2 REFERENCE-KNOWN (3.d, 3.e) + 1 FULLY-RESOLVED via c3 clone (3.b) + 1 COSMETIC-EQUIVALENT via c3 clone (3.q) — zero remaining UNKNOWNs.
+**17 entries → all 17 resolved.** Breakdown after 2026-07-25 refresh: 4 REFERENCE-MATCH (3.g/3.h/3.p landed via Anitescu flip + 3.i landed for T via mu_per_pair_type commit 1e0cbde) + 1 OBSOLETED (3.j band-aid off) + 1 CONFIRMED at runtime (3.a) + 7 CONFIRMED-INERT (all opt-in default OFF, 2.k caution passed; 3.n now doubly inert) + 2 CONFIRMED-CONFORMANT (both agents match: 3.c, 3.f) + 2 REFERENCE-KNOWN (3.d, 3.e) + 1 FULLY-RESOLVED via c3 clone (3.b) + 1 COSMETIC-EQUIVALENT via c3 clone (3.q) — zero remaining UNKNOWNs.
 
 ## Additional c3 lib clone findings (bonus insight — validates the contact-model cluster)
 
@@ -874,19 +872,19 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 ## 4.d — Horizon N
 
-- **Reference:** `N: 5`. 5-knot horizon.
-- **Port:** `horizon=20` (per CLAUDE.md + `ci_mpc_c3plus.py:132 compute_control` default construction from `main.py`). 20-knot horizon.
-- **Tag:** LOAD-BEARING (planner lookahead × dynamics accuracy tradeoff).
+- **Reference:** push_t `N: 5`; anything `N: 7`.
+- **Port (2026-07-25):** task-conditional at `main.py:611-629` — `push_t` → `N=5`, other tasks → `N=7`. Runtime confirmed on p62: log line `[MPC] Horizon: 5 dt: 0.1 s ADMM max iters: 3`.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH (per task).
 - **Confidence:** high.
-- **Tier 2:** `[PLAN-T2] horizon N=20 (reference: N=5)`. Port plans **4× further** in knot count.
+- **Tier 2:** REFERENCE-MATCH on both task paths. Prior port N=20 (pre 2026-07-14) is retired; the 4× lookahead-inflation observation is stale.
 
 ## 4.e — Planning dt
 
-- **Reference:** `planning_dt_position: 0.1` s.
-- **Port:** `dt=0.05` s (per CLAUDE.md + confirmed in `[MPC] Horizon: 20 dt: 0.05 s`).
-- **Tag:** LOAD-BEARING (LCS discretization step).
+- **Reference:** push_t `planning_dt_position: 0.1`, `planning_dt_pose: 0.05`; anything `planning_dt_position: 0.075`, `planning_dt_pose: 0.05`.
+- **Port (2026-07-25):** task-conditional at `main.py:611-629` — `push_t` → `dt=0.1, dt_pose=0.05`; other tasks → `dt=0.075, dt_pose=0.05`. Runtime confirmed on p62: `dt: 0.1 s`.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH (per task).
 - **Confidence:** high.
-- **Tier 2:** `[PLAN-T2] dt=0.05 horizon_time=1.000s (reference: dt=0.1 horizon_time=0.5s)`. Port plans over 1.0 s at 20×50ms; reference plans over 0.5 s at 5×100ms. **Different planning cadence.** Port's finer time discretization + 4× longer horizon = 4× more state predictions per solve, at 8.3× more ADMM iters = ~33× more solve work per tick vs reference.
+- **Tier 2:** REFERENCE-MATCH on both task paths. Horizon_time push_t = 5×0.1 = 0.5s (matches ref); anything = 7×0.075 = 0.525s (matches ref). The 2026-07-14-era "33× more solve work per tick" claim is stale — dt+N are now both aligned per task.
 
 ## 4.f — delta initial guess
 
@@ -954,11 +952,12 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 ## 4.l — ADMM convergence at runtime
 
 - **Reference:** MIQP is exact per iteration → ADMM converges quickly (3 iters is enough with adaptive ρ). Reference push_t (C3+) reaches similar tolerance behavior via `rho_scale=3` geometric ramp.
-- **Port pre-fix (t_long60, 2026-07-17):** admm_iter=3 + `_rho_scale=1.0` + `--c3plus-projection lcp` → 903/903 solves `mono=False`, primal 36→61 (backwards), 43% LCP-inf events. Old baseline (admm_iter=25 + rho_init=100 + lcp) hit `iters=25/25 primal=3.87 constant`.
-- **Port post-fix (t_ref3fix, commit 08003e1):** admm_iter=3 + `_rho_scale=3.0` + `componentwise` → 818/818 solves `mono=True`, primal 6.9→1.7 monotone-decreasing, zero LCP-inf events. Tolerance `1e-3` still not reached in 3 iters (final residual ~1.7), matching the reference's own admm_iter=3 non-convergence-tolerance regime.
-- **Tag:** LOAD-BEARING → PARTIAL-REFERENCE-MATCH (T only).
+- **Port pre-fix (t_long60, 2026-07-17):** admm_iter=3 + `_rho_scale=1.0` + `--c3plus-projection lcp` → 903/903 solves `mono=False`, primal 36→61 (backwards), 43% LCP-inf events.
+- **Port mid-fix (t_ref3fix, commit 08003e1):** admm_iter=3 + `_rho_scale=3.0` + `componentwise` → `mono=True` restored, primal 6.9→1.7. Still under ST-with-rank-deficient F[γ,γ].
+- **Port post-Anitescu (2026-07-25, p62 baseline):** admm_iter=3 + `_rho_scale=3.0` + `componentwise` + **Anitescu single PSD F**. Log line 224: `primal 7.5943→1.2125, dual 2828.1→1014.3, mono=True, iters=3/3, rho_start=100.0 rho_end=2700.0`. Residual floor lower than the ST-era ~1.7 because Anitescu's single PSD F eliminates the (γ,γ) rank-deficiency that made valid (λ,η) pairs non-unique.
+- **Tag:** LOAD-BEARING → REFERENCE-MATCH for T-push (post-Anitescu).
 - **Confidence:** high.
-- **Tier 2 — post-fix runtime 2026-07-17:** monotonic-decreasing ADMM restored. Residual floor at ~1.7 in 3 iters is the reference-conformant behavior; a lower tolerance would require MIQP (reference `anything`) or more iters. **Ties to 3.g Stewart-Trinkle rank-deficient F[γ,γ]** — even monotone-decreasing ADMM cannot reach zero residual under rank-deficient F because valid (λ, η) pairs are non-unique.
+- **Tier 2:** REFERENCE-MATCH confirmed at runtime on the p62 baseline. **The 3.g Stewart-Trinkle rank-deficient F[γ,γ] tie-in is now historical** — under Anitescu default the ADMM is monotone-decreasing to a lower floor per solve.
 
 ## 4.m — Mode-switch branches
 
@@ -1028,13 +1027,14 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
   - Reference `push_t`: **C3+ (Bui eq 12) + admm_iter=3 + rho_scale=3** — same admm-iter/rho-schedule discipline, closed-form projection.
   Port T-push (commit 08003e1) is now C3+ + admm_iter=3 + rho_scale=3 + componentwise projection = **REFERENCE-MATCH to `push_t` regime**. Post-fix ADMM is `mono=True` on 100% of solves; residual floor ~1.7 in 3 iters is the reference's own non-convergence-tolerance behavior for this regime.
   Port box-push canonical still runs `--admm-iter 25` (an off-reference regime), pending its own rho_scale+iter audit.
-- **4.d ↔ 4.e ↔ 4.b** — planning horizon × dt × admm_iter compose into TOTAL SOLVE WORK per tick.
-  - T-push post-fix: 5 knots × 0.1s × 3 iters = REFERENCE-MATCH (`sampling_c3_options.yaml N: 5 planning_dt_position: 0.1`). Runtime `avg_per_step_ms=127.7` — dominated by non-ADMM overhead (sample eval / IK) not ADMM.
-  - Box-push: 20 knots × 0.05s × 25 iters = **33× more work per tick** vs reference. Coupled to (F) multi-process architecture (reference solves at planner rate, publishes to OSC via LCM; port solves synchronously each control tick).
+- **4.d ↔ 4.e ↔ 4.b** — planning horizon × dt × admm_iter compose into TOTAL SOLVE WORK per tick. **RESOLVED 2026-07-25**:
+  - T-push: 5 knots × 0.1s × 3 iters = REFERENCE-MATCH to `push_t/sampling_c3plus_options.yaml`.
+  - Box-push: 7 knots × 0.075s × 3 iters = REFERENCE-MATCH to `anything/sampling_c3_options.yaml` (per `main.py:611-629` task gate).
+  Both paths now reference-conformant on solve-work per tick.
 - **4.f ↔ 4.g ↔ 4.l** — the three "at-non-convergence-matters" divergences. delta_option (initial guess), end_on_qp_step (final rollout), and iters=25/25 non-convergent behavior. Under full convergence all three would be equivalent to reference; at the port's regime they all contribute to trajectory divergence.
 - **4.j ↔ 1.k** — reference `penalize_changes_in_u_across_solves=true` for anything AND reference `w_input=0, w_input_reg=0` for OSC input-smoothing. The reference smooths CONTROL at TWO places (planner solve-to-solve + OSC input-smoothing weight, both configurable). Port has neither analog at either place.
 - **4.m ↔ 4.n ↔ 2.l** — mode-switch cluster (branch structure + altitude gate + finished-flag semantics). Port has close structural parity to reference on all three. Divergent leaf-level values (specific hysteresis, altitude, finished-cost) would live in the YAML — belongs in a per-value audit not this Tier-1 pass.
-- **4.l ↔ 3.g ↔ 3.j ↔ 3.n ↔ 3.p** — the LCS↔ADMM MECHANICAL LINK. Port's non-convergent ADMM (4.l) is CAUSED BY the ST rank-deficient F[γ,γ] (3.g/3.p). The non-convergence produces box coasting in the LCS predictions, requiring the box_ground_drag band-aid (3.j) AND the three normal-row patches (3.n). Flipping the contact model cluster (3.g) obsoletes all four downstream compensations. **This is the CENTRAL CROSS-SUBSYSTEM COUPLING** the whole arc was chasing, now mechanically proven.
+- **4.l ↔ 3.g ↔ 3.j ↔ 3.n ↔ 3.p** — the LCS↔ADMM MECHANICAL LINK. **RESOLVED 2026-07-25:** the contact-model flip (3.g → Anitescu) has been executed on the default path. Downstream cascade landed as predicted — box_ground_drag (3.j) `_box_drag_c=0.0`, three normal-row patches (3.n) doubly-inert, n_lambda (3.p) = 4·n_c runtime-confirmed, ADMM (4.l) monotone-decreasing under the single PSD F block. The 2026-07-14 "central cross-subsystem coupling to be resolved" is now a historical anchor, not open work.
 
 ## Deferred / out-of-planner-scope
 - Force-tracking `λ_des` derivation and OSC coupling → belongs to (1) executor + (2) wrapper.
@@ -1048,15 +1048,15 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.a | Solver class / projection | LOAD-BEARING → PARTIAL-REF-MATCH | **REFERENCE-MATCH for T-push** (C3+ + componentwise via commit 08003e1); reference `push_t` also C3+; reference `anything` = MIQP; box-push in port stays C3+ |
 | 4.b | admm_iter | LOAD-BEARING → PARTIAL-REF-MATCH | **CONFIRMED runtime** — T-push port 3 (matches ref, commit 4c3bad5); box-push port 25 (off-ref); reference 3 |
 | 4.c | rho / rho_scale | LOAD-BEARING → REF-MATCH | **CONFIRMED runtime** — port `_rho_scale=3.0` per-iter (commit 08003e1); reference `rho_scale=3` per iter; runtime ρ ramp 100→2700 over 3 iters |
-| 4.d | Horizon N | LOAD-BEARING | **CONFIRMED runtime** — port 20; reference 5 |
-| 4.e | Planning dt | LOAD-BEARING | **CONFIRMED runtime** — port 0.05; reference 0.1 |
+| 4.d | Horizon N | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — task-conditional (T=5, box=7) per `main.py:611-629` |
+| 4.e | Planning dt | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — task-conditional (T=0.1, box=0.075) per `main.py:611-629` |
 | 4.f | delta initial guess | LOAD-BEARING | **NEW DIVERGENCE** — port zeros; reference `delta_option=1` → head=x0 |
 | 4.g | end_on_qp_step (rollout) | LOAD-BEARING at non-conv | **NEW DIVERGENCE** — port direct QP; reference LCS rollout |
 | 4.h | Cross-tick warm-start | COSMETIC (both off) | **CONFIRMED conformant** — corrects prior memory framing |
 | 4.i | Within-Solve warm-start | COSMETIC | **CONFIRMED conformant** — both implicit carry across iters |
 | 4.j | penalize_input_change | LOAD-BEARING | **NEW DIVERGENCE** — port always absolute; reference toggles |
 | 4.k | SolveSingleProjection (Bui eq 12) | COSMETIC-EQUIVALENT | **CONFIRMED via c3 clone** — port projection = reference exactly |
-| 4.l | ADMM convergence | LOAD-BEARING → PARTIAL-REF-MATCH | **CONFIRMED runtime** — T-push post-fix `mono=True` on 818/818 solves, primal 6.9→1.7 (was `mono=False`, 36→61 pre-fix); box-push unchanged |
+| 4.l | ADMM convergence | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — p62 baseline `mono=True iters=3/3 primal 7.59→1.21` under Anitescu single PSD F; ST rank-deficiency tie-in historical |
 | 4.m | Mode-switch branches | LOAD-BEARING | **CONFIRMED-CONFORMANT** structure + noted port-only add-ons |
 | 4.n | Altitude gate | LOAD-BEARING | **CONFIRMED-CONFORMANT** via T1a port |
 | 4.o | Hysteresis lookup | COSMETIC-EQUIVALENT | **CONFIRMED** |
@@ -1067,7 +1067,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.t | `PursuedTargetSource` state | COSMETIC → REF-STRUCTURE-MATCH | Reference enum + state at `.h:60,505` mirrors kNoTarget/kPrevious/kNewSample/kFromBuffer. Port lacked. Landed 2026-07-17 commit 9a39972 as an additive telemetry field on the `[GS]` line, derived from the port's existing string-labels via `pursued_from_label(mode, best_src)`. `kFromBuffer` reserved — its emitter path is the reference `AddToUnsuccessfulBuffer` which the port does NOT have (see 4.u) |
 | 4.u | `AddToUnsuccessfulBuffer` failed-sample buffer | LOAD-BEARING (dispatcher-behavior) | Reference `sampling_based_c3_controller.cc:2161-2183` writes failed c3 attempts to a FIFO consumed by `GenerateSampleStates` at cc:905 to reject spatially-close candidates. Port has no analog. NOT implemented — write-only would be dead-weight; full read+write pair changes sampling behavior (out of scope per 2026-07-17 lock-in). Scope conversation candidate |
 
-21 entries → 4 REF-MATCH-for-T (4.a/4.c/4.s/4.t, landed 2026-07-17 commits 08003e1 + 9a39972) + 3 PARTIAL-REF-MATCH (4.b/4.j/4.l via T only) + 3 CONFIRMED-CONFORMANT + 4 NEW-DIVERGENCE (all surfaced by c3 lib clone) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 2 structurally-conformant + 1 LOAD-BEARING-open (4.u AddToUnsuccessfulBuffer). Zero remaining UNKNOWNs.
+21 entries → 8 REFERENCE-MATCH (4.a/4.c/4.d/4.e/4.l/4.s/4.t + 4.b runtime; landed across 2026-07-17 commits 08003e1 + 9a39972 + 4c3bad5 and 2026-07-25 via Anitescu flip / task-conditional dt+N wiring at `main.py:611-629`) + 1 PARTIAL-REF-MATCH (4.j — T only) + 3 CONFIRMED-CONFORMANT + 3 NEW-DIVERGENCE remaining (4.f delta_option, 4.g end_on_qp_step, and their downstream — all "at-non-convergence-matters" divergences whose behavioral impact is now smaller since ADMM converges monotonically) + 2 COSMETIC-EQUIVALENT + 2 INERT (h_is_zero + Stage-5) + 2 structurally-conformant + 1 LOAD-BEARING-open (4.u AddToUnsuccessfulBuffer). Zero remaining UNKNOWNs.
 
 ## 2.k caution result
 
@@ -1297,21 +1297,23 @@ No "same overall thing" masking of an underlying divergent value. **2.k caution 
 
 ---
 
-# CONFORMANCE MAP — COMPLETE (all 5 subsystems, 2026-07-14)
+# CONFORMANCE MAP — COMPLETE (all 5 subsystems; 2026-07-14 baseline, 2026-07-25 refresh)
 
-## The central finding — contact-model cluster
+## The central finding — contact-model cluster (RESOLVED 2026-07-25)
 
-**One structural root, cascading compensations:**
+**One structural root, cascading compensations — the cascade landed as predicted.**
 
-The port's Stewart-Trinkle contact model (3.g) has a rank-deficient F[γ,γ] block by construction (c3 lib clone confirmed via `c3/multibody/lcs_factory.cc:438-494`). The reference uses Anitescu (single PSD F block). This ONE choice cascades into:
+The port's Stewart-Trinkle contact model (3.g) had a rank-deficient F[γ,γ] block by construction (c3 lib clone confirmed via `c3/multibody/lcs_factory.cc:438-494`). The reference uses Anitescu (single PSD F block). This ONE choice cascaded into 4.l, 3.j, 3.n, 4.b, 4.d, 4.e — all downstream compensations.
 
-- **4.l** — ADMM non-convergence (runtime `iters=25/25 primal~3.87`). Rank-deficient F can't converge on λ_n_gnd.
-- **3.j** — `box_ground_drag=10.0` band-aid added to compensate for LCS predicting box-coasts (because λ_n_gnd doesn't reach m·g).
-- **3.n** — three normal-row patches (COMPLIANCE_K, VELOCITY_LEVEL, PHI_CLAMP) — all ST-specific, all no-ops under Anitescu.
-- **4.b** — port uses 25 ADMM iters (vs reference 3) trying to force convergence — 8.3× more iters.
-- **4.d/4.e** — port horizon 20×0.05s vs reference 5×0.1s — ~33× more solve work per tick.
+**The port default was flipped to Anitescu (`lcs_formulator.py:86`); the predicted cascade landed:**
 
-**Flipping the contact model (3.g) to Anitescu obsoletes ALL FOUR downstream compensations simultaneously.** This is the LCS↔Drake mismatch the whole arc kept circling — proven, not inferred.
+- **4.l** — ADMM now `mono=True iters=3/3 primal 7.59→1.21` on p62 baseline (was `iters=25/25 primal~3.87 non-convergent` under ST).
+- **3.j** — `_box_drag_c = 0.0` (`lcs_formulator.py:108`). Band-aid disabled by default.
+- **3.n** — three normal-row patches all default OFF at `lcs_formulator.py:115-117` AND their ST code paths are not walked under Anitescu default — doubly inert.
+- **4.b** — port uses 3 ADMM iters (matches reference).
+- **4.d/4.e** — task-conditional at `main.py:611-629`: T-push 5×0.1s, box-push 7×0.075s. Both match respective reference YAMLs.
+
+**The LCS↔Drake mismatch the whole arc kept circling is closed on the default path.** ST retained under env `LCS_CONTACT_MODEL=stewart_trinkle` for regression-diff use only.
 
 ## Second cluster — executor over-drive + rotation-hold
 
@@ -1334,25 +1336,27 @@ Mostly INDEPENDENT constants. Some (5.g contact model) are load-bearing structur
 
 ## Coupling graph — consolidation-decision guide
 
-| Cluster | Mechanisms | Consolidation flag |
+| Cluster | Mechanisms | Status (2026-07-25) |
 |---|---|---|
-| **Contact-model cluster** | 3.g/3.h/3.n/3.p/3.j, 4.b/4.c/4.d/4.e/4.l | COUPLED — flip together (Anitescu → all patches obsolete) — HOLD for coupled re-tune |
-| **Executor over-drive** | 1.e/1.f, 1.d/1.h, 2.h/2.i/2.j, 2.k | COUPLED — cascading gains + rotation-hold — HOLD for coupled re-tune |
+| **Contact-model cluster** | 3.g/3.h/3.n/3.p/3.j, 4.b/4.c/4.d/4.e/4.l | **RESOLVED 2026-07-25** — Anitescu flip landed on default path; all 10 items REFERENCE-MATCH / OBSOLETED / INERT |
+| **Executor over-drive** | 1.e/1.f, 1.d/1.h, 2.h/2.i/2.j, 2.k | COUPLED — cascading gains + rotation-hold — HOLD (Phase-1 OSC swap recert-falsified 2026-07-14; no unblock recipe pending) |
 | **Reposition Stage-A** | 2.a/2.b/2.c/2.j (PUSHA_REPOSITION_PWL path) | COUPLED to executor over-drive via v_ee_desired handshake — HOLD |
 | **kIK reposition** | 2.e/2.f/2.g (traj_type=kIK subset) | COUPLED but INDEPENDENT of reference (port-only) — **SAFE to REMOVE wholesale** |
 | **Port-only opt-in flags** | 3.k/3.m/3.n (already OFF), 4.r Stage-5 | INDEPENDENT, INERT — **SAFE to REMOVE** (delete-the-flag) |
 | **Geometry constants** | 5.c/5.d/5.h (small numeric divergences) | INDEPENDENT — **SAFE to default-to-reference + tripwire** |
-| **Ground URDF split** | 5.i/5.j (reference sphere-witnesses vs port synthesis) | INDEPENDENT if reference-conformant admission path enabled — depends on contact-model cluster decision |
+| **Ground URDF split** | 5.i/5.j (reference sphere-witnesses vs port synthesis) | INDEPENDENT of contact-model choice now that Anitescu default is stable — evaluate on its own |
+| **port-todo #7 (Q construction)** | ρ / G / Q coupled triple flip | BLOCKED — see `docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md`; G-matrix prong-1 infrastructure landed 2026-07-25 (`f484607`, gated OFF via `PUSHA_USE_G_MATRIX=1`) |
 
-## Answer to "is the coupled re-tune tractable?"
+## Answer to "is the coupled re-tune tractable?" — 2026-07-25 update
 
 Before the audit: "the port has 50 divergences, all coupled, intractable."
 
 After the audit: TWO major coupled clusters (contact-model + executor over-drive) with NAMED roots and PREDICTED cascade of simplifications, plus a small set of INDEPENDENT constants and INERT opt-ins. Not a hairball — a graph with structure.
 
-- **Contact-model cluster**: single decision (Anitescu vs ST). If flipped, ~10 downstream compensations vanish or become no-ops. That's a HIGH-LEVERAGE decision.
-- **Executor over-drive cluster**: 4 gain values compose. Flipping to reference values (W_track=1, Kp_cart=200, plus adding rotation-hold, plus adjusting reposition speed/height) requires COORDINATED change to keep IK→c3 handoff working. That's the "coupled re-tune" that failed once in prior arc work.
-- **The two clusters are LARGELY SEPARABLE**: flipping the contact model doesn't require changing executor gains; changing executor gains doesn't require the contact model swap. Neither cluster necessarily forces the other. Materially different from "everything depends on everything."
+- **Contact-model cluster** — **RESOLVED 2026-07-25**. Anitescu flip landed; the predicted ~10-item cascade materialized as REFERENCE-MATCH / OBSOLETED / INERT. Runtime evidence on p62 baseline: `mono=True iters=3/3 primal 7.59→1.21`, `n_lambda=16` at `n_c=4`, `_box_drag_c=0.0`.
+- **Executor over-drive cluster** — STILL OPEN. 4 gain values compose. Flipping to reference values (W_track=1, Kp_cart=200, plus adding rotation-hold, plus adjusting reposition speed/height) requires COORDINATED change to keep IK→c3 handoff working. The Phase-1 OSC swap attempted in the reproduce-dairlib arc was recert-falsified 2026-07-14; no unblock recipe currently on the table.
+- **port-todo #7** — NEW BLOCKER surfaced 2026-07-23. Full reference `q_vector` Q construction blocked on coupled `rho=1.0 + _use_g_matrix=True + use_reference_q_vector=True` triple flip. G-matrix prong-1 infrastructure landed 2026-07-25 (`f484607`, gated OFF). See `docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md` for the 4-arc unblock recipe.
+- **Cluster separability** unchanged: executor gains and item #7 do not depend on each other; they can be attempted in either order.
 
 ## Total map size
 
@@ -1375,18 +1379,17 @@ After the audit: TWO major coupled clusters (contact-model + executor over-drive
   - `67232d7` — planner
   - `043f378` — sim/URDF
 
-## Next moves (per user directive)
+## Next moves (2026-07-25 refresh)
 
-The audit is complete. Two next-move directions, gated by the map's coupling graph:
+Contact-model cluster is closed. Runtime baseline on `main @ f484607`: 4/5 tight_goal PASS across p58-p62. Remaining candidate work, in decreasing evidence-of-tractability order:
 
-1. **Atanasov scope conversation** — informed by the two-cluster structure. The question "flip contact model?" is high-leverage AND bounded. The question "coupled re-tune of executor gains?" is a larger commitment. Whether either or both are tractable is now a research-direction call with concrete predicted cascades.
+1. **port-todo #7 — Arc 1 (ρ sweep)** — read-only single-flag experiment (`rho ∈ {1, 3, 10, 30, 100}` on baseline config). Purely diagnostic; determines whether the coupled Q/G/ρ recipe is ever tractable. Detailed protocol in `docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md:223-235`.
 
-2. **Consolidation pass** — start with SAFE-INDEPENDENT + INERT-OPT-IN subset:
-   - Remove kIK reposition subsystem (2.e/2.f/2.g cluster — port-only, no reference analog)
-   - Delete inert opt-in flags (3.k, 3.m, LCS_NORMAL_* patches under 3.n, 4.r Stage-5 env-defaults if not exercised)
-   - Default-to-reference on INDEPENDENT constants (5.c pusher radius, 5.d pusher μ, 5.h ground μ) with box tripwire per change
-   - HOLD the coupled clusters (contact-model + executor over-drive) pending the Atanasov decision
+2. **Consolidation pass** — SAFE-INDEPENDENT + INERT subset:
+   - Remove kIK reposition subsystem (2.e/2.f/2.g — port-only, no reference analog)
+   - Delete inert opt-in flags (3.k, 3.m, LCS_NORMAL_* patches under 3.n now doubly inert under Anitescu, 4.r Stage-5 env-defaults if not exercised)
+   - Default-to-reference on INDEPENDENT constants (5.c pusher radius per-task, 5.d pusher μ per-task, 5.h ground μ) — each with box tripwire
 
-No more CC probes required until the Atanasov decision or a specific consolidation flag needs verification.
+3. **Executor over-drive cluster** — no fresh recipe. Would need a new attempt distinct from the recert-falsified Phase-1 OSC swap. HOLD pending direction.
 
-Same two-tier discipline + apply the 2.k caution for any "inert" verdict.
+Two-tier discipline + 2.k caution ("inert" verdicts must verify each mechanism individually) remain in force for any future edit to this map.
