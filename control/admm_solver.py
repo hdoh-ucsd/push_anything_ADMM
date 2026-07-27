@@ -98,6 +98,29 @@ class C3Solver:
         # λ_n toward zero on contact.
         self._w_comp    = 0.0
         self._solver    = ad.OsqpSolver()
+        # Reference solver_options_default.yaml settings (bug diagnostic).
+        # Gated on PUSHA_OSQP_REFOPTS=1 to A/B test.
+        import os as _os_osqp
+        self._osqp_refopts = (
+            _os_osqp.environ.get("PUSHA_OSQP_REFOPTS", "0") == "1")
+        self._osqp_solver_options = None
+        if self._osqp_refopts:
+            _so = ad.SolverOptions()
+            _osqp_id = ad.OsqpSolver().solver_id()
+            _so.SetOption(_osqp_id, "polishing", 1)
+            _so.SetOption(_osqp_id, "polish_refine_iter", 3)
+            _so.SetOption(_osqp_id, "warm_starting", 1)
+            _so.SetOption(_osqp_id, "scaled_termination", 1)
+            _so.SetOption(_osqp_id, "scaling", 10)
+            _so.SetOption(_osqp_id, "adaptive_rho", 1)
+            _so.SetOption(_osqp_id, "adaptive_rho_interval", 0)
+            _so.SetOption(_osqp_id, "eps_abs", 1e-5)
+            _so.SetOption(_osqp_id, "eps_rel", 1e-5)
+            _so.SetOption(_osqp_id, "max_iter", 1000)
+            self._osqp_solver_options = _so
+            print("[OSQP-REFOPTS] active: polishing=1 adaptive_rho=1 "
+                  "warm_starting=1 scaling=10 eps=1e-5 max_iter=1000",
+                  flush=True)
         self._diag_step = 0
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
@@ -172,6 +195,17 @@ class C3Solver:
         self._g_eta        = 1.0
         self._g_x          = 0.0   # reference has zero state augmentation
         self._g_u          = 0.0   # reference has zero input augmentation
+        # PUSHA_G_X override (diagnostic): per-slot x augmentation weight.
+        # Set to e.g. "1" to add uniform g_x=1 for state-memory regularization
+        # under G-ON — falsification test for the "sparse-Q + zero-g_x kills
+        # ADMM convergence" hypothesis.
+        _pusha_gx = _os_g.environ.get("PUSHA_G_X", "")
+        if _pusha_gx:
+            try:
+                self._g_x = float(_pusha_gx)
+                print(f"[PUSHA_G_X] override: g_x={self._g_x}", flush=True)
+            except ValueError:
+                pass
         self._g_diag_c3p_cache: np.ndarray | None = None
         self._g_diag_c3p_shape: tuple | None = None
         # First-horizon contact force from the most recent solve. Read by
@@ -531,17 +565,10 @@ class C3Solver:
 
             prog.AddLinearEqualityConstraint(C_eq, b_eq, z_var)
 
-            # All of λ = [γ; λ_n; λ_t] are nonnegative per Stewart-Trinkle
-            # complementarity. The LCP projection in the δ-update enforces
-            # the slack equality (η = E x + F λ + H u + c) and the
-            # complementarity λ ⊥ η.
-            if n_lam > 0:
-                for i in range(N):
-                    prog.AddBoundingBoxConstraint(
-                        np.zeros(n_lam),
-                        np.full(n_lam, np.inf),
-                        z_var[i*TOT + n_x : i*TOT + n_x + n_lam],
-                    )
+            # λ ≥ 0 is enforced by the componentwise δ-projection (Lorentz for
+            # C3, Bui eq (12) for C3+). Reference c3.cc has no λ bounding-box.
+            # Removed 2026-07-26 arc-2 D3 — port-only defensive constraint
+            # binds under G-on and OSQP polishing off, zeroing λ.
 
             # Torque bounds per horizon step
             for i in range(N):
@@ -578,7 +605,7 @@ class C3Solver:
                 cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
             with timed("admm.osqp_solve"):
-                res = self._solver.Solve(prog)
+                res = self._solver.Solve(prog, None, self._osqp_solver_options)
 
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
@@ -1056,6 +1083,27 @@ class C3Solver:
                       flush=True)
         _use_g = self._use_g_matrix and self._g_diag_c3p_cache is not None
 
+        # 2026-07-26 arc-2 D1 fix: under G-on the reference bakes the full
+        # augmentation weight into G = w_G · diag(g_vec) with yaml rho ≈ 0
+        # (c3/core/configs/*.yaml:16 sets rho=0.0001). Port's outer scalar
+        # rho=100 multiplied against G gives ~100× the reference aug at
+        # iter 0 and blows up under the rho_scale=3 per-iter ramp. Override
+        # rho to 1.0 under G-on (env: PUSHA_ADMM_RHO_UNDER_G) so the port's
+        # `rho · G` matches the reference's `G`. G-off path is untouched
+        # so the port's tuned rho=100 baseline for the uniform ρ·I aug
+        # keeps its calibration.
+        if _use_g:
+            import os as _os_rug
+            _rho_under_g = float(_os_rug.environ.get(
+                "PUSHA_ADMM_RHO_UNDER_G", "1.0"))
+            if abs(rho - _rho_under_g) > 1e-9:
+                if not getattr(self, "_rho_under_g_banner", False):
+                    self._rho_under_g_banner = True
+                    print(f"[RHO-UNDER-G] override rho: {rho} → {_rho_under_g} "
+                          f"(G-on active; matches reference w_G·diag(g_vec) scale)",
+                          flush=True)
+                rho = _rho_under_g
+
         # ---------------------------------------------------------------
         # LCS scaling — reference c3.cc:81, 204-212 + lcs.cc:46-58.
         # ScaleComplementarityDynamics: scale = ||A[0]|| / ||D[0]||;
@@ -1112,8 +1160,17 @@ class C3Solver:
             # rho*I with rho*diag(G) where G has per-slot weights (0 on
             # state/input, w_G·g_λ on λ, w_G·g_η on η). Matches c3.cc AD
             # step exactly. Falls back to uniform ρ if _use_g False.
+            # 2026-07-26 factor-of-2 fix (G-on path only): reference
+            # c3_plus.cc:157 uses AddQuadraticCost(2G, -2G·WD, ...) →
+            # Drake `0.5·H·z²+b·z` convention gives `G·z² - 2G·WD·z`,
+            # i.e., ADMM augmentation `(ρ/2)||z - WD||²_G` with effective
+            # penalty 2ρ. Previous port passed `rho·g_diag` — half the
+            # reference scale — so under G-on the port ran at half the
+            # intended penalty. G-off path preserved (port's tuned ρ=100
+            # baseline is calibrated against the half-scale convention;
+            # doubling would silently regress every G-off run).
             if _use_g:
-                _P_aug = rho * np.diag(self._g_diag_c3p_cache)
+                _P_aug = 2.0 * rho * np.diag(self._g_diag_c3p_cache)
             else:
                 _P_aug = rho * _eye_total
             P_total = P + _P_aug
@@ -1171,18 +1228,11 @@ class C3Solver:
 
             prog.AddLinearEqualityConstraint(C_eq, b_eq, z_var)
 
-            # All of λ = [γ; λ_n; λ_t] are non-negative under Stewart-Trinkle
-            # complementarity. Phase 2: bound the full 6·n_c λ slot ≥ 0.
-            # The Bui eq. (12) projection on (λ_j, η_j) pairs handles the
-            # signs structurally, but enforcing ≥ 0 in the QP keeps OSQP
-            # from drifting into infeasible regions.
-            if n_lambda > 0:
-                for i in range(N):
-                    prog.AddBoundingBoxConstraint(
-                        np.zeros(n_lambda),
-                        np.full(n_lambda, np.inf),
-                        z_var[i*TOT + SL : i*TOT + SL + n_lambda],
-                    )
+            # λ ≥ 0 is enforced by the Bui eq. (12) componentwise projection
+            # on (λ_j, η_j) pairs. Reference c3_plus.cc has no λ bounding-box.
+            # Removed 2026-07-26 arc-2 D3 — port-only defensive constraint
+            # binds under G-on + rho=1, OSQP polishes off by default so the
+            # active bound zeroes λ in z_sol and the projection over-corrects.
 
             # Torque bounds per step (per-axis vectors when supplied;
             # default-inert scalar torque_limit path when u_lower/u_upper None).
@@ -1374,8 +1424,11 @@ class C3Solver:
 
             with timed("admm.qp_build"):
                 # Ref-conformant G-matrix: element-wise per-slot weighting.
+                # 2026-07-26 factor-of-2 fix (G-on path only): reference
+                # gives `-2·G·WD·z` linear term. G-off preserved at
+                # `-rho·(δ-ω)` to keep the tuned ρ=100 baseline stable.
                 if _use_g:
-                    q_total = q_ref - rho * self._g_diag_c3p_cache * (delta - omega)
+                    q_total = q_ref - 2.0 * rho * self._g_diag_c3p_cache * (delta - omega)
                 else:
                     q_total = q_ref - rho * (delta - omega)
 
@@ -1457,7 +1510,7 @@ class C3Solver:
                     cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
             with timed("admm.osqp_solve"):
-                res = self._solver.Solve(prog)
+                res = self._solver.Solve(prog, None, self._osqp_solver_options)
 
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
@@ -1884,6 +1937,9 @@ class C3Solver:
                 # iter and shrink ω to keep the dual gradient ρ·ω consistent.
                 # Update P_sym in place by scaling the ρ·I diagonal delta
                 # (adds ~n operations instead of ~n² for a full rebuild).
+                # 2026-07-26 factor-of-2 fix (G-on only): aug is
+                # `2·rho·g_diag` under G-on, so per-iter delta is
+                # `2·(_delta_rho)·g_diag`. G-off preserves `_delta_rho`.
                 _rs = float(self._rho_scale)
                 if _rs > 1.0 and admm_iter > 0 and rho * _rs < 1e6:
                     _delta_rho = rho * (_rs - 1.0)
@@ -1891,7 +1947,7 @@ class C3Solver:
                     omega /= _rs
                     if _use_g:
                         # Ref-conformant: scale by per-slot G_diag.
-                        _delta_diag = _delta_rho * self._g_diag_c3p_cache
+                        _delta_diag = 2.0 * _delta_rho * self._g_diag_c3p_cache
                         np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_diag)
                     else:
                         np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_rho)
@@ -1902,7 +1958,7 @@ class C3Solver:
                     if pr > 10.0 * dr and rho < 1000.0:
                         rho   *= 2.0
                         omega /= 2.0
-                        _aug = (rho * np.diag(self._g_diag_c3p_cache)
+                        _aug = (2.0 * rho * np.diag(self._g_diag_c3p_cache)
                                 if _use_g else rho * _eye_total)
                         P_total2 = P + _aug
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
@@ -1910,7 +1966,7 @@ class C3Solver:
                     elif dr > 10.0 * pr and rho > 0.1:
                         rho   /= 2.0
                         omega *= 2.0
-                        _aug = (rho * np.diag(self._g_diag_c3p_cache)
+                        _aug = (2.0 * rho * np.diag(self._g_diag_c3p_cache)
                                 if _use_g else rho * _eye_total)
                         P_total2 = P + _aug
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total

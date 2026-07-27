@@ -116,6 +116,21 @@ class LCSFormulator:
         self._normal_velocity_level = False
         self._normal_phi_clamp_v_cap = None
 
+        # 2026-07-26 arc-2 A1 fix: replace the point-mass EE (_EE_MASS=1 kg,
+        # `1/m_ee · I` in B/D/H/F rows) with the arm's operational-space
+        # inverse inertia `M_ee_op_inv = J_ee_arm · M_arm^-1 · J_ee_arm.T`.
+        # This is the same 3×3 SPD matrix the reference full-plant LCS
+        # produces at the EE Cartesian block (via c3/multibody/lcs_factory.cc).
+        # Env-gate PUSHA_ARM_CART_INERTIA=1 to enable (default OFF preserves
+        # every existing G-off calibration byte-identical). See the A runtime
+        # dump in docs/superpowers/investigations/2026-07-26-arc2-A-lcs-diff.md:
+        # port's B[v_ee, u] = 0.1·I proves _EE_MASS=1kg is in play; reference-
+        # equivalent would be ~2-3× smaller diagonal.
+        import os as _os_amei
+        self._use_arm_cartesian_inertia = (
+            _os_amei.environ.get("PUSHA_ARM_CART_INERTIA", "0") == "1")
+        self._arm_cart_inertia_banner_done = False
+
         # Lazy-initialized box half-extents (queried from geometry inspector
         # on the first synthesis call; needs a context, not available here).
         self._box_half_extents = None
@@ -1504,6 +1519,31 @@ class LCSFormulator:
         tau_g_box = tau_g_full[BS:BE]                     # (6,)
         M_box_inv = np.linalg.inv(M_box)
 
+        # 2026-07-26 arc-2 A1 fix: compute operational-space inverse inertia
+        # at the EE Cartesian block. Matches reference full-plant LCS coupling
+        # `J_ee · M_full^-1 · (J_ee^T u + J_c^T λ)`. When flag OFF, falls
+        # back to the port's isotropic `1/m_ee · I` (byte-identical to
+        # pre-fix behaviour). Both branches produce a (3, 3) SPD matrix so
+        # all downstream `(1/m_ee) · X` sites are rewritten as `M_ee_op_inv @ X`
+        # uniformly regardless of which branch fired.
+        if self._use_arm_cartesian_inertia:
+            # Arm block: v[0:BS] (arm dofs first, box floating dofs after).
+            M_arm      = M_full[0:BS, 0:BS]                    # (n_arm, n_arm)
+            M_arm_inv  = np.linalg.inv(M_arm)
+            J_ee_arm   = J_ee_full[:, 0:BS]                    # (3, n_arm)
+            M_ee_op_inv = J_ee_arm @ M_arm_inv @ J_ee_arm.T   # (3, 3) SPD
+            if not self._arm_cart_inertia_banner_done:
+                self._arm_cart_inertia_banner_done = True
+                _diag = M_ee_op_inv.diagonal()
+                _eff_m = np.where(_diag > 1e-9, 1.0 / _diag, np.inf)
+                print(f"[ARM-CART-INERTIA] active: M_ee_op_inv diag={_diag}  "
+                      f"eff m_ee=({_eff_m[0]:.3f},{_eff_m[1]:.3f},{_eff_m[2]:.3f}) kg  "
+                      f"(replaces _EE_MASS={float(self._EE_MASS)} isotropic)",
+                      flush=True)
+        else:
+            _m_ee_iso = float(self._EE_MASS)
+            M_ee_op_inv = (1.0 / _m_ee_iso) * np.eye(3)        # (3, 3) isotropic
+
         # Box's N(q) sub-block: q_dot_box = N_box · box_v.
         N_box = np.zeros((BOX_N_Q, BOX_N_V))
         for i in range(BOX_N_V):
@@ -1512,14 +1552,44 @@ class LCSFormulator:
             qdot_full = self.plant.MapVelocityToQDot(context, e_full)
             N_box[:, i] = qdot_full[BOX_Q_START : BOX_Q_START + BOX_N_Q]
 
+        # 2026-07-26 arc-2 A2 fix: box's N⁺(q) sub-block (qdot→v map, reverse
+        # of N_box). Reference `lcs_factory.cc:387` builds full-plant vNqdot
+        # via `plant_.MakeQDotToVelocityMap()`. Used below to add the missing
+        # position-forcing gradient `E_tᵀ·Jn·vNqdot/dt` to E's q-column
+        # (`lcs_factory.cc:533` in Anitescu, `:465` in Stewart-Trinkle).
+        # Env-gate PUSHA_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+        # G-off calibration was previously validated without this gradient,
+        # so the OFF path preserves p73 arc-1 baseline byte-identical.
+        import os as _os_a2
+        self._use_e_block_split = (
+            _os_a2.environ.get("PUSHA_E_BLOCK_SPLIT", "1") == "1")
+        if self._use_e_block_split:
+            # For a floating base with quaternion, N⁺ (v_box = N⁺·qdot_box)
+            # is a 6×7 matrix. Extract via Drake API.
+            NqI = self.plant.MakeQDotToVelocityMap(context)   # (n_v, n_q) sparse
+            vNqdot_full = np.asarray(NqI.todense())
+            vNqdot_box  = vNqdot_full[BS:BE,
+                                       BOX_Q_START:BOX_Q_START + BOX_N_Q]  # (6, 7)
+            if not getattr(self, "_e_block_split_banner", False):
+                self._e_block_split_banner = True
+                print(f"[E-BLOCK-SPLIT] active: vNqdot_box shape={vNqdot_box.shape} "
+                      f"(box-slice of MakeQDotToVelocityMap)  "
+                      f"adds Jn·vNqdot/dt to E[q_box], Jn_ee/dt to E[p_ee]",
+                      flush=True)
+        else:
+            vNqdot_box = None
+
         # Box accel at linearization point (continuous): f_box = M_box^-1
         # (-Cv_box + tau_g_box).  λ and u contributions are added through
         # the LCS structure (D and H), so f_box here is the AUTONOMOUS part.
         f_box = M_box_inv @ (-Cv_box + tau_g_box)
 
-        # EE accel at linearization point (continuous): f_ee = u/m_ee + λ-term.
+        # EE accel at linearization point (continuous): f_ee = M_ee_op_inv · u + λ-term.
+        # A1 fix: M_ee_op_inv replaces scalar 1/m_ee (isotropic when flag off,
+        # arm-Cartesian operational-space when flag on). Legacy m_ee scalar
+        # retained for the [LCS-COND-WARN] diagnostic and comments only.
         m_ee = float(self._EE_MASS)
-        f_ee = u_star / m_ee   # autonomous (no λ) part
+        f_ee = M_ee_op_inv @ u_star   # autonomous (no λ) part
 
         # -----------------------------------------------------------------
         # 3. Contacts: phi, Drake's J_n (n_c, n_v_full), nhat list. We then
@@ -1672,30 +1742,27 @@ class LCSFormulator:
             for k in (3, 4, 5):
                 A[base + k, base + k] -= self._box_drag_c * dt
 
-        # 4d. B_ctrl — CONFIGURATION-INDEPENDENT (Stage A crux).
+        # 4d. B_ctrl — arm-config-DEPENDENT under PUSHA_ARM_CART_INERTIA=1;
+        # config-independent otherwise (isotropic 1/m_ee · I fallback).
         B_ctrl = np.zeros((N_X, N_U))
-        # p_ee rows: ∂p_ee_{k+1}/∂u = dt · ∂v_ee_{k+1}/∂u = dt² / m_ee · I.
-        B_ctrl[self.P_EE_SLOT, :] = (dt * dt / m_ee) * np.eye(3)
-        # v_ee rows: ∂v_ee_{k+1}/∂u = dt / m_ee · I.
-        B_ctrl[self.V_EE_SLOT, :] = (dt / m_ee) * np.eye(3)
+        # p_ee rows: ∂p_ee_{k+1}/∂u = dt · ∂v_ee_{k+1}/∂u = dt² · M_ee_op_inv.
+        B_ctrl[self.P_EE_SLOT, :] = (dt * dt) * M_ee_op_inv
+        # v_ee rows: ∂v_ee_{k+1}/∂u = dt · M_ee_op_inv.
+        B_ctrl[self.V_EE_SLOT, :] = dt * M_ee_op_inv
         # box_q rows and box_v rows: zero (u doesn't enter box dynamics).
 
-        # Bug 2 safety: LCS conditioning warning (2026-07-22). When
-        # dt/m_ee exceeds ~0.5, the D matrix's V_EE_SLOT rows amplify
-        # contact λ into large predicted v_ee kicks per step — planner
-        # tends to disengage (u=0) to avoid the predicted state cost,
-        # while Drake reality remains in contact. p41 experiment blew
-        # up silently for this reason (m_ee=0.057 → dt/m_ee=1.75).
-        # Warn once per LCSFormulator instance.
-        _dt_over_mee = dt / m_ee
-        if (_dt_over_mee > 0.5
+        # Bug 2 safety: LCS conditioning warning (2026-07-22). Under the
+        # matrix formulation, watch max diagonal of dt · M_ee_op_inv (the
+        # V_EE_SLOT row scale in B_ctrl). Same threshold semantics as the
+        # legacy dt/m_ee check; scalar-mode falls back to dt/m_ee exactly.
+        _dt_M_ee_diag_max = float(np.max(dt * np.abs(M_ee_op_inv.diagonal())))
+        if (_dt_M_ee_diag_max > 0.5
                 and not getattr(self, "_dt_mee_warned", False)):
             print(
-                f"[LCS-COND-WARN] dt/m_ee = {_dt_over_mee:.3f} "
-                f"(dt={dt:.3f}s, m_ee={m_ee:.4f}kg) — B_ctrl[V_EE] and "
-                f"D[V_EE,λ] rows amplified; planner may disengage due to "
-                f"velocity-cost inflation. If not intended, revisit "
-                f"lcs_formulator.py:_EE_MASS. See p41 forensic report.",
+                f"[LCS-COND-WARN] dt·max(diag M_ee_op_inv) = {_dt_M_ee_diag_max:.3f} "
+                f"(dt={dt:.3f}s, m_ee_scalar={m_ee:.4f}kg, arm_cart={self._use_arm_cartesian_inertia}) "
+                f"— B_ctrl[V_EE] and D[V_EE,λ] rows amplified; planner may "
+                f"disengage due to velocity-cost inflation. See p41 forensic report.",
                 flush=True,
             )
             self._dt_mee_warned = True
@@ -1714,15 +1781,15 @@ class LCSFormulator:
             # box_q rows
             D[self.BOX_Q_SLOT, SLN:SLN + n_c]   = (dt*dt) * (N_box @ Minv_JnT_box)
             D[self.BOX_Q_SLOT, SLT:SLT + n_t]   = (dt*dt) * (N_box @ Minv_JtT_box)
-            # p_ee rows: dt² / m_ee · J_n_ee^T (and J_t_ee^T)
-            D[self.P_EE_SLOT, SLN:SLN + n_c]    = (dt*dt / m_ee) * J_n_ee.T
-            D[self.P_EE_SLOT, SLT:SLT + n_t]    = (dt*dt / m_ee) * J_t_ee.T
+            # p_ee rows: dt² · M_ee_op_inv · J_n_ee^T (and J_t_ee^T)
+            D[self.P_EE_SLOT, SLN:SLN + n_c]    = (dt*dt) * (M_ee_op_inv @ J_n_ee.T)
+            D[self.P_EE_SLOT, SLT:SLT + n_t]    = (dt*dt) * (M_ee_op_inv @ J_t_ee.T)
             # box_v rows
             D[self.BOX_V_SLOT, SLN:SLN + n_c]   = dt * Minv_JnT_box
             D[self.BOX_V_SLOT, SLT:SLT + n_t]   = dt * Minv_JtT_box
             # v_ee rows
-            D[self.V_EE_SLOT, SLN:SLN + n_c]    = (dt / m_ee) * J_n_ee.T
-            D[self.V_EE_SLOT, SLT:SLT + n_t]    = (dt / m_ee) * J_t_ee.T
+            D[self.V_EE_SLOT, SLN:SLN + n_c]    = dt * (M_ee_op_inv @ J_n_ee.T)
+            D[self.V_EE_SLOT, SLT:SLT + n_t]    = dt * (M_ee_op_inv @ J_t_ee.T)
 
         # 4f. d_vec — affine offset (constant term in x_{k+1} after linearization).
         # d_box_v_offset = f_box(box_q*, box_v*) − df_box_dboxq · box_q*
@@ -1771,12 +1838,24 @@ class LCSFormulator:
             E_lcs[SLN:SLN + n_c, self.BOX_Q_SLOT] = dt * (J_n_box @ df_box_dboxq)
             E_lcs[SLN:SLN + n_c, self.BOX_V_SLOT] = J_n_box + dt * (J_n_box @ df_box_dboxv)
             E_lcs[SLN:SLN + n_c, self.V_EE_SLOT]  = J_n_ee
+            # 2026-07-26 arc-2 A2 fix: position-forcing gradient of phi wrt q.
+            # Reference `lcs_factory.cc:465` adds `Jn·vNqdot` to E's q-column.
+            # Port previously baked position-forcing into c via J_c·v (velocity
+            # term) but missed the pure phi(q_{k+1}) gradient. Adds:
+            #   - Box q slot: Jn_box · vNqdot_box / dt   (Reference symbol split)
+            #   - P_ee slot : Jn_ee / dt                  (EE Cartesian, N⁺ = I)
+            # c's `-= E·x* + H·u*` at end auto-adjusts the constant.
+            if self._use_e_block_split:
+                E_lcs[SLN:SLN + n_c, self.BOX_Q_SLOT] += (J_n_box @ vNqdot_box) / dt
+                E_lcs[SLN:SLN + n_c, self.P_EE_SLOT]  += J_n_ee / dt
             # F: λ-coupling — ∂v_{k+1}/∂λ via D-style entries.
             F_lcs[SLN:SLN + n_c, SLN:SLN + n_c] = (
-                dt * (J_n_box @ Minv_JnT_box) + (dt / m_ee) * (J_n_ee @ J_n_ee.T)
+                dt * (J_n_box @ Minv_JnT_box)
+                + dt * (J_n_ee @ M_ee_op_inv @ J_n_ee.T)
             )
             F_lcs[SLN:SLN + n_c, SLT:SLT + n_t] = (
-                dt * (J_n_box @ Minv_JtT_box) + (dt / m_ee) * (J_n_ee @ J_t_ee.T)
+                dt * (J_n_box @ Minv_JtT_box)
+                + dt * (J_n_ee @ M_ee_op_inv @ J_t_ee.T)
             )
 
             # §7.24 Candidate A — soft-LCP compliance on EE-BOX-only normal
@@ -1790,8 +1869,8 @@ class LCSFormulator:
                 for i_c, info in enumerate(self._last_contact_info[:n_c]):
                     if info.get('tag', '') == 'EE-BOX':
                         F_lcs[SLN + i_c, SLN + i_c] += self._normal_compliance_k
-            # H: u-coupling — only the v_ee path contributes, m_ee scaling.
-            H_lcs[SLN:SLN + n_c, :] = (dt / m_ee) * J_n_ee
+            # H: u-coupling — only the v_ee path contributes, M_ee_op_inv scaling.
+            H_lcs[SLN:SLN + n_c, :] = dt * (J_n_ee @ M_ee_op_inv)
             # c: const offset: φ/dt + J_n · (current_v + dt · d_offset)
             #    − E_lcs · x* − H_lcs · u*   (linearization residual)
             c_const_v_box  = J_n_box @ (box_v + dt * d_box_v_offset)
@@ -1834,14 +1913,20 @@ class LCSFormulator:
             E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] = dt * (J_t_box @ df_box_dboxq)
             E_lcs[SLT:SLT + n_t, self.BOX_V_SLOT] = J_t_box + dt * (J_t_box @ df_box_dboxv)
             E_lcs[SLT:SLT + n_t, self.V_EE_SLOT]  = J_t_ee
+            # A2 fix: same phi-gradient addition for tangent row block.
+            if self._use_e_block_split:
+                E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] += (J_t_box @ vNqdot_box) / dt
+                E_lcs[SLT:SLT + n_t, self.P_EE_SLOT]  += J_t_ee / dt
             F_lcs[SLT:SLT + n_t, SG:SG + n_c]     = E_t.T
             F_lcs[SLT:SLT + n_t, SLN:SLN + n_c]   = (
-                dt * (J_t_box @ Minv_JnT_box) + (dt / m_ee) * (J_t_ee @ J_n_ee.T)
+                dt * (J_t_box @ Minv_JnT_box)
+                + dt * (J_t_ee @ M_ee_op_inv @ J_n_ee.T)
             )
             F_lcs[SLT:SLT + n_t, SLT:SLT + n_t]   = (
-                dt * (J_t_box @ Minv_JtT_box) + (dt / m_ee) * (J_t_ee @ J_t_ee.T)
+                dt * (J_t_box @ Minv_JtT_box)
+                + dt * (J_t_ee @ M_ee_op_inv @ J_t_ee.T)
             )
-            H_lcs[SLT:SLT + n_t, :] = (dt / m_ee) * J_t_ee
+            H_lcs[SLT:SLT + n_t, :] = dt * (J_t_ee @ M_ee_op_inv)
             c_const_v_box_t = J_t_box @ (box_v + dt * d_box_v_offset)
             c_const_v_ee_t  = J_t_ee  @ (v_ee  + dt * d_v_ee_offset)
             c_lcs[SLT:SLT + n_t] = c_const_v_box_t + c_const_v_ee_t
@@ -1904,38 +1989,44 @@ class LCSFormulator:
                 # D — single block, no γ/λ_n/λ_t partition.
                 # Box rows: dt² · N_box · M_box^{-1} · J_c_box^T (box_q)
                 #          dt   · M_box^{-1} · J_c_box^T          (box_v)
-                # EE rows:  dt² / m_ee · J_c_ee^T                 (p_ee)
-                #          dt   / m_ee · J_c_ee^T                 (v_ee)
+                # EE rows:  dt² · M_ee_op_inv · J_c_ee^T          (p_ee)
+                #          dt   · M_ee_op_inv · J_c_ee^T          (v_ee)
                 D_an = np.zeros((N_X, n_lam_an))
                 D_an[self.BOX_Q_SLOT, :] = (dt * dt) * (N_box @ Minv_JcT_box)
-                D_an[self.P_EE_SLOT,  :] = (dt * dt / m_ee) * J_c_ee.T
+                D_an[self.P_EE_SLOT,  :] = (dt * dt) * (M_ee_op_inv @ J_c_ee.T)
                 D_an[self.BOX_V_SLOT, :] = dt * Minv_JcT_box
-                D_an[self.V_EE_SLOT,  :] = (dt / m_ee) * J_c_ee.T
+                D_an[self.V_EE_SLOT,  :] = dt * (M_ee_op_inv @ J_c_ee.T)
 
                 # E — gradient of η wrt x (single 4n_c × N_X block).
                 # η = E_t^T·phi/dt + J_c·v_{k+1}, with v_{k+1} = v + dt·f(x,u,λ).
-                #   ∂/∂box_q: dt · J_c_box · df_box_dboxq
+                #   ∂/∂box_q: dt · J_c_box · df_box_dboxq + J_c_box·vNqdot_box/dt (A2 fix)
                 #   ∂/∂box_v: J_c_box + dt · J_c_box · df_box_dboxv
+                #   ∂/∂p_ee : J_c_ee / dt                                    (A2 fix)
                 #   ∂/∂v_ee : J_c_ee
-                # p_ee column is zero (no φ-vs-p_ee dependence in this LCS;
-                # the EE position contributes through J_c_ee on v_ee only —
-                # matches the ST EE-space path's structure at :1572).
+                # 2026-07-26 arc-2 A2 fix: reference `lcs_factory.cc:533`
+                # includes `E_tᵀ·Jn·vNqdot/dt` in E's q-column (phi-gradient
+                # wrt q). Port previously baked the position term into c via
+                # J_c·v (velocity term) but missed the pure phi(q_{k+1})
+                # gradient. This affects η prediction accuracy away from x*.
                 E_an = np.zeros((n_lam_an, N_X))
                 E_an[:, self.BOX_Q_SLOT] = dt * (J_c_box @ df_box_dboxq)
                 E_an[:, self.BOX_V_SLOT] = (J_c_box
                                             + dt * (J_c_box @ df_box_dboxv))
                 E_an[:, self.V_EE_SLOT]  = J_c_ee
+                if self._use_e_block_split:
+                    E_an[:, self.BOX_Q_SLOT] += (J_c_box @ vNqdot_box) / dt
+                    E_an[:, self.P_EE_SLOT]  += J_c_ee / dt
 
                 # F — single PSD block (analog of lcs_factory.cc:259):
                 #   F = dt · J_c · M^{-1} · J_c^T
-                # With M block-diag between box and EE point-mass:
+                # With M block-diag between box and EE operational-space:
                 #   F = dt · J_c_box · M_box^{-1} · J_c_box^T
-                #     + (dt / m_ee) · J_c_ee · J_c_ee^T
+                #     + dt · J_c_ee · M_ee_op_inv · J_c_ee^T
                 F_an = (dt * (J_c_box @ Minv_JcT_box)
-                        + (dt / m_ee) * (J_c_ee @ J_c_ee.T))
+                        + dt * (J_c_ee @ M_ee_op_inv @ J_c_ee.T))
 
-                # H — u-coupling: only v_ee path contributes, m_ee scaling.
-                H_an = (dt / m_ee) * J_c_ee                        # (4n_c, 3)
+                # H — u-coupling: only v_ee path contributes, M_ee_op_inv scaling.
+                H_an = dt * (J_c_ee @ M_ee_op_inv)                # (4n_c, 3)
 
                 # c — linearization-point value of η; subtraction below
                 # converts to constant offset (same convention as ST :1652).
