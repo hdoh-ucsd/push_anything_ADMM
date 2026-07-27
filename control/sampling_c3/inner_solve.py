@@ -775,7 +775,41 @@ class InnerSolver:
                     c_C3_raw = traj_cost(x_seq, u_seq,
                                          Q_obj, R_obj, QN_obj, x_ref)
             else:
-                c_C3_raw = traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
+                # REFCONF_SAMPLE_RANK_OBJ_ONLY=1 — rank samples by the
+                # OBJECT-slot cost only (obj quat/pos q-slots + obj ω/v
+                # v-slots; u-term zeroed). p109 diagnosis: under R^7 the
+                # raw cost's arm-dependent terms (R·u² over ~45 Nm
+                # gravity-holding joint torques, J-mapped ee_pos/ee_vel
+                # blocks evaluated at per-sample IK arm configs) inject
+                # posture-dependent noise on the same order (~250) as the
+                # productive-vs-wrong-face margin (~5% of ~5000), letting a
+                # west-face sample outrank the goal-aligned south face.
+                # The reference's ranking is object-dominated by
+                # construction: its u is a ~5 N EE force (R·u² ≈ 0.25) and
+                # its EE slots carry no posture ambiguity. Masking to the
+                # object block recovers that property for R^7. The FULL
+                # cost still drives the committed solve — this affects
+                # ranking only.
+                import os as _os_rank
+                if _os_rank.environ.get(
+                        "REFCONF_SAMPLE_RANK_OBJ_ONLY", "0") == "1":
+                    _n_x_r = Q.shape[0]
+                    _obj_mask = np.zeros(_n_x_r, dtype=bool)
+                    _obj_mask[self.n_u:self.n_q] = True          # obj quat+pos
+                    _obj_mask[self.n_q + self.n_u:_n_x_r] = True  # obj ω+v
+                    _M_r = np.outer(_obj_mask, _obj_mask)
+                    c_C3_raw = traj_cost(
+                        x_seq, u_seq,
+                        Q * _M_r, np.zeros_like(R), QN * _M_r, x_ref)
+                    if not getattr(self, "_rank_obj_only_logged", False):
+                        self._rank_obj_only_logged = True
+                        print("[REFCONF_SAMPLE_RANK_OBJ_ONLY] R^7 sample "
+                              "ranking masked to object slots "
+                              f"(x[{self.n_u}:{self.n_q}] ∪ "
+                              f"x[{self.n_q + self.n_u}:{_n_x_r}], R=0)",
+                              flush=True)
+                else:
+                    c_C3_raw = traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
             feasible = True
             if admm_iter_k >= self.base_admm_iter:
                 self.full_solves += 1
