@@ -382,8 +382,9 @@ class QuadraticManipulationCost:
                       f"pos={self.w_Q * np.asarray(self._q_vec_obj_pos)}, "
                       f"ω/v={self.w_Q * np.asarray(self._q_vec_obj_ang_vel)}/"
                       f"{self.w_Q * np.asarray(self._q_vec_obj_lin_vel)}); "
-                      "ee_pos/ee_vel groups have no R^7 state slot — "
-                      "J_arm EE-approach block is the R^7 analog", flush=True)
+                      "ee_pos group has no R^7 state slot — J_arm "
+                      "EE-approach block is the R^7 analog; ee_vel group "
+                      "mapped via J_arm below", flush=True)
         # Near-goal (pose regime) cost swap. Mirrors reference push_t
         # `sampling_c3_options_.GetC3Options(crossed_cost_switching_threshold_)`
         # — swap object-position weights when box is inside 5 cm of goal.
