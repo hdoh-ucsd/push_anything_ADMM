@@ -3782,7 +3782,57 @@ class SamplingC3Controller:
                 _dt_plan = float(
                     getattr(self.base_mpc, "dt_pose", _dt_plan))
             _N_plan = int(getattr(self.base_mpc, "horizon", 5))
-            if (_use_ee_space and _x_seq_full is not None
+            # 2026-07-26 arc-2 phantom-contact override:
+            # LCS_ALWAYS_ON_EE_BOX=1 injects an EE-BOX pair into the LCS even
+            # when arm is physically far from box (bypasses ref's 2mm signed-
+            # distance threshold). Under low-force regimes (u<friction breakout)
+            # this creates a feedback loop:
+            #   1. Planner sees "contact", plans push along phantom n_hat
+            #   2. x_seq predicts arm+box motion that can't happen physically
+            #   3. OSC blindly tracks x_seq[i][7:10], pulling arm away from box
+            #   4. Arm drifts, box unmoved, LCS's phantom contact worsens
+            # p92 crashed via workspace violation at step=202 with arm at
+            # (0.64, -0.42) while box was at (0.48, 0.00) — 45cm separation.
+            # This override replaces the planner-trajectory with a 2-knot
+            # linear ramp toward the IK-projected geometric contact target
+            # (_p_ee_des from :3167) when EE-to-box distance exceeds
+            # phantom_dist_thresh. Reference-directional (moves arm TOWARD
+            # box) rather than reference-conformant (which would just drop
+            # the phantom-contact via signed-distance threshold, but that's
+            # LCS_ALWAYS_ON_EE_BOX=0). Env-gated PUSHA_C3_PHANTOM_TRAJ_OVERRIDE=1
+            # (default OFF, byte-identical when disabled).
+            _box_xy_now = np.array([
+                current_q[self._obj_x_idx],
+                current_q[self._obj_y_idx],
+            ])
+            _ee_box_xy_dist = float(np.linalg.norm(
+                np.asarray(ee_pos_now[:2], dtype=float) - _box_xy_now))
+            _phantom_dist_thresh = float(_os.environ.get(
+                "PUSHA_C3_PHANTOM_DIST_THRESH", "0.10"))
+            _use_phantom_override = (
+                _os.environ.get("PUSHA_C3_PHANTOM_TRAJ_OVERRIDE", "0") == "1"
+                and _ee_box_xy_dist > _phantom_dist_thresh
+                and _p_ee_des is not None)
+            if _use_phantom_override:
+                # 2-knot FirstOrderHold from ee_now → IK-projected box-face target.
+                # Bypasses planner's phantom x_seq entirely.
+                _p_ik_col  = np.asarray(_p_ee_des, dtype=float).reshape(3, 1)
+                _p_now_col = np.asarray(ee_pos_now, dtype=float).reshape(3, 1)
+                _traj_c3 = PiecewisePolynomial.FirstOrderHold(
+                    [_sim_t_c3, _sim_t_c3 + float(self._dt_ctrl)],
+                    np.hstack([_p_now_col, _p_ik_col]),
+                )
+                # Null accel feedforward — we're NOT following planner's x_seq,
+                # so its predicted accel is irrelevant.
+                _a_ee_des = None
+                if not getattr(self, "_c3_phantom_override_banner", False):
+                    self._c3_phantom_override_banner = True
+                    print(f"[C3-PHANTOM-OVERRIDE] first fire step={self._step} "
+                          f"ee_box_xy_dist={_ee_box_xy_dist*1000:.1f}mm > "
+                          f"thresh={_phantom_dist_thresh*1000:.1f}mm — OSC follows "
+                          f"IK-projected target instead of planner x_seq",
+                          flush=True)
+            elif (_use_ee_space and _x_seq_full is not None
                     and hasattr(_x_seq_full, "shape")
                     and _x_seq_full.ndim == 2
                     and _x_seq_full.shape[0] >= _N_plan + 1
