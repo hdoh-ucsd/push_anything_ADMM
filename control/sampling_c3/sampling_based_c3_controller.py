@@ -4653,6 +4653,13 @@ class SamplingC3Controller:
             n_u = int(getattr(self.executor, "n_arm", 7))
             return np.zeros(n_u)
         kind, kw = self._last_osc_call
+        if kind == "c3_r7_direct":
+            # R^7 full-plant direct-torque: re-evaluate feedforward + joint-PD
+            # on fresh state at 1 kHz. base_mpc's cached _last_u_seq / last_x_seq
+            # (this planner tick's solution) supply tau_ff and (q_des, v_des).
+            u_opt, _ = self._compute_r7_c3_direct_torque(
+                current_q, current_v, plant_ctx)
+            return u_opt
         if kind == "c3_traj":
             u_opt, _ = self.executor.compute_torque_from_trajectory(
                 traj=kw["traj"], t_sim=float(t_sim),
