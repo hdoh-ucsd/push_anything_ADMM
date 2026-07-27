@@ -293,6 +293,20 @@ class InnerSolver:
         self.surrogate_iter   = int(params.surrogate_admm_iters)
         self.w_align          = float(params.w_align)
 
+        # 2026-07-26 arc-2 E2 surrogate-side x_pred clamp (partial fix).
+        # ci_mpc_c3plus.py:381-397 already clamps x0's EE pos/vel to
+        # (x_pred ± nominal_ee_accel·dt²) for the PRIMARY planner solve.
+        # This mirror applies the same clamp to the k=0 surrogate solve's
+        # `p_ee_for_x0` so cost-signal for mode-switch matches the primary
+        # solve's linearization point. Gated (default OFF) via
+        # PUSHA_C3_SURROGATE_XPRED_CLAMP=1. Set each tick by
+        # SamplingC3Controller.compute_control() via `set_ee_pos_clamp()`.
+        self._x_pred_ee_pos: Optional[np.ndarray] = None
+        self._x_pred_ee_delta_pos: float = 0.0
+        import os as _os_e2s
+        self._surrogate_xpred_clamp_enabled = (
+            _os_e2s.environ.get("PUSHA_C3_SURROGATE_XPRED_CLAMP", "0") == "1")
+
         # Diag 2 fix — per-axis force bounds for EE-space surrogate solves.
         # ci_mpc_c3plus.py:310-321 reads these env vars for the MAIN planner's
         # solve() call so the QP installs a per-axis [±U_H, ±U_H, ±U_V] box
@@ -372,6 +386,21 @@ class InnerSolver:
         self._worker_kits:  list = []
         self._worker_queue: Optional[queue.Queue] = None
         self._worker_lock:  threading.Lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # E2 surrogate-side clamp setter — called each tick before
+    # evaluate_samples() by SamplingC3Controller so the k=0 surrogate solve
+    # can clamp its x0.p_ee to (x_pred_ee ± delta_pos). Pass None to disable
+    # for a single tick.
+    # ------------------------------------------------------------------
+
+    def set_ee_pos_clamp(self,
+                         x_pred_ee_pos: Optional[np.ndarray],
+                         delta_pos:     float) -> None:
+        self._x_pred_ee_pos = (
+            np.asarray(x_pred_ee_pos, dtype=float).copy()
+            if x_pred_ee_pos is not None else None)
+        self._x_pred_ee_delta_pos = float(delta_pos)
 
     # ------------------------------------------------------------------
     # Single-sample evaluation
@@ -464,8 +493,13 @@ class InnerSolver:
             plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
         ).flatten().copy()
 
-        admm_iter_k = self.base_admm_iter if (is_current_ee or full_iters) \
-                      else self.surrogate_iter
+        # Reference cc:971-1085 runs every sample at the same admm_iter
+        # inside the OpenMP parallel loop. 2026-07-26 arc-2 E1 fix — port
+        # was giving k=0 the full 25-iter budget and k≥1 samples only
+        # 1 iter, so under G-on the k=0 solve accumulated leakage across
+        # 25 iterations while surrogates stayed near their init, biasing
+        # the argmin over c_samples.
+        admm_iter_k = self.base_admm_iter
 
         feasible = False
         nhats: list = []
@@ -514,6 +548,20 @@ class InnerSolver:
                     # base_mpc's x0 construction). For non-current: use sample_pos.
                     if is_current_ee:
                         p_ee_for_x0 = ee_pos_resolved
+                        # E2 surrogate-side clamp: mirror primary planner
+                        # (ci_mpc_c3plus.py:381-397). Bounds the k=0 surrogate's
+                        # x0 EE-pos to `x_pred_ee ± delta_pos` so cost-signal
+                        # driving mode-switch matches the primary linearization.
+                        # Set by SamplingC3Controller via `set_ee_pos_clamp()`.
+                        if (self._surrogate_xpred_clamp_enabled
+                                and self._x_pred_ee_pos is not None
+                                and self._x_pred_ee_delta_pos > 0.0):
+                            _dpos = float(self._x_pred_ee_delta_pos)
+                            p_ee_for_x0 = np.clip(
+                                np.asarray(self._x_pred_ee_pos, dtype=float),
+                                p_ee_for_x0 - _dpos,
+                                p_ee_for_x0 + _dpos,
+                            )
                     else:
                         p_ee_for_x0 = np.asarray(sample_pos, dtype=float).reshape(3)
                     v_ee_for_x0 = np.zeros(3)   # hypothetical: EE starts at rest
@@ -1103,6 +1151,12 @@ class InnerSolver:
                               f"sample_pos=({_p[0]:+.4f},{_p[1]:+.4f},"
                               f"{_p[2]:+.4f}) "
                               f"n_c=NULL (LCS not built)", flush=True)
+            # Arc-2 cost-breakdown dump (parallel path).
+            self._eval_call_count = getattr(self, "_eval_call_count", 0) + 1
+            import os as _os_bd_p
+            _bd_at_p = int(_os_bd_p.environ.get("PUSHA_COST_BD_AT_TICK", "0") or "0")
+            if _bd_at_p > 0 and self._eval_call_count == _bd_at_p:
+                self._dump_cost_breakdown(results, labels=None)
             return results  # type: ignore[return-value]
 
         # --- Serial path (bit-identical to prior behavior) ---------------
@@ -1141,7 +1195,92 @@ class InnerSolver:
                           f"sample_pos=({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f}) "
                           f"n_c=NULL (LCS not built)", flush=True)
             results.append(r)
+
+        # 2026-07-26 arc-2 diagnostic: per-sample cost-breakdown dump.
+        # Purpose: understand why surrogate c_C3_raw for the current sample
+        # (in-contact hypothesis) inverts against prev_repos (no-contact
+        # hypothesis) under G-on + arm-Cartesian LCS. Env-gated one-shot at
+        # a specific evaluate_samples call.
+        # Usage: PUSHA_COST_BD_AT_TICK=<N> — dumps on N-th call, then never
+        # again. Set N to a tick number well past reposition-entry.
+        self._eval_call_count = getattr(self, "_eval_call_count", 0) + 1
+        import os as _os_bd
+        _bd_at = int(_os_bd.environ.get("PUSHA_COST_BD_AT_TICK", "0") or "0")
+        if _bd_at > 0 and self._eval_call_count == _bd_at:
+            self._dump_cost_breakdown(results, labels=None)
         return results
+
+    def _dump_cost_breakdown(self, results, labels=None):
+        """Per-sample cost breakdown for arc-2 diagnostic. Called once by
+        evaluate_samples when env-gated. Prints per-knot state cost, terminal,
+        control cost, and Q-block contributions (obj xy, obj z, obj vel,
+        ee pos, ee vel) so we can see which term drives the inversion."""
+        print(f"[COST-BD] === per-sample breakdown at eval_call={self._eval_call_count} ===",
+              flush=True)
+        # EE-space layout: x = [box_q(7), p_ee(3), box_v(6), v_ee(3)]
+        _BOX_Q = slice(0, 7)
+        _P_EE  = slice(7, 10)
+        _BOX_V = slice(10, 16)
+        _V_EE  = slice(16, 19)
+        for k, r in enumerate(results):
+            if r.x_seq is None or r.u_seq is None or r.Q is None:
+                print(f"[COST-BD] k={k} infeasible/no-plan; c_C3_raw={r.c_C3_raw:.3f}",
+                      flush=True)
+                continue
+            x_seq, u_seq, Q, R, QN, x_ref = r.x_seq, r.u_seq, r.Q, r.R, r.QN, r.x_ref
+            N = len(u_seq)
+            # Per-knot state cost split by block
+            box_q_cost = box_v_cost = p_ee_cost = v_ee_cost = 0.0
+            for t in range(N):
+                e = x_seq[t] - x_ref
+                box_q_cost += float(e[_BOX_Q] @ Q[_BOX_Q, _BOX_Q] @ e[_BOX_Q])
+                box_v_cost += float(e[_BOX_V] @ Q[_BOX_V, _BOX_V] @ e[_BOX_V])
+                p_ee_cost  += float(e[_P_EE]  @ Q[_P_EE,  _P_EE]  @ e[_P_EE])
+                v_ee_cost  += float(e[_V_EE]  @ Q[_V_EE,  _V_EE]  @ e[_V_EE])
+            # Terminal
+            eN = x_seq[N] - x_ref
+            xN_box_q = float(eN[_BOX_Q] @ QN[_BOX_Q, _BOX_Q] @ eN[_BOX_Q])
+            xN_box_v = float(eN[_BOX_V] @ QN[_BOX_V, _BOX_V] @ eN[_BOX_V])
+            xN_p_ee  = float(eN[_P_EE]  @ QN[_P_EE,  _P_EE]  @ eN[_P_EE])
+            xN_v_ee  = float(eN[_V_EE]  @ QN[_V_EE,  _V_EE]  @ eN[_V_EE])
+            xN_total = xN_box_q + xN_box_v + xN_p_ee + xN_v_ee
+            # Control cost
+            u_cost = float(sum(u_seq[t] @ R @ u_seq[t] for t in range(N)))
+            # Total (sanity check vs c_C3_raw)
+            state_total = box_q_cost + box_v_cost + p_ee_cost + v_ee_cost + xN_total
+            total = state_total + u_cost
+            # Contact info
+            lam_first = float(np.max(np.abs(r.J_n[0])) if r.J_n is not None
+                              and r.J_n.size > 0 else 0.0)
+            print(f"[COST-BD] k={k} sample_pos=({r.sample_pos[0]:+.4f},"
+                  f"{r.sample_pos[1]:+.4f},{r.sample_pos[2]:+.4f}) "
+                  f"x0_p_ee=({r.x0[7]:+.4f},{r.x0[8]:+.4f},{r.x0[9]:+.4f}) "
+                  f"c_C3_raw={r.c_C3_raw:.3f} sum_check={total:.3f}",
+                  flush=True)
+            print(f"[COST-BD]   state total={state_total:.3f}: "
+                  f"box_q={box_q_cost:.3f} box_v={box_v_cost:.3f} "
+                  f"p_ee={p_ee_cost:.3f} v_ee={v_ee_cost:.3f}",
+                  flush=True)
+            print(f"[COST-BD]   terminal={xN_total:.3f}: "
+                  f"box_q={xN_box_q:.3f} box_v={xN_box_v:.3f} "
+                  f"p_ee={xN_p_ee:.3f} v_ee={xN_v_ee:.3f}",
+                  flush=True)
+            print(f"[COST-BD]   u_cost={u_cost:.3f}  "
+                  f"|u|_max_knot={np.max(np.linalg.norm(u_seq, axis=1)):.3f}N",
+                  flush=True)
+            # Trajectory-level box position drift (to see if this sample's
+            # plan predicts box moving toward goal — key for understanding
+            # why one sample "wins" over another under Q_obj_pos weight)
+            box_p_x0 = x_seq[0, 4]
+            box_p_xN = x_seq[N, 4]
+            box_p_y0 = x_seq[0, 5]
+            box_p_yN = x_seq[N, 5]
+            print(f"[COST-BD]   box_p drift x={box_p_x0:+.4f}->{box_p_xN:+.4f} "
+                  f"({(box_p_xN-box_p_x0)*1000:+.2f}mm)  "
+                  f"y={box_p_y0:+.4f}->{box_p_yN:+.4f} "
+                  f"({(box_p_yN-box_p_y0)*1000:+.2f}mm)",
+                  flush=True)
+        print("[COST-BD] === end breakdown ===", flush=True)
 
     # ------------------------------------------------------------------
     # Re-solve a winning sample with full ADMM iters

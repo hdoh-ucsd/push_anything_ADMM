@@ -1386,6 +1386,25 @@ class SamplingC3Controller:
         # Parallel labels for the [EE-SAMPLES] diagnostic tag.
         self._last_sample_labels = labels
 
+        # E2 surrogate-side x_pred clamp — pass base_mpc's cached predicted
+        # EE state (x_pred_curr_plan from prev tick's primary solve) so the
+        # k=0 surrogate can clamp its x0.p_ee too. Default OFF (env-gated
+        # on inner_solve side via PUSHA_C3_SURROGATE_XPRED_CLAMP); this
+        # setter always fires so enabling the env var is enough.
+        _xpred_plan = getattr(self.base_mpc, "_x_pred_curr_plan", None)
+        _nom_accel  = float(getattr(self.base_mpc, "nominal_ee_accel", 0.0))
+        _fst        = float(getattr(self.base_mpc, "_filtered_solve_time",
+                                    getattr(self.base_mpc, "dt", 0.05)))
+        if _xpred_plan is not None and _nom_accel > 0.0:
+            _dt_c = min(0.1, _fst)
+            _delta_pos_e2 = _nom_accel * _dt_c * _dt_c
+            _EE_POS_SLICE = getattr(self.base_mpc, "_EE_POS_SLICE",
+                                    slice(7, 10))
+            self.inner_solver.set_ee_pos_clamp(
+                _xpred_plan[_EE_POS_SLICE], _delta_pos_e2)
+        else:
+            self.inner_solver.set_ee_pos_clamp(None, 0.0)
+
         # 3. Evaluate every sample (per-sample C3 + alignment + travel)
         results = self.inner_solver.evaluate_samples(
             samples=samples,
@@ -1394,7 +1413,25 @@ class SamplingC3Controller:
             ee_pos_now=ee_pos_now, g_hat_3d=g_hat_3d,
             target_yaw=target_yaw,
         )
-        c_samples = [r.c_sample for r in results]
+        # 2026-07-26 arc-2 E3 fix (unify progress + mode-switch cost signal).
+        # Reference `KeepTrackOfC3ModeProgress` (cc:2208-2305) reads
+        # `all_sample_costs_[kCurrentLocation]` which is the same signal that
+        # drives the mode gate. Port previously fed the tracker `c_C3_raw`
+        # (see later comment for rationale: c_sample can go negative with
+        # w_align>0) but drove the gate with `c_samples[k]` (bonus-adjusted).
+        # Unify by seeding c_samples from `c_C3_raw` when the env-gate is on.
+        # Downstream inflations (finished_reposition_cost, buffer append) then
+        # apply UNIFORMLY to both progress and gate signals — no split.
+        # Env: PUSHA_MODE_SWITCH_USE_C3_RAW=1 (default ON = reference-conformant).
+        # In current push_t config (w_align=w_travel=w_rot=0) c_C3_raw equals
+        # r.c_sample so this is a no-op; the change is defensive.
+        import os as _os_e3
+        _use_c3_raw_for_gate = (
+            _os_e3.environ.get("PUSHA_MODE_SWITCH_USE_C3_RAW", "1") == "1")
+        if _use_c3_raw_for_gate:
+            c_samples = [float(r.c_C3_raw) for r in results]
+        else:
+            c_samples = [r.c_sample for r in results]
 
         # 3b. Finished-reposition cost penalty.  Mirrors the reference
         #     (sampling_based_c3_controller.cc:1081-1084):
@@ -1469,6 +1506,9 @@ class SamplingC3Controller:
             )
         # ====================================================================
 
+        # E3 unification above (line ~1416) already seeds c_samples from
+        # c_C3_raw when enabled, so downstream mode-switch reads the same
+        # signal as the progress tracker.
         c_curr   = c_samples[0]
         best_other_idx = None
         best_other_cost = float("inf")

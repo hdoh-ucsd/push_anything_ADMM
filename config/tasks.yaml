@@ -212,8 +212,8 @@ tasks:
       #  - p46 (full coordinated, admm_iter=25): dual explodes 1000×/solve
       # Root cause is structural (port scalar-ρ ADMM vs ref per-slot G).
       # Reverted to p38 config; qvector migration requires G-matrix port.
-      use_reference_q_vector:  false
-      w_Q:                    45.0
+      use_reference_q_vector:  true
+      w_Q:                    50.0
       q_vector_ee_pos:        [0.01, 0.01, 0.01]
       q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
       q_vector_obj_pos:       [200.0, 200.0, 120.0]
