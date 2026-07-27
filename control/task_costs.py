@@ -343,12 +343,55 @@ class QuadraticManipulationCost:
         """
         # --- Base object-goal cost ---
         Q     = self._Q_obj.copy()
+        if self.use_reference_q_vector:
+            # Reference-conforming base Q for the R^7 full-plant layout —
+            # mirror of build_ee_space:785-802. Q_base object block =
+            # w_Q · diag(q_vector) with the reference per-group vectors
+            # placed at the R^7 state indices:
+            #   obj quat  → q slots ps..ps+3   (ALL FOUR components,
+            #               incl. qw/qz — the base yaw weight the legacy
+            #               _Q_obj lacks; w_box_rp roll/pitch is replaced)
+            #   obj pos   → q slots ps+4..ps+6
+            #   obj ω/v   → v slots n_q+obj_vs .. +6
+            # The reference ee_pos / ee_vel groups have no R^7 counterpart
+            # (EE pose is FK of arm q, not a state slot); the port's
+            # linearised J_arm EE-approach block below remains the R^7
+            # analog of that steering. As in build_ee_space, the base
+            # assignment is regime-independent (no w_obj_xy_pose swap —
+            # q_vector_obj_pos already carries the reference pose-regime
+            # values).
+            ps = self._obj_ps
+            for _i in range(4):
+                Q[ps + _i, ps + _i] = self.w_Q * self._q_vec_obj_quat[_i]
+            Q[self._obj_x_idx, self._obj_x_idx] = \
+                self.w_Q * self._q_vec_obj_pos[0]
+            Q[self._obj_y_idx, self._obj_y_idx] = \
+                self.w_Q * self._q_vec_obj_pos[1]
+            Q[self._obj_z_idx, self._obj_z_idx] = \
+                self.w_Q * self._q_vec_obj_pos[2]
+            _vb = self.n_q + self._obj_vs
+            for _i in range(3):
+                Q[_vb + _i, _vb + _i] = \
+                    self.w_Q * self._q_vec_obj_ang_vel[_i]
+                Q[_vb + 3 + _i, _vb + 3 + _i] = \
+                    self.w_Q * self._q_vec_obj_lin_vel[_i]
+            if not getattr(self, "_ref_qvec_r7_logged", False):
+                self._ref_qvec_r7_logged = True
+                print("[REF-QVEC-R7] build(): reference q_vector base Q "
+                      f"active (quat={self.w_Q * np.asarray(self._q_vec_obj_quat)}, "
+                      f"pos={self.w_Q * np.asarray(self._q_vec_obj_pos)}, "
+                      f"ω/v={self.w_Q * np.asarray(self._q_vec_obj_ang_vel)}/"
+                      f"{self.w_Q * np.asarray(self._q_vec_obj_lin_vel)}); "
+                      "ee_pos/ee_vel groups have no R^7 state slot — "
+                      "J_arm EE-approach block is the R^7 analog", flush=True)
         # Near-goal (pose regime) cost swap. Mirrors reference push_t
         # `sampling_c3_options_.GetC3Options(crossed_cost_switching_threshold_)`
         # — swap object-position weights when box is inside 5 cm of goal.
         # Rewrites the Q_obj_pos slots in-place; leaves w_box_rp and other
         # blocks alone (analogous to reference push_t regime deltas).
-        if self._crossed_switching_threshold:
+        # Skipped under use_reference_q_vector (parity with build_ee_space,
+        # whose ref branch is likewise regime-independent).
+        elif self._crossed_switching_threshold:
             Q[self._obj_x_idx, self._obj_x_idx] = self.w_obj_xy_pose
             Q[self._obj_y_idx, self._obj_y_idx] = self.w_obj_xy_pose
             Q[self._obj_z_idx, self._obj_z_idx] = (self.w_obj_z
@@ -366,17 +409,24 @@ class QuadraticManipulationCost:
         # The xy components of c_yaw are zero, so this is orthogonal to the
         # existing w_box_rp roll/pitch regularization.
         self._target_yaw = float(target_yaw)
-        if self.w_yaw > 0.0:
-            a_half = 0.5 * self._target_yaw
+        a_half = 0.5 * self._target_yaw
+        ps = self._obj_ps
+        # Always seed the goal quaternion reference on qw/qz (parity with
+        # build_ee_space:868-871): any quat-slot weight — the w_yaw rank-1
+        # form, the reference q_vector base diag, or the near-goal Hessian —
+        # only drives x toward q_goal if x_ref IS q_goal. With x_ref[quat]=0
+        # a diagonal qw/qz weight would pull the quaternion toward the zero
+        # vector instead. qx,qy stay 0 (upright), preserving roll/pitch
+        # behavior. No-op for cost purposes when all quat weights are zero.
+        x_ref[ps + 0] = np.cos(a_half)   # qw
+        x_ref[ps + 3] = np.sin(a_half)   # qz
+        # Optional linear rank-1 form — port-only far-goal add-on; skipped
+        # under use_reference_q_vector (reference has no linear yaw cost;
+        # parity with build_ee_space:874).
+        if self.w_yaw > 0.0 and not self.use_reference_q_vector:
             cy = np.array([-np.sin(a_half), 0.0, 0.0, np.cos(a_half)])
-            ps = self._obj_ps
             # Outer product on the (qw..qz) 4×4 sub-block of Q
             Q[ps:ps+4, ps:ps+4] += self.w_yaw * np.outer(cy, cy)
-            # Set the goal quaternion reference on the qw and qz slots.
-            # qx,qy stay at 0 (upright), preserving w_box_rp behavior since
-            # x_ref[qx]=x_ref[qy]=0 makes that block unchanged.
-            x_ref[ps + 0] = np.cos(a_half)   # qw
-            x_ref[ps + 3] = np.sin(a_half)   # qz
 
         # --- Linearised EE approach cost (arm joints only) ---
         if plant_ctx is not None and current_q is not None:
