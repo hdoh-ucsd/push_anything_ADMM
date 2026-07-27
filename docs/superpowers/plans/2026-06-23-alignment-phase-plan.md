@@ -88,7 +88,7 @@ The isolation probe runs in the next block — projection-swap (Aydinoglu per-co
 | 1 | Dispatch (mode-switch) | **RECONCILED** | `mode_switch.py:95-144` ↔ `sampling_based_c3_controller.cc:1145-1310` | (already at goal) |
 | 2 | LCS admission | **PARTIAL — executor-side SKIP stands; PLANNER-SIDE admission blocked on the ADMM iteration-scheme defect (1a/1b/1c) — NOT on §0 #2 modeling (CORRECTED 2026-06-23; see §0 retraction)** | `lcs_formulator.py:390-456` (2 mm threshold — executor-side contact filter AND planner-side LCS-build path) ↔ `LCSFactory::GetNClosestContactPairs` (N-closest) | Blocked on the isolable C3+ iteration-scheme defect (oscillation around a feasible LCP point), NOT on §0 #2 modeling. Re-opens IFF the isolation probe identifies the bug AND it lands live. Executor-side: no flip — already skip-justified. |
 | 3 | ADMM / C3+ solver | **(UPDATED 2026-06-25 — see §7.9) Leading-candidate-fix SHIFTED again: SOLVER-level convergence is NOT the root. Contact-model alignment (LCS missing box-ground) FIRST. Model-plant consistency test shows the LCS-with-oracle predicts box motion Drake does NOT render (1.7e7× mismatch).** | `admm_solver.py:_solve_c3plus`, `lcs_formulator.py` LCS construction | The non-convergence is real (DIAGNOSTIC 1(c)), but the deeper fact is: the captured LCS has `n_lambda = 6` = 1 EE-BOX contact only, NO box-ground. Solving any LCS-consistent λ, including the brute-force oracle, predicts the box FALLS (LCS lacks the floor). Reference uses contact_model: anitescu + 12 object-ground contacts always; port uses Stewart-Trinkle + LCS_EXPLICIT_BOX_GND OFF by default. Next gate: contact-model alignment, then re-test consistency. Reference-settings precondition is MOOT until LCS matches plant. |
-| 4 | Control input u | PARTIAL — wired but not default; **mechanism probe-confirmed reference-EXACT** (Stage C probe 2026-06-23; see §3 Stage C outcome) | `wrapper._derive_force_command` (`-g_hat`+mag, env-gated `PUSHA_FORCE_ROUTING=u_sol` for u_seq[0]) ↔ `sampling_based_c3_controller.cc:1822-1832` (`force_samples = u_sol[i]`) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** The mechanism is reference-exact; the row-flip gate is gap-closing / Stage E motion-bar. The LCP live-verification at 100 Hz produced 34 mm of real motion but not the gap-closed verdict; whether the projection is the fix OR cadence is the cause remains unresolved. |
+| 4 | Control input u | PARTIAL — wired but not default; **mechanism probe-confirmed reference-EXACT** (Stage C probe 2026-06-23; see §3 Stage C outcome) | `wrapper._derive_force_command` (`-g_hat`+mag, env-gated `PORT_FORCE_ROUTING=u_sol` for u_seq[0]) ↔ `sampling_based_c3_controller.cc:1822-1832` (`force_samples = u_sol[i]`) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** The mechanism is reference-exact; the row-flip gate is gap-closing / Stage E motion-bar. The LCP live-verification at 100 Hz produced 34 mm of real motion but not the gap-closed verdict; whether the projection is the fix OR cadence is the cause remains unresolved. |
 | 5 | Executor (OSC + force-tracking) | PARTIAL — **mechanism probe-confirmed reference-EXACT**; Reading 2 (executor/compliance bottleneck) REFUTED (phi_act < setpoint_sd on 119/119 — executor BEATS its own commanded position by ~15 mm) (Stage C probe 2026-06-23) | `osc/qp_builder.py:73` + `params.W_force=100.0` ↔ `franka_osc_controller.cc:167-170` + `osc_params.W_ee_lambda = I_3` (scalar 1.0; port W_force/W_track ratio 100/100 = reference's 1/1 ratio preserved) | **RECONCILED flip BLOCKED on the cadence discriminator (RE-TAGGED 2026-06-23 from "iteration-scheme defect 1a/1b/1c"; see row 8 promotion + §7.2).** Same gate as row 4. |
 | 6 | Reposition mechanism | **PARTIAL — wired (descent reference-aligned); residuals deferred to Stage E** | `reposition_trajectory.py` + `sampling_based_c3_controller.py:2502-2528` (gated PWL path; default OFF) ↔ `Reposition(...) + UpdateRepositioningExecutionTrajectory + LcmTrajectoryReceiver` (see Stage A outcome subsection at end of §3 Stage A) | Stage E motion-decomp + force-tracking confirm residuals (NOT this stage) |
 | 7 | Push-point height computation | OPEN | `config/tasks.yaml:22 pushing.sampling_height = 0.03` (hand-coded) ↔ `sampling_params.yaml:64 z_height` auto-generated per object | Stage D passes |
@@ -103,7 +103,7 @@ The isolation probe runs in the next block — projection-swap (Aydinoglu per-co
 
 ### P0 — Probe disposition (user's separate call, not part of this plan to action)
 
-The 7 uncommitted Stage-1 / Stage-2 / Stage-2d / Stage-5 files (`config/tasks.yaml`, `control/admm_solver.py`, `control/ci_mpc_c3plus.py`, `control/lcs_formulator.py`, `control/sampling_c3/wrapper.py`, `control/task_costs.py`, `main.py`; +321 / -15) plus their env-gated knobs (`PUSHA_LOOKAHEAD_STEP`, `LCS_EXPLICIT_BOX_GND`, `PUSHA_STAGE5_U_HORIZONTAL/VERTICAL`, `PUSHA_STAGE5_R_VECTOR`, `PUSHA_FORCE_ROUTING`, `PUSHA_HORIZON_LAM_DUMP`) are all default-OFF — the port runs baseline behavior under no env vars. **Before Stage A**: decide per knob: keep / commit / revert. Surfaced here, NOT actioned here.
+The 7 uncommitted Stage-1 / Stage-2 / Stage-2d / Stage-5 files (`config/tasks.yaml`, `control/admm_solver.py`, `control/ci_mpc_c3plus.py`, `control/lcs_formulator.py`, `control/sampling_c3/wrapper.py`, `control/task_costs.py`, `main.py`; +321 / -15) plus their env-gated knobs (`PUSHA_LOOKAHEAD_STEP`, `LCS_EXPLICIT_BOX_GND`, `PORT_U_HORIZONTAL/VERTICAL`, `PORT_R_VECTOR`, `PORT_FORCE_ROUTING`, `DIAG_HORIZON_LAM_DUMP`) are all default-OFF — the port runs baseline behavior under no env vars. **Before Stage A**: decide per knob: keep / commit / revert. Surfaced here, NOT actioned here.
 
 ### P1 — Substrate lock
 
@@ -141,7 +141,7 @@ End-to-end motion (≥ 20 mm) is **NOT** a Stage A bar — held cumulative to St
 
 #### Stage A — Actual outcome (2026-06-23, anti-stale record per §7)
 
-Stage A did NOT cleanly pass. **WIRED with four deferred residuals.** Row 6 status set to PARTIAL accordingly (NOT RECONCILED). Default stays OFF (`use_reposition_pwl_trajectory=False`); the gated path runs only when `PUSHA_REPOSITION_PWL=1`.
+Stage A did NOT cleanly pass. **WIRED with four deferred residuals.** Row 6 status set to PARTIAL accordingly (NOT RECONCILED). Default stays OFF (`use_reposition_pwl_trajectory=False`); the gated path runs only when `REFCONF_REPOSITION_PWL=1`.
 
 **Descent mechanism reference-aligned (the mechanism IS correct).** The port's `RepositionTrajectory` (`control/sampling_c3/reposition_trajectory.py`) is architecturally aligned with the reference: constant-per-leg `seg_durations = seg_lengths / speed`, mirroring `reposition.cc:391-467 RepositionPiecewiseLinear` (`step_size = speed × dt`). Only the speed *value* diverged: `config/sampling_c3_kik.yaml` ran at `0.40 m/s` (2.2× reference). The free-mode brush diagnosis (descent at vz≈0.44 m/s past phi=6 mm → Drake compliant-contact halo applies force at sub-LCS-admit distances → box yawed before c3 engaged) was resolved by adding a separate `pwl_speed: 0.18 m/s` field on `RepositionParams` (reference push_t value; kept distinct from `.speed` which the legacy IK tracker consumes as a planning-lookahead stride, so flag-OFF baseline is bit-identical). Commits: **848cc79** (descent fix) + **e65338c** (analysis tooling `scripts/_analyze_stage_a_fork.py`).
 
@@ -156,7 +156,7 @@ Stage A did NOT cleanly pass. **WIRED with four deferred residuals.** Row 6 stat
   (iv) **Cond-1 EE-landing WINDOW un-evaluable** — first c3 episodes are 38 ticks on both seeds, < `WINDOW_MIN_TICKS=50` floor. Separate window-strategy decision (lower the floor to 30, or change episode-selection from first-only to merge-fragments-separated-by-<3-free-ticks, or first-≥30-tick). Not addressed in Stage A.
 
 **Carry-forward state (binding on subsequent stages):**
-- Stages B/C/D/E run with `PUSHA_REPOSITION_PWL=1` (reference-aligned reposition path active during their measurements).
+- Stages B/C/D/E run with `REFCONF_REPOSITION_PWL=1` (reference-aligned reposition path active during their measurements).
 - Default stays OFF (`use_reposition_pwl_trajectory=False` in dataclass + YAML).
 - Promotion-to-default deferred to Stage E pass (i.e., only flip the default after Stage E confirms the gentle landing + executor combination clears the cumulative motion bar).
 - Cond 4 (|qz|/|qy| not worse than baseline) was NOT relaxed — Read X (no-force-regulation as sole cause) was falsified by the timing diagnostic; the bar still stands, the residual is correctly downstream (Stage C/E).
@@ -205,7 +205,7 @@ Stage A did NOT cleanly pass. **WIRED with four deferred residuals.** Row 6 stat
 
 **Reference mechanism (port this):** planner packs `u_sol` (the C3+ solved Cartesian EE force) into `end_effector_force_target` LCM trajectory at `sampling_based_c3_controller.cc:1822-1832` `force_samples.col(i) = u_sol[i]`. OSC consumes via `ExternalForceTrackingData("end_effector_force", W_ee_lambda, plant, plant, kEndEffectorName, Vector3d::Zero())` (`franka_osc_controller.cc:167-170`); registered with `osc->AddForceTrackingData(...)` (`:188`).
 
-**Port replaces:** `wrapper._derive_force_command` — retire the `-g_hat`-direction + `Σ|λ_n|`-magnitude-floor-cap path. Promote the env-gated `PUSHA_FORCE_ROUTING=u_sol` branch (`wrapper.py:450-471`) to default behavior. Tune `params.W_force` to the reference's `W_ee_lambda` value (set in Stage C's first action above).
+**Port replaces:** `wrapper._derive_force_command` — retire the `-g_hat`-direction + `Σ|λ_n|`-magnitude-floor-cap path. Promote the env-gated `PORT_FORCE_ROUTING=u_sol` branch (`wrapper.py:450-471`) to default behavior. Tune `params.W_force` to the reference's `W_ee_lambda` value (set in Stage C's first action above).
 
 **LOCAL pass bar (HARD):**
 1. **Planner u_sol consumed (not derived)**: `lambda_des == base_mpc._last_u_seq[0]` at every c3-mode tick (verified by the `[FORCE-ROUTE]` diagnostic).
@@ -222,9 +222,9 @@ End-to-end motion is **NOT** a Stage C bar — held to Stage E. But: if Stages A
 
 **Executor-force-routing sub-goal DONE (probe-confirmed reference-EXACT). Gap-closed verdict FAILED — cause LOCALIZED to the PLANNER's LCS-build, NOT the executor.**
 
-**Phase 1 cell (u_sol × 100, PUSHA_REPOSITION_PWL=1, seeds {0, 4}, 12 s):** the GAP-CLOSED VERDICT defined in `docs/superpowers/plans/2026-06-23-stage-c-executor-force-tracking-port.md` §5.E.1.a FAILED on both seeds. V3 (F_z NON-TRIVIAL, live `[FORCE-ROUTE]` trace) PASSED on both seeds (`var(u_z)` 0.42/0.44, `max|u_z|` 3.4 N / 4.1 N — real non-zero F_z delivered). D-1 (lambda_des == `_last_u_seq[0]`) PASSED on both seeds (119/119 and 155/155 c3 ticks `eq=True`). V1 (sustained-contact `φ < 2 mm ∧ lam_n_ee_box > 0` ≥ 30%) FAILED (5.0% / 3.2%). V2 (admit-active `lam_n_ee_box > 0.5 N` ≥ 15%) FAILED (5.0% / 3.2%). V4 vacuously satisfied (V4 PRECISION NOTE — only 5-6 admits across both seeds, V1∧V2 carry the contact-happened load and they failed). The EE hovered in Stage B's 2-5 mm band on ~86-87% of c3-ticks under u_sol routing. Commits: `d43daa1` (trace), `eff91b9` (Phase 1 metrics artifacts).
+**Phase 1 cell (u_sol × 100, REFCONF_REPOSITION_PWL=1, seeds {0, 4}, 12 s):** the GAP-CLOSED VERDICT defined in `docs/superpowers/plans/2026-06-23-stage-c-executor-force-tracking-port.md` §5.E.1.a FAILED on both seeds. V3 (F_z NON-TRIVIAL, live `[FORCE-ROUTE]` trace) PASSED on both seeds (`var(u_z)` 0.42/0.44, `max|u_z|` 3.4 N / 4.1 N — real non-zero F_z delivered). D-1 (lambda_des == `_last_u_seq[0]`) PASSED on both seeds (119/119 and 155/155 c3 ticks `eq=True`). V1 (sustained-contact `φ < 2 mm ∧ lam_n_ee_box > 0` ≥ 30%) FAILED (5.0% / 3.2%). V2 (admit-active `lam_n_ee_box > 0.5 N` ≥ 15%) FAILED (5.0% / 3.2%). V4 vacuously satisfied (V4 PRECISION NOTE — only 5-6 admits across both seeds, V1∧V2 carry the contact-happened load and they failed). The EE hovered in Stage B's 2-5 mm band on ~86-87% of c3-ticks under u_sol routing. Commits: `d43daa1` (trace), `eff91b9` (Phase 1 metrics artifacts).
 
-**Post-FAIL localization probe (seed 0, `PUSHA_SETPOINT_TRACE=1`, 119 c3 ticks):** the named bottleneck (W_force pull-toward-u_sol vs W_track pull-toward-p_ee_des) was MEASURED, splitting the fork:
+**Post-FAIL localization probe (seed 0, `DIAG_SETPOINT_TRACE=1`, 119 c3 ticks):** the named bottleneck (W_force pull-toward-u_sol vs W_track pull-toward-p_ee_des) was MEASURED, splitting the fork:
 - **Reading 2 (executor / compliance) — REFUTED.** `phi_act < setpoint_sd` on 119/119 c3 ticks. The executor BEATS its own commanded position by ~15 mm via the W_force pull-toward-u_sol — outperforming, not bottlenecking. Sphere-radius / contact-stiffness / QP-feasibility are NOT the issue. Commit: `ecd74d8` (probe trace).
 - **Reading 1 (UPSTREAM / planner) — CONFIRMED hard.** `phi_pred_min ≥ 12 mm on 0/119 c3 ticks` (median +29.5 mm); `setpoint_sd ≥ 10 mm on 119/119` (median +18.7 mm, min +12.4 mm); `argmin@k=1 on 119/119` (planner's horizon monotonically RETREATS from contact). The planner's LCS solve outputs an `x_seq` that retreats from contact — it does NOT predict the EE landing on the box. The OSC is FAITHFULLY tracking that retreating setpoint; the W_force pull does as much as can be done given the position-task disagreement.
 
@@ -240,12 +240,12 @@ The B phase-detector probe (`u_sol`-vs-`x_seq` consistency + ADMM convergence re
 - §1 row 2 — REOPENED on the planner side; executor-side SKIP STANDS (see §3 Stage B outcome update).
 - §1 rows 4 and 5 — ANNOTATED as *mechanism probe-confirmed reference-EXACT*, but RECONCILED flip DEFERRED to gap-actually-closing / Stage E promotion (the row-flip gate is the gap-closed verdict, which still FAILS via the planner-side bottleneck).
 - §1 row 9 — RETIRED unchanged.
-- Default-OFF unchanged (`PUSHA_FORCE_ROUTING` NOT promoted to default; deferred to Stage E pass).
+- Default-OFF unchanged (`PORT_FORCE_ROUTING` NOT promoted to default; deferred to Stage E pass).
 - Phase 2 DECLINED-as-wrong-knob (probe-mechanically confirmed).
-- The `[FORCE-ROUTE]` and `[SETPOINT]` traces are in-source under env gates `PUSHA_FORCE_ROUTE_TRACE=1` and `PUSHA_SETPOINT_TRACE=1` (default-OFF; baseline log unaffected).
+- The `[FORCE-ROUTE]` and `[SETPOINT]` traces are in-source under env gates `DIAG_FORCE_ROUTE_TRACE=1` and `DIAG_SETPOINT_TRACE=1` (default-OFF; baseline log unaffected).
 
 **Carry-forward (binding on subsequent stages):**
-- Stage D / Stage E run with `PUSHA_REPOSITION_PWL=1` AND `PUSHA_FORCE_ROUTING=u_sol` (the reference-exact force-routing path active during their measurements).
+- Stage D / Stage E run with `REFCONF_REPOSITION_PWL=1` AND `PORT_FORCE_ROUTING=u_sol` (the reference-exact force-routing path active during their measurements).
 - `W_force = 100.0` held (the §0 ratio analysis + the probe agree the weight is not the lever).
 - Stage A residual (i) (seed-0 `|qz| = 0.038`) COLLAPSED under u_sol routing (0.0379 → 2.6e-4) — surfaced as an unpredicted positive side effect of the routing change. Origin question retired in the u_sol-active regime; remains TBD in the legacy `(-g_hat)` regime.
 - Stage A residual (ii) (MOTION-SOURCE) **remains UNRESOLVED**. The probe run produced 0 mm box motion and gap-closed FAILED, so the §5.E.1.b motion-diagnostic interpretation table was gated-off (neither *brush-shove refuted-as-necessary* nor *confirmed* applies — the table requires gap-closed = PASS as precondition). Stays deferred; will be re-attacked at Stage E after the sub-fork is resolved.
@@ -271,7 +271,7 @@ The B phase-detector probe (`u_sol`-vs-`x_seq` consistency + ADMM convergence re
 
 **NOT a mechanism port — the validation gate that retires the Alignment Phase.**
 
-**FIRST action (block the rest of the stage on this): MOTION-DECOMPOSITION DIAGNOSTIC.** This re-sequences Stage A's deferred residual (ii) — the motion-source question — to the stage where it can actually be answered (motion is attributable only once Stage C's force-tracking is in place). Run a 4-quadrant decomposition across the canonical seed set, all with `PUSHA_REPOSITION_PWL=1`:
+**FIRST action (block the rest of the stage on this): MOTION-DECOMPOSITION DIAGNOSTIC.** This re-sequences Stage A's deferred residual (ii) — the motion-source question — to the stage where it can actually be answered (motion is attributable only once Stage C's force-tracking is in place). Run a 4-quadrant decomposition across the canonical seed set, all with `REFCONF_REPOSITION_PWL=1`:
 
 | Cell | Force-tracking (Stage C result) | Descent shape | What it isolates |
 |---|---|---|---|
@@ -561,7 +561,7 @@ Real dispatch-TIMING divergence, separate from the cost/hysteresis decision logi
 
 The 4 `[YAML-COMPAT]` shims fired (legacy int fields auto-converted to `_s` seconds).
 
-*NOTE on baseline correction:* initial SMOKE-1 attempt failed against `stage_a_speed018/seed0/run.log` because THAT baseline lacked `PUSHA_FORCE_ROUTING=u_sol` — WRONG baseline; corrected to `stage_c/seed0_usol_100.log` (the Phase-1 same-config pre-conversion run), against which it is perfect. The multi-file conversion (`params.py`, `progress.py`, `sampling_based_c3_controller.py` + the comparator + the YAML unit test, 6/6 pass) is **SOUND and REVERSIBLE**.
+*NOTE on baseline correction:* initial SMOKE-1 attempt failed against `stage_a_speed018/seed0/run.log` because THAT baseline lacked `PORT_FORCE_ROUTING=u_sol` — WRONG baseline; corrected to `stage_c/seed0_usol_100.log` (the Phase-1 same-config pre-conversion run), against which it is perfect. The multi-file conversion (`params.py`, `progress.py`, `sampling_based_c3_controller.py` + the comparator + the YAML unit test, 6/6 pass) is **SOUND and REVERSIBLE**.
 
 #### (2) PRIMARY SCOPE-STOP RESOLVED
 
@@ -596,7 +596,7 @@ Each 1 kHz attempt fails **LATER**: the first failed at ~30 ms (sample buffer; c
 
 **NEW (this run):** the per-tick PWL rebuild storm at EE-landing approach (the BEHAVIORAL coupling the audit missed) — banked; mechanism to be pinned by the next-block trace probe.
 
-**DEFERRED (recorded so it is not lost):** B10/B11 `TARGET_STABLE_TICKS` in the legacy IK tracker (`reposition_ik.py:709`) — bypassed by `PUSHA_REPOSITION_PWL=1`, so does NOT bite under the current Stage A flag-ON regime. Will need conversion if the legacy path is ever re-enabled.
+**DEFERRED (recorded so it is not lost):** B10/B11 `TARGET_STABLE_TICKS` in the legacy IK tracker (`reposition_ik.py:709`) — bypassed by `REFCONF_REPOSITION_PWL=1`, so does NOT bite under the current Stage A flag-ON regime. Will need conversion if the legacy path is ever re-enabled.
 
 #### Anti-stale binding
 
@@ -623,7 +623,7 @@ is LEVEL-triggered — fires every tick while `_last_repos_finished == True` (**
 
 **FIX-B(2) (unify the finished-criterion):** under the PWL path, compute `_last_repos_finished` from `PWL.is_finished(sim_t, ee_now, tol=0.005)` — the SAME criterion the dispatcher uses at `:1072`. Legacy IK tracker path preserved unchanged. **RECONCILIATION not strictness:** the tracker was wired to a WEAKER (distance-only) criterion than the dispatcher already consumes (time+distance); B2 makes them agree on the criterion the dispatcher was designed around. **B1 (distance-only for both) would be WRONG** — declares arrival while PWL velocity is non-zero. Edits at `:1972`.
 
-**Verification gate (BOTH smokes):** the fix touches LIVE dispatch logic — the 100 Hz byte-equivalence gate applies. SMOKE 1 (100 Hz no-op) must clear 5/5 against `stage_c/seed0_usol_100.log`. SMOKE 2 (1 kHz, short, to ~step 1750) must clear 4/4 AND surface the explicit INTERMEDIATE READ: with the storm gone (FIX-A) and the criteria unified (FIX-B), at step ~1652 sim_t reaches the original t_end → `is_finished` should fire → mode flips to c3. **If `is_finished` does NOT fire even with stable t_end → THIRD coupling; trace remains on HEAD (re-enable `PUSHA_LANDING_TRACE=1`) and we report the ACTUAL mechanism, not infer from null.**
+**Verification gate (BOTH smokes):** the fix touches LIVE dispatch logic — the 100 Hz byte-equivalence gate applies. SMOKE 1 (100 Hz no-op) must clear 5/5 against `stage_c/seed0_usol_100.log`. SMOKE 2 (1 kHz, short, to ~step 1750) must clear 4/4 AND surface the explicit INTERMEDIATE READ: with the storm gone (FIX-A) and the criteria unified (FIX-B), at step ~1652 sim_t reaches the original t_end → `is_finished` should fire → mode flips to c3. **If `is_finished` does NOT fire even with stable t_end → THIRD coupling; trace remains on HEAD (re-enable `DIAG_LANDING_TRACE=1`) and we report the ACTUAL mechanism, not infer from null.**
 
 ---
 
@@ -673,7 +673,7 @@ Both hold simultaneously.
 **PRESERVE:**
 - The tick→sim-time conversion (the 15-constant work; separate commits — proven byte-equivalent at 100 Hz, genuine alignment work that holds independently of the storm fix).
 - The diagnostic FINDINGS (the storm mechanism pin from §7.5; the EE-well-placed read from DIAGNOSTIC 1(b); the Probe-B-at-100 Hz confirmation from DIAGNOSTIC 1(c)).
-- The instrumentation gates (`PUSHA_LANDING_TRACE`, `PUSHA_CONTROL_HZ`, `PUSHA_FORCE_ROUTE_TRACE`, `PUSHA_SETPOINT_TRACE`, `PUSHA_CONSISTENCY_TRACE`, `PUSHA_ADMM_DUMP`) — read-only / default-OFF.
+- The instrumentation gates (`DIAG_LANDING_TRACE`, `PUSHA_CONTROL_HZ`, `DIAG_FORCE_ROUTE_TRACE`, `DIAG_SETPOINT_TRACE`, `DIAG_CONSISTENCY_TRACE`, `DIAG_ADMM_DUMP`) — read-only / default-OFF.
 
 **DEFERRED:** the storm fix (likely FIX-B isolated + tested) — the storm is a 1 kHz c3-blocker, NOT a no-push fix; at 100 Hz it self-corrects; the projection investigation proceeds at seed-0 100 Hz where c3 engages without it. Re-address the storm IF/WHEN 1 kHz or multi-seed work needs it.
 
@@ -2797,9 +2797,9 @@ Both solvers call the same `LCSFormulator`:
 
 Any subsequent entry that frames the port's 2 mm admission as a tuning value to "open up" is operating on a STALE record — §7.29 (2) establishes that 2 mm vs always-on is an ARCHITECTURAL difference (filtered admission vs always-on), not a band-tightening knob; the 40 mm ablation (29 mm → 10 mm regression) IS NOT evidence against always-on (different change, λ_n = 0 at separation is exact + harmless). Any entry that opens the analytic-reposition port before the always-on admission build is mis-routing — the port's reposition already reaches the 60 mm entry gate, so reposition is NOT the binding; always-on admission is the localized first move. Any entry that attributes the live INERT to the clamp / Candidate E is conflating an offline-correct fix with the live binding — the clamp is correct AND inert because the LCS regime where it fires is never entered live (the 2 mm filter keeps it out). Any entry that prunes `--solver c3` is mis-routing — C3 shares the LCS with C3+, carries the current contact model, and is cheap to keep as a banked diagnostic; pruning would be an unforced delete. Any entry that re-measures ADMM convergence as the primary binding before always-on admission lands is mis-ordering — the §7.29 (3) pre-registered hypothesis is *measure-after*; the clean attribution requires the upstream architectural change first.
 
-### 7.30 — Always-on EE-BOX admission build (LCS_ALWAYS_ON_EE_BOX, default-OFF) + structural sanity PASS + live push sim → **NO-CHANGE-WITH-DISPATCHER-SHIFT**: admissions DID happen (4/8 c3-mode steps planned non-zero λ_n: 0.12, 0.16, 1.07, 1.50); ADMM warnings DOWN 729 → 609 (16% reduction); min φ 1.67 mm (baseline 2.01 mm — tighter but **still positive**, EE does NOT penetrate); box moved 29 mm West (baseline 31 mm — at-baseline, NOT regressed); BUT c3-mode usage **DROPPED 94%** (128 → 8 steps) — the always-on row shifted the dispatcher cost-gap to favor free mode. **Two-sided success criterion BARELY held** (box moves ~baseline AND West-push NOT below 29 mm) — but the **strict unblock failed**: visibility was admitted, planner did emit some λ_n, but EE doesn't penetrate and box motion is still incidental Drake-graze, NOT LCS-driven. Routed: **NO-CHANGE-LOCALIZE + DISPATCHER-SHIFT-DIAGNOSIS** (2026-06-26)
+### 7.30 — Always-on EE-BOX admission build (PORT_LCS_ALWAYS_ON_EE_BOX, default-OFF) + structural sanity PASS + live push sim → **NO-CHANGE-WITH-DISPATCHER-SHIFT**: admissions DID happen (4/8 c3-mode steps planned non-zero λ_n: 0.12, 0.16, 1.07, 1.50); ADMM warnings DOWN 729 → 609 (16% reduction); min φ 1.67 mm (baseline 2.01 mm — tighter but **still positive**, EE does NOT penetrate); box moved 29 mm West (baseline 31 mm — at-baseline, NOT regressed); BUT c3-mode usage **DROPPED 94%** (128 → 8 steps) — the always-on row shifted the dispatcher cost-gap to favor free mode. **Two-sided success criterion BARELY held** (box moves ~baseline AND West-push NOT below 29 mm) — but the **strict unblock failed**: visibility was admitted, planner did emit some λ_n, but EE doesn't penetrate and box motion is still incidental Drake-graze, NOT LCS-driven. Routed: **NO-CHANGE-LOCALIZE + DISPATCHER-SHIFT-DIAGNOSIS** (2026-06-26)
 
-Build at `control/lcs_formulator.py:147-163, 528-547`: a flag-gated path in `__init__` reads `LCS_ALWAYS_ON_EE_BOX` env (default OFF = 2 mm filter byte-identical); in `extract_lcs_contacts`, if the flag is set AND the 2 mm threshold did not admit an EE-BOX pair this step, the EE-BOX pair is injected explicitly via `ComputeSignedDistancePairClosestPoints(gid_ee, gid_box)` (pair-specific Drake call, NO threshold). Applies to the EE-BOX pair SPECIFICALLY (NOT a blanket no-filter — that would re-introduce the 40 mm garbage-pair regression per §7.29 (2)). Mirrors `lcs_factory.cc:31-105` (`LinearizePlantToLCS` iterates a pre-specified `contact_geoms` list with no distance threshold).
+Build at `control/lcs_formulator.py:147-163, 528-547`: a flag-gated path in `__init__` reads `PORT_LCS_ALWAYS_ON_EE_BOX` env (default OFF = 2 mm filter byte-identical); in `extract_lcs_contacts`, if the flag is set AND the 2 mm threshold did not admit an EE-BOX pair this step, the EE-BOX pair is injected explicitly via `ComputeSignedDistancePairClosestPoints(gid_ee, gid_box)` (pair-specific Drake call, NO threshold). Applies to the EE-BOX pair SPECIFICALLY (NOT a blanket no-filter — that would re-introduce the 40 mm garbage-pair regression per §7.29 (2)). Mirrors `lcs_factory.cc:31-105` (`LinearizePlantToLCS` iterates a pre-specified `contact_geoms` list with no distance threshold).
 
 #### (1) Structural sanity — PASS at φ ≈ +5 mm (offline, EE 5 mm beyond touching)
 
@@ -2819,7 +2819,7 @@ Posed state: ee_x = 80.010 mm, box_x = 0.000 mm, gap = 80.010 mm. Test results (
 
 #### (2) Live push sim — `always_on_live/run.log`
 
-Command: `pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --admm-iter 25 --max-time 6 --seed 0`, `LCS_ALWAYS_ON_EE_BOX=1`, clamp OFF (`LCS_NORMAL_PHI_CLAMP` unset), HEAD = `7567275`.
+Command: `pushing --task-id 4 --solver c3plus --c3plus-projection lcp --ee-space --admm-iter 25 --max-time 6 --seed 0`, `PORT_LCS_ALWAYS_ON_EE_BOX=1`, clamp OFF (`LCS_NORMAL_PHI_CLAMP` unset), HEAD = `7567275`.
 
 | metric | §7.27 baseline (21be0a1, filter ON, clamp ON-but-inert) | §7.30 (filter OFF for EE-BOX, clamp OFF) |
 |---|---|---|
@@ -3326,7 +3326,7 @@ The clamp formula `max(phi/dt, −v_cap) − phi/dt` is structurally INERT at φ
 
 #### STEP 1 — enable the validated clamp + small decoupling edit
 
-The clamp itself: NO new build — `LCS_NORMAL_PHI_CLAMP=0.034` (the §7.27 E-PASSES value, NOT re-fit). The §7.35 run sets the env on top of the §7.33 working config (`LCS_ALWAYS_ON_EE_BOX=1 REF_RECONCILE_APPROACH=1`).
+The clamp itself: NO new build — `LCS_NORMAL_PHI_CLAMP=0.034` (the §7.27 E-PASSES value, NOT re-fit). The §7.35 run sets the env on top of the §7.33 working config (`PORT_LCS_ALWAYS_ON_EE_BOX=1 REF_RECONCILE_APPROACH=1`).
 
 The decoupling edit (the analog of the φ < 0-scoping language in the spec, landed under the same block): `sampling_based_c3_controller.py:~221` adds `REF_RECONCILE_FEEDFORWARD_ACCEL` env check (default OFF); `_acceleration_feedforward_from_xseq` at `:~700` adds a leading `if not getattr(self, "_reconcile_feedforward_accel", False): return None` guard. With this edit, `REF_RECONCILE_APPROACH=1` alone = §7.33 DISSOLVES state (the working baseline); `REF_RECONCILE_APPROACH=1 REF_RECONCILE_FEEDFORWARD_ACCEL=1` = §7.34 OVER-DRIVES state. The default-OFF property of the §7.34 build is preserved at the flag level; the SUB-GATE makes the §7.33 working state reachable WITH reconcile enabled.
 
@@ -3402,10 +3402,10 @@ Any subsequent entry that frames §7.34 as the WORKING state under reconcile is 
 An arc of eight sub-sections that walked the executor side of the port against the reference source, item-by-item, and closed each on match. Not restated in mechanism detail here (each was NO-CHANGE at the closure metric — closure stayed 10 %, min φ stayed at +2 mm; the arc did NOT unlock the no-push, but it removed the executor as a suspect).
 
 - **§7.36 — Anitescu contact-model LCS branch** (commit `1edd6a2`, `LCS_CONTACT_MODEL=anitescu`, default-OFF). Sanity 4/4 PASS. Post-§7.51 the Anitescu branch was rerun on the closure-firing chain (see §7.51) and produced 5 mm closure vs Stewart-Trinkle 86 mm — separate investigation, deferred.
-- **§7.37–§7.40 — Force routing sign / passthrough** (`wrapper.py:365 _derive_force_command`, env-gated `PUSHA_FORCE_ROUTING=u_sol` at `wrapper.py:450-471`). Verified `u_sol` reaches the OSC unchanged in sign and magnitude at every c3 tick, matching `sampling_based_c3_controller.cc:1822-1832 force_samples.col(i) = u_sol[i]`.
-- **§7.41 — Force bounds** — `PUSHA_STAGE5_U_HORIZONTAL=10`, `PUSHA_STAGE5_U_VERTICAL=3` reproduce the reference's Fx/Fy/Fz caps (`solver_params.yaml` in the reference tree). Verified default-OFF byte-identical.
-- **§7.42 — R-vector split** — `PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` reproduces the reference's `r_vector_position = [0.1, 0.1, 10]` (heavy z penalty; light x/y). Combined with §7.41 as the **"§7.42 bundle"** used from §7.51 onwards.
-- **§7.43 — OSC weight override** (`operational_space_controller.py:94-114`, env-gated `PUSHA_REF_OSC_ALIGN`, default-OFF). Sets `W_track=1.0` and `Kp_cart=[200,200,200]` to match the reference's `W_end_effector=I_3` and `Kp = 200`. **BANK-AS-DIAGNOSTIC** — the flag is banked but is a KNOWN TRAP: setting it re-enables the §7.47 IK→c3 handoff break (see §7.47 below). Do NOT use it as a bundle-shortcut for the reference-aligned OSC weights; set them component-by-component instead when live-testing.
+- **§7.37–§7.40 — Force routing sign / passthrough** (`wrapper.py:365 _derive_force_command`, env-gated `PORT_FORCE_ROUTING=u_sol` at `wrapper.py:450-471`). Verified `u_sol` reaches the OSC unchanged in sign and magnitude at every c3 tick, matching `sampling_based_c3_controller.cc:1822-1832 force_samples.col(i) = u_sol[i]`.
+- **§7.41 — Force bounds** — `PORT_U_HORIZONTAL=10`, `PORT_U_VERTICAL=3` reproduce the reference's Fx/Fy/Fz caps (`solver_params.yaml` in the reference tree). Verified default-OFF byte-identical.
+- **§7.42 — R-vector split** — `PORT_R_VECTOR=0.1,0.1,10` reproduces the reference's `r_vector_position = [0.1, 0.1, 10]` (heavy z penalty; light x/y). Combined with §7.41 as the **"§7.42 bundle"** used from §7.51 onwards.
+- **§7.43 — OSC weight override** (`operational_space_controller.py:94-114`, env-gated `REFCONF_OSC_ALIGN`, default-OFF). Sets `W_track=1.0` and `Kp_cart=[200,200,200]` to match the reference's `W_end_effector=I_3` and `Kp = 200`. **BANK-AS-DIAGNOSTIC** — the flag is banked but is a KNOWN TRAP: setting it re-enables the §7.47 IK→c3 handoff break (see §7.47 below). Do NOT use it as a bundle-shortcut for the reference-aligned OSC weights; set them component-by-component instead when live-testing.
 
 **Arc verdict — CO-LOAD-BEARING chain discovered.** No single executor-side change moved closure off 10 % on its own. The closure fix (found in §7.51) required a **combination** of three levers (face-target proxy + w_ee_approach=8000 + override-disable) each of which alone was 0 % but which together broke the block. Executor pieces (routing, bounds, R-vector, OSC weights) are all reference-conformant defaults or ready under gates — they're pieces of that chain but not the missing link.
 
@@ -3417,7 +3417,7 @@ Diagnostic arc that pinned the "planner emits `u_sol` pushing the wrong directio
 
 **Root cause** — `control/task_costs.py:114 QuadraticManipulationCost.build(target_xy)` (specifically the EE-approach term at `task_costs.py:~177-260`): the port's 3-stage proxy waypoint (`w_ee_approach ≈ 8000`, three staged targets 100 mm behind the box and progressing forward as the box moves) was aiming the EE approach cost at a target ~90 mm *behind* the box's current position — the planner's u_sol was faithfully computed against that target, which is why u_sol pointed **away** from the box surface. This is the same **cost-proxy backward pull** that §7.29 (1) named but never localized to the file. The 100-mm-behind proxy was the port's substitute for the reference's near-surface `buffer_distance` sampling (§7.31); §7.29–§7.31 explained the WHY, §7.44–§7.50 identified the WHERE.
 
-**Fix mechanism** — replace the 3-stage 100-mm-behind proxy with a **face-target proxy**: aim the EE-approach cost at the box face centroid (a projection outward along the box's contact-face normal by the sample setback distance ~30 mm), and enforce it strongly (`w_ee_approach = 8000` unchanged — the weight was fine; the target was wrong). Landed as env-gated `PUSHA_EE_APPROACH_FACE_TARGET`, commit `dc44d99` (2026-06-28): "§7.46 face-target proxy bypass for the planner cost … default-OFF". The commit is the first of the three co-load-bearing pieces in §7.51.
+**Fix mechanism** — replace the 3-stage 100-mm-behind proxy with a **face-target proxy**: aim the EE-approach cost at the box face centroid (a projection outward along the box's contact-face normal by the sample setback distance ~30 mm), and enforce it strongly (`w_ee_approach = 8000` unchanged — the weight was fine; the target was wrong). Landed as env-gated `PORT_EE_APPROACH_FACE_TARGET`, commit `dc44d99` (2026-06-28): "§7.46 face-target proxy bypass for the planner cost … default-OFF". The commit is the first of the three co-load-bearing pieces in §7.51.
 
 Follow-on **§7.47** — CONFIRMED that the §7.43 W_track=1.0 + Kp_cart=200 override on its own (with §7.46's face-target ON, but everything else at default) **BREAKS the IK→c3 handoff**: the EE stalls 53 mm from the IK target because the loosened OSC no longer has the position authority to close the reposition gap. Recorded in memory `project_w_track_pins_handoff.md`: "force authority must come from c3 position target, not OSC weights."
 
@@ -3430,9 +3430,9 @@ Follow-on **§7.47** — CONFIRMED that the §7.43 W_track=1.0 + Kp_cart=200 ove
 Three commits banked, closure metric moved for the first time in the alignment arc.
 
 **The co-load-bearing chain (each alone = 0 %):**
-1. `dc44d99` — `PUSHA_EE_APPROACH_FACE_TARGET=1` (§7.46 face-target proxy at `task_costs.py:~177`).
+1. `dc44d99` — `PORT_EE_APPROACH_FACE_TARGET=1` (§7.46 face-target proxy at `task_costs.py:~177`).
 2. `5b7bb08` — YAML default `W_force: 1.0` in `config/sampling_c3_kik.yaml` (was 100). Reference-aligns the OSC's `W_ee_lambda = I_3` ratio (see §3 Stage C first action + §0 ratio analysis). **FLAGGED — the memory note `project_first_box_closure_§7.51.md` records this as "held uncommitted", but the sweep summary at `chain_alwayson_reconcile_751/SUMMARY.txt` shows the yaml-default was already `W_force: 1.0` at the §7.59 run. Verify at pre-executor-refactor time.**
-3. `0dc5db1` — `PUSHA_DISABLE_C3_OVERRIDE=1` skips the LTD APPROACH-OVERRIDE block at `control/sampling_c3/sampling_based_c3_controller.py:~2480-2691`. Default state: the override re-targets `_p_ee_des` to a face-centroid waypoint clamped 2 mm **short of** contact every tick; the OSC tracks that, parking the EE 4–9 mm off the face — **below** the LCS admission band (2 mm threshold at `lcs_formulator.py:235`). With the override disabled, `_p_ee_des` stays at the FK source `_x_seq[1][7:10]` (line 2263), which under §7.46 face-target + w_ee_approach=8000 is contact-seeking; the EE reaches the surface, LCS admits, the planner solves with admitted contact, the box moves.
+3. `0dc5db1` — `PORT_DISABLE_C3_OVERRIDE=1` skips the LTD APPROACH-OVERRIDE block at `control/sampling_c3/sampling_based_c3_controller.py:~2480-2691`. Default state: the override re-targets `_p_ee_des` to a face-centroid waypoint clamped 2 mm **short of** contact every tick; the OSC tracks that, parking the EE 4–9 mm off the face — **below** the LCS admission band (2 mm threshold at `lcs_formulator.py:235`). With the override disabled, `_p_ee_des` stays at the FK source `_x_seq[1][7:10]` (line 2263), which under §7.46 face-target + w_ee_approach=8000 is contact-seeking; the EE reaches the surface, LCS admits, the planner solves with admitted contact, the box moves.
 
 **Single-seed ST/25 validation (west push, `--task-id 4 --seed 0 --ee-space --admm-iter 25`):**
 - goal_dist 0.300 → 0.218 m (**27 % closure** — the first sustained box motion).
@@ -3444,12 +3444,12 @@ Three commits banked, closure metric moved for the first time in the alignment a
 **Full reproducing env bundle** (from `0dc5db1` commit message):
 
 ```
-PUSHA_FORCE_ROUTING=u_sol
-PUSHA_EE_APPROACH_FACE_TARGET=1
-PUSHA_DISABLE_C3_OVERRIDE=1
-PUSHA_STAGE5_U_HORIZONTAL=10
-PUSHA_STAGE5_U_VERTICAL=3
-PUSHA_STAGE5_R_VECTOR=0.1,0.1,10
+PORT_FORCE_ROUTING=u_sol
+PORT_EE_APPROACH_FACE_TARGET=1
+PORT_DISABLE_C3_OVERRIDE=1
+PORT_U_HORIZONTAL=10
+PORT_U_VERTICAL=3
+PORT_R_VECTOR=0.1,0.1,10
 ```
 
 Canonical command:
@@ -3495,7 +3495,7 @@ Hypothesis: the c3 winners vs losers differ because of handoff-EE-position sensi
 Investigation of the c3-exit-within-5-ticks phenomenon.
 
 **Finding** — the port implements a **contact-loss disengage watchdog** at `control/sampling_c3/sampling_based_c3_controller.py:1462-1473`. Threshold is tiered by override phase (`params.py:739-754`):
-- With `PUSHA_DISABLE_C3_OVERRIDE=1` (§7.51's chain state), the override is OFF, and the watchdog uses a **5-tick floor** — after 5 consecutive c3 ticks with no admitted EE-BOX LCS pair, override to free mode with `kToReposUnproductive`.
+- With `PORT_DISABLE_C3_OVERRIDE=1` (§7.51's chain state), the override is OFF, and the watchdog uses a **5-tick floor** — after 5 consecutive c3 ticks with no admitted EE-BOX LCS pair, override to free mode with `kToReposUnproductive`.
 - With the override ON (baseline), the watchdog respects the phase params: it waits longer during the c3 "lock-in" phase, effectively giving the planner more slack to establish contact.
 
 **Reference has no equivalent.** The reference exits c3 only via (a) the surrogate cost-gap dispatcher (cost-gap widening past hysteresis) and (b) the progress-timeout (`num_control_loops_to_wait` at `progress.py:75-190`). There is no "consecutive no-contact ticks" counter in the reference tree.
@@ -3561,7 +3561,7 @@ Two changes, both 0-LOC (already wired as env-gates from §7.30 / §7.31 / §7.3
 **Reference gate:** `LCSFactory::GetNClosestContactPairs` (via `sampling_based_c3_controller.cc:1582-1614 GetResolvedContactPairs`) uses `GeomGeomCollider` per pre-specified EE-box pair, returning `[φ, J]` at **any distance** — the row is always present in the LCS, with `λ_n = 0` at separation (harmless because the complementarity respects it, per §7.30's structural-sanity check).
 
 **Wired flags (already gated, default-OFF):**
-1. `LCS_ALWAYS_ON_EE_BOX=1` — force the EE-BOX row into the LCS at every step regardless of φ (`lcs_formulator.py:147-163, 528-547`, built in §7.30). Structural sanity was PASS in §7.30 (no spurious force; row is exact + harmless to the SOLVED LCP).
+1. `PORT_LCS_ALWAYS_ON_EE_BOX=1` — force the EE-BOX row into the LCS at every step regardless of φ (`lcs_formulator.py:147-163, 528-547`, built in §7.30). Structural sanity was PASS in §7.30 (no spurious force; row is exact + harmless to the SOLVED LCP).
 2. `REF_RECONCILE_APPROACH=1` — drop the `w_ee_approach` physical-shove proxy in favor of the reference's contact-force-tracking (built in §7.32 as ace3625; the §7.35 decoupling edit put the feedforward-accel behind a distinct sub-gate `REF_RECONCILE_FEEDFORWARD_ACCEL`, kept OFF).
 
 **§7.30 / §7.31 history binding:** §7.30 showed always-on ALONE → **94 % c3 drop** (the dispatcher's surrogate cost-gap widened when the row raised the `current` sample's LCP-penalty term). §7.31 identified the fix: the proxy and the 2 mm filter were **the SAME problem twice** — removing both together (via REF_RECONCILE_APPROACH atomic with always-on) rebalances the cost-gap. Always-on is the PREREQUISITE that makes proxy removal SAFE.
@@ -3572,9 +3572,9 @@ Two changes, both 0-LOC (already wired as env-gates from §7.30 / §7.31 / §7.3
 
 ### 7.59 — ADMISSION UNIT lifts the closure floor (2026-06-29)
 
-4-seed sequential sweep of §7.51 chain + `LCS_ALWAYS_ON_EE_BOX=1` + `REF_RECONCILE_APPROACH=1`, cost stages OFF. HEAD = `0dc5db1`. Artifacts: `chain_alwayson_reconcile_751/`.
+4-seed sequential sweep of §7.51 chain + `PORT_LCS_ALWAYS_ON_EE_BOX=1` + `REF_RECONCILE_APPROACH=1`, cost stages OFF. HEAD = `0dc5db1`. Artifacts: `chain_alwayson_reconcile_751/`.
 
-**Config gotcha — keep W_track=100, Kp_cart=400 (NOT the §7.43 reference values).** Set the §7.42 bundle pieces (`PUSHA_FORCE_ROUTING=u_sol`, `PUSHA_STAGE5_U_HORIZONTAL=10`, `PUSHA_STAGE5_U_VERTICAL=3`, `PUSHA_STAGE5_R_VECTOR=0.1,0.1,10`) **explicitly** rather than triggering `PUSHA_REF_OSC_ALIGN=1`. The bundle flag also flips `operational_space_controller.py:94-114` which overrides W_track→1 / Kp→200 — that's the §7.47 IK→c3 handoff-breaker. The yaml already has `W_force: 1.0`, so that comes for free. Mid-run correction: seed 0 was first launched under `PUSHA_REF_OSC_ALIGN=1` and preserved as `chain_alwayson_reconcile_751/seed0.MISCONFIGURED_W_track1.log`; the [§7.43] banner in the launch log was the tell.
+**Config gotcha — keep W_track=100, Kp_cart=400 (NOT the §7.43 reference values).** Set the §7.42 bundle pieces (`PORT_FORCE_ROUTING=u_sol`, `PORT_U_HORIZONTAL=10`, `PORT_U_VERTICAL=3`, `PORT_R_VECTOR=0.1,0.1,10`) **explicitly** rather than triggering `REFCONF_OSC_ALIGN=1`. The bundle flag also flips `operational_space_controller.py:94-114` which overrides W_track→1 / Kp→200 — that's the §7.47 IK→c3 handoff-breaker. The yaml already has `W_force: 1.0`, so that comes for free. Mid-run correction: seed 0 was first launched under `REFCONF_OSC_ALIGN=1` and preserved as `chain_alwayson_reconcile_751/seed0.MISCONFIGURED_W_track1.log`; the [§7.43] banner in the launch log was the tell.
 
 **Closure comparison vs bare §7.51:**
 
@@ -3593,11 +3593,11 @@ Two changes, both 0-LOC (already wired as env-gates from §7.30 / §7.31 / §7.3
 
 2. **c3-usage HOLDS** — NOT §7.30's near-zero collapse. c3 OSC-tick share = **7.6 / 5.7 / 3.7 / 23.5 %** across seeds 0/1/2/3 (12–48 c3 entries per seed). Reconcile closes enough of the cost-gap that the dispatcher does enter c3; each entry dwells briefly because the over-drive (see (3)) shoves the EE off the box and Drake contact drops.
 
-3. **Closure mechanism = §7.31 / §7.34 OVER-DRIVE hammer blow, NOT steady tracked contact.** Peak Drake `ee_box_normal`: **164 / 188 / 203 / 79 N** across seeds 0/1/2/3 — all well past the planner's 30 N force limit (`PUSHA_STAGE5_U_HORIZONTAL=10` × 3 N-axis). Drake actual-contact ticks only **9–17 per seed** (≈ 0.09–0.17 s of contact for 6 s wall). EE flies free post-impact (seed 0 EE at z = +0.65 m by step 481 after the step-142 impact). Box tips (seed 0 final box_q ≈ 90° rotation around z); seed 3 drifts +14 cm lateral. **The planned λ_n > 0 is rendered as impulse by the position-OSC** (`W_track = 100`, `Kp_cart = 400`, no force-floor under reconcile), launching the box ballistically.
+3. **Closure mechanism = §7.31 / §7.34 OVER-DRIVE hammer blow, NOT steady tracked contact.** Peak Drake `ee_box_normal`: **164 / 188 / 203 / 79 N** across seeds 0/1/2/3 — all well past the planner's 30 N force limit (`PORT_U_HORIZONTAL=10` × 3 N-axis). Drake actual-contact ticks only **9–17 per seed** (≈ 0.09–0.17 s of contact for 6 s wall). EE flies free post-impact (seed 0 EE at z = +0.65 m by step 481 after the step-142 impact). Box tips (seed 0 final box_q ≈ 90° rotation around z); seed 3 drifts +14 cm lateral. **The planned λ_n > 0 is rendered as impulse by the position-OSC** (`W_track = 100`, `Kp_cart = 400`, no force-floor under reconcile), launching the box ballistically.
 
 **Pre-registered outcome match: branch (b)** — plan reasons about contact, closure variable & OFF-mechanism. Per the pre-registration the next move is to add cost stages 1+2 (`PUSHA_COST_OBJ_ONLY=1` + `PUSHA_COST_SIM_LCS=1`) and re-measure. See §7.60.
 
-**Failure-mode banked — DO NOT silently re-trigger PUSHA_REF_OSC_ALIGN=1.** The bundle flag forces `W_track=1` / `Kp_cart=200` via §7.43 in `operational_space_controller.py`. Combined with the rest of the chain this re-creates the §7.47 IK→c3 handoff break. The chain that WORKS uses the bundle pieces explicitly while leaving the OSC at yaml-default `W_track=100, Kp_cart=400`. The mid-run misconfiguration is preserved as `chain_alwayson_reconcile_751/seed0.MISCONFIGURED_W_track1.log`; the visible signal was the `[§7.43] PUSHA_REF_OSC_ALIGN=1 OSC position-side alignment — W_track→1.0, Kp_cart→[200,200,200]` echo during construction.
+**Failure-mode banked — DO NOT silently re-trigger REFCONF_OSC_ALIGN=1.** The bundle flag forces `W_track=1` / `Kp_cart=200` via §7.43 in `operational_space_controller.py`. Combined with the rest of the chain this re-creates the §7.47 IK→c3 handoff break. The chain that WORKS uses the bundle pieces explicitly while leaving the OSC at yaml-default `W_track=100, Kp_cart=400`. The mid-run misconfiguration is preserved as `chain_alwayson_reconcile_751/seed0.MISCONFIGURED_W_track1.log`; the visible signal was the `[§7.43] REFCONF_OSC_ALIGN=1 OSC position-side alignment — W_track→1.0, Kp_cart→[200,200,200]` echo during construction.
 
 ---
 
@@ -3642,26 +3642,26 @@ The planner **plans λ_n > 0** (§7.59 (1)) but the **surface sees 2.5 N** under
 **Row updates:**
 - §1 row 4 (Control input u) — stays PARTIAL / *mechanism probe-confirmed reference-EXACT*. Cost-side flip DOES NOT change routing (u_sol routing already confirmed §7.37–§7.40).
 - §1 row 5 (Executor) — REOPENED for **structural restructure** (Stage C force-tracking OSC promoted to default, not just probe-confirmed). This is the next active work — the RECONCILED flip is now gated on the executor refactor landing.
-- §1 row 2 (LCS admission) — planner-side REOPENED CLOSED via §7.59: planner reasons about contact 100 % of ticks. The admission side is now RECONCILED IN MECHANISM under `LCS_ALWAYS_ON_EE_BOX=1` + `REF_RECONCILE_APPROACH=1`. Row status flips PARTIAL → **RECONCILED-under-gates**; the default-OFF stays as a bank until Stage E validates cumulative motion. (The Stage C outcome update in §3 that reads "planner-side admission reopened" is superseded by §7.59's positive result.)
+- §1 row 2 (LCS admission) — planner-side REOPENED CLOSED via §7.59: planner reasons about contact 100 % of ticks. The admission side is now RECONCILED IN MECHANISM under `PORT_LCS_ALWAYS_ON_EE_BOX=1` + `REF_RECONCILE_APPROACH=1`. Row status flips PARTIAL → **RECONCILED-under-gates**; the default-OFF stays as a bank until Stage E validates cumulative motion. (The Stage C outcome update in §3 that reads "planner-side admission reopened" is superseded by §7.59's positive result.)
 - §1 row 3 (ADMM) — HELD unchanged. §7.59 shows convergence still 25 / 25 per-solve; the intrinsic non-convergence stands. Stage C refactor is orthogonal.
 - §1 row 8 (Cadence) — HELD unchanged.
 
 **Recorded STATE (pre-executor phase):**
 - HEAD = `0dc5db1`.
-- Wired default-OFF flags: `LCS_ALWAYS_ON_EE_BOX`, `REF_RECONCILE_APPROACH`, `PUSHA_COST_OBJ_ONLY`, `PUSHA_COST_SIM_LCS`, `PUSHA_COST_DECOMP_LOG`, `PUSHA_DISABLE_C3_OVERRIDE`, `PUSHA_EE_APPROACH_FACE_TARGET`, `PUSHA_FORCE_ROUTING=u_sol`, `PUSHA_STAGE5_{U_HORIZONTAL,U_VERTICAL,R_VECTOR}`, `REF_RECONCILE_FEEDFORWARD_ACCEL`, `LCS_NORMAL_PHI_CLAMP`, `LCS_CONTACT_MODEL=anitescu`.
+- Wired default-OFF flags: `PORT_LCS_ALWAYS_ON_EE_BOX`, `REF_RECONCILE_APPROACH`, `PUSHA_COST_OBJ_ONLY`, `PUSHA_COST_SIM_LCS`, `DIAG_COST_DECOMP_LOG`, `PORT_DISABLE_C3_OVERRIDE`, `PORT_EE_APPROACH_FACE_TARGET`, `PORT_FORCE_ROUTING=u_sol`, `PUSHA_STAGE5_{U_HORIZONTAL,U_VERTICAL,R_VECTOR}`, `REF_RECONCILE_FEEDFORWARD_ACCEL`, `LCS_NORMAL_PHI_CLAMP`, `LCS_CONTACT_MODEL=anitescu`.
 - **Admission-unit env bundle** (the state that gives §7.59's closure and §7.60's diagnostics):
   ```
-  PUSHA_FORCE_ROUTING=u_sol
-  PUSHA_EE_APPROACH_FACE_TARGET=1
-  PUSHA_DISABLE_C3_OVERRIDE=1
-  PUSHA_STAGE5_U_HORIZONTAL=10
-  PUSHA_STAGE5_U_VERTICAL=3
-  PUSHA_STAGE5_R_VECTOR=0.1,0.1,10
-  LCS_ALWAYS_ON_EE_BOX=1
+  PORT_FORCE_ROUTING=u_sol
+  PORT_EE_APPROACH_FACE_TARGET=1
+  PORT_DISABLE_C3_OVERRIDE=1
+  PORT_U_HORIZONTAL=10
+  PORT_U_VERTICAL=3
+  PORT_R_VECTOR=0.1,0.1,10
+  PORT_LCS_ALWAYS_ON_EE_BOX=1
   REF_RECONCILE_APPROACH=1
   ```
   Yaml side: `W_force: 1.0`, `W_track: 100`, `Kp_cart: 400` (all default in `config/sampling_c3_kik.yaml`).
-- **GOTCHA:** `PUSHA_REF_OSC_ALIGN=1` re-arms the §7.43 `W_track → 1` / `Kp_cart → 200` override in `operational_space_controller.py:94-114` = §7.47 handoff break. Set W_track / Kp_cart component-by-component to hit reference values; do NOT use the bundle flag.
+- **GOTCHA:** `REFCONF_OSC_ALIGN=1` re-arms the §7.43 `W_track → 1` / `Kp_cart → 200` override in `operational_space_controller.py:94-114` = §7.47 handoff break. Set W_track / Kp_cart component-by-component to hit reference values; do NOT use the bundle flag.
 - **Held code diffs (uncommitted):** the cost-stage scaffolding (`inner_solve.py`, `sampling_based_c3_controller.py`, `osc/operational_space_controller.py`, `main.py`; +299 / −15) is the REFUTED lever. Default-OFF, byte-identical when flags unset; held on the tree, not committed.
 
 **Deferred (not part of the executor phase):**
@@ -3671,7 +3671,7 @@ The planner **plans λ_n > 0** (§7.59 (1)) but the **surface sees 2.5 N** under
 
 #### Anti-stale binding (§7.60)
 
-Any subsequent entry that frames §7.59's 17–71 % closure as PROGRESS toward the Stage E bar is operating on a stale record — §7.60 REFUTES that framing: the §7.59 closure was the hammer-blow over-drive, not steady tracked contact. Any entry that promotes `PUSHA_COST_OBJ_ONLY=1` or `PUSHA_COST_SIM_LCS=1` to default citing "we should not over-drive" is missing the pivot — cost-anchoring correctly removes the over-drive but removes closure with it; the gap is EXECUTOR-side, and the fix belongs in the OSC force-tracking restructure, not in the sample-cost evaluator. Any entry that promotes `Kp_cart: 400 → 200` (the §7.32 / §7.33 deferred hyperparameter) as a "make the OSC gentler" mitigation is re-breaking the §7.43 / §7.47 IK→c3 handoff (the position gains are load-bearing during reposition; slackening them without restructuring the OSC into a per-mode gain profile breaks reposition). Any entry that folds `PUSHA_REF_OSC_ALIGN=1` into the admission-unit chain as a bundle-shortcut is re-triggering the §7.47 handoff break — set W_force / W_track / Kp_cart component-by-component. Any entry that lands the cost-stage scaffolding on the working tree by absorbing it into a committed refactor is inflating the change surface — the scaffolding is REFUTED as a lever; if any part of it (e.g., `PUSHA_COST_DECOMP_LOG` diagnostic) belongs in future work, land it as its own scoped commit, not embedded in the executor refactor. Any entry that frames the §7.60 pivot as "cost was wrong, forget it" is over-reading — the belief-vs-re-sim divergence (§7.57 2–6.5×) IS real and the re-sim IS honest; the correction is that the sample-cost divergence is NOT the RATE-LIMITING gap between plan and physical execution, the EXECUTOR is. Any entry that re-runs §7.59 expecting the §7.60 verdict to change without an executor-side change is doing the same experiment twice — the §7.59 config is stable; its closure numbers are reproducible; only an executor-side change moves them (or specifically restructures the mechanism producing them).
+Any subsequent entry that frames §7.59's 17–71 % closure as PROGRESS toward the Stage E bar is operating on a stale record — §7.60 REFUTES that framing: the §7.59 closure was the hammer-blow over-drive, not steady tracked contact. Any entry that promotes `PUSHA_COST_OBJ_ONLY=1` or `PUSHA_COST_SIM_LCS=1` to default citing "we should not over-drive" is missing the pivot — cost-anchoring correctly removes the over-drive but removes closure with it; the gap is EXECUTOR-side, and the fix belongs in the OSC force-tracking restructure, not in the sample-cost evaluator. Any entry that promotes `Kp_cart: 400 → 200` (the §7.32 / §7.33 deferred hyperparameter) as a "make the OSC gentler" mitigation is re-breaking the §7.43 / §7.47 IK→c3 handoff (the position gains are load-bearing during reposition; slackening them without restructuring the OSC into a per-mode gain profile breaks reposition). Any entry that folds `REFCONF_OSC_ALIGN=1` into the admission-unit chain as a bundle-shortcut is re-triggering the §7.47 handoff break — set W_force / W_track / Kp_cart component-by-component. Any entry that lands the cost-stage scaffolding on the working tree by absorbing it into a committed refactor is inflating the change surface — the scaffolding is REFUTED as a lever; if any part of it (e.g., `DIAG_COST_DECOMP_LOG` diagnostic) belongs in future work, land it as its own scoped commit, not embedded in the executor refactor. Any entry that frames the §7.60 pivot as "cost was wrong, forget it" is over-reading — the belief-vs-re-sim divergence (§7.57 2–6.5×) IS real and the re-sim IS honest; the correction is that the sample-cost divergence is NOT the RATE-LIMITING gap between plan and physical execution, the EXECUTOR is. Any entry that re-runs §7.59 expecting the §7.60 verdict to change without an executor-side change is doing the same experiment twice — the §7.59 config is stable; its closure numbers are reproducible; only an executor-side change moves them (or specifically restructures the mechanism producing them).
 
 ---
 

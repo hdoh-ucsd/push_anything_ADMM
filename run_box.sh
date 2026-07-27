@@ -42,13 +42,13 @@ esac
 STEM="${NAME:-pushing_$(date +%Y%m%d_%H%M%S)}"
 
 # §7.73 four production env flags + §7.75c support bundle. All default-OFF in
-# main.py; must be set explicitly here (PUSHA_REF_OSC_ALIGN is a trap — re-
+# main.py; must be set explicitly here (REFCONF_OSC_ALIGN is a trap — re-
 # triggers the §7.47 W_track=1 / Kp=200 handoff break).
 # REF_RECONCILE_APPROACH retired 2026-07-10 — its =1 behaviour is now the
 # default (see control/sampling_c3/sampling_based_c3_controller.py and
-# control/task_costs.py). PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING is now a
+# control/task_costs.py). REFCONF_DECOUPLE_RECONCILE_FT is now a
 # no-op guard-workaround; setting it is harmless but no longer required.
-# LCS_ALWAYS_ON_EE_BOX removed 2026-07-17 — port-only phantom-contact
+# PORT_LCS_ALWAYS_ON_EE_BOX removed 2026-07-17 — port-only phantom-contact
 # injection (no reference analog); the planner LCS was admitting the EE-box
 # pair regardless of Drake's real signed distance. After the EE-chain fix
 # (commit 8d9220a) that gave 23 cm arm-tip separation, the arm parked at
@@ -56,14 +56,14 @@ STEM="${NAME:-pushing_$(date +%Y%m%d_%H%M%S)}"
 # `contact=Y lam_n=0.010` while Drake showed 0 contact for 400 ticks. Real
 # admission gate at lcs_formulator.py:245 (2 mm signed-distance threshold)
 # now controls entirely.
-PUSHA_G_WEIGHT_EE_BOX_FINAL=1 \
-PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 \
-PUSHA_STAGE5_U_HORIZONTAL=10 \
-PUSHA_STAGE5_U_VERTICAL=3 \
-PUSHA_STAGE5_R_VECTOR=0.01,0.01,1 \
-PUSHA_FORCE_ROUTING=u_sol \
-PUSHA_EE_APPROACH_FACE_TARGET=1 \
-PUSHA_DISABLE_C3_OVERRIDE=1 \
+PORT_G_WEIGHT_EE_BOX_FINAL=1 \
+REFCONF_OSC_C3_MODE_GAINS=1 \
+PORT_U_HORIZONTAL=10 \
+PORT_U_VERTICAL=3 \
+PORT_R_VECTOR=0.01,0.01,1 \
+PORT_FORCE_ROUTING=u_sol \
+PORT_EE_APPROACH_FACE_TARGET=1 \
+PORT_DISABLE_C3_OVERRIDE=1 \
 python main.py pushing \
     --task-id "$TASK_ID" \
     --solver c3plus \

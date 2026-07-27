@@ -401,8 +401,8 @@ class C3PlusMPC:
         # Stage 5 per-axis u bounds (env-gated, default-inert). When the
         # EE-space planner is active and the env vars are set, override the
         # symmetric scalar torque_limit with per-axis bounds:
-        #   u = [Fx, Fy, Fz];  Fx,Fy ∈ ±PUSHA_STAGE5_U_HORIZONTAL;
-        #                      Fz   ∈ ±PUSHA_STAGE5_U_VERTICAL.
+        #   u = [Fx, Fy, Fz];  Fx,Fy ∈ ±PORT_U_HORIZONTAL;
+        #                      Fz   ∈ ±PORT_U_VERTICAL.
         # When EITHER env var is unset the scalar torque_limit path is used
         # unchanged (bit-identical to pre-Stage-5).
         _u_lo = None
@@ -415,13 +415,13 @@ class C3PlusMPC:
             # POSE env vars are unset OR the near-goal flag hasn't
             # latched, the base (position-regime) values apply.
             if (self._crossed_switching_threshold
-                    and os.environ.get("PUSHA_STAGE5_U_HORIZONTAL_POSE", "")
-                    and os.environ.get("PUSHA_STAGE5_U_VERTICAL_POSE", "")):
-                _uh_s = os.environ.get("PUSHA_STAGE5_U_HORIZONTAL_POSE", "")
-                _uv_s = os.environ.get("PUSHA_STAGE5_U_VERTICAL_POSE", "")
+                    and os.environ.get("PORT_U_HORIZONTAL_POSE", "")
+                    and os.environ.get("PORT_U_VERTICAL_POSE", "")):
+                _uh_s = os.environ.get("PORT_U_HORIZONTAL_POSE", "")
+                _uv_s = os.environ.get("PORT_U_VERTICAL_POSE", "")
             else:
-                _uh_s = os.environ.get("PUSHA_STAGE5_U_HORIZONTAL", "")
-                _uv_s = os.environ.get("PUSHA_STAGE5_U_VERTICAL", "")
+                _uh_s = os.environ.get("PORT_U_HORIZONTAL", "")
+                _uv_s = os.environ.get("PORT_U_VERTICAL", "")
             if _uh_s and _uv_s:
                 try:
                     _uh = float(_uh_s)

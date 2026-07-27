@@ -99,10 +99,10 @@ class C3Solver:
         self._w_comp    = 0.0
         self._solver    = ad.OsqpSolver()
         # Reference solver_options_default.yaml settings (bug diagnostic).
-        # Gated on PUSHA_OSQP_REFOPTS=1 to A/B test.
+        # Gated on REFCONF_OSQP_OPTS=1 to A/B test.
         import os as _os_osqp
         self._osqp_refopts = (
-            _os_osqp.environ.get("PUSHA_OSQP_REFOPTS", "0") == "1")
+            _os_osqp.environ.get("REFCONF_OSQP_OPTS", "0") == "1")
         self._osqp_solver_options = None
         if self._osqp_refopts:
             _so = ad.SolverOptions()
@@ -179,7 +179,7 @@ class C3Solver:
         # ref 0) and λ got 50× more (100 vs 2). This ill-conditioned the
         # ADMM. When enabled, replaces `rho * I` with `rho * diag(G_diag)`
         # in the P and q_total updates. Default True for c3+ mode.
-        # Env-gate: PUSHA_USE_G_MATRIX=1 to enable (default OFF).
+        # Env-gate: REFCONF_USE_G_MATRIX=1 to enable (default OFF).
         # 2026-07-22 test (p68/p69): full ref G with g_x=g_u=0 destabilizes
         # port ADMM — T physically tipped in p69, trans regressed in p68.
         # Reference-conformance for G matrix requires additional structural
@@ -189,21 +189,21 @@ class C3Solver:
         # p58-p62 4/5 baseline.
         import os as _os_g
         self._use_g_matrix = (
-            _os_g.environ.get("PUSHA_USE_G_MATRIX", "0") == "1")
+            _os_g.environ.get("REFCONF_USE_G_MATRIX", "0") == "1")
         self._w_G          = 0.01
         self._g_lambda     = 2.0
         self._g_eta        = 1.0
         self._g_x          = 0.0   # reference has zero state augmentation
         self._g_u          = 0.0   # reference has zero input augmentation
-        # PUSHA_G_X override (diagnostic): per-slot x augmentation weight.
+        # PORT_G_X override (diagnostic): per-slot x augmentation weight.
         # Set to e.g. "1" to add uniform g_x=1 for state-memory regularization
         # under G-ON — falsification test for the "sparse-Q + zero-g_x kills
         # ADMM convergence" hypothesis.
-        _pusha_gx = _os_g.environ.get("PUSHA_G_X", "")
+        _pusha_gx = _os_g.environ.get("PORT_G_X", "")
         if _pusha_gx:
             try:
                 self._g_x = float(_pusha_gx)
-                print(f"[PUSHA_G_X] override: g_x={self._g_x}", flush=True)
+                print(f"[PORT_G_X] override: g_x={self._g_x}", flush=True)
             except ValueError:
                 pass
         self._g_diag_c3p_cache: np.ndarray | None = None
@@ -973,17 +973,17 @@ class C3Solver:
         rho = self.rho
 
         # Stage C disambiguation probe — one-shot ADMM-instance dump.
-        # Gated by PUSHA_ADMM_DUMP=PATH; on the c3-tick whose `_solve_c3plus`
-        # call number equals PUSHA_ADMM_DUMP_AT (default 50, mid-c3 by the
+        # Gated by DIAG_ADMM_DUMP=PATH; on the c3-tick whose `_solve_c3plus`
+        # call number equals DIAG_ADMM_DUMP_AT (default 50, mid-c3 by the
         # time the planner is solidly in the predicting-retreat regime),
         # write all inputs to a .npz at PATH and continue. Subsequent calls
         # do nothing. The harness `scripts/_stage_c_admm_harness.py` reads
         # this .npz to (i) replay with iter×ρ sweeps, (ii) call the direct
         # LCP/MIQP existence check, (iii) inspect E-matrix structure.
         import os as _os_d
-        _dump_path = _os_d.environ.get("PUSHA_ADMM_DUMP", "")
-        _dump_at   = int(_os_d.environ.get("PUSHA_ADMM_DUMP_AT", "50"))
-        _dump_min_iter = int(_os_d.environ.get("PUSHA_ADMM_DUMP_MIN_ITER", "20"))
+        _dump_path = _os_d.environ.get("DIAG_ADMM_DUMP", "")
+        _dump_at   = int(_os_d.environ.get("DIAG_ADMM_DUMP_AT", "50"))
+        _dump_min_iter = int(_os_d.environ.get("DIAG_ADMM_DUMP_MIN_ITER", "20"))
         # Filter: skip surrogate sample-eval calls (admm_iter < 20); count
         # only full c3-mode solves. The disambiguation needs the FULL path.
         if (_dump_path
@@ -1088,14 +1088,14 @@ class C3Solver:
         # (c3/core/configs/*.yaml:16 sets rho=0.0001). Port's outer scalar
         # rho=100 multiplied against G gives ~100× the reference aug at
         # iter 0 and blows up under the rho_scale=3 per-iter ramp. Override
-        # rho to 1.0 under G-on (env: PUSHA_ADMM_RHO_UNDER_G) so the port's
+        # rho to 1.0 under G-on (env: REFCONF_ADMM_RHO_UNDER_G) so the port's
         # `rho · G` matches the reference's `G`. G-off path is untouched
         # so the port's tuned rho=100 baseline for the uniform ρ·I aug
         # keeps its calibration.
         if _use_g:
             import os as _os_rug
             _rho_under_g = float(_os_rug.environ.get(
-                "PUSHA_ADMM_RHO_UNDER_G", "1.0"))
+                "REFCONF_ADMM_RHO_UNDER_G", "1.0"))
             if abs(rho - _rho_under_g) > 1e-9:
                 if not getattr(self, "_rho_under_g_banner", False):
                     self._rho_under_g_banner = True
@@ -1285,7 +1285,7 @@ class C3Solver:
         # at first C3+ solve of the run, plus per-iter [CONSENSUS]
         # blocks below (iters 0/1/last) that decompose r_prim per
         # sub-block [x, lam, u, eta]. ~50 lines total per run — not
-        # spam.  Override the target solve with PUSHA_CONSENSUS_DUMP_SOLVE_N.
+        # spam.  Override the target solve with DIAG_CONSENSUS_DUMP_SOLVE_N.
         import os as _os_consensus
         if not getattr(self, "_consensus_bind_printed", False):
             self._consensus_bind_printed = True
@@ -1312,9 +1312,9 @@ class C3Solver:
             self._consensus_solve_number = getattr(
                 self, "_consensus_solve_number", 0) + 1
         # Emit per-iter [CONSENSUS] blocks on the FIRST c3+ solve of the
-        # run (avoids log spam). Override with PUSHA_CONSENSUS_DUMP_SOLVE_N.
+        # run (avoids log spam). Override with DIAG_CONSENSUS_DUMP_SOLVE_N.
         _consensus_target_solve = int(_os_consensus.environ.get(
-            "PUSHA_CONSENSUS_DUMP_SOLVE_N", "0"))
+            "DIAG_CONSENSUS_DUMP_SOLVE_N", "0"))
         _emit_consensus_this_solve = (
             getattr(self, "_consensus_solve_number", 0)
             == _consensus_target_solve)
@@ -1339,7 +1339,7 @@ class C3Solver:
         rho_hist    = []
         # Per-iter (raw QP cost, augmented penalty, augmented Lagrangian,
         # horizon-max η_n, horizon-max λ_n) — populated when either
-        # PUSHA_MATH_ITER_LOG or PUSHA_ADMM_RESID_CSV would consume them.
+        # DIAG_MATH_ITER_LOG or DIAG_ADMM_RESID_CSV would consume them.
         cost_hist   = []
         pen_hist    = []
         lrho_hist   = []
@@ -1357,11 +1357,11 @@ class C3Solver:
         # slots per knot, forcing z^λ_EE-BOX → δ^λ_EE-BOX on the load-
         # bearing pair. BOX-GND and other pairs keep G=1 → their pr can
         # stay high (per paper). Default-OFF; byte-identical when
-        # `PUSHA_G_WEIGHT_EE_BOX_FINAL` unset. Requires ST layout AND
+        # `PORT_G_WEIGHT_EE_BOX_FINAL` unset. Requires ST layout AND
         # caller (ci_mpc_c3plus) to have set `self._ee_box_pair_idx`.
         import os as _os_g
         _g_ee_box_final_flag = (_os_g.environ.get(
-            "PUSHA_G_WEIGHT_EE_BOX_FINAL", "0") == "1")
+            "PORT_G_WEIGHT_EE_BOX_FINAL", "0") == "1")
         _ee_box_pair_idx = getattr(self, "_ee_box_pair_idx", None)
         _b1a_active = (_g_ee_box_final_flag
                        and _is_st_c3p
@@ -1376,20 +1376,20 @@ class C3Solver:
                   f"num_normals={num_normals} "
                   f"ee_box_pair_idx={_ee_box_pair_idx}", flush=True)
 
-        # PUSHA_MATH_ITER_LOG — per-ADMM-iter equation trace for teaching /
+        # DIAG_MATH_ITER_LOG — per-ADMM-iter equation trace for teaching /
         # writeup use. When set, emit the Bui 2026 LCS equations (5b, 5c,
         # complementarity) and the Aydinoglu ADMM steps (7, 8, 9) at every
         # iter of every solve. Per-knot values shown at k=0 (first
         # "contact-rich stage") to keep line count manageable. Default OFF.
         _math_iter_log = (_os_g.environ.get(
-            "PUSHA_MATH_ITER_LOG", "0") == "1")
+            "DIAG_MATH_ITER_LOG", "0") == "1")
         # Pull the resid-CSV gate up so the per-iter cost/slack computation
         # (populating cost_hist/eta_max_hist/lam_max_hist) can be skipped
         # entirely when nothing consumes it — keeps the surrogate solves in
         # sample-eval hot loops free of extra O(total_dim²) matvecs.
-        _resid_csv_hoisted     = _os_g.environ.get("PUSHA_ADMM_RESID_CSV", "")
+        _resid_csv_hoisted     = _os_g.environ.get("DIAG_ADMM_RESID_CSV", "")
         _resid_min_iter_hoisted = int(_os_g.environ.get(
-            "PUSHA_ADMM_RESID_MIN_ITER", "20"))
+            "DIAG_ADMM_RESID_MIN_ITER", "20"))
         _need_cost = bool(
             _math_iter_log
             or (_resid_csv_hoisted and admm_iter >= _resid_min_iter_hoisted)
@@ -1491,7 +1491,7 @@ class C3Solver:
                         _dbg_del  = float(delta[_dbg_slot])
                         _dbg_om   = float(omega[_dbg_slot])
                         _dbg_iso  = -_dbg_q / _dbg_Psym  # isolated optimum
-                        print(f"[§7.67 B1-A] PUSHA_G_WEIGHT_EE_BOX_FINAL=1 "
+                        print(f"[§7.67 B1-A] PORT_G_WEIGHT_EE_BOX_FINAL=1 "
                               f"FIRST FIRE — final iter it={it}/"
                               f"{admm_iter-1}. EE-BOX idx={_idx} "
                               f"W_G={_W:.1f} slots={_n_slots} "
@@ -1707,7 +1707,7 @@ class C3Solver:
                       flush=True)
 
             # ---- Per-iter cost + η-slack stats -----------------------------
-            # Populated when either PUSHA_MATH_ITER_LOG or PUSHA_ADMM_RESID_CSV
+            # Populated when either DIAG_MATH_ITER_LOG or DIAG_ADMM_RESID_CSV
             # would consume them. `f(z)` is the raw planning cost at the new
             # z; `pen` is the ADMM augmented penalty evaluated at OSQP's
             # minimizer (δ_prev and ω_pre are what q_total was built from);
@@ -1772,7 +1772,7 @@ class C3Solver:
                           flush=True)
             # ----------------------------------------------------------------
 
-            # PUSHA_MATH_ITER_LOG — emit Bui LCS (5b/5c/comp) + Aydinoglu
+            # DIAG_MATH_ITER_LOG — emit Bui LCS (5b/5c/comp) + Aydinoglu
             # ADMM (7/8/9) numeric values at k=0 for this iter. Gated to
             # keep prod runs quiet. Header printed once outside the loop.
             if _math_iter_log and 'z_sol' in dir():
@@ -2036,16 +2036,16 @@ class C3Solver:
                   flush=True)
 
         # §7.37 measurement scaffold (default-OFF). When
-        # PUSHA_ADMM_RESID_CSV=PATH is set, append per-iter (pr, dr, rho,
+        # DIAG_ADMM_RESID_CSV=PATH is set, append per-iter (pr, dr, rho,
         # f_raw, pen, L_rho, eta_max_h, lam_n_max_h) for each rich-mode
-        # solve (admm_iter >= PUSHA_ADMM_RESID_MIN_ITER, default 20) to a
+        # solve (admm_iter >= DIAG_ADMM_RESID_MIN_ITER, default 20) to a
         # CSV. Surrogate sample-eval solves are skipped. No behaviour
         # change when the env var is unset — env is re-read here for
         # backwards compat with any external monitor that inspects
         # `_resid_csv` / `_resid_min_iter` names.
         import os as _os_r
-        _resid_csv = _os_r.environ.get("PUSHA_ADMM_RESID_CSV", "")
-        _resid_min_iter = int(_os_r.environ.get("PUSHA_ADMM_RESID_MIN_ITER", "20"))
+        _resid_csv = _os_r.environ.get("DIAG_ADMM_RESID_CSV", "")
+        _resid_min_iter = int(_os_r.environ.get("DIAG_ADMM_RESID_MIN_ITER", "20"))
         if _resid_csv and n_lambda > 0 and primal_hist and admm_iter >= _resid_min_iter:
             if not getattr(self, "_resid_csv_inited", False):
                 self._resid_csv_inited = True
@@ -2201,7 +2201,7 @@ class C3Solver:
             # sampling_based_c3_controller.py:2762-2779 can identify active
             # EE-BOX pairs — without this, `_lam_n` was zeros(n_c) and the
             # `_lam_n_mag > 0.05` gate blocked u_sol force routing even when
-            # PUSHA_FORCE_ROUTING=u_sol was set. Root cause of T-push
+            # PORT_FORCE_ROUTING=u_sol was set. Root cause of T-push
             # λ_EE-BOX=0 executor symptom.
             _dirs_per_contact = int(n_lambda // num_normals) if num_normals > 0 else 4
             _lam_an0 = z_sol[_LAN0 : _LAN0 + n_lambda]

@@ -299,13 +299,13 @@ class InnerSolver:
         # This mirror applies the same clamp to the k=0 surrogate solve's
         # `p_ee_for_x0` so cost-signal for mode-switch matches the primary
         # solve's linearization point. Gated (default OFF) via
-        # PUSHA_C3_SURROGATE_XPRED_CLAMP=1. Set each tick by
+        # REFCONF_C3_SURROGATE_XPRED_CLAMP=1. Set each tick by
         # SamplingC3Controller.compute_control() via `set_ee_pos_clamp()`.
         self._x_pred_ee_pos: Optional[np.ndarray] = None
         self._x_pred_ee_delta_pos: float = 0.0
         import os as _os_e2s
         self._surrogate_xpred_clamp_enabled = (
-            _os_e2s.environ.get("PUSHA_C3_SURROGATE_XPRED_CLAMP", "0") == "1")
+            _os_e2s.environ.get("REFCONF_C3_SURROGATE_XPRED_CLAMP", "0") == "1")
 
         # Diag 2 fix — per-axis force bounds for EE-space surrogate solves.
         # ci_mpc_c3plus.py:310-321 reads these env vars for the MAIN planner's
@@ -319,8 +319,8 @@ class InnerSolver:
         import os as _os_env
         self._u_lo = None
         self._u_hi = None
-        _uh_s = _os_env.environ.get("PUSHA_STAGE5_U_HORIZONTAL", "")
-        _uv_s = _os_env.environ.get("PUSHA_STAGE5_U_VERTICAL", "")
+        _uh_s = _os_env.environ.get("PORT_U_HORIZONTAL", "")
+        _uv_s = _os_env.environ.get("PORT_U_VERTICAL", "")
         if _uh_s and _uv_s:
             try:
                 _uh = float(_uh_s)
@@ -367,9 +367,9 @@ class InnerSolver:
         # ---- Parallel sample eval (port-todo #1) -------------------------
         # Reference `num_outer_threads` (sampling_c3plus_options.yaml:6).
         # `_num_threads_to_use` = requested pool size; 1 = serial. Env var
-        # PUSHA_NUM_THREADS_TO_USE overrides the YAML for A/B smoke tests
+        # PORT_NUM_THREADS_TO_USE overrides the YAML for A/B smoke tests
         # without reloading configs.
-        _env_nt = os.environ.get("PUSHA_NUM_THREADS_TO_USE", "").strip()
+        _env_nt = os.environ.get("PORT_NUM_THREADS_TO_USE", "").strip()
         if _env_nt:
             try:
                 self._num_threads_to_use = max(1, int(_env_nt))
@@ -844,10 +844,10 @@ class InnerSolver:
         # Emit one line per sample when the cost-LCS forward-sim ran, so
         # the log records what the 5-pair cost-LCS actually saw at build
         # time (n EE-manipuland admissions + their phi) and what the sim
-        # produced (dT_xy, box_v_peak). Gated on PUSHA_COST_LCS_TRACE=1
+        # produced (dT_xy, box_v_peak). Gated on DIAG_COST_LCS_TRACE=1
         # to preserve the existing sample table when regression-checking.
         if _cost_lcs_probe is not None and \
-                os.environ.get("PUSHA_COST_LCS_TRACE", ""):
+                os.environ.get("DIAG_COST_LCS_TRACE", ""):
             _phi_str = ",".join(f"{p:+.4f}" for p in
                                 _cost_lcs_probe["ee_t_phi"])
             print(f"[COST-LCS] sample_pos="
@@ -1060,7 +1060,7 @@ class InnerSolver:
                                if use_threading is not None
                                else self._num_threads_to_use > 1)
 
-        # Delta-1 audit (read-only, default-OFF): when PUSHA_SAMP_LCS_DUMP=1,
+        # Delta-1 audit (read-only, default-OFF): when DIAG_SAMP_LCS_DUMP=1,
         # emit a [SAMP-LCS] line per sample with sample_idx, sample_pos, the
         # actually-resolved EE pose the LCS was linearized at (ee_pos_resolved),
         # n_c, phi_min, and a J_n hash. Discriminator: if (n_c, phi_min,
@@ -1070,7 +1070,7 @@ class InnerSolver:
         # differ, the port rebuilds per-sample. No behavior change otherwise.
         import os as _os_d1
         import hashlib as _hl_d1
-        _samp_lcs_dump = bool(_os_d1.environ.get("PUSHA_SAMP_LCS_DUMP", ""))
+        _samp_lcs_dump = bool(_os_d1.environ.get("DIAG_SAMP_LCS_DUMP", ""))
 
         # --- Parallel dispatch -------------------------------------------
         if _resolved_threading and len(samples) > 1:
@@ -1154,7 +1154,7 @@ class InnerSolver:
             # Arc-2 cost-breakdown dump (parallel path).
             self._eval_call_count = getattr(self, "_eval_call_count", 0) + 1
             import os as _os_bd_p
-            _bd_at_p = int(_os_bd_p.environ.get("PUSHA_COST_BD_AT_TICK", "0") or "0")
+            _bd_at_p = int(_os_bd_p.environ.get("DIAG_COST_BD_AT_TICK", "0") or "0")
             if _bd_at_p > 0 and self._eval_call_count == _bd_at_p:
                 self._dump_cost_breakdown(results, labels=None)
             return results  # type: ignore[return-value]
@@ -1201,11 +1201,11 @@ class InnerSolver:
         # (in-contact hypothesis) inverts against prev_repos (no-contact
         # hypothesis) under G-on + arm-Cartesian LCS. Env-gated one-shot at
         # a specific evaluate_samples call.
-        # Usage: PUSHA_COST_BD_AT_TICK=<N> — dumps on N-th call, then never
+        # Usage: DIAG_COST_BD_AT_TICK=<N> — dumps on N-th call, then never
         # again. Set N to a tick number well past reposition-entry.
         self._eval_call_count = getattr(self, "_eval_call_count", 0) + 1
         import os as _os_bd
-        _bd_at = int(_os_bd.environ.get("PUSHA_COST_BD_AT_TICK", "0") or "0")
+        _bd_at = int(_os_bd.environ.get("DIAG_COST_BD_AT_TICK", "0") or "0")
         if _bd_at > 0 and self._eval_call_count == _bd_at:
             self._dump_cost_breakdown(results, labels=None)
         return results

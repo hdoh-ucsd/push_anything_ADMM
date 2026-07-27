@@ -35,17 +35,17 @@ STEM="${NAME:-push_t_$(date +%Y%m%d_%H%M%S)}"
 # for provenance). Ported unchanged to push_t; the T-shape task hasn't been
 # swept against these knobs yet, so the bundle may need re-tuning.
 # REF_RECONCILE_APPROACH retired 2026-07-10 — its =1 behaviour is the default.
-# PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING no longer needed (was a workaround
+# REFCONF_DECOUPLE_RECONCILE_FT no longer needed (was a workaround
 # for the retired REF_RECONCILE_APPROACH=1 silent force-tracking-off).
-PUSHA_G_WEIGHT_EE_BOX_FINAL=1 \
-PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 \
-PUSHA_STAGE5_U_HORIZONTAL=50 \
-PUSHA_STAGE5_U_VERTICAL=50 \
-PUSHA_STAGE5_R_VECTOR=0.01,0.01,0.01 \
-LCS_ALWAYS_ON_EE_BOX=1 \
-PUSHA_FORCE_ROUTING=u_sol \
-PUSHA_EE_APPROACH_FACE_TARGET=1 \
-PUSHA_DISABLE_C3_OVERRIDE=1 \
+PORT_G_WEIGHT_EE_BOX_FINAL=1 \
+REFCONF_OSC_C3_MODE_GAINS=1 \
+PORT_U_HORIZONTAL=50 \
+PORT_U_VERTICAL=50 \
+PORT_R_VECTOR=0.01,0.01,0.01 \
+PORT_LCS_ALWAYS_ON_EE_BOX=1 \
+PORT_FORCE_ROUTING=u_sol \
+PORT_EE_APPROACH_FACE_TARGET=1 \
+PORT_DISABLE_C3_OVERRIDE=1 \
 python main.py push_t \
     --solver c3plus \
     --ee-space \

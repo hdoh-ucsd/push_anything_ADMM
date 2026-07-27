@@ -94,7 +94,7 @@ class LCSFormulator:
         # True matches reference push_t.
         import os as _os_scl
         self._scale_lcs = (
-            _os_scl.environ.get("PUSHA_SCALE_LCS", "1") == "1")
+            _os_scl.environ.get("REFCONF_SCALE_LCS", "1") == "1")
         # Phantom EE-box pair injection (port-only, no reference analog).
         # When True and the natural sd_pairs list has no EE-BOX pair (real
         # signed distance > lcs_formulator.py:245 2 mm threshold), inject the
@@ -103,7 +103,7 @@ class LCSFormulator:
         # T-push success regime; box path can turn it off via env.
         import os as _os_awo
         self._always_on_ee_box = (
-            _os_awo.environ.get("LCS_ALWAYS_ON_EE_BOX", "1") == "1")
+            _os_awo.environ.get("PORT_LCS_ALWAYS_ON_EE_BOX", "1") == "1")
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
         self.lcs_explicit_manipuland_ground_contacts = (
@@ -121,14 +121,14 @@ class LCSFormulator:
         # inverse inertia `M_ee_op_inv = J_ee_arm · M_arm^-1 · J_ee_arm.T`.
         # This is the same 3×3 SPD matrix the reference full-plant LCS
         # produces at the EE Cartesian block (via c3/multibody/lcs_factory.cc).
-        # Env-gate PUSHA_ARM_CART_INERTIA=1 to enable (default OFF preserves
+        # Env-gate REFCONF_ARM_CART_INERTIA=1 to enable (default OFF preserves
         # every existing G-off calibration byte-identical). See the A runtime
         # dump in docs/superpowers/investigations/2026-07-26-arc2-A-lcs-diff.md:
         # port's B[v_ee, u] = 0.1·I proves _EE_MASS=1kg is in play; reference-
         # equivalent would be ~2-3× smaller diagonal.
         import os as _os_amei
         self._use_arm_cartesian_inertia = (
-            _os_amei.environ.get("PUSHA_ARM_CART_INERTIA", "0") == "1")
+            _os_amei.environ.get("REFCONF_ARM_CART_INERTIA", "0") == "1")
         self._arm_cart_inertia_banner_done = False
 
         # Lazy-initialized box half-extents (queried from geometry inspector
@@ -1557,12 +1557,12 @@ class LCSFormulator:
         # via `plant_.MakeQDotToVelocityMap()`. Used below to add the missing
         # position-forcing gradient `E_tᵀ·Jn·vNqdot/dt` to E's q-column
         # (`lcs_factory.cc:533` in Anitescu, `:465` in Stewart-Trinkle).
-        # Env-gate PUSHA_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+        # Env-gate REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
         # G-off calibration was previously validated without this gradient,
         # so the OFF path preserves p73 arc-1 baseline byte-identical.
         import os as _os_a2
         self._use_e_block_split = (
-            _os_a2.environ.get("PUSHA_E_BLOCK_SPLIT", "1") == "1")
+            _os_a2.environ.get("REFCONF_E_BLOCK_SPLIT", "1") == "1")
         if self._use_e_block_split:
             # For a floating base with quaternion, N⁺ (v_box = N⁺·qdot_box)
             # is a 6×7 matrix. Extract via Drake API.
@@ -1742,7 +1742,7 @@ class LCSFormulator:
             for k in (3, 4, 5):
                 A[base + k, base + k] -= self._box_drag_c * dt
 
-        # 4d. B_ctrl — arm-config-DEPENDENT under PUSHA_ARM_CART_INERTIA=1;
+        # 4d. B_ctrl — arm-config-DEPENDENT under REFCONF_ARM_CART_INERTIA=1;
         # config-independent otherwise (isotropic 1/m_ee · I fallback).
         B_ctrl = np.zeros((N_X, N_U))
         # p_ee rows: ∂p_ee_{k+1}/∂u = dt · ∂v_ee_{k+1}/∂u = dt² · M_ee_op_inv.

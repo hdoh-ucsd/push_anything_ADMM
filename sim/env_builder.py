@@ -57,13 +57,13 @@ _PUSHER_RADIUS_DEFAULT = 0.0195  # m — matches reference end_effector_full.urd
 # constant). If push_t needs 0.0195, plumb it as task-configurable via
 # task_cfg["pusher_radius"] rather than mutating the global.
 #
-# Runtime override — set env PUSHA_PUSHER_RADIUS=<meters> to change the pusher
+# Runtime override — set env PORT_PUSHER_RADIUS=<meters> to change the pusher
 # tip radius for a single run without editing the source. Used by the STEP 3
 # reconcile-run in the d_push-fix arc (2026-07-09) to test whether the
 # 19.5 mm-sphere regression is a d_push-penetration interaction. Default-OFF.
 def _effective_pusher_radius() -> float:
     import os as _os
-    v = _os.environ.get("PUSHA_PUSHER_RADIUS", "").strip()
+    v = _os.environ.get("PORT_PUSHER_RADIUS", "").strip()
     if not v:
         return _PUSHER_RADIUS_DEFAULT
     try:
@@ -538,12 +538,12 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         # Top-down: camera at camera_xyz, looking along world -Z.
         # Rotation: 180 deg about X — world +X -> image right, world +Y -> image up.
         #
-        # §7.73d — PUSHA_CAMERA_PERSPECTIVE=1 replaces the top-down pose
+        # §7.73d — PORT_CAMERA_PERSPECTIVE=1 replaces the top-down pose
         # with an oblique perspective (elevated SE, looking at mid-scene)
         # so the box's out-of-plane pitch reads. Default-OFF preserves
         # the top-down capture used for the deck's original take-1.
         import os as _os_cam
-        if _os_cam.environ.get("PUSHA_CAMERA_PERSPECTIVE", "0") == "1":
+        if _os_cam.environ.get("PORT_CAMERA_PERSPECTIVE", "0") == "1":
             def _parse_triple_env(var, default):
                 v = _os_cam.environ.get(var)
                 if not v:
@@ -553,8 +553,8 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
                                       dtype=float)
                 except Exception:
                     return np.asarray(default, dtype=float)
-            _cp     = _parse_triple_env("PUSHA_CAM_EYE",    [0.30, -0.55, 0.45])
-            _target = _parse_triple_env("PUSHA_CAM_TARGET", [-0.15, 0.0, 0.05])
+            _cp     = _parse_triple_env("PORT_CAM_EYE",    [0.30, -0.55, 0.45])
+            _target = _parse_triple_env("PORT_CAM_TARGET", [-0.15, 0.0, 0.05])
             _fwd = _target - _cp; _fwd = _fwd / np.linalg.norm(_fwd)
             _world_up = np.array([0.0, 0.0, 1.0])
             # Right-hand rule: right = fwd × world_up (viewer facing fwd with
@@ -568,7 +568,7 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
             _down = np.cross(_fwd, _right)
             _R = np.column_stack([_right, _down, _fwd])
             X_PB = ad.RigidTransform(ad.RotationMatrix(_R), _cp.tolist())
-            print(f"[C3] PUSHA_CAMERA_PERSPECTIVE=1  cam@{_cp.tolist()}  "
+            print(f"[C3] PORT_CAMERA_PERSPECTIVE=1  cam@{_cp.tolist()}  "
                   f"target@{_target.tolist()}", flush=True)
         else:
             X_PB = ad.RigidTransform(ad.RotationMatrix.MakeXRotation(np.pi),
@@ -582,31 +582,31 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
                         rgbd.query_object_input_port())
 
         # 2026-07-22: Reference-style video path (opt-in via
-        # PUSHA_USE_DRAKE_VIDEO_WRITER=1). Mirrors reference
+        # PORT_USE_DRAKE_VIDEO_WRITER=1). Mirrors reference
         # examples/sampling_c3/process_lcm_logs.py:457-461 which uses
         # pydrake.visualization.VideoWriter with backend="cv2". Drake
         # accumulates frames from the RgbdSensor at `fps` automatically;
         # main.py calls video_writer.Save() at end-of-sim. Alternative
         # to the port's default PNG-per-tick + ffmpeg pipeline (which
         # remains active when the env var is unset).
-        if _os_cam.environ.get("PUSHA_USE_DRAKE_VIDEO_WRITER", "0") == "1":
+        if _os_cam.environ.get("PORT_USE_DRAKE_VIDEO_WRITER", "0") == "1":
             from pydrake.visualization import VideoWriter as _DrakeVideoWriter
             _vid_fps = float(_os_cam.environ.get(
-                "PUSHA_DRAKE_VIDEO_FPS", "16.0"))
+                "PORT_DRAKE_VIDEO_FPS", "16.0"))
             # Reference uses backend="cv2" (process_lcm_logs.py:459).
             # Requires opencv-python installed (`pip install opencv-python`).
             # Fallback: PIL backend supports gif/apng/webp but NOT mp4.
             _vid_backend = _os_cam.environ.get(
-                "PUSHA_DRAKE_VIDEO_BACKEND", "cv2")
+                "PORT_DRAKE_VIDEO_BACKEND", "cv2")
             _vid_filename = _os_cam.environ.get(
-                "PUSHA_DRAKE_VIDEO_FILENAME",
+                "PORT_DRAKE_VIDEO_FILENAME",
                 "results/_drake_video_writer_output.mp4")
             _drake_video_writer = _DrakeVideoWriter(
                 filename=_vid_filename, fps=_vid_fps, backend=_vid_backend)
             builder.AddSystem(_drake_video_writer)
             _drake_video_writer.ConnectRgbdSensor(
                 builder=builder, sensor=rgbd)
-            print(f"[C3] PUSHA_USE_DRAKE_VIDEO_WRITER=1 — "
+            print(f"[C3] PORT_USE_DRAKE_VIDEO_WRITER=1 — "
                   f"pydrake.visualization.VideoWriter added "
                   f"(filename={_vid_filename} fps={_vid_fps} "
                   f"backend={_vid_backend})  ref: "
@@ -627,7 +627,7 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
 
     # 2026-07-22: 8th return element is the reference-style
     # pydrake.visualization.VideoWriter instance when
-    # PUSHA_USE_DRAKE_VIDEO_WRITER=1 (else None).
+    # PORT_USE_DRAKE_VIDEO_WRITER=1 (else None).
     return (diagram, plant, panda_model, object_model, meshcat,
             plant_ad, context_ad,
             _drake_video_writer if add_camera else None)

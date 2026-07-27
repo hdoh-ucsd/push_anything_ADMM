@@ -37,7 +37,7 @@ w_travel: 0.0   # §9 Option B: reference travel_cost_per_meter=0 for push_t+jac
 # Reference alignment (§7.51 bank): matches ref LambdaEndEffectorW=diag(1,1,1).
 # This is a default-changing edit: dataclass default is 100, ref-faithful is 1.
 # Validated as load-bearing for the first box closure in §7.51 (with face-target
-# and PUSHA_DISABLE_C3_OVERRIDE).
+# and PORT_DISABLE_C3_OVERRIDE).
 W_force: 1.0
 
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
@@ -460,7 +460,7 @@ reposition_params:
   pwl_waypoint_height: 0.06   # m — reference push_t value
 
   # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
-  # (Stage A, PUSHA_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
+  # (Stage A, REFCONF_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
   # (dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml).
   # Kept separate from `speed` above: that one is the legacy IK tracker's
   # planning-lookahead stride; this one is the PWL's per-leg linear velocity.

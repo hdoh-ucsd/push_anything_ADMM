@@ -449,8 +449,8 @@ def main():
 
     # ---- Structured log header -------------------------------------------
     _cost = task_cfg.get("cost", {})
-    # Read PUSHA_RHO once for both the log header and the C3Solver ctor.
-    _rho_init = float(os.environ.get("PUSHA_RHO", "100.0"))
+    # Read PORT_RHO once for both the log header and the C3Solver ctor.
+    _rho_init = float(os.environ.get("PORT_RHO", "100.0"))
     print(f"[ENV]  Mass: {task_cfg.get('mass', '?')} kg   "
           f"Friction mu: {task_cfg.get('friction', '?')}")
     print(f"[MPC]  Horizon: 5   dt: 0.1 s   ADMM max iters: {args.admm_iter}"
@@ -583,7 +583,7 @@ def main():
     # penalize_input_change: reference push_t/sampling_c3plus_options.yaml
     # sets `false`; reference anything/*.yaml sets `true`. Task-gated.
     _penalize_input_change = (task_name != "push_t")
-    # _rho_init is defined earlier (log-header block); PUSHA_RHO env override
+    # _rho_init is defined earlier (log-header block); PORT_RHO env override
     # for the item-#7 ρ-sweep investigation. See
     # docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md
     # (arc 1). Default 100.0 preserves the port's tuned regime.
@@ -594,7 +594,7 @@ def main():
     print(f"[C3] Solver mode: {args.solver}  "
           f"(planner: {'EE-space (R^3 force)' if args.ee_space else 'R^7 joint torque'}, "
           f"c3+ projection: {'C3+ (Bui 2026 eq 12 case-analysis)' if args.solver == 'c3plus' else 'n/a (mode=c3)'})")
-    # Geometry hints for PUSHA_BOX_DPUSH_FIX (default-OFF, box-shape only).
+    # Geometry hints for PORT_BOX_DPUSH_FIX (default-OFF, box-shape only).
     _obj_shape = str(task_cfg.get("object_type", ""))
     if _obj_shape == "box":
         _obj_half_extent = float(task_cfg["size"][0]) * 0.5

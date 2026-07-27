@@ -104,10 +104,10 @@ Evidence is separate from verdict — instrumented run outputs live under `audit
   [OSC-INIT]   Kp_cart=[400.0, 400.0, 400.0]  Kd_cart=[40.0, 40.0, 40.0]
   [OSC-INIT]   W_track=100.0
   [EXEC-T2] compound_authority: pos=40000.0 force=1.0 ratio(pos:force)=40000.0:1
-  [EXEC-T2] c3_ref_gains_flag=False env_PUSHA_REF_OSC_ALIGN=0
-            env_PUSHA_OSC_C3_MODE_REFERENCE_GAINS=0
+  [EXEC-T2] c3_ref_gains_flag=False env_REFCONF_OSC_ALIGN=0
+            env_REFCONF_OSC_C3_MODE_GAINS=0
   ```
-  **1.e → CONFIRMED at runtime.** Compound authority = `100 × 400 = 40000`, matching the static-read prediction exactly. No envvar overrides active in the default config. Reference compound authority = `1 × 200 = 200`. **Port over-drives position by 200× vs reference.** The `PUSHA_REF_OSC_ALIGN` and `PUSHA_OSC_C3_MODE_REFERENCE_GAINS` flags (`operational_space_controller.py:113, 147`) are the two levers that would collapse this ratio; neither is default-on and neither activated in this run.
+  **1.e → CONFIRMED at runtime.** Compound authority = `100 × 400 = 40000`, matching the static-read prediction exactly. No envvar overrides active in the default config. Reference compound authority = `1 × 200 = 200`. **Port over-drives position by 200× vs reference.** The `REFCONF_OSC_ALIGN` and `REFCONF_OSC_C3_MODE_GAINS` flags (`operational_space_controller.py:113, 147`) are the two levers that would collapse this ratio; neither is default-on and neither activated in this run.
 
 ## 1.f — External-force tracking cost + variable coupling
 
@@ -221,7 +221,7 @@ Evidence is separate from verdict — instrumented run outputs live under `audit
 
 - Pusher sphere radius (port 0.025 m default vs reference 0.0195 m) — belongs to (5) sim/env. Memory `project_S9_leaked_to_box_stage_e_blocked.md` covers the prior globalization-and-revert incident.
 - Force-tracking `λ_des = magnitude · (−g_hat)` derivation (`sampling_based_c3_controller.py:365`) — belongs to (2) sampling-c3 wrapper.
-- Stage-A PWL reposition trajectory feeding (`PUSHA_REPOSITION_PWL=1`) — the path that would exercise the 1.a/1.b coupling; belongs to (2) reposition.
+- Stage-A PWL reposition trajectory feeding (`REFCONF_REPOSITION_PWL=1`) — the path that would exercise the 1.a/1.b coupling; belongs to (2) reposition.
 
 ## Executor Tier-2 evidence artefacts
 
@@ -298,12 +298,12 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
   - Everything else (`kSpline`, `kSpherical`, `kCircular`, `kPiecewiseLinear`) → `PiecewiseLinearTracker` (per-tick setpoint march via `next_waypoint`, IK to q_des, joint-PD torque). Only `kPiecewiseLinear` is actually implemented in the wrapper's dispatch; other enum values fall through to PWL.
   In both cases the tracker's torque output is **discarded** at wrapper.py:3126,3154 — the wrapper takes `free_diag.get("p_des")` (or `RepositionTrajectory.eval(sim_t).p_des`) and calls `self.executor.compute_torque(p_ee_desired=p_des, ...)`. So the tracker exists **only to compute p_des**.
 - **Tag:** LOAD-BEARING (structural).
-- **Dataflow:** The reference has ONE torque generator (OSC) and analytic knot construction. The port has TWO parallel construction paths (per-tick tracker `p_des` OR Stage-A PWL trajectory `(p_des, v_des)`) that feed a single OSC. When `PUSHA_REPOSITION_PWL=0` (default), the OSC receives per-tick `p_des` snapshots with no velocity. When `=1`, the OSC receives `(p_des, v_des)` from a persisted PWL trajectory.
+- **Dataflow:** The reference has ONE torque generator (OSC) and analytic knot construction. The port has TWO parallel construction paths (per-tick tracker `p_des` OR Stage-A PWL trajectory `(p_des, v_des)`) that feed a single OSC. When `REFCONF_REPOSITION_PWL=0` (default), the OSC receives per-tick `p_des` snapshots with no velocity. When `=1`, the OSC receives `(p_des, v_des)` from a persisted PWL trajectory.
 - **Confidence:** high.
 - **Tier 2 — port-side runtime capture:**
   ```
   [REPOS-T2] tracker=PiecewiseLinearTracker traj_type=kPiecewiseLinear
-             use_pwl_traj=False env_PUSHA_REPOSITION_PWL=0
+             use_pwl_traj=False env_REFCONF_REPOSITION_PWL=0
   ```
   **Default box-run path**: `PiecewiseLinearTracker`, per-tick setpoint march, no PWL trajectory. **2.a → CONFIRMED.** The "which tracker" dispatch and "which reposition path" are structural divergences from the reference's single-generator model, but the RESULT for the OSC is a single Cartesian target — which is the reference-equivalent interface. Load-bearing HOW the target is computed, but not WHAT the OSC receives (subject to 2.c).
 
@@ -444,7 +444,7 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 
 ## Coupling observed (from code + Tier-2 evidence)
 
-- **2.a ↔ 2.b ↔ 2.c** — the dispatch (2.a), knot construction (2.b), and OSC handshake (2.c) form the reposition pipeline. The port has TWO pipelines: (legacy) tracker per-tick march → p_des only; (Stage-A) `RepositionTrajectory` → `(p_des, v_des)`. Only the Stage-A pipeline exercises the reference-conformant derivative handshake. Default box runs use the legacy pipeline (`env_PUSHA_REPOSITION_PWL=0`) — so exec 1.a manifests every reposition tick. Flipping Stage-A on requires ALL of: `PUSHA_REPOSITION_PWL=1` + Q correction (the executor Kp_cart/W_track compound authority stays 40000:1 unless separately reduced) — this is the COUPLED subset flagged in the consolidation directive.
+- **2.a ↔ 2.b ↔ 2.c** — the dispatch (2.a), knot construction (2.b), and OSC handshake (2.c) form the reposition pipeline. The port has TWO pipelines: (legacy) tracker per-tick march → p_des only; (Stage-A) `RepositionTrajectory` → `(p_des, v_des)`. Only the Stage-A pipeline exercises the reference-conformant derivative handshake. Default box runs use the legacy pipeline (`env_REFCONF_REPOSITION_PWL=0`) — so exec 1.a manifests every reposition tick. Flipping Stage-A on requires ALL of: `REFCONF_REPOSITION_PWL=1` + Q correction (the executor Kp_cart/W_track compound authority stays 40000:1 unless separately reduced) — this is the COUPLED subset flagged in the consolidation directive.
 - **2.h ↔ 2.i ↔ 1.e** — port `speed=0.4` m/s + `pwl_waypoint_height=0.15` m + executor `W·Kp=40000` compose into "the OSC chases a fast-moving high-flying target with 200× over-drive." Reducing any one of these individually MAY not fix the tracking-mode over-drive because the other two still contribute (this is the coupled-re-tune story from the memory `project_reproduce_dairlib_phase1_recert_false_positive.md`).
 - **2.e ↔ 2.f ↔ 2.g** — the three port-only mechanisms (kIK tracker + admit-latch + descent-gate stability) form a set that all activate together IFF `traj_type=kIK`. Under the default `kPiecewiseLinear`, all three are INERT (confirmed by [ADMIT-GUARD]/[ALT-GATE] runtime prints). Any transition to kIK re-activates all three in lockstep. **Consolidation note**: these three are "COUPLED + INDEPENDENT of reference" — they can be REMOVED wholesale (revert kIK support entirely) without touching any reference-conformant path.
 - **2.k ↔ 1.e/1.f** — the reference's 8000-authority rotation-hold to identity supports keeping the EE from twisting; port lacks this. Downstream: port EE may reach contact at a different orientation than reference expects, potentially affecting box/T tumble outcomes. This may explain part of the "box tumble" observations that survived the joint-2 pin (memory `project_reproduce_dairlib_main_honest_option_a.md`) — the pin holds a specific joint but not the EE end orientation directly.
@@ -518,7 +518,7 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 | 3.h | num_friction_directions | LOAD-BEARING (ties to 3.g) | CONFIRMED — port 4-edge polyhedral pyramid (ST) vs reference `num_friction_directions=2` (Anitescu) |
 | 3.i | μ per-pair vs uniform | LOAD-BEARING | CONFIRMED runtime — port `mu=0.4` single scalar; reference `mu_per_pair_type=[0.583, 0.42, 0.375, 0.3, 0.375]` for `anything` |
 | 3.j | `box_ground_drag` viscous A-mod (port-only) | LOAD-BEARING | **CONFIRMED at runtime** — 10.0 active by default |
-| 3.k | `LCS_ALWAYS_ON_EE_BOX` (port-only) | LOAD-BEARING iff enabled | CONFIRMED-INERT (env unset → False) |
+| 3.k | `PORT_LCS_ALWAYS_ON_EE_BOX` (port-only) | LOAD-BEARING iff enabled | CONFIRMED-INERT (env unset → False) |
 | 3.l | `force_top_k_ee_box` (partial ref-conformance) | LOAD-BEARING (planner ⟂ cost) | CONFIRMED — planner LCS: False (default arg); cost-LCS: True (inner_solve.py, but this touches subsystem 4) |
 | 3.m | `ref_pair_admission_planner_lcs` (port-only tshape-only) | LOAD-BEARING iff enabled | CONFIRMED-INERT (yaml unset → False) |
 | 3.n | Normal-row patches (COMPLIANCE_K, VELOCITY_LEVEL, PHI_CLAMP) — 3 mechanisms | LOAD-BEARING iff any enabled | **CONFIRMED-INERT all 3 individually** (2.k caution applied) |
@@ -540,7 +540,7 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
   [ADMIT-T2] call=2 n_c=1 tags=['BOX-GND'] phi=['-0.0000']
   [ADMIT-T2] call=200 n_c=1 tags=['BOX-GND'] phi=['-0.0000']
   ```
-  Port maintains `n_c = 1` (BOX-GND only, EE too far at z=0.2 vs box top z=0.10) throughout the first 2 s. **Confirms the variable-count behavior**: EE-BOX pair is NOT admitted until step ~417 when phi drops to +1.8 mm (below 2 mm), giving the planner NO EE-BOX visibility during approach — the exact mechanism `LCS_ALWAYS_ON_EE_BOX` was designed to bypass (`lcs_formulator.py:194-208`).
+  Port maintains `n_c = 1` (BOX-GND only, EE too far at z=0.2 vs box top z=0.10) throughout the first 2 s. **Confirms the variable-count behavior**: EE-BOX pair is NOT admitted until step ~417 when phi drops to +1.8 mm (below 2 mm), giving the planner NO EE-BOX visibility during approach — the exact mechanism `PORT_LCS_ALWAYS_ON_EE_BOX` was designed to bypass (`lcs_formulator.py:194-208`).
 
 ## 3.b — Pair-list specification
 
@@ -646,13 +646,13 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 - **Confidence:** high.
 - **Tier 2:** OBSOLETED by the 3.g Anitescu flip. Previous rationale (ADMM under ST can't sustain λ_n_gnd at m·g → box coasts predicted → drag added) is null under Anitescu's single PSD F block. Guarded application sites (`_box_drag_c > 0.0`) mean re-enabling requires an explicit code change; no yaml/env knob currently exposes it.
 
-## 3.k — `LCS_ALWAYS_ON_EE_BOX` (port-only)
+## 3.k — `PORT_LCS_ALWAYS_ON_EE_BOX` (port-only)
 
 - **Reference:** All pairs are always in the LCS by construction (pre-specified). Reference `EE-BOX` is present at every tick regardless of phi.
 - **Port:** `lcs_formulator.py:209-210` — env-gated flag; when set, if the 2 mm threshold did NOT admit an EE-BOX pair, inject the top-N closest EE-manipuland pair explicitly via `ComputeSignedDistancePairClosestPoints` (which does NOT apply the threshold). Mirrors reference's always-present pair.
 - **Tag:** LOAD-BEARING iff enabled. This flag is a PARTIAL reference-conformance path.
 - **Confidence:** high.
-- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] always_on_ee_box=False (env_LCS_ALWAYS_ON_EE_BOX=<unset>)`. **INERT by default.** The reference-conformant behavior exists but is opt-in.
+- **Tier 2:** RUNTIME-CONFIRMED `[ADMIT-T2] always_on_ee_box=False (env_PORT_LCS_ALWAYS_ON_EE_BOX=<unset>)`. **INERT by default.** The reference-conformant behavior exists but is opt-in.
 
 ## 3.l — `force_top_k_ee_box` (partial ref-conformance, kwarg on `extract_lcs_contacts`)
 
@@ -747,7 +747,7 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 | 3.h | num_friction_directions | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — Anitescu factory uses `NUM_FRICTION_DIRECTIONS=2` (matches reference) |
 | 3.i | μ per-pair vs uniform | LOAD-BEARING | **CONFIRMED runtime** — port `mu=0.4` single scalar; reference 5-value array. Updated 2026-07-21 (commit 1e0cbde): T-push adopts reference literal per-pair array; other tasks scalar. |
 | 3.j | `box_ground_drag` viscous A-mod | LOAD-BEARING (port-only) → OBSOLETED | **DEFAULT OFF 2026-07-25** — `_box_drag_c=0.0`; obsoleted by 3.g flip |
-| 3.k | `LCS_ALWAYS_ON_EE_BOX` | LOAD-BEARING iff on | **CONFIRMED-INERT** (env unset) |
+| 3.k | `PORT_LCS_ALWAYS_ON_EE_BOX` | LOAD-BEARING iff on | **CONFIRMED-INERT** (env unset) |
 | 3.l | `force_top_k_ee_box` (kwarg) | LOAD-BEARING | **CONFIRMED** — planner LCS: False; cost LCS: True (belongs to (4)) |
 | 3.m | `ref_pair_admission_planner_lcs` | LOAD-BEARING iff on | **CONFIRMED-INERT** (yaml unset) |
 | 3.n | Normal-row patches × 3 | LOAD-BEARING iff on → NO-OPS UNDER ANITESCU | **DOUBLY INERT 2026-07-25** — all 3 default OFF AND their code path is not walked under Anitescu default |
@@ -817,7 +817,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
   `control/sampling_c3/mode_switch.py:1-162` (`decide_mode`, `SwitchReason` enum, hysteresis);
   `control/sampling_c3/progress.py:1-266` (`ProgressTracker`, `StepMetrics`, `met_progress`);
   `config/sampling_c3_kik.yaml` (`surrogate_admm_iters: 3`; T-push canonical `--admm-iter 3` since commit 4c3bad5 (2026-07-17), box-push still at 25);
-  `main.py:345-358` (`PUSHA_STAGE5_U_HORIZONTAL/VERTICAL/R_VECTOR` env-defaults for EE-space).
+  `main.py:345-358` (`PORT_U_HORIZONTAL/VERTICAL/R_VECTOR` env-defaults for EE-space).
 
 **Planner scope:** the C3+ ADMM inner solver + the wrapper's mode-switch dispatcher decision + progress-tracking. Excludes contact admission (subsystem 3), OSC executor (subsystem 1), reposition target generation (subsystem 2).
 
@@ -842,7 +842,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.o | Hysteresis (kind × near_goal) | COSMETIC-EQUIVALENT | CONFIRMED — port `_hysteresis(params, kind, near_goal, ref_cost)` matches reference structure (absolute vs relative, position-near-goal vs generic) |
 | 4.p | Progress metric implementation | COSMETIC-EQUIVALENT | Both track "steps since last cost improvement" with mode-specific `num_control_loops_to_wait` |
 | 4.q | LCS h_is_zero → LCP pre-solve | UNKNOWN → RESOLVED | Reference c3.cc:283-299 detects `h_is_zero_` (LCS `H matrix all-zero → passive system`) and pre-solves λ via `MobyLcpSolver::SolveLcpLemke`. Port has NO analog (always runs full ADMM). For push_anything, `H` is derived from `Jn · Jf_u` (LCS-formulation), and `Jf_u = M⁻¹ · B` is non-zero (actuated arm) → `h_is_zero_ = false` in reference → LCP pre-solve INERT → no divergence in practice for pushing task. **INERT-BY-CONFIG for actuated systems.** |
-| 4.r | Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*) | LOAD-BEARING iff enabled | CONFIRMED — `main.py:346-358` sets env defaults `PUSHA_STAGE5_U_HORIZONTAL=10, PUSHA_STAGE5_U_VERTICAL=3, PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` for EE-space. Port-only Stage-5 alignment package. Default box run in R^7 does NOT trigger these; EE-space runs do. |
+| 4.r | Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*) | LOAD-BEARING iff enabled | CONFIRMED — `main.py:346-358` sets env defaults `PORT_U_HORIZONTAL=10, PORT_U_VERTICAL=3, PORT_R_VECTOR=0.1,0.1,10` for EE-space. Port-only Stage-5 alignment package. Default box run in R^7 does NOT trigger these; EE-space runs do. |
 | 4.s | Port-only contact-entry gate (surface / center distance) | LOAD-BEARING → DISABLED-FOR-T | CONFIRMED — `sampling_based_c3_controller.py:1487-1512` blocks `finished_repos` when `ee_to_surf ≥ 60mm` (`use_surface_entry_gate=True, contact_entry_surface_threshold=0.060`). Reference `sampling_based_c3_controller.cc:1284-1309` has no such gate — only the height ceiling (4.n). Disabled for T-push in `config/sampling_c3_kik_t.yaml` (commit 08003e1); box-push YAML still leaves the port default on. |
 
 ## 4.a — Solver class / projection algorithm
@@ -965,7 +965,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 - **Port:** `mode_switch.py:decide_mode`. 7 SwitchReasons: {kStayInC3, kStayInRepos, kToReposCost, kToReposUnproductive, kToC3Cost, kToC3ReachedReposTarget, kToBetterRepos, kForceC3Watchdog}. Adds `kForceC3Watchdog` (steps_since_improve watchdog — port-only).
 - **Tag:** LOAD-BEARING (structure).
 - **Confidence:** high.
-- **Tier 2:** CONFIRMED port omits {kToC3Xbox (xbox teleop only — reference-only), AddToUnsuccessfulBuffer, wall_offset for repos target, pursued_target_source_ tracking}. Port adds {kForceC3Watchdog, PUSHA_DISABLE_CONTACT_LOSS_GATE opt-in}. Core mode-switch logic (cost-gap × progress × hysteresis × finished_repos) is CONFORMANT.
+- **Tier 2:** CONFIRMED port omits {kToC3Xbox (xbox teleop only — reference-only), AddToUnsuccessfulBuffer, wall_offset for repos target, pursued_target_source_ tracking}. Port adds {kForceC3Watchdog, PORT_DISABLE_CONTACT_LOSS_GATE opt-in}. Core mode-switch logic (cost-gap × progress × hysteresis × finished_repos) is CONFORMANT.
 
 ## 4.n — Altitude gate on free→c3 transition
 
@@ -1015,7 +1015,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 ## 4.r — Port-only env-tuned R + u-bounds (PUSHA_STAGE5_*)
 
 - **Reference:** Fixed R + u-bounds from YAML.
-- **Port:** `main.py:346-358` sets env defaults `PUSHA_STAGE5_U_HORIZONTAL=10, PUSHA_STAGE5_U_VERTICAL=3, PUSHA_STAGE5_R_VECTOR=0.1,0.1,10` for EE-space runs. These override the planner's per-axis u-bounds (Fx, Fy, Fz) and R-cost diagonal. Port-only "Stage 5 alignment" package.
+- **Port:** `main.py:346-358` sets env defaults `PORT_U_HORIZONTAL=10, PORT_U_VERTICAL=3, PORT_R_VECTOR=0.1,0.1,10` for EE-space runs. These override the planner's per-axis u-bounds (Fx, Fy, Fz) and R-cost diagonal. Port-only "Stage 5 alignment" package.
 - **Tag:** LOAD-BEARING iff EE-space active AND env unset (default → these values apply).
 - **Confidence:** high.
 - **Tier 2:** For default R^7 box run (no `--ee-space`), these env-defaults do NOT trigger the EE-space-only branches. **INERT for the default box run.** Belongs to a subsystem-4.5 or Stage-5 opt-in cluster.
@@ -1145,10 +1145,10 @@ Verified the "inert" areas individually:
 ## 5.c — Pusher tip radius
 
 - **Reference:** `end_effector_full.urdf:66, 73` — sphere r=0.0195 m at `end_effector_tip`.
-- **Port:** `env_builder.py:32` — `_PUSHER_RADIUS_DEFAULT = 0.025` m. Env-override `PUSHA_PUSHER_RADIUS` (default unset).
+- **Port:** `env_builder.py:32` — `_PUSHER_RADIUS_DEFAULT = 0.025` m. Env-override `PORT_PUSHER_RADIUS` (default unset).
 - **Tag:** LOAD-BEARING (kicked here from executor 1.f).
 - **Confidence:** high.
-- **Tier 2:** RUNTIME-CONFIRMED `[SIM-T2] pusher_radius=0.025 (reference: end_effector_full.urdf sphere r=0.0195; env_PUSHA_PUSHER_RADIUS=<unset>)`. **3-mm larger tip in port.** Previously fought over in memory `project_S9_leaked_to_box_stage_e_blocked.md` — port tried globalizing to 0.0195 during T-work but regressed box closure, reverted. Load-bearing for both box and T tasks (changes contact geometry, wrist-load distance, LCS phi values, sample_reject_clearance-vs-radius interaction).
+- **Tier 2:** RUNTIME-CONFIRMED `[SIM-T2] pusher_radius=0.025 (reference: end_effector_full.urdf sphere r=0.0195; env_PORT_PUSHER_RADIUS=<unset>)`. **3-mm larger tip in port.** Previously fought over in memory `project_S9_leaked_to_box_stage_e_blocked.md` — port tried globalizing to 0.0195 during T-work but regressed box closure, reverted. Load-bearing for both box and T tasks (changes contact geometry, wrist-load distance, LCS phi values, sample_reject_clearance-vs-radius interaction).
 
 ## 5.d — Pusher friction μ
 
@@ -1340,12 +1340,12 @@ Mostly INDEPENDENT constants. Some (5.g contact model) are load-bearing structur
 |---|---|---|
 | **Contact-model cluster** | 3.g/3.h/3.n/3.p/3.j, 4.b/4.c/4.d/4.e/4.l | **RESOLVED 2026-07-25** — Anitescu flip landed on default path; all 10 items REFERENCE-MATCH / OBSOLETED / INERT |
 | **Executor over-drive** | 1.e/1.f, 1.d/1.h, 2.h/2.i/2.j, 2.k | COUPLED — cascading gains + rotation-hold — HOLD (Phase-1 OSC swap recert-falsified 2026-07-14; no unblock recipe pending) |
-| **Reposition Stage-A** | 2.a/2.b/2.c/2.j (PUSHA_REPOSITION_PWL path) | COUPLED to executor over-drive via v_ee_desired handshake — HOLD |
+| **Reposition Stage-A** | 2.a/2.b/2.c/2.j (REFCONF_REPOSITION_PWL path) | COUPLED to executor over-drive via v_ee_desired handshake — HOLD |
 | **kIK reposition** | 2.e/2.f/2.g (traj_type=kIK subset) | COUPLED but INDEPENDENT of reference (port-only) — **SAFE to REMOVE wholesale** |
 | **Port-only opt-in flags** | 3.k/3.m/3.n (already OFF), 4.r Stage-5 | INDEPENDENT, INERT — **SAFE to REMOVE** (delete-the-flag) |
 | **Geometry constants** | 5.c/5.d/5.h (small numeric divergences) | INDEPENDENT — **SAFE to default-to-reference + tripwire** |
 | **Ground URDF split** | 5.i/5.j (reference sphere-witnesses vs port synthesis) | INDEPENDENT of contact-model choice now that Anitescu default is stable — evaluate on its own |
-| **port-todo #7 (Q construction)** | ρ / G / Q coupled triple flip | BLOCKED — see `docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md`; G-matrix prong-1 infrastructure landed 2026-07-25 (`f484607`, gated OFF via `PUSHA_USE_G_MATRIX=1`) |
+| **port-todo #7 (Q construction)** | ρ / G / Q coupled triple flip | BLOCKED — see `docs/superpowers/investigations/2026-07-23-item7-deep-investigation.md`; G-matrix prong-1 infrastructure landed 2026-07-25 (`f484607`, gated OFF via `REFCONF_USE_G_MATRIX=1`) |
 
 ## Answer to "is the coupled re-tune tractable?" — 2026-07-25 update
 

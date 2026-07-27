@@ -108,7 +108,7 @@ class OperationalSpaceController:
         if W_force is not None:
             self.gains.W_force = float(W_force)
 
-        # §7.43 — when PUSHA_REF_OSC_ALIGN=1, finish the reference-OSC alignment
+        # §7.43 — when REFCONF_OSC_ALIGN=1, finish the reference-OSC alignment
         # by setting the position-side weights/gains to reference values:
         #   W_track   = 1.0          (ref EndEffectorW = diag(1,1,1),  osc_params.yaml:47-50)
         #   Kp_cart   = [200,200,200] (ref EndEffectorKp = diag(200,200,200), :51-54)
@@ -119,11 +119,11 @@ class OperationalSpaceController:
         # near-zero force authority — §7.42's incomplete alignment.
         # Default-OFF byte-identical preserved.
         import os as _os
-        if _os.environ.get("PUSHA_REF_OSC_ALIGN", "0") == "1":
+        if _os.environ.get("REFCONF_OSC_ALIGN", "0") == "1":
             self.gains.W_track = 1.0
             self.gains.Kp_cart = np.array([200.0, 200.0, 200.0])
             self.gains.Kd_cart = np.array([20.0, 20.0, 20.0])
-            print("[§7.43] PUSHA_REF_OSC_ALIGN=1 OSC position-side alignment — "
+            print("[§7.43] REFCONF_OSC_ALIGN=1 OSC position-side alignment — "
                   "W_track→1.0, Kp_cart→[200,200,200], Kd_cart→[20,20,20] "
                   "(matched to shared_parameters/osc_params.yaml:47-58)",
                   flush=True)
@@ -138,7 +138,7 @@ class OperationalSpaceController:
         self.limits = OscLimits(tau_max=tau_max)
 
         # §7.70 — c3-mode reference-gains variant (default-OFF).
-        # PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 activates a swap where
+        # REFCONF_OSC_C3_MODE_GAINS=1 activates a swap where
         # compute_torque(mode="c3") uses reference-aligned gains:
         #   Kp_cart = [200, 200, 200]   (ref EndEffectorKp:  osc_params.yaml:51-54)
         #   Kd_cart = [ 20,  20,  20]   (ref EndEffectorKd:  osc_params.yaml:55-58)
@@ -154,7 +154,7 @@ class OperationalSpaceController:
         # during c3, leaving free-mode Kp/W_track intact.
         import os as _os_ref
         self._c3_ref_gains_flag = (_os_ref.environ.get(
-            "PUSHA_OSC_C3_MODE_REFERENCE_GAINS", "0") == "1")
+            "REFCONF_OSC_C3_MODE_GAINS", "0") == "1")
         # Deep-copy the port gains to a c3 override that gets swapped in
         # at compute_torque(mode="c3") when the flag is set.
         self.gains_c3 = OscGains(
@@ -170,7 +170,7 @@ class OperationalSpaceController:
             a_ee_cap  = self.gains.a_ee_cap,
         )
         if self._c3_ref_gains_flag:
-            print("[§7.70] PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 — c3-mode "
+            print("[§7.70] REFCONF_OSC_C3_MODE_GAINS=1 — c3-mode "
                   "gains (Kp=[200,200,200], Kd=[20,20,20], W_track=1.0) "
                   "will be used for compute_torque(mode=\"c3\"); free/repos "
                   "keeps port gains (Kp=[400,400,400], W_track=100).",
@@ -196,17 +196,17 @@ class OperationalSpaceController:
         self._R_target = None
 
         # QP-signature dump hook. Env-gated, byte-identical when unset.
-        # PUSHA_QP_SIG_DUMP=1 → capture the full input tuple to the QP at
-        # compute_torque call index PUSHA_QP_SIG_STEP (default 60). Written
-        # to PUSHA_QP_SIG_DIR (default audit_output/exec_qp_sig/) as
+        # DIAG_QP_SIG_DUMP=1 → capture the full input tuple to the QP at
+        # compute_torque call index DIAG_QP_SIG_STEP (default 60). Written
+        # to DIAG_QP_SIG_DIR (default audit_output/exec_qp_sig/) as
         # dump_call{N}.{npz,txt}. Consumed by
         # scripts/_qp_sig_reference_emulator.py to produce a same-input
         # τ diff against a reference-formula Python emulator.
-        if _os_ref.environ.get("PUSHA_QP_SIG_DUMP", "0") == "1":
+        if _os_ref.environ.get("DIAG_QP_SIG_DUMP", "0") == "1":
             self._sig_dump_step = int(
-                _os_ref.environ.get("PUSHA_QP_SIG_STEP", "60"))
+                _os_ref.environ.get("DIAG_QP_SIG_STEP", "60"))
             self._sig_dump_dir = _os_ref.environ.get(
-                "PUSHA_QP_SIG_DIR", "audit_output/exec_qp_sig")
+                "DIAG_QP_SIG_DIR", "audit_output/exec_qp_sig")
             self._sig_dump_done = False
             print(f"[QP-SIG] enabled: will capture compute_torque call "
                   f"idx={self._sig_dump_step} → {self._sig_dump_dir}/",
@@ -233,7 +233,7 @@ class OperationalSpaceController:
                        ) -> Tuple[np.ndarray, dict]:
         """Compute joint torques via QP. Returns (u ∈ ℝ⁷, diag dict).
 
-        `mode`: "c3" or "free". When PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1
+        `mode`: "c3" or "free". When REFCONF_OSC_C3_MODE_GAINS=1
         AND mode="c3", the QP is built with reference-aligned gains
         (Kp=200, W_track=1) instead of the port defaults (Kp=400,
         W_track=100). Free/repos calls (mode="free") always use port
