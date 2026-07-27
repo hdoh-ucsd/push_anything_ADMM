@@ -495,7 +495,56 @@ class QuadraticManipulationCost:
             v_goal  = target_xy - obj_xy
             dist    = np.linalg.norm(v_goal)
 
-            if dist > 1e-3:
+            if self.use_reference_q_vector:
+                # Reference ee_pos analog — REPLACES the port-only
+                # w_ee_approach proxy block below (parity with
+                # build_ee_space, whose direct EE-approach cost is always
+                # skipped per §7.31: the reference has no backward-pull
+                # approach cost). The reference's only EE-position cost is
+                # hover tracking (goal_generator.cc:113-114):
+                #   x_des[ee] = obj_curr + [0, 0, z_offset],
+                #   weight w_Q · q_vector_ee_pos (push_t: 50·0.01 = 0.5/ax)
+                # R^7 image via the arm Jacobian, same damped-least-squares
+                # x_ref construction as the legacy block:
+                #   Q[arm_q] += J_armᵀ · diag(w_Q·q_vec_ee_pos) · J_arm
+                #   x_ref[arm_q] = q_arm + J⁺·(p_hover − p_ee)
+                # This retires the off-reference 8000-weight 3-stage proxy
+                # under the flag (port pos:vel authority was 8000:250 vs
+                # reference 0.5:250 — p108 diagnosis).
+                if self.ee_target_z_offset > 0.0 and not rich_mode:
+                    ee_pos = self.plant.CalcPointsPositions(
+                        plant_ctx, self.ee_frame, np.zeros(3),
+                        self.world_frame
+                    ).flatten()
+                    _obj_z_now = float(current_q[self._obj_z_idx])
+                    p_hover = np.array([
+                        obj_xy[0], obj_xy[1],
+                        _obj_z_now + self.ee_target_z_offset,
+                    ])
+                    J_ee = self.plant.CalcJacobianTranslationalVelocity(
+                        plant_ctx, self._ad.JacobianWrtVariable.kV,
+                        self.ee_frame, np.zeros(3),
+                        self.world_frame, self.world_frame,
+                    )
+                    J_arm = J_ee[:, : self.n_u]
+                    _W_pee = self.w_Q * np.asarray(
+                        self._q_vec_ee_pos, dtype=float)
+                    Q[: self.n_u, : self.n_u] += \
+                        J_arm.T @ np.diag(_W_pee) @ J_arm
+                    ee_err = p_hover - ee_pos
+                    lam = 0.001
+                    JJT = J_arm @ J_arm.T + lam * np.eye(3)
+                    dq = J_arm.T @ np.linalg.solve(JJT, ee_err)
+                    x_ref[: self.n_u] = current_q[: self.n_u] + dq
+                    if not getattr(self, "_ref_eepos_r7_logged", False):
+                        self._ref_eepos_r7_logged = True
+                        print(f"[REF-QVEC-R7] build(): ee_pos hover analog "
+                              f"active (w={_W_pee}/axis via J_arm, "
+                              f"z_offset={self.ee_target_z_offset:.3f}m) — "
+                              f"w_ee_approach={self.w_ee_approach:.0f} "
+                              f"proxy block RETIRED under "
+                              f"use_reference_q_vector", flush=True)
+            elif dist > 1e-3:
                 g_hat = v_goal / dist
                 # Contact-face proxy: d_push behind object at contact height
                 proxy_3d = np.array([
@@ -768,6 +817,9 @@ class QuadraticManipulationCost:
                 obj_vx_idx = self.n_q + self._obj_vs + 3   # vx in world frame
                 obj_vy_idx = self.n_q + self._obj_vs + 4   # vy in world frame
 
+                # g_hat locally derived — the legacy approach branch that
+                # used to define it is skipped under use_reference_q_vector.
+                g_hat  = v_goal / dist
                 g_perp = np.array([-g_hat[1], g_hat[0]])   # 90° CCW of g_hat
                 w_perp = 10.0 * self.w_obj_xy
 
