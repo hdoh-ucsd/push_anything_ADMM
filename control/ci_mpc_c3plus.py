@@ -431,6 +431,51 @@ class C3PlusMPC:
                 except ValueError:
                     _u_lo = None
                     _u_hi = None
+        elif (not self.use_ee_space and self.solver.n_u > 3
+                and os.environ.get("REFCONF_R7_U_GRAVITY_CENTERED", "1") == "1"):
+            # R^7 gravity-centered u-box (reference u-limit conformance).
+            # The reference bounds PUSH EFFORT: u is a ~N-scale EE force with
+            # u_horizontal/vertical_limits = ±50 N (push_t
+            # sampling_c3plus_options.yaml:34-35); gravity is not in its u.
+            # The port's R^7 u is joint torque against a gravity-included
+            # LCS, so u must CONTAIN the gravity-holding torque −τ_g — which
+            # at the working posture is −34.1 Nm on joint 2, OUTSIDE the
+            # symmetric ±30 box entirely: the planner could not even hold
+            # the arm within its own bound, saturating joint 2 on every
+            # solve and leaving ~zero push headroom (p110 diagnosis: 232
+            # correct-face c3 steps produced +19 mm of the +187 mm needed).
+            # Conformant translation: center the box on the gravity-holding
+            # torque and give it the torque image of the reference force
+            # limits through the arm Jacobian at the linearization point:
+            #   u ∈ [u_hold − Δ, u_hold + Δ],  u_hold = −τ_g_arm(q*),
+            #   Δ_j = (|J_arm|ᵀ · F_ref)_j,   F_ref = [50, 50, 50] N,
+            # floored at 1 Nm per joint (wrist rows of J are ~0 — a
+            # zero-width box would hard-pin those joints) and clipped to
+            # the ±87 Nm Franka effort limit.
+            _n_arm = int(self.solver.n_u)
+            _tau_g_full = self.quad_cost.plant.CalcGravityGeneralizedForces(
+                plant_ctx)
+            _u_hold = -np.asarray(_tau_g_full[:_n_arm], dtype=float)
+            _J_ee_u = self.quad_cost.plant.CalcJacobianTranslationalVelocity(
+                plant_ctx, self.quad_cost._ad.JacobianWrtVariable.kV,
+                self.quad_cost.ee_frame, np.zeros(3),
+                self.quad_cost.world_frame, self.quad_cost.world_frame,
+            )
+            _F_ref = np.array([
+                float(os.environ.get("PORT_U_HORIZONTAL", "50.0")),
+                float(os.environ.get("PORT_U_HORIZONTAL", "50.0")),
+                float(os.environ.get("PORT_U_VERTICAL",   "50.0")),
+            ])
+            _delta_u = np.abs(_J_ee_u[:, :_n_arm]).T @ _F_ref
+            _delta_u = np.maximum(_delta_u, 1.0)
+            _u_lo = np.maximum(_u_hold - _delta_u, -87.0)
+            _u_hi = np.minimum(_u_hold + _delta_u, +87.0)
+            if not getattr(self, "_r7_ubox_logged", False):
+                self._r7_ubox_logged = True
+                print(f"[REFCONF_R7_U_GRAVITY_CENTERED] u-box centered on "
+                      f"u_hold={np.round(_u_hold, 1)} with "
+                      f"Δ=|J|ᵀ·{_F_ref}={np.round(_delta_u, 1)} "
+                      f"(replaces symmetric ±torque_limit)", flush=True)
 
         # §7.67 — B1-A plumbing: pass the EE-BOX contact index to the solver
         # (read from formulator's _last_contact_info tag list) so
