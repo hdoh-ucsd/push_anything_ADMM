@@ -587,10 +587,29 @@ def _face_normal_projection(n_samples:    int,
         # moment arm → yaw → friction-coupled lateral drift; centered
         # landings push cleanly. Non-goal faces keep full jitter so rotation
         # tasks and multi-object scenarios retain sample diversity.
+        #
+        # 2026-07-26 investigation of rot ceiling (rot stuck at ~0.4 rad
+        # through all arc-2 experiments): the centering logic works AGAINST
+        # yaw-goal tasks like push_t (goal_yaw = -0.7379 rad, w_yaw = 800).
+        # When yaw needs correction, we WANT off-center samples to explore
+        # lever-arm contacts. Env-gated inversion: under strong yaw_delta,
+        # scale jitter UP toward full half_len based on urgency. Off by
+        # default (PORT_SAMPLER_YAW_JITTER_MAX=0.0). Only fires when goal-
+        # aligned AND yaw_delta > threshold.
+        import os as _os_yj
+        _yaw_jitter_max = float(_os_yj.environ.get(
+            "PORT_SAMPLER_YAW_JITTER_MAX", "0.0"))
+        _yaw_jitter_scale = float(_os_yj.environ.get(
+            "PORT_SAMPLER_YAW_URGENCY_SCALE", "0.5"))
         if _use_goal_align:
             _goal_align = float(-n_world[0]*g2[0] - n_world[1]*g2[1])
             if _goal_align > GOAL_ALIGN_THRESHOLD:
-                _jitter_range = _half_len * CENTERED_JITTER_FRACTION
+                # Yaw-aware jitter expansion: max(centered_default, urgency*scale)
+                _yaw_urgency = min(
+                    1.0, abs(float(yaw_delta or 0.0)) / max(_yaw_jitter_scale, 1e-6))
+                _yaw_frac = _yaw_jitter_max * _yaw_urgency
+                _jitter_frac = max(CENTERED_JITTER_FRACTION, _yaw_frac)
+                _jitter_range = _half_len * _jitter_frac
             else:
                 _jitter_range = _half_len
         else:
