@@ -13,6 +13,26 @@ Evidence is separate from verdict — instrumented run outputs live under `audit
 
 **2026-07-25 refresh (`main` @ `f484607`):** Subsystem (3) contact-model cluster (3.g/3.h/3.n/3.p) + drag band-aid (3.j) all flipped to REFERENCE-MATCH — port default `_contact_model = "anitescu"` (`lcs_formulator.py:86`); `_box_drag_c = 0.0`; n_lambda = 4·n_c runtime-confirmed on p62 baseline. Subsystem (4) horizon+dt (4.d/4.e) now task-conditional (T=5×0.1, box=7×0.075) — both REFERENCE-MATCH per their respective YAMLs (`main.py:611-629`). The 2026-07-14 map's "contact-model cluster is UNRESOLVED / coupled re-tune HOLD" prognosis is stale — that cluster is closed. What remains from the two-cluster prognosis is only the executor-overdrive cluster (subsystem 1) and port-todo #7 (coupled ρ/G/Q; investigation 2026-07-23).
 
+**2026-07-26 arc-2 close-out refresh (`main` @ `4bd9c99`):** Port-todo #7 (G-matrix per-slot ADMM augmentation) is now CLOSED — see `memory/project_item7_arc2_closed_2026-07-26.md`. Seven env-gated fixes shipped across subsystems (3) LCS and (4) ADMM. Rows below need refresh; ordered by subsystem:
+
+- **Sub (3) LCS updates (commits `5e5ec10`, `d8eef70`):**
+  - **A1** — `_EE_MASS=1kg` isotropic replaced by arm-Cart operational-space inverse inertia `M_ee_op_inv = J_ee_arm·M_arm⁻¹·J_ee_armᵀ` in B/D/F/H rows (`lcs_formulator.py:1508-1544` + 8 substitution sites, both ST and Anitescu paths). Env `REFCONF_ARM_CART_INERTIA=1` (default ON). NEW ROW candidate 3.r.
+  - **A2** — E-block position-forcing split adds `Jn·vNqdot/dt` to E's box_q column and `Jn_ee/dt` to E's p_ee column, mirroring reference `lcs_factory.cc:533`. Env `REFCONF_E_BLOCK_SPLIT=1`. NEW ROW candidate 3.s.
+  - **3.k `PORT_LCS_ALWAYS_ON_EE_BOX`** flipped to default 0 in `run_T.sh` (was 1). Reference behavior: signed-distance threshold gates admission. Row 3.k should now be flagged REFERENCE-MATCH-WHEN-DISABLED.
+
+- **Sub (4) ADMM updates (commits `5e5ec10`, `d8eef70`):**
+  - **D1** — auto-override `rho→1.0` under G-on (`admm_solver.py:1086-1105`) so port matches reference's `w_G·diag(g_vec)` scale (ref yaml `rho≈0`, port outer scalar was ρ=100). Env `REFCONF_ADMM_RHO_UNDER_G=1.0` (default). Update row 4.c to note G-on-conditional override.
+  - **D3** — removed port-only `AddBoundingBoxConstraint(0, ∞, λ)` in both C3 and C3+ QP paths. Reference has none; λ ≥ 0 enforced by projection. Update row 4.a or NEW ROW candidate 4.t.
+  - **E1** — symmetric per-sample admm iters (`inner_solve.py:467-473`). Was k=0:25, k>0:1; now all samples at `base_admm_iter`. Matches reference OpenMP parallel loop. Update row 4.b or NEW ROW candidate 4.u.
+  - **E2** — surrogate-side x_pred clamp for k=0 sample (`inner_solve.py:295-313, 520-532`). Env `REFCONF_C3_SURROGATE_XPRED_CLAMP=1` (default OFF; enable for full ref parity, +142% c3-STEPs at p90). NEW ROW candidate 4.v.
+  - **E3** — unified progress-tracker + mode-switch cost signal (`sampling_based_c3_controller.py:1418-1436`). Both read `c_C3_raw`. Env `REFCONF_MODE_SWITCH_USE_C3_RAW=1`. Update row 4.p (progress metric implementation) or NEW ROW candidate 4.w.
+  - Factor-of-2 fix on G-on augmentation (Drake `AddQuadraticCost(2G, -2GWD)` convention) — applies to both `_solve_c3plus` G-on codepaths in `admm_solver.py:1149-1163, 1417-1424, 1930-1959`. Update row 4.c commentary.
+  - Phantom-contact OSC trajectory override (`sampling_based_c3_controller.py:3803-3853`) — env `PORT_C3_PHANTOM_TRAJ_OVERRIDE=1` (default OFF). Rescues low-force regimes from OSC drift when arm > threshold from box. NEW ROW candidate 4.x (or moves to Subsystem 1 as an executor concern).
+
+- **Env-var rename** (commit `4bd9c99`): `PUSHA_*` → `REFCONF_*` / `PORT_*` / `DIAG_*` across ~250 sites. Every citation of `PUSHA_*` in this map should be rewritten (grep for `PUSHA_` in this file's remaining rows).
+
+Empirical arc-2 progression on T-push tight_goal (30 s sim, `--admm-iter 3`): pre-arc-2 crashed via workspace violation → p90 completes cleanly at trans=0.155 rot=0.387 with all fixes → p95 (with off-ref u_cap=15 + R=0.5 + phantom override) achieves best trans=0.124. Residual 7× gap vs arc-1 winner p73 (trans=0.021) is PHYSICAL (arm-Cart contact-loss cycle) — the port's overpowered `_EE_MASS=1kg` fiction was hiding this constraint.
+
 ---
 
 # Subsystem (1) — Executor / torque path
