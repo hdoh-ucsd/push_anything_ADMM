@@ -1319,6 +1319,86 @@ class LCSFormulator:
             H_lcs[SLT:SLT + n_t, :]               = dt * (J_t @ J_u)
             c_lcs[SLT:SLT + n_t]                  = dt * (J_t @ d_v_offset)
 
+        # =================================================================
+        # 2026-07-26 arc-2 R^7 Anitescu overwrite. Reference default for
+        # push_t is Anitescu (`self._contact_model = "anitescu"` at :86).
+        # Prior port only had Anitescu in EE-space; R^7 was ST-only.
+        # Mirrors reference `c3/multibody/lcs_factory.cc:496-545
+        # FormulateAnitescuContactDynamics`. Overwrites D/E/F/H/c with
+        # friction-folded (J_c = E_tᵀ·Jn + diag(μ)·Jt) formulation:
+        #   n_λ_an = 2·n_c·num_friction_directions = 4·n_c (dirs=2)
+        #   D = [dt² · qdotNv · M⁻¹·J_cᵀ ; dt · M⁻¹·J_cᵀ]
+        #   E = [dt·J_c·Jf_q + E_tᵀ·Jn·vNqdot/dt ; J_c + dt·J_c·Jf_v]
+        #   F = dt·J_c·M⁻¹·J_cᵀ
+        #   H = dt·J_c·J_u
+        #   c = E_tᵀ·phi/dt + dt·J_c·d_v - E_tᵀ·Jn·vNqdot·q/dt
+        # Default-active when _contact_model == "anitescu" (matches EE-space
+        # behavior). ST fallback preserved when _contact_model == "stewart_trinkle".
+        if self._contact_model == "anitescu" and n_c > 0:
+            NUM_FRICTION_DIRECTIONS = 2   # 2·dirs = 4 tangent dirs / contact
+            n_lam_an = 2 * n_c * NUM_FRICTION_DIRECTIONS    # = 4·n_c
+
+            # E_t: (n_c, 4·n_c) — sums tangent-direction λ's per contact
+            E_t_an = np.zeros((n_c, n_lam_an))
+            for i in range(n_c):
+                E_t_an[i, 4*i : 4*(i+1)] = 1.0
+
+            # μ replicated 2·dirs per contact (scalar-or-array μ handling)
+            _mu_arr = np.broadcast_to(np.asarray(mu), (n_c,))
+            anitescu_mu_vec = np.zeros(n_lam_an)
+            for i in range(n_c):
+                anitescu_mu_vec[
+                    2 * NUM_FRICTION_DIRECTIONS * i :
+                    2 * NUM_FRICTION_DIRECTIONS * (i + 1)
+                ] = float(_mu_arr[i])
+            anitescu_mu_diag = np.diag(anitescu_mu_vec)
+
+            # J_c = E_tᵀ·J_n + diag(μ)·J_t  (reference cc:522-523)
+            J_c = E_t_an.T @ J_n + anitescu_mu_diag @ J_t     # (4n_c, n_v)
+            Minv_JcT = M_inv @ J_c.T                          # (n_v, 4n_c)
+
+            # D (reference cc:528-529)
+            D_an = np.zeros((n_x, n_lam_an))
+            D_an[:n_q, :] = (dt * dt) * (N_mat @ Minv_JcT)
+            D_an[n_q:, :] = dt * Minv_JcT
+
+            # E (reference cc:531-534, includes A2 position-forcing split
+            # via the `E_tᵀ·Jn·vNqdot/dt` term; port needs the same when
+            # REFCONF_E_BLOCK_SPLIT=1).
+            E_an = np.zeros((n_lam_an, n_x))
+            E_an[:, :n_q]            = dt * (J_c @ J_q)
+            E_an[:, n_q:n_q + n_v]   = J_c + dt * (J_c @ J_v)
+            if _use_e_block_split_r7 and vNqdot_full is not None:
+                E_an[:, :n_q] += (E_t_an.T @ J_n @ vNqdot_full) / dt
+
+            # F (reference cc:537) — single PSD block
+            F_an = dt * (J_c @ Minv_JcT)
+
+            # H (reference cc:540)
+            H_an = dt * (J_c @ J_u)
+
+            # c (reference cc:543-544)
+            c_an = E_t_an.T @ phi / dt + dt * (J_c @ d_v_offset)
+            if _use_e_block_split_r7 and vNqdot_full is not None:
+                # Position-forcing subtraction with current-q value
+                q_curr = self.plant.GetPositions(context)
+                c_an -= (E_t_an.T @ J_n @ vNqdot_full @ q_curr) / dt
+
+            # Overwrite the ST outputs with the Anitescu LCS.
+            n_lam = n_lam_an
+            D = D_an
+            E_lcs = E_an
+            F_lcs = F_an
+            H_lcs = H_an
+            c_lcs = c_an
+
+            if not getattr(self, '_anitescu_r7_banner', False):
+                self._anitescu_r7_banner = True
+                print(f"[ANITESCU-R7] active: n_lam={n_lam_an} (=4·n_c) "
+                      f"J_c shape={J_c.shape} F PSD block only "
+                      f"(replaces Stewart-Trinkle 6·n_c LCS in R^7 path)",
+                      flush=True)
+
         if not getattr(self, '_printed_contact_frames', False) and J_n.shape[0] > 0:
             self._printed_contact_frames = True
             nc = J_n.shape[0]
