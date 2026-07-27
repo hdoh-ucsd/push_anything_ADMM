@@ -592,6 +592,14 @@ class InnerSolver:
                 _tshape_gate = _ee_space and self._object_shape == "tshape"
                 _u_lo = self._u_lo if _tshape_gate else None
                 _u_hi = self._u_hi if _tshape_gate else None
+                if not _ee_space:
+                    # R^7: gravity-centered u-box at the SAMPLE's arm config
+                    # (plant_ctx currently holds q_seed). Same computation as
+                    # ci_mpc_c3plus's main-solve box — without it, surrogate
+                    # solves fall back to the symmetric ±torque_limit box
+                    # that cannot even contain the gravity-holding torque
+                    # (−34 Nm on joint 2 vs ±30).
+                    _u_lo, _u_hi = self._r7_gravity_centered_ubox(plant_ctx)
                 # §7.67 — plumb _ee_box_pair_idx per-surrogate. Without this,
                 # the shared C3Solver instance uses whatever index the main
                 # planner set at the previous tick (or None on tick 0), so
@@ -1320,6 +1328,45 @@ class InnerSolver:
     # Re-solve a winning sample with full ADMM iters
     # ------------------------------------------------------------------
 
+    def _r7_gravity_centered_ubox(self, plant_ctx=None):
+        """R^7 gravity-centered u-box — mirror of the main-solve box in
+        ci_mpc_c3plus (REFCONF_R7_U_GRAVITY_CENTERED, default ON):
+
+            u ∈ [u_hold − Δ, u_hold + Δ],  u_hold = −τ_g_arm(q),
+            Δ_j = (|J_arm|ᵀ·F_ref)_j,  F_ref from PORT_U_HORIZONTAL/VERTICAL
+            (default 50 N — reference push_t sampling_c3plus_options.yaml),
+            floored at 1 Nm/joint, clipped to ±87 Nm.
+
+        Evaluated at whatever arm config plant_ctx currently holds (the
+        sample's IK'd config during evaluate_sample). With plant_ctx=None
+        (resolve_at_full_iters has no ctx) returns the last computed box —
+        τ_g varies by only a few Nm across sample postures, small against
+        the ~35-50 Nm half-widths. Returns (None, None) when gated off,
+        letting the solver fall back to the scalar torque_limit."""
+        import os as _os_ub
+        if _os_ub.environ.get("REFCONF_R7_U_GRAVITY_CENTERED", "1") != "1":
+            return None, None
+        if plant_ctx is None:
+            return getattr(self, "_last_r7_ubox", (None, None))
+        _n_arm = int(self.n_u)
+        _tau_g = self.plant.CalcGravityGeneralizedForces(plant_ctx)
+        _u_hold = -np.asarray(_tau_g[:_n_arm], dtype=float)
+        _J = self.plant.CalcJacobianTranslationalVelocity(
+            plant_ctx, ad.JacobianWrtVariable.kV,
+            self.ee_frame, np.zeros(3),
+            self.plant.world_frame(), self.plant.world_frame(),
+        )[:, :_n_arm]
+        _F_ref = np.array([
+            float(_os_ub.environ.get("PORT_U_HORIZONTAL", "50.0")),
+            float(_os_ub.environ.get("PORT_U_HORIZONTAL", "50.0")),
+            float(_os_ub.environ.get("PORT_U_VERTICAL",   "50.0")),
+        ])
+        _delta = np.maximum(np.abs(_J).T @ _F_ref, 1.0)
+        _lo = np.maximum(_u_hold - _delta, -87.0)
+        _hi = np.minimum(_u_hold + _delta, +87.0)
+        self._last_r7_ubox = (_lo, _hi)
+        return _lo, _hi
+
     def resolve_at_full_iters(self,
                               r: SampleResult,
                               suppress_io: bool = True) -> SampleResult:
@@ -1338,6 +1385,11 @@ class InnerSolver:
                 _tshape_gate = _ee_space and self._object_shape == "tshape"
                 _u_lo = self._u_lo if _tshape_gate else None
                 _u_hi = self._u_hi if _tshape_gate else None
+                if not _ee_space:
+                    # R^7 gravity-centered u-box (see surrogate site above).
+                    # No plant_ctx in this method — uses the box cached at
+                    # this sample's evaluate_sample pass.
+                    _u_lo, _u_hi = self._r7_gravity_centered_ubox(None)
                 u_seq, x_seq = self.solver.solve(
                     r.x0, r.A, r.B, r.D, r.d, r.J_n, r.J_t, r.mu,
                     r.Q, r.R, r.QN, r.x_ref,
