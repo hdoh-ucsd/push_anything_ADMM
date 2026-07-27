@@ -2983,8 +2983,19 @@ class SamplingC3Controller:
         λ_n=28 but f_cmd pointed AWAY from goal).
 
         Structure:
-            τ_out = clip( u_seq[0] − τ_g_arm + Kp·(q_des − q) + Kd·(v_des − v) )
+            τ_out = clip( u_seq[0] + τ_g_arm + Kp·(q_des − q) + Kd·(v_des − v) )
         where q_des, v_des come from x_seq[1][:n_q_arm] / x_seq[1][n_q:n_q+n_v_arm].
+
+        Gravity contract: main.py universally applies −τ_g on top of this
+        executor's output (main.py "universal-add", both at the planner tick
+        and at every 1 kHz sub-tick). The R^7 LCS models gravity (rhs =
+        B u − Cv + τ_g), so the planner's u_seq is meant for a gravity-FULL
+        plant. Adding +τ_g here nets out main.py's −τ_g, so the plant the
+        planner's torque acts on matches the plant the LCS modeled:
+            applied_total = (−τ_g) + (τ_ff + τ_g + τ_pd) = τ_ff + τ_pd.
+        (Previous form subtracted τ_g here, which — combined with main.py's
+        −τ_g and the anti-gravity content already inside u_seq — compensated
+        gravity twice over and biased the arm with a spurious ≈−2τ_g.)
 
         Returns (τ (n_arm,), diag dict).
         """
@@ -2996,9 +3007,10 @@ class SamplingC3Controller:
         else:
             _tau_ff = np.zeros(n_arm)
 
-        # Gravity comp — apply -tau_g on arm joints so the planner's u_seq
-        # (which was computed against an LCS that includes gravity in `d`)
-        # is applied to a plant with gravity cancelled.
+        # Gravity term — +tau_g to net out main.py's universal −tau_g add
+        # (see docstring "Gravity contract"). The LCS includes gravity, so
+        # u_seq expects a gravity-full plant; main.py's add would otherwise
+        # cancel gravity out from under the planner.
         _tau_g_full = self.plant.CalcGravityGeneralizedForces(plant_ctx)
         _tau_g_arm = np.asarray(_tau_g_full[:n_arm], dtype=float)
 
@@ -3022,8 +3034,8 @@ class SamplingC3Controller:
         _kd = float(_os_r7pd.environ.get("PORT_R7_JOINT_KD", "4.0"))
         _tau_pd = _kp * _q_err + _kd * _v_err
 
-        # Total: feedforward + gravity comp + PD
-        _tau_out = _tau_ff - _tau_g_arm + _tau_pd
+        # Total: feedforward + gravity-restore (nets main.py's −tau_g) + PD
+        _tau_out = _tau_ff + _tau_g_arm + _tau_pd
 
         # Clip to Franka joint torque limit.
         _tau_max = 87.0
