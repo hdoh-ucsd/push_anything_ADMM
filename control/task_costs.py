@@ -428,6 +428,39 @@ class QuadraticManipulationCost:
             # Outer product on the (qw..qz) 4×4 sub-block of Q
             Q[ps:ps+4, ps:ps+4] += self.w_yaw * np.outer(cy, cy)
 
+        # --- Near-goal quaternion-dependent Q_block override ---
+        # Reference sampling_based_c3_controller.cc:1517-1570; mirror of
+        # build_ee_space:887-914 on the R^7 quat slots (ps..ps+3). When
+        # `use_quaternion_dependent_cost` is set AND the wrapper's
+        # crossed_switching_threshold has latched (obj-to-goal < 5 cm),
+        # REPLACE the quat block with the Hessian-of-squared-quaternion-
+        # angle-difference cost (weight 1000) — the reference's sole yaw
+        # driver (w_yaw=0 per reference). Without this, the R^7 planner's
+        # only yaw authority is the base q_vector quat diag (5.0), which
+        # is regularization-scale, not goal-driving.
+        if (self.use_quaternion_dependent_cost
+                and self._crossed_switching_threshold
+                and plant_ctx is not None
+                and current_q is not None):
+            from control.quaternion_hessian import (
+                build_regularized_quaternion_cost,
+            )
+            q_now = np.array([
+                current_q[ps], current_q[ps + 1],
+                current_q[ps + 2], current_q[ps + 3],
+            ])
+            q_goal = np.array([np.cos(a_half), 0.0, 0.0, np.sin(a_half)])
+            Q_quat = build_regularized_quaternion_cost(
+                q_now, q_goal,
+                weight=self.q_quaternion_dependent_weight,
+                regularizer_fraction=
+                    self.q_quaternion_dependent_regularizer_fraction,
+            )
+            # Reference replaces (=) rather than adds — same as
+            # build_ee_space, avoids double-counting base-diag + Hessian.
+            Q[ps:ps + 4, ps:ps + 4] = Q_quat
+            # x_ref quat already seeded to q_goal above.
+
         # --- Linearised EE approach cost (arm joints only) ---
         if plant_ctx is not None and current_q is not None:
             obj_xy  = np.array([current_q[self._obj_x_idx],
