@@ -396,6 +396,32 @@ class QuadraticManipulationCost:
             Q[self._obj_y_idx, self._obj_y_idx] = self.w_obj_xy_pose
             Q[self._obj_z_idx, self._obj_z_idx] = (self.w_obj_z
                                                    + self.w_box_z_pose)
+
+        # --- Reference q_vector_ee_vel group, mapped through J_arm ---
+        # The reference EE-space state carries v_ee as a slot with weight
+        # w_Q · q_vector_ee_vel (push_t: 50 · 5.0 = 250/axis, target 0).
+        # R^7 has no v_ee slot — v_ee = J_arm(q) · v_arm — so the exact
+        # quadratic image on the arm-vel block is
+        #   ‖v_ee‖²_W = v_armᵀ (J_armᵀ W J_arm) v_arm,  W = diag(w_Q·q_vec).
+        # x_ref arm-vel slots stay 0 (reference ee_vel target is zero).
+        # J is evaluated at the current q (same linearization convention as
+        # the EE-approach J_arm block below).
+        if self.use_reference_q_vector and plant_ctx is not None:
+            _J_ee_v = self.plant.CalcJacobianTranslationalVelocity(
+                plant_ctx, self._ad.JacobianWrtVariable.kV,
+                self.ee_frame, np.zeros(3),
+                self.world_frame, self.world_frame,
+            )
+            _J_arm_v = _J_ee_v[:, : self.n_u]   # (3, n_u)
+            _W_vee = self.w_Q * np.asarray(self._q_vec_ee_vel, dtype=float)
+            _vb_arm = self.n_q   # arm-vel slots x[n_q : n_q+n_u]
+            Q[_vb_arm:_vb_arm + self.n_u, _vb_arm:_vb_arm + self.n_u] += \
+                _J_arm_v.T @ np.diag(_W_vee) @ _J_arm_v
+            if not getattr(self, "_ref_eevel_r7_logged", False):
+                self._ref_eevel_r7_logged = True
+                print(f"[REF-QVEC-R7] build(): ee_vel group mapped onto "
+                      f"arm-vel block via J_armᵀ·diag({_W_vee})·J_arm "
+                      f"(x[{_vb_arm}:{_vb_arm + self.n_u}])", flush=True)
         x_ref = np.zeros(self.n_x)
         x_ref[self._obj_x_idx] = target_xy[0]
         x_ref[self._obj_y_idx] = target_xy[1]
