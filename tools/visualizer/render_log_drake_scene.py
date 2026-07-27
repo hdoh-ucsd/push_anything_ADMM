@@ -15,7 +15,7 @@ paint_mode_text.py then paints the mode banner and encodes the MP4.
 
 Usage
 -----
-    PUSHA_CAMERA_PERSPECTIVE=1 python3 tools/visualizer/render_log_drake_scene.py \\
+    PORT_CAMERA_PERSPECTIVE=1 python3 tools/visualizer/render_log_drake_scene.py \\
         full_reference_aligned_772/seed0.log \\
         --out-dir /tmp/seed0_ref_drake_frames \\
         --stride 3
@@ -37,7 +37,7 @@ from PIL import Image
 
 # Force perspective camera pose BEFORE env_builder imports pydrake render
 # helpers.  env_builder reads this env var when add_camera=True.
-os.environ.setdefault("PUSHA_CAMERA_PERSPECTIVE", "1")
+os.environ.setdefault("PORT_CAMERA_PERSPECTIVE", "1")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -134,7 +134,7 @@ def main():
     task_cfg = load_task_cfg(args.task, args.task_id)
 
     print("[render-log-drake] building Drake env (add_camera=True, "
-          f"PUSHA_CAMERA_PERSPECTIVE={os.environ.get('PUSHA_CAMERA_PERSPECTIVE')})",
+          f"PORT_CAMERA_PERSPECTIVE={os.environ.get('PORT_CAMERA_PERSPECTIVE')})",
           flush=True)
     diagram, plant, panda_model, obj_model, meshcat, _pad, _cad = \
         build_environment(task_cfg, add_camera=True)

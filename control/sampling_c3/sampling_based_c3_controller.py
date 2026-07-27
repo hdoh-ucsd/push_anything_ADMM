@@ -192,7 +192,7 @@ class SamplingC3Controller:
         # EE desired-state + planner-tracked velocity feedforward + skip the
         # 100 mm-behind approach-cost proxy). Formerly gated by REF_RECONCILE_
         # APPROACH; now always on. Requires always-on LCS row
-        # (LCS_ALWAYS_ON_EE_BOX=1) — without it the removed proxy re-opens
+        # (PORT_LCS_ALWAYS_ON_EE_BOX=1) — without it the removed proxy re-opens
         # the free-mode freeze trap.
         import os as _os_rec
         # §7.35 — feedforward-accel SUB-GATE (§7.34 banked, default-OFF).
@@ -203,23 +203,23 @@ class SamplingC3Controller:
         self._reconcile_feedforward_accel = (
             bool(int(_env_ffa)) if _env_ffa else False)
 
-        # §7.55 — PUSHA_DISABLE_CONTACT_LOSS_GATE (default-OFF) skips the
+        # §7.55 — PORT_DISABLE_CONTACT_LOSS_GATE (default-OFF) skips the
         # CONTACT-LOSS-EXIT watchdog at _solve_plan() that forces c3→repos
         # after `_no_ee_box_streak ≥ contact_loss_threshold_*_s/dt_ctrl`
         # consecutive no-contact ticks. The reference (dairlib_sampling_c3
         # @257e3ed, systems/controllers/sampling_based_c3_controller.cc:1150-
         # 1184) has NO such watchdog — it exits c3 only via cost+hysteresis
-        # or the cost-based progress timeout. With PUSHA_DISABLE_C3_OVERRIDE=1
+        # or the cost-based progress timeout. With PORT_DISABLE_C3_OVERRIDE=1
         # (§7.51), the disengage threshold drops to contact_loss_threshold_
         # default_s = 5 ticks at 100 Hz, which bounces c3 out before contact
-        # admits (§7.54 root-cause). This flag is SEPARATE from PUSHA_DISABLE_
-        # C3_OVERRIDE so the effect of the watchdog removal is cleanly
+        # admits (§7.54 root-cause). This flag is SEPARATE from
+        # PORT_DISABLE_C3_OVERRIDE so the effect of the watchdog removal is cleanly
         # attributable. Default-OFF byte-identical preserved.
         # Default flipped to disable the port-only watchdog by default —
         # the reference dispatcher has no such gate. Explicit re-enable
-        # via PUSHA_DISABLE_CONTACT_LOSS_GATE=0 for legacy runs.
+        # via PORT_DISABLE_CONTACT_LOSS_GATE=0 for legacy runs.
         self._disable_contact_loss_gate = (
-            _os_rec.environ.get("PUSHA_DISABLE_CONTACT_LOSS_GATE", "1") == "1")
+            _os_rec.environ.get("PORT_DISABLE_CONTACT_LOSS_GATE", "1") == "1")
 
         # Force-tracking follows params.use_force_tracking (True by default).
         # The reconcile path no longer silently overrides it to False —
@@ -231,12 +231,12 @@ class SamplingC3Controller:
                   "accel ENABLED (§7.34 OVER-DRIVES regime; source-conditional)",
                   flush=True)
 
-        # §7.42 — when PUSHA_REF_OSC_ALIGN=1, override W_force to 1.0 to match
+        # §7.42 — when REFCONF_OSC_ALIGN=1, override W_force to 1.0 to match
         # the reference's `LambdaEndEffectorW = diag(1,1,1)` (osc_params.yaml:74).
         # The bundling env flag (set in main.py) wires the routing + u-bounds +
         # R-cost env vars together; W_force needs its own override here because
         # it is read at construction (not via env at use-site like the others).
-        _ref_align = (os.environ.get("PUSHA_REF_OSC_ALIGN", "0") == "1")
+        _ref_align = (os.environ.get("REFCONF_OSC_ALIGN", "0") == "1")
         _W_force_val = (1.0 if _ref_align
                         else float(getattr(params, "W_force", 100.0)))
         self.executor = OperationalSpaceController(
@@ -602,9 +602,9 @@ class SamplingC3Controller:
             to zero on momentary contact loss.
         """
         # Force-routing prototype (env-gated, default-inert). When
-        # PUSHA_FORCE_ROUTING=u_sol AND the planner is EE-space, return the
+        # PORT_FORCE_ROUTING=u_sol AND the planner is EE-space, return the
         # planner's solved u[0] directly (with a one-shot direction-confirm
-        # print so we can verify sign on first c3 entry). PUSHA_FORCE_ROUTING
+        # print so we can verify sign on first c3 entry). PORT_FORCE_ROUTING
         # unset or 'off' → falls through to the legacy -g_hat path below
         # (bit-identical to pre-prototype). 'neg_u_sol' returns -u_seq[0]
         # for the opposite sign convention.
@@ -613,13 +613,13 @@ class SamplingC3Controller:
         # See sampling_based_c3_controller.cc:1820-1832 (reference).
         #
         # EE-space path (n_u=3): use u_sol[0] directly via
-        # PUSHA_FORCE_ROUTING=u_sol. R^7 path: recovery via pinv(J^T)
+        # PORT_FORCE_ROUTING=u_sol. R^7 path: recovery via pinv(J^T)
         # doesn't yield a clean Cartesian direction (verified — box
         # tumbled 180°), so R^7 falls through to the fabricated -g_hat
         # path below. Default OFF (fabricated path bit-identical to
         # pre-prototype).
         import os as _os
-        _fr = _os.environ.get("PUSHA_FORCE_ROUTING", "off").lower()
+        _fr = _os.environ.get("PORT_FORCE_ROUTING", "off").lower()
         if _fr in ("u_sol", "neg_u_sol"):
             _use_ee = bool(getattr(self.base_mpc, "use_ee_space", False))
             _u_seq  = getattr(self.base_mpc, "_last_u_seq", None)
@@ -1389,7 +1389,7 @@ class SamplingC3Controller:
         # E2 surrogate-side x_pred clamp — pass base_mpc's cached predicted
         # EE state (x_pred_curr_plan from prev tick's primary solve) so the
         # k=0 surrogate can clamp its x0.p_ee too. Default OFF (env-gated
-        # on inner_solve side via PUSHA_C3_SURROGATE_XPRED_CLAMP); this
+        # on inner_solve side via REFCONF_C3_SURROGATE_XPRED_CLAMP); this
         # setter always fires so enabling the env var is enough.
         _xpred_plan = getattr(self.base_mpc, "_x_pred_curr_plan", None)
         _nom_accel  = float(getattr(self.base_mpc, "nominal_ee_accel", 0.0))
@@ -1422,12 +1422,12 @@ class SamplingC3Controller:
         # Unify by seeding c_samples from `c_C3_raw` when the env-gate is on.
         # Downstream inflations (finished_reposition_cost, buffer append) then
         # apply UNIFORMLY to both progress and gate signals — no split.
-        # Env: PUSHA_MODE_SWITCH_USE_C3_RAW=1 (default ON = reference-conformant).
+        # Env: REFCONF_MODE_SWITCH_USE_C3_RAW=1 (default ON = reference-conformant).
         # In current push_t config (w_align=w_travel=w_rot=0) c_C3_raw equals
         # r.c_sample so this is a no-op; the change is defensive.
         import os as _os_e3
         _use_c3_raw_for_gate = (
-            _os_e3.environ.get("PUSHA_MODE_SWITCH_USE_C3_RAW", "1") == "1")
+            _os_e3.environ.get("REFCONF_MODE_SWITCH_USE_C3_RAW", "1") == "1")
         if _use_c3_raw_for_gate:
             c_samples = [float(r.c_C3_raw) for r in results]
         else:
@@ -2015,7 +2015,7 @@ class SamplingC3Controller:
                       f"buffer_size={len(self.unsuccessful_buffer)}",
                       flush=True)
 
-        # Per-tick sample-selection trace. Env-gated (PUSHA_ALL_SAMP=1,
+        # Per-tick sample-selection trace. Env-gated (PORT_ALL_SAMP=1,
         # default OFF). Answers "why doesn't the controller try other
         # samples?" by dumping, for every tick: mode, switch reason, raw
         # argmin (k_star), best-non-current index/cost, effective target
@@ -2025,7 +2025,7 @@ class SamplingC3Controller:
         # would reposition to (:2354-2357); in c3 mode the plan runs off
         # base_mpc at k=0 rather than a sample, so `target` is informational.
         import os as _os_asamp
-        if _os_asamp.environ.get("PUSHA_ALL_SAMP", "0") == "1":
+        if _os_asamp.environ.get("PORT_ALL_SAMP", "0") == "1":
             _short = {"current": "cur", "prev_repos": "prv", "buffer": "buf"}
             _lstr = ",".join(_short.get(lbl, lbl.replace("strat_", "s"))
                              for lbl in labels)
@@ -2038,10 +2038,10 @@ class SamplingC3Controller:
                   flush=True)
 
         # §7.56 Stage 1 — [COST-DECOMP] diagnostic. Gated by
-        # PUSHA_COST_DECOMP_LOG=1 (default-OFF) so flag=0 stays byte-identical
+        # DIAG_COST_DECOMP_LOG=1 (default-OFF) so flag=0 stays byte-identical
         # to the prior behaviour, including stdout.
         import os as _os_cd
-        if _os_cd.environ.get("PUSHA_COST_DECOMP_LOG", "0") == "1":
+        if _os_cd.environ.get("DIAG_COST_DECOMP_LOG", "0") == "1":
             _r0 = results[0]
             if getattr(_r0, "c_C3_raw_full", float("inf")) != float("inf"):
                 _bostr = (f"{best_other_cost:.2f}"
@@ -2142,7 +2142,7 @@ class SamplingC3Controller:
                 # (reference-faithful). One-shot log to confirm behavior.
                 if self.log_diag and not getattr(
                         self, "_755_skip_logged", False):
-                    print(f"[§7.55] PUSHA_DISABLE_CONTACT_LOSS_GATE=1 — "
+                    print(f"[§7.55] PORT_DISABLE_CONTACT_LOSS_GATE=1 — "
                           f"CONTACT-LOSS-EXIT skipped at step={self._step} "
                           f"(streak={self._no_ee_box_streak} "
                           f"threshold={disengage_threshold} "
@@ -2402,13 +2402,13 @@ class SamplingC3Controller:
             # plant_ctx (not a stale value from a surrogate solve at a
             # non-current sample position). Compares LCS-cached signed
             # distance for the EE-BOX pair against a live Drake query at the
-            # current plant_ctx. Env-gated (PUSHA_CONTACT_CHECK=1, default
+            # current plant_ctx. Env-gated (PORT_CONTACT_CHECK=1, default
             # OFF). If consistent=N frequently, _last_contact_info is stale
             # and any decision downstream keyed on `contact=Y` (sample
             # ranking, `productive` classification, k*=0 preference) is
             # being fed stale contact geometry.
             import os as _os_cc
-            if _os_cc.environ.get("PUSHA_CONTACT_CHECK", "0") == "1":
+            if _os_cc.environ.get("PORT_CONTACT_CHECK", "0") == "1":
                 try:
                     _lcs_ee_box_info = None
                     if _ci:
@@ -2770,9 +2770,9 @@ class SamplingC3Controller:
                 # flipping between cached samples (the leading hypothesis
                 # for the rebuild storm at 1 kHz).
                 import os as _os_lt2
-                if (_os_lt2.environ.get("PUSHA_LANDING_TRACE", "0") == "1"
+                if (_os_lt2.environ.get("DIAG_LANDING_TRACE", "0") == "1"
                         and self._step >= int(_os_lt2.environ.get(
-                            "PUSHA_LANDING_TRACE_FROM", "1600"))):
+                            "DIAG_LANDING_TRACE_FROM", "1600"))):
                     _label = labels[target_idx]
                     _cs_str = ",".join(f"{float(c):.4f}" for c in c_samples)
                     print(f"[LANDING-SELECT] step={self._step} "
@@ -2917,7 +2917,7 @@ class SamplingC3Controller:
                     # leading-hypothesis suspect for the per-tick rebuild
                     # storm at 1 kHz). Default-OFF.
                     import os as _os_lt0
-                    if _os_lt0.environ.get("PUSHA_LANDING_TRACE", "0") == "1":
+                    if _os_lt0.environ.get("DIAG_LANDING_TRACE", "0") == "1":
                         print(f"[LANDING-REFRESH] step={self._step} "
                               f"_refresh_buffer_on_arrival FIRED",
                               flush=True)
@@ -3186,7 +3186,7 @@ class SamplingC3Controller:
             # prediction. Used to diagnose whether the planner PREDICTS
             # sustained contact at AT-CoM or only tap-retreat.
             import os as _os
-            if _os.environ.get("PUSHA_HORIZON_LAM_DUMP", "0") == "1":
+            if _os.environ.get("DIAG_HORIZON_LAM_DUMP", "0") == "1":
                 _hl_step = getattr(self, "_hl_c3_tick", 0) + 1
                 self._hl_c3_tick = _hl_step
                 if _hl_step <= 50 or _hl_step % 20 == 0:
@@ -3274,8 +3274,8 @@ class SamplingC3Controller:
                 _lam_des = np.zeros(3)
 
             import os as _os_fr
-            if _os_fr.environ.get("PUSHA_FORCE_ROUTE_TRACE", "0") == "1":
-                _fr_env = _os_fr.environ.get("PUSHA_FORCE_ROUTING", "off").lower()
+            if _os_fr.environ.get("DIAG_FORCE_ROUTE_TRACE", "0") == "1":
+                _fr_env = _os_fr.environ.get("PORT_FORCE_ROUTING", "off").lower()
                 _u0 = getattr(self.base_mpc, "_last_u_seq", None)
                 if _u0 is not None and hasattr(_u0, "shape") and _u0.ndim == 2 and _u0.shape[1] == 3:
                     _u_seq0 = np.asarray(_u0[0], dtype=float).reshape(3)
@@ -3295,8 +3295,8 @@ class SamplingC3Controller:
             # below 2 mm anywhere in the horizon) and ship a contact-seeking
             # p_ee_des to the OSC, or does it park p_ee_des in the [2,5 mm)
             # hover band and leave the OSC tracking a hovering setpoint?
-            # Gated by PUSHA_SETPOINT_TRACE=1 (default-OFF). EE-space-only.
-            if (_os_fr.environ.get("PUSHA_SETPOINT_TRACE", "0") == "1"
+            # Gated by DIAG_SETPOINT_TRACE=1 (default-OFF). EE-space-only.
+            if (_os_fr.environ.get("DIAG_SETPOINT_TRACE", "0") == "1"
                     and _use_ee_space and _x_seq is not None and len(_x_seq) >= 2):
                 _box_now = np.array([
                     current_q[self._obj_x_idx],
@@ -3345,9 +3345,9 @@ class SamplingC3Controller:
             # (3) predicted box-CoM displacement over the full horizon vs
             # goal direction (coherence: does the predicted box TRANSLATE
             # under u_sol?), (4) ADMM terminal state (pr, dr, iters/max,
-            # converged?). Gated by PUSHA_CONSISTENCY_TRACE=1; default-OFF;
+            # converged?). Gated by DIAG_CONSISTENCY_TRACE=1; default-OFF;
             # EE-space-only.
-            if (_os_fr.environ.get("PUSHA_CONSISTENCY_TRACE", "0") == "1"
+            if (_os_fr.environ.get("DIAG_CONSISTENCY_TRACE", "0") == "1"
                     and _use_ee_space and _x_seq is not None
                     and len(_x_seq) >= 2):
                 _u_seq_full = getattr(self.base_mpc, "_last_u_seq", None)
@@ -3439,17 +3439,17 @@ class SamplingC3Controller:
             # ground), so lam_n.size >= 1 even with no EE-BOX pair.
             _ee_box_pairs = getattr(self.base_mpc.formulator,
                                     "_last_ee_box_contacts", [])
-            # §7.51 — PUSHA_DISABLE_C3_OVERRIDE (default-OFF) skips the LTD
+            # §7.51 — PORT_DISABLE_C3_OVERRIDE (default-OFF) skips the LTD
             # APPROACH-OVERRIDE block entirely, leaving _p_ee_des at the FK
             # source (_x_seq[1][7:10] at line 2263). Validated as load-bearing
-            # for the first box closure in §7.51 (with PUSHA_EE_APPROACH_FACE_
-            # TARGET=1 + w_ee_approach=8000 + W_force=1). Default-OFF
+            # for the first box closure in §7.51 (with PORT_EE_APPROACH_FACE_TARGET=1
+            # + w_ee_approach=8000 + W_force=1). Default-OFF
             # byte-identical preserved. One-shot log on first c3 tick.
             _disable_c3_override = (_os.environ.get(
-                "PUSHA_DISABLE_C3_OVERRIDE", "0") == "1")
+                "PORT_DISABLE_C3_OVERRIDE", "0") == "1")
             if _disable_c3_override and not getattr(
                     self, "_751_banner_printed", False):
-                print("[§7.51] PUSHA_DISABLE_C3_OVERRIDE=1 — LTD APPROACH-"
+                print("[§7.51] PORT_DISABLE_C3_OVERRIDE=1 — LTD APPROACH-"
                       "OVERRIDE skipped in c3; p_ee_des = FK(x_seq[1][7:10])",
                       flush=True)
                 self._751_banner_printed = True
@@ -3783,7 +3783,7 @@ class SamplingC3Controller:
                     getattr(self.base_mpc, "dt_pose", _dt_plan))
             _N_plan = int(getattr(self.base_mpc, "horizon", 5))
             # 2026-07-26 arc-2 phantom-contact override:
-            # LCS_ALWAYS_ON_EE_BOX=1 injects an EE-BOX pair into the LCS even
+            # PORT_LCS_ALWAYS_ON_EE_BOX=1 injects an EE-BOX pair into the LCS even
             # when arm is physically far from box (bypasses ref's 2mm signed-
             # distance threshold). Under low-force regimes (u<friction breakout)
             # this creates a feedback loop:
@@ -3799,7 +3799,7 @@ class SamplingC3Controller:
             # phantom_dist_thresh. Reference-directional (moves arm TOWARD
             # box) rather than reference-conformant (which would just drop
             # the phantom-contact via signed-distance threshold, but that's
-            # LCS_ALWAYS_ON_EE_BOX=0). Env-gated PUSHA_C3_PHANTOM_TRAJ_OVERRIDE=1
+            # PORT_LCS_ALWAYS_ON_EE_BOX=0). Env-gated PORT_C3_PHANTOM_TRAJ_OVERRIDE=1
             # (default OFF, byte-identical when disabled).
             _box_xy_now = np.array([
                 current_q[self._obj_x_idx],
@@ -3808,9 +3808,9 @@ class SamplingC3Controller:
             _ee_box_xy_dist = float(np.linalg.norm(
                 np.asarray(ee_pos_now[:2], dtype=float) - _box_xy_now))
             _phantom_dist_thresh = float(_os.environ.get(
-                "PUSHA_C3_PHANTOM_DIST_THRESH", "0.10"))
+                "PORT_C3_PHANTOM_DIST_THRESH", "0.10"))
             _use_phantom_override = (
-                _os.environ.get("PUSHA_C3_PHANTOM_TRAJ_OVERRIDE", "0") == "1"
+                _os.environ.get("PORT_C3_PHANTOM_TRAJ_OVERRIDE", "0") == "1"
                 and _ee_box_xy_dist > _phantom_dist_thresh
                 and _p_ee_des is not None)
             if _use_phantom_override:
@@ -3901,7 +3901,7 @@ class SamplingC3Controller:
                 a_ee_desired = _a_ee_des,
                 mode         = "c3",  # §7.70 — reference-gain swap gate (now default)
                 # IK-projected joint-space guidance for tshape c3 mode
-                # (set only when PUSHA_TSHAPE_C3_GEOM=1 fires); None
+                # (set only when PORT_TSHAPE_C3_GEOM=1 fires); None
                 # otherwise → OSC falls back to constructor's q_nominal.
                 q_nominal_override = _q_arm_ik,
             )
@@ -3982,7 +3982,7 @@ class SamplingC3Controller:
             # Free-mode position target.
             #
             # Stage A — Reposition mechanism port (env-flag
-            # PUSHA_REPOSITION_PWL=1, params.use_reposition_pwl_trajectory).
+            # REFCONF_REPOSITION_PWL=1, params.use_reposition_pwl_trajectory).
             # When ON: build/refresh a RepositionTrajectory at planner
             # cadence (or on target change > 5 mm), eval at current sim_t
             # to get (p_des, v_des), feed to OSC. The legacy per-tick
@@ -4036,14 +4036,14 @@ class SamplingC3Controller:
                 _need_rebuild = True
 
                 # Stage C landing-storm trace — gated, default-OFF.
-                # Window: step >= PUSHA_LANDING_TRACE_FROM (default 1600 at
+                # Window: step >= DIAG_LANDING_TRACE_FROM (default 1600 at
                 # 1 kHz; ~step 160 at 100 Hz to capture the same sim-time
                 # window). One consolidated emit per tick at the rebuild
                 # gate carrying the full chain state. The fix is decided
                 # AFTER the read — this block adds NO behavior change.
                 import os as _os_lt
-                _trace_on = _os_lt.environ.get("PUSHA_LANDING_TRACE", "0") == "1"
-                _trace_from = int(_os_lt.environ.get("PUSHA_LANDING_TRACE_FROM", "1600"))
+                _trace_on = _os_lt.environ.get("DIAG_LANDING_TRACE", "0") == "1"
+                _trace_from = int(_os_lt.environ.get("DIAG_LANDING_TRACE_FROM", "1600"))
                 if _trace_on and self._step >= _trace_from:
                     _built = self._pwl_traj_built_for_target
                     if _built is not None:

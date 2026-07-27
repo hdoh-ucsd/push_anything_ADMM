@@ -31,21 +31,38 @@ esac
 
 STEM="${NAME:-push_t_$(date +%Y%m%d_%H%M%S)}"
 
-# §7.73 four production env flags + §7.75c support bundle (see run_box.sh
-# for provenance). Ported unchanged to push_t; the T-shape task hasn't been
-# swept against these knobs yet, so the bundle may need re-tuning.
-# REF_RECONCILE_APPROACH retired 2026-07-10 — its =1 behaviour is the default.
-# PUSHA_DECOUPLE_RECONCILE_FORCE_TRACKING no longer needed (was a workaround
-# for the retired REF_RECONCILE_APPROACH=1 silent force-tracking-off).
-PUSHA_G_WEIGHT_EE_BOX_FINAL=1 \
-PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 \
-PUSHA_STAGE5_U_HORIZONTAL=50 \
-PUSHA_STAGE5_U_VERTICAL=50 \
-PUSHA_STAGE5_R_VECTOR=0.01,0.01,0.01 \
-LCS_ALWAYS_ON_EE_BOX=1 \
-PUSHA_FORCE_ROUTING=u_sol \
-PUSHA_EE_APPROACH_FACE_TARGET=1 \
-PUSHA_DISABLE_C3_OVERRIDE=1 \
+# 2026-07-26: env bundle pruned to reference-conformant flags + reference-
+# matching VALUES set via port-specific mechanisms.
+#
+# KEPT — pure reference-conformance opt-ins:
+#   REFCONF_OSC_C3_MODE_GAINS=1 — swaps port's c3-mode OSC gains to
+#       reference values (§7.70).
+#   PORT_DISABLE_C3_OVERRIDE=1        — disables port-only APPROACH-OVERRIDE
+#       block (§7.51). Removing this workaround moves TOWARD reference.
+#
+# KEPT — port mechanism, reference-matching VALUE:
+#   PORT_U_HORIZONTAL/VERTICAL=50 — per-axis EE-force cap. Mechanism
+#       is port-only, but the 50 N value matches reference push_t's operating
+#       force regime. Without this flag, main.py falls back to a 30 N scalar
+#       cap — a 40% reduction that hurts metrics (p97 rot regressed +46%
+#       vs p90 with this dropped alongside other flags).
+#   PORT_EE_APPROACH_FACE_TARGET=1 — re-targets `w_ee_approach`'s x_ref to
+#       the actual box-face contact point (matches reference q_vector on
+#       EE position pointing at contact face).
+#
+# REMOVED — port-only, no reference analog:
+#   PORT_G_WEIGHT_EE_BOX_FINAL=1  — Bui §IV-B.2 final-iter G-weighting;
+#       port-only ST-layout hack.
+#   PORT_R_VECTOR          — R override; identical to w_torque default.
+#   PORT_LCS_ALWAYS_ON_EE_BOX=1         — phantom EE-BOX injection; reference
+#       uses the 2mm signed-distance threshold. Explicitly set to 0 here.
+#   PORT_FORCE_ROUTING=u_sol      — port-only force-routing hack.
+PORT_LCS_ALWAYS_ON_EE_BOX=0 \
+REFCONF_OSC_C3_MODE_GAINS=1 \
+PORT_DISABLE_C3_OVERRIDE=1 \
+PORT_U_HORIZONTAL=50 \
+PORT_U_VERTICAL=50 \
+PORT_EE_APPROACH_FACE_TARGET=1 \
 python main.py push_t \
     --solver c3plus \
     --ee-space \

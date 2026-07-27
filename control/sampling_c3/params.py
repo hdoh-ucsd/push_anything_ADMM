@@ -794,7 +794,7 @@ class SamplingC3Params:
     # PiecewiseLinearTracker) and instead builds a full N-knot Cartesian
     # PWL trajectory (RepositionTrajectory) at planner cadence, feeding
     # (p_des, v_des) to the OSC at each control tick. Default False →
-    # legacy path. Read from env var PUSHA_REPOSITION_PWL=1 in main.py
+    # legacy path. Read from env var REFCONF_REPOSITION_PWL=1 in main.py
     # at controller construction. See alignment plan §3 Stage A.
     # Reference uses derivative-carrying PWL trajectory (LcmTrajectoryReceiver
     # → FirstOrderHold PP) so OSC gets (p_des, v_des). Default ON.

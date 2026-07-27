@@ -43,8 +43,8 @@ def test_default_c3_mode_uses_port_gains(monkeypatch):
     the default was reverted because it was 200× too gentle for the port's
     clean Q (66.5% closure vs the clean 75.3% baseline on the same stack).
     """
-    monkeypatch.delenv("PUSHA_OSC_C3_MODE_REFERENCE_GAINS", raising=False)
-    monkeypatch.delenv("PUSHA_REF_OSC_ALIGN", raising=False)
+    monkeypatch.delenv("REFCONF_OSC_C3_MODE_GAINS", raising=False)
+    monkeypatch.delenv("REFCONF_OSC_ALIGN", raising=False)
     plant = _stub_plant()
     ee_frame = MagicMock()
     osc = OperationalSpaceController(
@@ -59,9 +59,9 @@ def test_default_c3_mode_uses_port_gains(monkeypatch):
 
 
 def test_opt_in_env_var_enables_reference_c3_gains(monkeypatch):
-    """PUSHA_OSC_C3_MODE_REFERENCE_GAINS=1 activates reference gains in c3 mode."""
-    monkeypatch.setenv("PUSHA_OSC_C3_MODE_REFERENCE_GAINS", "1")
-    monkeypatch.delenv("PUSHA_REF_OSC_ALIGN", raising=False)
+    """REFCONF_OSC_C3_MODE_GAINS=1 activates reference gains in c3 mode."""
+    monkeypatch.setenv("REFCONF_OSC_C3_MODE_GAINS", "1")
+    monkeypatch.delenv("REFCONF_OSC_ALIGN", raising=False)
     plant = _stub_plant()
     ee_frame = MagicMock()
     osc = OperationalSpaceController(

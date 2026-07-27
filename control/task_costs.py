@@ -162,15 +162,15 @@ class QuadraticManipulationCost:
 
         c = cost_cfg
         self.w_obj_xy      = float(c.get("w_obj_xy",      1000.0))
-        # Path-C Pareto probe (2026-07-09): PUSHA_W_OBJ_XY_MULT scales w_obj_xy
+        # Path-C Pareto probe (2026-07-09): PORT_W_OBJ_XY_MULT scales w_obj_xy
         # in-place after yaml load. Default 1.0 = byte-identical. Used to sweep
         # closure recovery at N=5 without touching tasks.yaml.
         import os as _os_woxm
-        _w_obj_xy_mult = float(_os_woxm.environ.get("PUSHA_W_OBJ_XY_MULT", "1.0"))
+        _w_obj_xy_mult = float(_os_woxm.environ.get("PORT_W_OBJ_XY_MULT", "1.0"))
         if _w_obj_xy_mult != 1.0:
             _orig = self.w_obj_xy
             self.w_obj_xy *= _w_obj_xy_mult
-            print(f"[PUSHA_W_OBJ_XY_MULT] w_obj_xy {_orig:.1f} → "
+            print(f"[PORT_W_OBJ_XY_MULT] w_obj_xy {_orig:.1f} → "
                   f"{self.w_obj_xy:.1f} (×{_w_obj_xy_mult:.2f})", flush=True)
         self.w_obj_z       = float(c.get("w_obj_z",         10.0))
         self.w_box_z       = float(c.get("w_box_z",        100.0))
@@ -277,12 +277,12 @@ class QuadraticManipulationCost:
         self.lateral_align_full_scale = float(
             c.get("lateral_align_full_scale", 0.05))
 
-        # Geometry (used by PUSHA_BOX_DPUSH_FIX for the box face-target proxy).
+        # Geometry (used by PORT_BOX_DPUSH_FIX for the box face-target proxy).
         # object_shape ∈ {"box", "sphere", "tshape", None}. Only "box" activates
         # the geometry-derived d_push override. object_half_extent is the box's
         # half-size along the push axis (task_cfg["size"][0]/2 for cubes).
         # pusher_radius mirrors sim.env_builder.PUSHER_RADIUS (honors the
-        # PUSHA_PUSHER_RADIUS env override).
+        # PORT_PUSHER_RADIUS env override).
         self._object_shape       = object_shape
         self._object_half_extent = object_half_extent
         self._pusher_radius      = pusher_radius
@@ -931,7 +931,7 @@ class QuadraticManipulationCost:
                 ee_xy          = ee_pos[:2]
                 ee_to_box_dist = float(np.linalg.norm(ee_xy - obj_xy))
 
-                # PUSHA_BOX_DPUSH_FIX (2026-07-09) — d_push is a SPHERE-CENTER
+                # PORT_BOX_DPUSH_FIX (2026-07-09) — d_push is a SPHERE-CENTER
                 # target, but the yaml value (0.05 for box tasks) equals the
                 # box half-extent, placing the sphere-CENTER on the box face
                 # plane → sphere-SURFACE penetrates INTO the box by the tip
@@ -947,7 +947,7 @@ class QuadraticManipulationCost:
                 # separately validated at 75.5 % closure.
                 import os as _os_dpush
                 _use_dpush_fix = (
-                    _os_dpush.environ.get("PUSHA_BOX_DPUSH_FIX", "0") == "1"
+                    _os_dpush.environ.get("PORT_BOX_DPUSH_FIX", "0") == "1"
                     and self._object_shape == "box"
                     and self._object_half_extent is not None
                     and self._pusher_radius is not None
@@ -957,7 +957,7 @@ class QuadraticManipulationCost:
                                    + float(self._pusher_radius)
                                    + 0.0005)
                     if not getattr(self, "_dpush_fix_logged", False):
-                        print(f"[PUSHA_BOX_DPUSH_FIX] enabled: "
+                        print(f"[PORT_BOX_DPUSH_FIX] enabled: "
                               f"d_push={self.d_push:.4f} → {_d_push_eff:.4f} m "
                               f"(box_half={self._object_half_extent:.4f}, "
                               f"pusher_r={self._pusher_radius:.4f}, "
@@ -982,7 +982,7 @@ class QuadraticManipulationCost:
                     obj_xy[1] - (self.d_push + 0.15) * g_hat[1],
                     self.z_ref,
                 ])
-                # §7.46 — when PUSHA_EE_APPROACH_FACE_TARGET=1, re-target the
+                # §7.46 — when PORT_EE_APPROACH_FACE_TARGET=1, re-target the
                 # planner-cost proxy to the contact-face point (proxy_3d =
                 # obj_xy − d_push·g_hat) directly, bypassing the 3-stage
                 # pre_approach→approach→proxy blend. §7.45 confirmed the
@@ -996,10 +996,10 @@ class QuadraticManipulationCost:
                 # IK/reposition/APPROACH-OVERRIDE path is independent.
                 import os as _os_face
                 if (_os_face.environ.get(
-                        "PUSHA_EE_APPROACH_FACE_TARGET", "0") == "1"):
+                        "PORT_EE_APPROACH_FACE_TARGET", "0") == "1"):
                     effective_proxy = proxy_3d.copy()
                     if not getattr(self, "_face_target_logged", False):
-                        print(f"[§7.46] PUSHA_EE_APPROACH_FACE_TARGET=1 "
+                        print(f"[§7.46] PORT_EE_APPROACH_FACE_TARGET=1 "
                               f"effective_proxy=proxy_3d="
                               f"({proxy_3d[0]:+.3f},{proxy_3d[1]:+.3f},"
                               f"{proxy_3d[2]:+.3f}) "
@@ -1036,7 +1036,7 @@ class QuadraticManipulationCost:
                               f"{extra_shift[1]*1000:+.1f})", flush=True)
 
                 # DIRECT EE-approach cost on the p_ee state slot — SKIPPED.
-                # §7.31: with the always-on EE-BOX row (LCS_ALWAYS_ON_EE_BOX=1)
+                # §7.31: with the always-on EE-BOX row (PORT_LCS_ALWAYS_ON_EE_BOX=1)
                 # keeping D ≠ 0, the proxy's anti-freeze role is unnecessary
                 # and the reference (sampling_based_c3_controller.cc:500,
                 # x_desired = GetDesiredState — the sampled face point in
@@ -1052,19 +1052,19 @@ class QuadraticManipulationCost:
                 # receives a low z-target (no plan/OSC tension). Design
                 # in experiments/§7.75c_repro/REPORT.md:117-133.
                 # Target = sampling_height by default (contact-plane EE z).
-                _z_hold_on = _os_rec.environ.get("PUSHA_EE_Z_HOLD", "0") == "1"
+                _z_hold_on = _os_rec.environ.get("PORT_EE_Z_HOLD", "0") == "1"
                 if _z_hold_on:
                     _w_zh = float(_os_rec.environ.get(
-                        "PUSHA_EE_Z_HOLD_W", "1000.0"))
+                        "PORT_EE_Z_HOLD_W", "1000.0"))
                     # Default target = self.z_ref (cost_cfg["z_ee_target"],
                     # 0.05 m for cube; matches sampling_height contact-plane).
                     _z_tgt = float(_os_rec.environ.get(
-                        "PUSHA_EE_Z_HOLD_TARGET", str(self.z_ref)))
+                        "PORT_EE_Z_HOLD_TARGET", str(self.z_ref)))
                     Q[9, 9] += _w_zh
                     x_ref[9] = _z_tgt
                     if not getattr(self, "_z_hold_logged", False):
                         print(
-                            f"[§7.76-Z-HOLD] PUSHA_EE_Z_HOLD=1  "
+                            f"[§7.76-Z-HOLD] PORT_EE_Z_HOLD=1  "
                             f"w_zh={_w_zh}  z_tgt={_z_tgt:.4f}m",
                             flush=True,
                         )
@@ -1090,11 +1090,11 @@ class QuadraticManipulationCost:
         # --- R: torque cost is now an EE-force cost. Same scalar weight,
         #     applied to R^3 input. ---
         # Stage 5 per-axis R override (env-gated, default-inert). When
-        # PUSHA_STAGE5_R_VECTOR is set as "rx,ry,rz" (e.g., "0.01,0.01,1"),
+        # PORT_R_VECTOR is set as "rx,ry,rz" (e.g., "0.01,0.01,1"),
         # use np.diag([rx,ry,rz]); else scalar w_torque*I (bit-identical to
         # pre-Stage-5).
         import os as _os
-        _r_s = _os.environ.get("PUSHA_STAGE5_R_VECTOR", "")
+        _r_s = _os.environ.get("PORT_R_VECTOR", "")
         if _r_s and n_u == 3:
             try:
                 _rv = [float(x) for x in _r_s.split(",")]

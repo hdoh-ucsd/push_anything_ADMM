@@ -15,8 +15,8 @@
 **REVIEW LABEL ADJUSTMENTS (2026-06-25, see canonical plan §7.4):** Class B (B1-B11) is RATE-INDEPENDENCE-ONLY (no reference analog; alignment-status-OPEN), NOT "reconciled." Class A constants are PRESERVED at the port's 100 Hz sim-time-equivalent on this pass (reference's 5/5/16 ms values are a separate later alignment decision). A3 LOCATED on the reference at `anything/parameters/progress_params_c3plus.yaml:45 = 16 ticks = 16 ms`; port preserves 300 ms. §1 row 8 sub-(a) flip narrows to "tick→sim-time semantics RATE-INDEPENDENT" — explicitly NOT "Class B reconciled" or "Class A dispatch-timing reconciled."
 
 **Carry-forward (binding on this plan and the implementation block that follows):**
-- `PUSHA_REPOSITION_PWL=1`, `pwl_speed=0.18` held.
-- `PUSHA_FORCE_ROUTING=u_sol`, `W_force=100` held.
+- `REFCONF_REPOSITION_PWL=1`, `pwl_speed=0.18` held.
+- `PORT_FORCE_ROUTING=u_sol`, `W_force=100` held.
 - `PUSHA_CONTROL_HZ` env gate stays (default 100 → no behavior change; 1000 → 1 kHz for the verification smoke once reconciliation lands).
 
 ---
@@ -329,7 +329,7 @@ Apply this pattern for every constant in §2.1-§2.5 that was renamed.
 
 **Premise.** Every Class B duration_s default is set to the current `tick_count × 0.01 s`, so at 100 Hz the new elapsed-s comparator fires at the exact same control tick as the old tick-counter comparator. The 100 Hz baseline behavior should be byte-equivalent OR distribution-equivalent (modulo any FP rounding at the comparator boundary).
 
-**Smoke run:** `seed 0, 12 s, --c3plus-projection=componentwise (default), PUSHA_CONTROL_HZ unset (= 100), PUSHA_REPOSITION_PWL=1, PUSHA_FORCE_ROUTING=u_sol, --ee-space --solver c3plus --admm-iter 25 --sampling-c3 config/sampling_c3_kik.yaml`.
+**Smoke run:** `seed 0, 12 s, --c3plus-projection=componentwise (default), PUSHA_CONTROL_HZ unset (= 100), REFCONF_REPOSITION_PWL=1, PORT_FORCE_ROUTING=u_sol, --ee-space --solver c3plus --admm-iter 25 --sampling-c3 config/sampling_c3_kik.yaml`.
 
 **Compare against:** `stage_a_speed018/seed0/run.log` (the existing 100 Hz componentwise baseline).
 
@@ -549,7 +549,7 @@ git commit -m "tick→sim-t reconciliation: YAML back-compat shim unit test"
 
 ```bash
 mkdir -p stage_c/cadence_reconciliation
-PUSHA_REPOSITION_PWL=1 PUSHA_FORCE_ROUTING=u_sol \
+REFCONF_REPOSITION_PWL=1 PORT_FORCE_ROUTING=u_sol \
   python -u main.py pushing --task-id 4 --max-time 12.0 --admm-iter 25 \
   --solver c3plus --ee-space --sampling-c3 config/sampling_c3_kik.yaml \
   --seed 0 --no-record \
@@ -571,7 +571,7 @@ Expected: all 5 §3.1 pass-bar items PASS; script exit 0.
 - [ ] **Step 3: Run the 1 kHz reconciliation smoke.**
 
 ```bash
-PUSHA_REPOSITION_PWL=1 PUSHA_FORCE_ROUTING=u_sol PUSHA_CONTROL_HZ=1000 \
+REFCONF_REPOSITION_PWL=1 PORT_FORCE_ROUTING=u_sol PUSHA_CONTROL_HZ=1000 \
   python -u main.py pushing --task-id 4 --max-time 12.0 --admm-iter 25 \
   --solver c3plus --ee-space --sampling-c3 config/sampling_c3_kik.yaml \
   --seed 0 --no-record \
