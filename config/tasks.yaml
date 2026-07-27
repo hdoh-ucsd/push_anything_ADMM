@@ -290,10 +290,14 @@ tasks:
       # error down.
       use_quaternion_dependent_cost:                    true
       q_quaternion_dependent_weight:                    1000.0
-      # 2026-07-22 (v3): kept at 0.1 (port-side). Reference is 0.0. p63/64
-      # showed 0.0 alone regresses (trans 37-61mm). Testing 0.1 combined
-      # with G-matrix (p69+) to see if 4/5 baseline holds under Full Ref.
-      q_quaternion_dependent_regularizer_fraction:      0.1
+      # 2026-07-27: 0.1 → 0.0 (exact reference,
+      # sampling_c3plus_options.yaml). The 0.1 was a port-side hedge from
+      # the p63/64 era (pre-arc-2 stack, G-off, EE-space) where 0.0 alone
+      # regressed trans. On the R^7 conformant stack (G-on, reference Q
+      # chain, gravity-centered u-box) the hedge is unjustified; the
+      # regularizer dilutes the quat Hessian's yaw-driving curvature —
+      # p112 rot diagnosis flags every dilution of yaw authority.
+      q_quaternion_dependent_regularizer_fraction:      0.0
       # w_terminal for the tshape path was formerly hardcoded to 1.0 (QN=Q)
       # inside task_costs.py:1076 to match reference gamma=1.0 — so the old
       # yaml value of 5.0 here was DEAD. That special-case was removed
