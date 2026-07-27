@@ -1270,6 +1270,26 @@ class LCSFormulator:
                 np.broadcast_to(np.asarray(mu), (n_c,)))
             F_lcs[SG:SG + n_c,  SLT:SLT + n_t]  = -E_t
 
+            # 2026-07-26 arc-2 A2 fix ported to R^7 full-plant path:
+            # Reference lcs_factory.cc:465 (Stewart-Trinkle) / :533 (Anitescu)
+            # includes `Jn · vNqdot / dt` in E's q-column (position-forcing
+            # gradient of phi wrt q). Port R^7 previously had only `dt·(J_n@J_q)`
+            # — missing the pure phi(q_{k+1}) gradient. Same bug that was
+            # fixed for EE-space at A2 (commit 5e5ec10). Env-gated
+            # REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+            import os as _os_a2r7
+            _use_e_block_split_r7 = (
+                _os_a2r7.environ.get("REFCONF_E_BLOCK_SPLIT", "1") == "1")
+            vNqdot_full = None
+            if _use_e_block_split_r7:
+                NqI = self.plant.MakeQDotToVelocityMap(context)  # sparse (n_v, n_q)
+                vNqdot_full = np.asarray(NqI.todense())          # (n_v, n_q)
+                if not getattr(self, "_e_block_split_r7_banner", False):
+                    self._e_block_split_r7_banner = True
+                    print(f"[E-BLOCK-SPLIT-R7] active: vNqdot_full shape="
+                          f"{vNqdot_full.shape} (full-plant MakeQDotToVelocityMap)  "
+                          f"adds Jn·vNqdot/dt to E[q] in R^7 LCS", flush=True)
+
             # λ_n rows (slot SLN : SLN+n_c).
             # We use the simpler gap discretization (matches Bui v1 and
             # avoids the floating-base n_q ≠ n_v mismatch from Aydinoglu's
@@ -1278,6 +1298,9 @@ class LCSFormulator:
             # Substitute v_{k+1} = v + dt·(J_q q + J_v v + J_u u + d_v + Minv·J_c^T λ_phys):
             E_lcs[SLN:SLN + n_c, :n_q]            = dt * (J_n @ J_q)
             E_lcs[SLN:SLN + n_c, n_q:n_q + n_v]   = J_n + dt * (J_n @ J_v)
+            if _use_e_block_split_r7:
+                # A2 fix: add phi-gradient wrt q. Reference lcs_factory.cc:465
+                E_lcs[SLN:SLN + n_c, :n_q] += (J_n @ vNqdot_full) / dt
             F_lcs[SLN:SLN + n_c, SLN:SLN + n_c]   = dt * (J_n @ Minv_JnT)
             F_lcs[SLN:SLN + n_c, SLT:SLT + n_t]   = dt * (J_n @ Minv_JtT)
             H_lcs[SLN:SLN + n_c, :]               = dt * (J_n @ J_u)
@@ -1287,6 +1310,9 @@ class LCSFormulator:
             #   η_t = E_t^T·γ + J_t·v_{k+1}
             E_lcs[SLT:SLT + n_t, :n_q]            = dt * (J_t @ J_q)
             E_lcs[SLT:SLT + n_t, n_q:n_q + n_v]   = J_t + dt * (J_t @ J_v)
+            if _use_e_block_split_r7:
+                # A2 fix: same phi-gradient addition for tangent row block.
+                E_lcs[SLT:SLT + n_t, :n_q] += (J_t @ vNqdot_full) / dt
             F_lcs[SLT:SLT + n_t, SG:SG + n_c]     = E_t.T
             F_lcs[SLT:SLT + n_t, SLN:SLN + n_c]   = dt * (J_t @ Minv_JnT)
             F_lcs[SLT:SLT + n_t, SLT:SLT + n_t]   = dt * (J_t @ Minv_JtT)
