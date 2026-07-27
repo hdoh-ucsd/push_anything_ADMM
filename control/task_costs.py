@@ -529,6 +529,31 @@ class QuadraticManipulationCost:
                     J_arm = J_ee[:, : self.n_u]
                     _W_pee = self.w_Q * np.asarray(
                         self._q_vec_ee_pos, dtype=float)
+                    # §7.76 z-hold, R^7 analog (PORT_EE_Z_HOLD=1, default
+                    # OFF). EE-space applies Q[9,9] += w_zh with
+                    # x_ref[9] = z_tgt — a hard cost-side z anchor that
+                    # breaks the §7.75 sphere-climb loop (p112: EE rode
+                    # z 0.019→0.077 during the push burst, tipping the T
+                    # and amplifying the wrong-way twist). R^7 has no EE-z
+                    # state slot, so fold the same override into this
+                    # hover cost: retarget the z-axis to z_tgt and boost
+                    # the z-axis weight before the J-mapping below —
+                    # structurally identical to the EE-space form.
+                    import os as _os_zh_r7
+                    if _os_zh_r7.environ.get("PORT_EE_Z_HOLD", "0") == "1":
+                        _w_zh = float(_os_zh_r7.environ.get(
+                            "PORT_EE_Z_HOLD_W", "1000.0"))
+                        _z_tgt = float(_os_zh_r7.environ.get(
+                            "PORT_EE_Z_HOLD_TARGET", str(self.z_ref)))
+                        p_hover[2] = _z_tgt
+                        _W_pee = _W_pee.copy()
+                        _W_pee[2] += _w_zh
+                        if not getattr(self, "_z_hold_r7_logged", False):
+                            self._z_hold_r7_logged = True
+                            print(f"[§7.76-Z-HOLD-R7] PORT_EE_Z_HOLD=1 "
+                                  f"w_zh={_w_zh} z_tgt={_z_tgt:.4f}m "
+                                  f"(J-mapped onto arm-q block)",
+                                  flush=True)
                     Q[: self.n_u, : self.n_u] += \
                         J_arm.T @ np.diag(_W_pee) @ J_arm
                     ee_err = p_hover - ee_pos
