@@ -813,7 +813,12 @@ class QuadraticManipulationCost:
             # --- Perpendicular box velocity penalty ---
             # Penalise object velocity components orthogonal to the goal direction.
             # Drake floating-body vel layout: [ωx, ωy, ωz, vx, vy, vz]; vx at +3.
-            if dist > 1e-3:
+            # Skipped for tshape — parity with build_ee_space: the reference
+            # sampling_c3plus_options.yaml has no analog; box linear velocity
+            # is weighted at 0.05·w_Q = 2.5 in the base q_vector, not
+            # amplified by a 10·w_obj_xy heuristic. Retained for box/sphere
+            # paths where the heuristic is load-bearing.
+            if dist > 1e-3 and self._object_shape != "tshape":
                 obj_vx_idx = self.n_q + self._obj_vs + 3   # vx in world frame
                 obj_vy_idx = self.n_q + self._obj_vs + 4   # vy in world frame
 
