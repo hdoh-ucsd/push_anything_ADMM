@@ -317,6 +317,30 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         [0.85, 0.80, 0.65, 1.0],
     )
 
+    # Platform — reference platform.urdf (0.3×0.6×0.029 slab, "the wooden
+    # and aluminium sheet on which the franka is mounted"), welded to
+    # panda_link0 at kFrankaToPlatformOffset (0,0,-0.0145) with the box
+    # geometry offset (-0.07,0,0) (sampling_c3_utils.{h,cc}). Port frame:
+    # arm base at z=+0.029, ground top at z=0 → platform center world z
+    # = 0.029-0.0145 = +0.0145; slab spans z∈[0,0.029] (top flush with
+    # the arm base plane), x∈[-0.22,+0.08]. Collision per reference
+    # (object cannot slide under the base area). 2026-07-28 mount-question
+    # close-out.
+    plant.RegisterCollisionGeometry(
+        plant.world_body(),
+        ad.RigidTransform([-0.07, 0.0, 0.0145]),
+        ad.Box(0.3, 0.6, 0.029),
+        "platform_collision",
+        ad.CoulombFriction(static_friction=1.0, dynamic_friction=1.0),
+    )
+    plant.RegisterVisualGeometry(
+        plant.world_body(),
+        ad.RigidTransform([-0.07, 0.0, 0.0145]),
+        ad.Box(0.3, 0.6, 0.029),
+        "platform_visual",
+        [0.55, 0.45, 0.35, 1.0],
+    )
+
     # ------------------------------------------------------------------
     # Franka Panda arm (7 revolute joints, welded base)
     # ------------------------------------------------------------------

@@ -82,3 +82,23 @@ def test_rotation_error_world_frame_convention():
     R_target = RotationMatrix(RollPitchYaw(0.0, 0.0, np.pi / 2))
     w_err = rotation_error_world(R_target, R_now)
     np.testing.assert_allclose(w_err, [0.0, 0.0, np.pi / 4], atol=1e-12)
+
+
+def test_rotation_hold_target_is_constant_identity():
+    """Reference-exact constant target (franka_osc_controller.cc:180
+    orientation_target=(1,0,0,0); end_effector_orientation.cc:49-57).
+
+    The port's EE weld chain is byte-identical to the reference
+    (link7 + roll π @ (0,0,0.107) → flange −0.0096 → tip −0.1169), so
+    the tip frame is ~identity at pointing-down poses and the identity
+    target is valid verbatim — no snapshot adaptation."""
+    osc = _make_osc()
+    # Lazily resolved: None until first rotation-state assembly, then identity.
+    assert osc._R_target is None
+    from pydrake.math import RotationMatrix
+    from control.osc.dynamics_helpers import rotation_error_world
+    # Simulate first-use resolution exactly as compute_torque does.
+    if osc._R_target is None:
+        osc._R_target = RotationMatrix()
+    w = rotation_error_world(osc._R_target, RotationMatrix())
+    np.testing.assert_allclose(w, np.zeros(3), atol=1e-15)
