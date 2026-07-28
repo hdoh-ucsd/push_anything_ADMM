@@ -4399,11 +4399,19 @@ class SamplingC3Controller:
                 self._free_stall_streak = 0
             if self._free_stall_streak >= 10:
                 from control.sampling_c3.ik import solve_ik_to_ee_pos
+                # Escape target: the ACTUAL repos sample (PWL p_target),
+                # NOT the leashed per-tick reference _p_ee_des — the leash
+                # keeps that within ~2 cm of the stuck arm, so its IK
+                # solution is degrees away and the PD torque is negligible
+                # (p116: engaged at q_err=1.2°, no escape). The branch
+                # jump needs the far target's IK solution.
+                _tgt_rec = (np.asarray(self._pwl_traj.p_target, float)
+                            if self._pwl_traj is not None else _tgt_now)
                 _q_saved_rec = self.plant.GetPositions(plant_ctx).copy()
                 try:
                     _q_rec, _rec_err, _rec_it = solve_ik_to_ee_pos(
                         self.plant, self.ee_frame,
-                        p_target=_tgt_now, q_init=current_q.copy(),
+                        p_target=_tgt_rec, q_init=current_q.copy(),
                         plant_ctx=plant_ctx, n_arm_dofs=self.n_u)
                 finally:
                     self.plant.SetPositions(plant_ctx, _q_saved_rec)
@@ -4428,8 +4436,8 @@ class SamplingC3Controller:
                               f"q_err_max_deg="
                               f"{np.degrees(np.max(np.abs(_qe_rec))):.1f} "
                               f"ik_err={_rec_err:.4f} "
-                              f"tgt=({_tgt_now[0]:+.3f},{_tgt_now[1]:+.3f},"
-                              f"{_tgt_now[2]:+.3f})", flush=True)
+                              f"tgt=({_tgt_rec[0]:+.3f},{_tgt_rec[1]:+.3f},"
+                              f"{_tgt_rec[2]:+.3f})", flush=True)
         u_opt = u_imp
 
         # --- λ_planned per-step trace ---------------------------------
