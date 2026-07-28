@@ -74,19 +74,20 @@ osc:
   # Reference w_accel · W_accel = 1e-5 · 0.01 = 1e-7 per axis.
   W_acc:    0.0000001
 
-  # CORRECTED 2026-07-28 (over-drive cluster step 2): the reference adds
-  # RotTaskSpaceTrackingData UNCONDITIONALLY (franka_osc_controller.cc:
-  # 171-187, EndEffectorRotW/Kp/Kd = 10/800/40, osc_params.yaml:59-70).
-  # `track_end_effector_orientation: false` (osc_params.yaml:37) gates
-  # ONLY the trajectory source: end_effector_orientation.cc:49-57 emits a
-  # CONSTANT identity-quaternion slerp when false, so the rotation-hold
-  # cost is in the reference QP in every mode. The previous comment here
-  # ("reference does NOT add the tracking data") misread that flag.
-  # W_rot stays 0.0 as the port default; REFCONF_OSC_EE_ROT_TASK=1
-  # applies the reference 10/800/40 at runtime (both gain structs).
+  # The reference adds RotTaskSpaceTrackingData UNCONDITIONALLY
+  # (franka_osc_controller.cc:171-187, EndEffectorRotW/Kp/Kd = 10/800/40,
+  # osc_params.yaml:59-70). `track_end_effector_orientation: false`
+  # (osc_params.yaml:37) gates ONLY the trajectory source:
+  # end_effector_orientation.cc:49-57 emits a CONSTANT identity-quaternion
+  # slerp when false, so the rotation-hold cost is in the reference QP in
+  # every mode. 2026-07-28 defaults flip: W_rot = 10.0 is the DEFAULT
+  # (was 0.0 behind REFCONF_OSC_EE_ROT_TASK). The port holds the
+  # first-tick snapshot orientation — the port-frame analog of the
+  # reference's identity target (ref EE tip is welded roll=π, so identity
+  # = pusher-down there).
   Kp_rot: [800.0, 800.0, 800.0]
   Kd_rot: [40.0,  40.0,  40.0]
-  W_rot:  0.0
+  W_rot:  10.0
 
   # Per-joint torque limits (Franka URDF spec).
   tau_max: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]

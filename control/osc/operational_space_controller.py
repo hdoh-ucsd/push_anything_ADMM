@@ -109,25 +109,14 @@ class OperationalSpaceController:
         if W_force is not None:
             self.gains.W_force = float(W_force)
 
-        # §7.43 — when REFCONF_OSC_ALIGN=1, finish the reference-OSC alignment
-        # by setting the position-side weights/gains to reference values:
-        #   W_track   = 1.0          (ref EndEffectorW = diag(1,1,1),  osc_params.yaml:47-50)
-        #   Kp_cart   = [200,200,200] (ref EndEffectorKp = diag(200,200,200), :51-54)
-        #   Kd_cart   = [20,20,20]    (ref EndEffectorKd = diag(20,20,20),    :55-58)
-        # With W_force=1.0 (set at sampling_based_c3_controller.py:258 under the
-        # same flag), this restores the reference's 1:1 position:force authority
-        # ratio. The port's pre-flag 100:1 ratio (W_track=100 vs W_force=1) had
-        # near-zero force authority — §7.42's incomplete alignment.
-        # Default-OFF byte-identical preserved.
-        import os as _os
-        if _os.environ.get("REFCONF_OSC_ALIGN", "0") == "1":
-            self.gains.W_track = 1.0
-            self.gains.Kp_cart = np.array([200.0, 200.0, 200.0])
-            self.gains.Kd_cart = np.array([20.0, 20.0, 20.0])
-            print("[§7.43] REFCONF_OSC_ALIGN=1 OSC position-side alignment — "
-                  "W_track→1.0, Kp_cart→[200,200,200], Kd_cart→[20,20,20] "
-                  "(matched to shared_parameters/osc_params.yaml:47-58)",
-                  flush=True)
+        # 2026-07-28 defaults flip: the yaml IS the reference gain set
+        # (W_track=1, Kp=200, Kd=20 since fc51111; W_rot=10/800/40 since the
+        # flip) — the former REFCONF_OSC_ALIGN / REFCONF_OSC_C3_MODE_GAINS /
+        # REFCONF_OSC_FREE_MODE_GAINS / REFCONF_OSC_EE_ROT_TASK env gates are
+        # removed. ONE gain set for all modes, exactly like the reference
+        # (osc_params.yaml + franka_osc_controller.cc:171-187, which adds
+        # the RotTaskSpaceTrackingData unconditionally with a constant
+        # identity-quaternion target per end_effector_orientation.cc:49-57).
 
         # Resolve torque limits with precedence: override > yaml > URDF
         if torque_limit_override is not None:
@@ -137,67 +126,6 @@ class OperationalSpaceController:
         else:
             tau_max = franka_effort_limits(plant)[:self.n_arm]
         self.limits = OscLimits(tau_max=tau_max)
-
-        # §7.70 — c3-mode reference-gains variant (default-OFF).
-        # REFCONF_OSC_C3_MODE_GAINS=1 activates a swap where
-        # compute_torque(mode="c3") uses reference-aligned gains:
-        #   Kp_cart = [200, 200, 200]   (ref EndEffectorKp:  osc_params.yaml:51-54)
-        #   Kd_cart = [ 20,  20,  20]   (ref EndEffectorKd:  osc_params.yaml:55-58)
-        #   W_track = 1.0               (ref EndEffectorW:   osc_params.yaml:47-50)
-        # Reposition/free calls (mode="free") keep the port gains
-        # (Kp=400/W_track=100) so §7.47 IK→c3 handoff is untouched.
-        # W_force unchanged (matches reference at 1.0 already).
-        # Falsified §7.69's "position task swapped off" — reference keeps
-        # the position task ACTIVE, just weighted 1:1 with force. The gap
-        # is COMPOUND POSITION AUTHORITY: port W_track·Kp = 100·400 =
-        # 40 000 vs reference 1·200 = 200 (200× over-drive at any
-        # nonzero p_err). This fix imports the reference's numbers only
-        # during c3, leaving free-mode Kp/W_track intact.
-        import os as _os_ref
-        self._c3_ref_gains_flag = (_os_ref.environ.get(
-            "REFCONF_OSC_C3_MODE_GAINS", "0") == "1")
-        # Deep-copy the port gains to a c3 override that gets swapped in
-        # at compute_torque(mode="c3") when the flag is set.
-        self.gains_c3 = OscGains(
-            Kp_cart   = np.array([200.0, 200.0, 200.0]),
-            Kd_cart   = np.array([ 20.0,  20.0,  20.0]),
-            Kp_null   = self.gains.Kp_null.copy(),
-            Kd_null   = self.gains.Kd_null.copy(),
-            W_track   = 1.0,
-            W_posture = self.gains.W_posture,
-            W_torque  = self.gains.W_torque,
-            W_acc     = self.gains.W_acc,
-            W_force   = self.gains.W_force,
-            a_ee_cap  = self.gains.a_ee_cap,
-        )
-        if self._c3_ref_gains_flag:
-            print("[§7.70] REFCONF_OSC_C3_MODE_GAINS=1 — c3-mode "
-                  "gains (Kp=[200,200,200], Kd=[20,20,20], W_track=1.0) "
-                  "will be used for compute_torque(mode=\"c3\"); free/repos "
-                  f"uses the yaml gains (Kp={self.gains.Kp_cart.tolist()}, "
-                  f"W_track={self.gains.W_track}).",
-                  flush=True)
-
-        # Over-drive-cluster step 2 (2026-07-28): REFCONF_OSC_EE_ROT_TASK=1
-        # enables the reference EE-orientation task. The reference adds
-        # RotTaskSpaceTrackingData UNCONDITIONALLY (franka_osc_controller.cc:
-        # 171-187) with EndEffectorRotW/Kp/Kd = 10/800/40 (osc_params.yaml:
-        # 59-70); `track_end_effector_orientation: false` only pins the
-        # TARGET to a constant identity quaternion (end_effector_orientation
-        # .cc:49-57) — the rotation-hold cost is in the QP in every mode.
-        # One gain set for all modes, so both structs get it.
-        self._ee_rot_task_flag = (_os_ref.environ.get(
-            "REFCONF_OSC_EE_ROT_TASK", "0") == "1")
-        if self._ee_rot_task_flag:
-            for _g in (self.gains, self.gains_c3):
-                _g.W_rot = 10.0
-                _g.Kp_rot = np.array([800.0, 800.0, 800.0])
-                _g.Kd_rot = np.array([40.0, 40.0, 40.0])
-            print("[ROT-TASK] REFCONF_OSC_EE_ROT_TASK=1 — EE-orientation "
-                  "hold active in ALL modes (W_rot=10, Kp_rot=800, "
-                  "Kd_rot=40; ref osc_params.yaml:59-70, constant-target "
-                  "hold per end_effector_orientation.cc:49-57).",
-                  flush=True)
 
         # Cache constant B matrix
         self._B = actuation_matrix(plant)   # (n_v, n_u)
@@ -225,10 +153,11 @@ class OperationalSpaceController:
         # dump_call{N}.{npz,txt}. Consumed by
         # scripts/_qp_sig_reference_emulator.py to produce a same-input
         # τ diff against a reference-formula Python emulator.
-        if _os_ref.environ.get("DIAG_QP_SIG_DUMP", "0") == "1":
+        import os as _os
+        if _os.environ.get("DIAG_QP_SIG_DUMP", "0") == "1":
             self._sig_dump_step = int(
-                _os_ref.environ.get("DIAG_QP_SIG_STEP", "60"))
-            self._sig_dump_dir = _os_ref.environ.get(
+                _os.environ.get("DIAG_QP_SIG_STEP", "60"))
+            self._sig_dump_dir = _os.environ.get(
                 "DIAG_QP_SIG_DIR", "audit_output/exec_qp_sig")
             self._sig_dump_done = False
             print(f"[QP-SIG] enabled: will capture compute_torque call "
@@ -362,31 +291,10 @@ class OperationalSpaceController:
         else:
             F_ff_for_qp = F_ff
 
-        # --- §7.70 gain selection: c3-mode reference gains (flag-gated) ---
-        # Over-drive-cluster step 1 (2026-07-27): REFCONF_OSC_FREE_MODE_GAINS=1
-        # extends the SAME reference gains to mode="free". The reference has
-        # ONE OSC gain set for all modes (osc_params.yaml EndEffectorW/Kp/Kd
-        # = 1/200/20); the port's free-mode 100/400 (compound authority
-        # 40000 vs 200) was kept as a §7.47 handoff caution. The 2026-07-14
-        # recert that falsified the wholesale swap ran on the old stack
-        # (EE-space c3 executor, corrupted contact Jacobians, pre-reference-
-        # Q); on the current stack the OSC runs ONLY in free mode, so this
-        # flag completes the gain half of the over-drive cluster.
-        import os as _os_fmg
-        _free_ref = (mode != "c3"
-                     and _os_fmg.environ.get(
-                         "REFCONF_OSC_FREE_MODE_GAINS", "0") == "1")
-        if (self._c3_ref_gains_flag and mode == "c3") or _free_ref:
-            _gains_active = self.gains_c3
-            if not getattr(self, "_c3_ref_banner", False):
-                self._c3_ref_banner = True
-                print(f"[§7.70] first mode={mode} compute_torque with "
-                      f"reference gains: Kp={_gains_active.Kp_cart.tolist()} "
-                      f"Kd={_gains_active.Kd_cart.tolist()} "
-                      f"W_track={_gains_active.W_track} "
-                      f"W_force={_gains_active.W_force}", flush=True)
-        else:
-            _gains_active = self.gains
+        # ONE gain set for all modes (reference osc_params.yaml semantics;
+        # 2026-07-28 defaults flip removed the §7.70 c3/free gain-swap
+        # machinery — the yaml is the reference set).
+        _gains_active = self.gains
 
         # --- QP-signature dump hook (env-gated, byte-identical when off) ---
         _sig_do_dump = (self._sig_dump_step is not None
@@ -397,8 +305,7 @@ class OperationalSpaceController:
                 n_calls_idx=int(self._n_calls),
                 mode=str(mode),
                 use_force_tracking=bool(self.use_force_tracking),
-                c3_ref_gains_active=bool(
-                    self._c3_ref_gains_flag and mode == "c3"),
+                c3_ref_gains_active=True,   # one reference gain set, all modes
                 # State
                 q=np.asarray(current_q, dtype=float).copy(),
                 v=np.asarray(current_v, dtype=float).copy(),
@@ -538,8 +445,7 @@ class OperationalSpaceController:
             print(f"[OSC-INIT]   q_nominal={np.round(self.q_nominal, 4).tolist()}")
             print(f"[OSC-INIT]   use_force_tracking={self.use_force_tracking}  "
                   f"W_force={self.gains.W_force}")
-            print(f"[OSC-INIT]   a_ee_cap={self.gains.a_ee_cap}  "
-                  f"(c3-mode a_ee_cap={self.gains_c3.a_ee_cap})")
+            print(f"[OSC-INIT]   a_ee_cap={self.gains.a_ee_cap}")
 
         # τ_ff diagnostic — the EE-arm slice of the feedforward force,
         # signed so it represents the joint torque needed to counter the

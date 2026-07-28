@@ -98,11 +98,10 @@ class C3Solver:
         # λ_n toward zero on contact.
         self._w_comp    = 0.0
         self._solver    = ad.OsqpSolver()
-        # Reference solver_options_default.yaml settings (bug diagnostic).
-        # Gated on REFCONF_OSQP_OPTS=1 to A/B test.
-        import os as _os_osqp
-        self._osqp_refopts = (
-            _os_osqp.environ.get("REFCONF_OSQP_OPTS", "0") == "1")
+        # Reference solver_options_default.yaml settings — DEFAULT
+        # (2026-07-28 reference-conformance defaults flip; formerly gated
+        # on REFCONF_OSQP_OPTS).
+        self._osqp_refopts = True
         self._osqp_solver_options = None
         if self._osqp_refopts:
             _so = ad.SolverOptions()
@@ -185,11 +184,11 @@ class C3Solver:
         # Reference-conformance for G matrix requires additional structural
         # changes (possibly per-slot ρ scaling, dt-dependent G tuning, or
         # different QP formulation) that were not in scope this session.
-        # Keeping code as research infrastructure; default OFF preserves
-        # p58-p62 4/5 baseline.
-        import os as _os_g
-        self._use_g_matrix = (
-            _os_g.environ.get("REFCONF_USE_G_MATRIX", "0") == "1")
+        # 2026-07-26 arc-2 resolved the destabilization (D1 rho-override +
+        # factor-of-2 + 7 sibling fixes); 2026-07-28 defaults flip makes
+        # G-on the DEFAULT (formerly REFCONF_USE_G_MATRIX=1, canonical
+        # since p112).
+        self._use_g_matrix = True
         self._w_G          = 0.01
         self._g_lambda     = 2.0
         self._g_eta        = 1.0
@@ -199,6 +198,7 @@ class C3Solver:
         # Set to e.g. "1" to add uniform g_x=1 for state-memory regularization
         # under G-ON — falsification test for the "sparse-Q + zero-g_x kills
         # ADMM convergence" hypothesis.
+        import os as _os_g
         _pusha_gx = _os_g.environ.get("PORT_G_X", "")
         if _pusha_gx:
             try:
@@ -1093,9 +1093,9 @@ class C3Solver:
         # so the port's tuned rho=100 baseline for the uniform ρ·I aug
         # keeps its calibration.
         if _use_g:
-            import os as _os_rug
-            _rho_under_g = float(_os_rug.environ.get(
-                "REFCONF_ADMM_RHO_UNDER_G", "1.0"))
+            _rho_under_g = 1.0   # reference w_G·diag(g_vec) scale (D1 fix);
+                                 # 2026-07-28 defaults flip removed the
+                                 # REFCONF_ADMM_RHO_UNDER_G env override.
             if abs(rho - _rho_under_g) > 1e-9:
                 if not getattr(self, "_rho_under_g_banner", False):
                     self._rho_under_g_banner = True

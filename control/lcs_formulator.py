@@ -92,9 +92,7 @@ class LCSFormulator:
         # converges only on state, leaves λ under-updated → planner |u|
         # stuck at ~1N regardless of goal_dist (p43 diagnosis). Default
         # True matches reference push_t.
-        import os as _os_scl
-        self._scale_lcs = (
-            _os_scl.environ.get("REFCONF_SCALE_LCS", "1") == "1")
+        self._scale_lcs = True   # 2026-07-28 defaults flip (was REFCONF_SCALE_LCS)
         # Phantom EE-box pair injection (port-only, no reference analog).
         # When True and the natural sd_pairs list has no EE-BOX pair (real
         # signed distance > lcs_formulator.py:245 2 mm threshold), inject the
@@ -121,14 +119,9 @@ class LCSFormulator:
         # inverse inertia `M_ee_op_inv = J_ee_arm · M_arm^-1 · J_ee_arm.T`.
         # This is the same 3×3 SPD matrix the reference full-plant LCS
         # produces at the EE Cartesian block (via c3/multibody/lcs_factory.cc).
-        # Env-gate REFCONF_ARM_CART_INERTIA=1 to enable (default OFF preserves
-        # every existing G-off calibration byte-identical). See the A runtime
-        # dump in docs/superpowers/investigations/2026-07-26-arc2-A-lcs-diff.md:
-        # port's B[v_ee, u] = 0.1·I proves _EE_MASS=1kg is in play; reference-
-        # equivalent would be ~2-3× smaller diagonal.
-        import os as _os_amei
-        self._use_arm_cartesian_inertia = (
-            _os_amei.environ.get("REFCONF_ARM_CART_INERTIA", "0") == "1")
+        # 2026-07-28 defaults flip: reference-conformant arm-Cartesian
+        # inertia is the DEFAULT (was REFCONF_ARM_CART_INERTIA env gate).
+        self._use_arm_cartesian_inertia = True
         self._arm_cart_inertia_banner_done = False
 
         # Lazy-initialized box half-extents (queried from geometry inspector
@@ -1299,9 +1292,7 @@ class LCSFormulator:
             # — missing the pure phi(q_{k+1}) gradient. Same bug that was
             # fixed for EE-space at A2 (commit 5e5ec10). Env-gated
             # REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
-            import os as _os_a2r7
-            _use_e_block_split_r7 = (
-                _os_a2r7.environ.get("REFCONF_E_BLOCK_SPLIT", "1") == "1")
+            _use_e_block_split_r7 = True   # 2026-07-28 defaults flip
             vNqdot_full = None
             if _use_e_block_split_r7:
                 NqI = self.plant.MakeQDotToVelocityMap(context)  # sparse (n_v, n_q)
@@ -1688,9 +1679,7 @@ class LCSFormulator:
         # Env-gate REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
         # G-off calibration was previously validated without this gradient,
         # so the OFF path preserves p73 arc-1 baseline byte-identical.
-        import os as _os_a2
-        self._use_e_block_split = (
-            _os_a2.environ.get("REFCONF_E_BLOCK_SPLIT", "1") == "1")
+        self._use_e_block_split = True   # 2026-07-28 defaults flip
         if self._use_e_block_split:
             # For a floating base with quaternion, N⁺ (v_box = N⁺·qdot_box)
             # is a 6×7 matrix. Extract via Drake API.

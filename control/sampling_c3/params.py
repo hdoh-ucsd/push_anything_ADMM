@@ -771,7 +771,10 @@ class SamplingC3Params:
     use_force_tracking: bool = True
     # Soft cost weight on ‖λ_ext − λ_des‖². Reference's W_ee_lambda.
     # Comparable to W_track (100.0) so neither dominates.
-    W_force: float = 100.0
+    # Reference LambdaEndEffectorW = diag(1,1,1) (osc_params.yaml:74).
+    # 2026-07-28 defaults flip: 100.0 → 1.0 (was the REFCONF_OSC_ALIGN
+    # runtime override).
+    W_force: float = 1.0
     # When the LCS has no admitted EE-BOX pair at knot 0, command this
     # magnitude of recoil force in the -g_hat direction so the executor
     # keeps pressing rather than letting the command collapse to zero.
@@ -1091,7 +1094,7 @@ class SamplingC3Params:
             cost_lcs_pgs_reg         = float(raw.get("cost_lcs_pgs_reg", 1.0e-8)),
             osc_gains_yaml       = str(raw.get("osc_gains_yaml", "config/osc_franka.yaml")),
             use_force_tracking   = bool(raw.get("use_force_tracking", True)),
-            W_force              = float(raw.get("W_force", 100.0)),
+            W_force              = float(raw.get("W_force", 1.0)),
             nominal_push_force   = float(raw.get("nominal_push_force", 5.0)),
             min_push_force       = float(raw.get("min_push_force", 2.0)),
             use_reposition_pwl_trajectory = bool(raw.get(

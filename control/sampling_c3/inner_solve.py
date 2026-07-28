@@ -298,14 +298,13 @@ class InnerSolver:
         # (x_pred ± nominal_ee_accel·dt²) for the PRIMARY planner solve.
         # This mirror applies the same clamp to the k=0 surrogate solve's
         # `p_ee_for_x0` so cost-signal for mode-switch matches the primary
-        # solve's linearization point. Gated (default OFF) via
-        # REFCONF_C3_SURROGATE_XPRED_CLAMP=1. Set each tick by
-        # SamplingC3Controller.compute_control() via `set_ee_pos_clamp()`.
+        # solve's linearization point. DEFAULT since the 2026-07-28
+        # defaults flip (was REFCONF_C3_SURROGATE_XPRED_CLAMP env gate).
+        # Set each tick by SamplingC3Controller.compute_control() via
+        # `set_ee_pos_clamp()`.
         self._x_pred_ee_pos: Optional[np.ndarray] = None
         self._x_pred_ee_delta_pos: float = 0.0
-        import os as _os_e2s
-        self._surrogate_xpred_clamp_enabled = (
-            _os_e2s.environ.get("REFCONF_C3_SURROGATE_XPRED_CLAMP", "0") == "1")
+        self._surrogate_xpred_clamp_enabled = True
 
         # Diag 2 fix — per-axis force bounds for EE-space surrogate solves.
         # ci_mpc_c3plus.py:310-321 reads these env vars for the MAIN planner's
@@ -798,26 +797,17 @@ class InnerSolver:
                 # object block recovers that property for R^7. The FULL
                 # cost still drives the committed solve — this affects
                 # ranking only.
-                import os as _os_rank
-                if _os_rank.environ.get(
-                        "REFCONF_SAMPLE_RANK_OBJ_ONLY", "0") == "1":
-                    _n_x_r = Q.shape[0]
-                    _obj_mask = np.zeros(_n_x_r, dtype=bool)
-                    _obj_mask[self.n_u:self.n_q] = True          # obj quat+pos
-                    _obj_mask[self.n_q + self.n_u:_n_x_r] = True  # obj ω+v
-                    _M_r = np.outer(_obj_mask, _obj_mask)
-                    c_C3_raw = traj_cost(
-                        x_seq, u_seq,
-                        Q * _M_r, np.zeros_like(R), QN * _M_r, x_ref)
-                    if not getattr(self, "_rank_obj_only_logged", False):
-                        self._rank_obj_only_logged = True
-                        print("[REFCONF_SAMPLE_RANK_OBJ_ONLY] R^7 sample "
-                              "ranking masked to object slots "
-                              f"(x[{self.n_u}:{self.n_q}] ∪ "
-                              f"x[{self.n_q + self.n_u}:{_n_x_r}], R=0)",
-                              flush=True)
-                else:
-                    c_C3_raw = traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
+                # 2026-07-28 defaults flip: object-slot-only ranking is
+                # unconditional (was REFCONF_SAMPLE_RANK_OBJ_ONLY,
+                # canonical since a194280).
+                _n_x_r = Q.shape[0]
+                _obj_mask = np.zeros(_n_x_r, dtype=bool)
+                _obj_mask[self.n_u:self.n_q] = True          # obj quat+pos
+                _obj_mask[self.n_q + self.n_u:_n_x_r] = True  # obj ω+v
+                _M_r = np.outer(_obj_mask, _obj_mask)
+                c_C3_raw = traj_cost(
+                    x_seq, u_seq,
+                    Q * _M_r, np.zeros_like(R), QN * _M_r, x_ref)
             feasible = True
             if admm_iter_k >= self.base_admm_iter:
                 self.full_solves += 1
@@ -1343,9 +1333,6 @@ class InnerSolver:
         τ_g varies by only a few Nm across sample postures, small against
         the ~35-50 Nm half-widths. Returns (None, None) when gated off,
         letting the solver fall back to the scalar torque_limit."""
-        import os as _os_ub
-        if _os_ub.environ.get("REFCONF_R7_U_GRAVITY_CENTERED", "1") != "1":
-            return None, None
         if plant_ctx is None:
             return getattr(self, "_last_r7_ubox", (None, None))
         _n_arm = int(self.n_u)
@@ -1357,9 +1344,9 @@ class InnerSolver:
             self.plant.world_frame(), self.plant.world_frame(),
         )[:, :_n_arm]
         _F_ref = np.array([
-            float(_os_ub.environ.get("PORT_U_HORIZONTAL", "50.0")),
-            float(_os_ub.environ.get("PORT_U_HORIZONTAL", "50.0")),
-            float(_os_ub.environ.get("PORT_U_VERTICAL",   "50.0")),
+            float(__import__("os").environ.get("PORT_U_HORIZONTAL", "50.0")),
+            float(__import__("os").environ.get("PORT_U_HORIZONTAL", "50.0")),
+            float(__import__("os").environ.get("PORT_U_VERTICAL",   "50.0")),
         ])
         _delta = np.maximum(np.abs(_J).T @ _F_ref, 1.0)
         _lo = np.maximum(_u_hold - _delta, -87.0)
