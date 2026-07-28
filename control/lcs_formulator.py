@@ -93,15 +93,20 @@ class LCSFormulator:
         # stuck at ~1N regardless of goal_dist (p43 diagnosis). Default
         # True matches reference push_t.
         self._scale_lcs = True   # 2026-07-28 defaults flip (was REFCONF_SCALE_LCS)
-        # Phantom EE-box pair injection (port-only, no reference analog).
-        # When True and the natural sd_pairs list has no EE-BOX pair (real
-        # signed distance > lcs_formulator.py:245 2 mm threshold), inject the
-        # closest EE-BOX candidate anyway. Reference relies solely on the
-        # signed-distance threshold for admission. Default True preserves the
-        # T-push success regime; box path can turn it off via env.
-        import os as _os_awo
-        self._always_on_ee_box = (
-            _os_awo.environ.get("PORT_LCS_ALWAYS_ON_EE_BOX", "1") == "1")
+        # Closest EE-box pair injection. CORRECTED 2026-07-28: this is
+        # REFERENCE-CONFORMANT, not port-only — the reference has NO
+        # distance threshold at all; it resolves each contact-pair group
+        # to its N closest pairs unconditionally
+        # (sampling_based_c3_controller.cc:1595-1614 ResolveContactPairs →
+        # LCSFactory::GetNClosestContactPairs, counts from
+        # resolve_contacts_to_lists, push_t planner [0,1,3] = 0 EE-ground /
+        # 1 EE-T / 3 T-ground). The port's 2 mm signed-distance admission
+        # (extract_lcs_contacts) is the port-side divergence; this fallback
+        # approximates N-closest=1 whenever the threshold admits no EE-BOX
+        # pair. Hard-wired ON (was PORT_LCS_ALWAYS_ON_EE_BOX, defaults
+        # flip). The tshape path supersedes it with exact top-K admission
+        # (planner k=1, cost k=2 — matches reference [0,1,3]/[0,2,3]).
+        self._always_on_ee_box = True
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
         self.lcs_explicit_manipuland_ground_contacts = (
