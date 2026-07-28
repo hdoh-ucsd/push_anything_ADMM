@@ -690,15 +690,35 @@ class LCSFormulator:
             body_B = self.plant.GetBodyFromFrameId(
                 inspector.GetFrameId(sdp.id_B))
 
+            # Drake's SignedDistancePair witness points p_ACa/p_BCb are
+            # expressed in the GEOMETRY frames of A/B — NOT the body
+            # frames. For geometries registered at a non-identity pose in
+            # their body (the T's two collision bars at ±0.05 m with a 90°
+            # yaw; the pusher tip sphere at its z-offset) using them
+            # directly as body-frame offsets mis-places the contact lever
+            # arm: on the T crossbar the witness r_x flips sign
+            # (+0.03 → −0.02), inverting the predicted twist direction —
+            # the p112-p114 wrong-way-rotation root cause (see
+            # scripts/test_r7_twist_sign.py). Identity-posed single
+            # geometries (cube manipuland, ground plane) are unaffected,
+            # which is why the box task never exposed this. Map to body
+            # frame via each geometry's registered pose X_BG.
+            _X_BG_A = inspector.GetPoseInFrame(sdp.id_A)
+            _X_BG_B = inspector.GetPoseInFrame(sdp.id_B)
+            p_ACa_B = np.asarray(
+                _X_BG_A.multiply(np.asarray(sdp.p_ACa)), dtype=float)
+            p_BCb_B = np.asarray(
+                _X_BG_B.multiply(np.asarray(sdp.p_BCb)), dtype=float)
+
             # Translational velocity Jacobians at the contact witness points
             with timed("lcs.calc_jacobians"):
                 J_A = self.plant.CalcJacobianTranslationalVelocity(
                     context, ad.JacobianWrtVariable.kV,
-                    body_A.body_frame(), sdp.p_ACa, W, W,
+                    body_A.body_frame(), p_ACa_B, W, W,
                 )  # (3, n_v)
                 J_B = self.plant.CalcJacobianTranslationalVelocity(
                     context, ad.JacobianWrtVariable.kV,
-                    body_B.body_frame(), sdp.p_BCb, W, W,
+                    body_B.body_frame(), p_BCb_B, W, W,
                 )  # (3, n_v)
 
             J_rel = J_A - J_B       # relative velocity Jacobian (3, n_v)
@@ -740,8 +760,10 @@ class LCSFormulator:
                 "tag": _tag,
                 "nhat_BA_W": np.array(nhat),
                 "nhat_onto_box": nhat_onto_box,
-                "p_ACa": np.array(sdp.p_ACa),
-                "p_BCb": np.array(sdp.p_BCb),
+                # BODY-frame witness points (converted from Drake's
+                # geometry-frame p_ACa/p_BCb via X_BG — see above).
+                "p_ACa": np.array(p_ACa_B),
+                "p_BCb": np.array(p_BCb_B),
                 "distance": float(sdp.distance),
             })
             mus.append(self._mu_for_tag(_tag))
@@ -758,10 +780,10 @@ class LCSFormulator:
             if _tag == "EE-BOX":
                 if a_is_box:
                     body_box = body_A
-                    p_BoCo = np.asarray(sdp.p_ACa).reshape(3, 1)
+                    p_BoCo = np.asarray(p_ACa_B).reshape(3, 1)
                 else:
                     body_box = body_B
-                    p_BoCo = np.asarray(sdp.p_BCb).reshape(3, 1)
+                    p_BoCo = np.asarray(p_BCb_B).reshape(3, 1)
                 p_contact_W = self.plant.CalcPointsPositions(
                     context, body_box.body_frame(), p_BoCo, W,
                 ).flatten()
