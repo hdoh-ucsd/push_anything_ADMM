@@ -1146,11 +1146,44 @@ class SamplingC3Controller:
                 _qzc = float(current_q[_ps + 3])
                 _qz1 = float(x1[_ps + 3])
                 _qzN = float(_xseq[-1][_ps + 3])
+                # B-investigation (2026-07-28): predicted EE at knot 1 and
+                # terminal knot. EE-space state layout puts p_ee at
+                # x[n_obj_q : n_obj_q+3] — for the single-object tasks
+                # that's x[7:10]. Answers whether the phantom-park plan
+                # moves the model-EE after the model-box (chasing contact,
+                # which would drag the real EE INTO the real box) or lets
+                # the model-box fly alone (EE holds → zero real force).
+                _ee1 = _eeN = None
+                if bool(getattr(self.base_mpc, "use_ee_space", False)):
+                    _ee1 = x1[7:10]
+                    _eeN = _xseq[-1][7:10]
+                else:
+                    # R^7: FK the predicted arm q at knot 1 and terminal.
+                    # Probe-only; restores plant state after.
+                    _q_probe_saved = self.plant.GetPositions(plant_ctx).copy()
+                    _v_probe_saved = self.plant.GetVelocities(plant_ctx).copy()
+                    _fk = []
+                    for _xk in (x1, _xseq[-1]):
+                        _qf = _q_probe_saved.copy()
+                        _qf[:self.n_u] = _xk[:self.n_u]
+                        self.plant.SetPositions(plant_ctx, _qf)
+                        _fk.append(self.plant.CalcPointsPositions(
+                            plant_ctx, self.ee_frame, np.zeros(3),
+                            self.world_frame).flatten())
+                    self.plant.SetPositions(plant_ctx, _q_probe_saved)
+                    self.plant.SetVelocities(plant_ctx, _v_probe_saved)
+                    _ee1, _eeN = _fk
+                _ee_str = ""
+                if _ee1 is not None:
+                    _ee_str = (
+                        f"ee_pred1=({_ee1[0]:+.5f},{_ee1[1]:+.5f},{_ee1[2]:+.5f}) "
+                        f"ee_predN=({_eeN[0]:+.5f},{_eeN[1]:+.5f},{_eeN[2]:+.5f}) ")
                 print(
                     f"[X-SEQ-PROBE] step={self._step} "
                     f"x0_box=({current_q[_ox]:+.5f},{current_q[_oy]:+.5f},{current_q[_oz]:+.5f}) "
                     f"x1_box=({x1[_ox]:+.5f},{x1[_oy]:+.5f},{x1[_oz]:+.5f}) "
                     f"x1_box_v=({x1[_vxr]:+.5f},{x1[_vyr]:+.5f},{x1[_vzr]:+.5f}) "
+                    f"{_ee_str}"
                     f"qz_now={_qzc:+.5f} qz_pred1={_qz1:+.5f} "
                     f"qz_predN={_qzN:+.5f} "
                     f"dt={self.base_mpc.dt:.3f}",
