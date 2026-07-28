@@ -2185,12 +2185,23 @@ class C3Solver:
             self._last_lambda_anitescu_horizon = np.zeros((N, 0))
         elif num_normals > 0:
             # §7.36 — Anitescu single-block layout: stash raw folded λ.
+            # 4.g conformance (2026-07-27): reference push_t runs
+            # end_on_qp_step=false (c3.cc:336-347), so its published
+            # z_sol λ is the PROJECTED δ copy — complementarity-feasible,
+            # phantom-zeroed — while x_sol_/u_sol_ stay QP. The ST branch
+            # above already defaults consumers to δ (expose_zsol=False);
+            # this Anitescu branch was still reporting the raw QP λ —
+            # the source of the phantom λ=0.6-19 readings on far rows
+            # (p111/p115-p117 telemetry). Mirror the dual-view pattern:
+            # default = δ, expose_zsol=True flips back to QP for A/B.
             _LAN0 = SL
-            self._last_lambda_anitescu_first = z_sol[_LAN0 : _LAN0 + n_lambda].copy()
+            _lam_src = z_sol if self.expose_zsol else delta
+            self._last_lambda_anitescu_first = \
+                _lam_src[_LAN0 : _LAN0 + n_lambda].copy()
             _la_h = np.zeros((N, n_lambda))
             for _k in range(N):
                 _base = _k * TOT
-                _la_h[_k] = z_sol[_base + SL : _base + SL + n_lambda]
+                _la_h[_k] = _lam_src[_base + SL : _base + SL + n_lambda]
             self._last_lambda_anitescu_horizon = _la_h
             # Anitescu → per-pair λ_n recovery. Under Anitescu, each contact
             # has 4 folded λ components (lcs_formulator.py:1765-1798,
@@ -2204,7 +2215,7 @@ class C3Solver:
             # PORT_FORCE_ROUTING=u_sol was set. Root cause of T-push
             # λ_EE-BOX=0 executor symptom.
             _dirs_per_contact = int(n_lambda // num_normals) if num_normals > 0 else 4
-            _lam_an0 = z_sol[_LAN0 : _LAN0 + n_lambda]
+            _lam_an0 = _lam_src[_LAN0 : _LAN0 + n_lambda]
             _lam_n_per_pair = np.array([
                 float(np.sum(np.abs(
                     _lam_an0[i * _dirs_per_contact : (i + 1) * _dirs_per_contact]
@@ -2213,7 +2224,7 @@ class C3Solver:
             _lam_n_horizon = np.zeros((N, num_normals))
             for _k in range(N):
                 _base = _k * TOT + SL
-                _la_k = z_sol[_base : _base + n_lambda]
+                _la_k = _lam_src[_base : _base + n_lambda]
                 for _i in range(num_normals):
                     _lam_n_horizon[_k, _i] = float(np.sum(np.abs(
                         _la_k[_i * _dirs_per_contact : (_i + 1) * _dirs_per_contact]
