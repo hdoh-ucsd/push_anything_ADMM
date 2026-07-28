@@ -481,6 +481,18 @@ class OperationalSpaceController:
         self._n_calls += 1
         if not success:
             self._qp_failures += 1
+            # Rate-limited failure diagnostic (first 8): result string +
+            # the error magnitudes feeding the QP, so persistent-failure
+            # regimes (e.g. p125 rot-task stall) are attributable from the
+            # run log without a signature dump.
+            if self._qp_failures <= 8:
+                _we = (float(np.linalg.norm(w_err))
+                       if w_err is not None else float("nan"))
+                print(f"[QP-FAIL] call={self._n_calls} mode={mode} "
+                      f"result={result_str} |p_err|={np.linalg.norm(p_err):.4f} "
+                      f"|v_err|={np.linalg.norm(v_err):.4f} |w_err|={_we:.4f} "
+                      f"W_rot={float(getattr(_gains_active, 'W_rot', 0.0)):.1f}",
+                      flush=True)
 
         # --- QP-signature dump: outputs + write ---
         if _sig_do_dump:
