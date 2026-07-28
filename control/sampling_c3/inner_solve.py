@@ -584,13 +584,19 @@ class InnerSolver:
                 # Diag 2: EE-space per-axis bounds (installed only for R^3
                 # planner with n_u=3; None for R^7 arm-torque). Mirrors
                 # ci_mpc_c3plus.py:310-321 for the surrogate-solve path.
-                # §9-leak gate: these surrogate-side fixes were bundled with
-                # §9 and changed the surrogate solve behavior for the box
-                # path too (72 %→46 % closure at HEAD). Restrict to tshape.
+                # F2 fix (2026-07-28b deep report): the former tshape-only
+                # gate (§9-leak protection for the pre-frame-migration 72%
+                # box baseline, now retired) left BOX surrogates with NO
+                # per-axis u-box — rollouts applied up to 49 N fictitious
+                # force and predicted full goal attainment from ANY sample
+                # face, flattening the ranking. The reference installs
+                # u_horizontal/vertical_limits on EVERY per-sample solve
+                # (sampling_based_c3_controller.cc:1040-1053); do the same
+                # for all EE-space surrogates.
                 _ee_space = (self.solver.n_u == 3)
                 _tshape_gate = _ee_space and self._object_shape == "tshape"
-                _u_lo = self._u_lo if _tshape_gate else None
-                _u_hi = self._u_hi if _tshape_gate else None
+                _u_lo = self._u_lo if _ee_space else None
+                _u_hi = self._u_hi if _ee_space else None
                 if not _ee_space:
                     # R^7: gravity-centered u-box at the SAMPLE's arm config
                     # (plant_ctx currently holds q_seed). Same computation as
@@ -800,14 +806,30 @@ class InnerSolver:
                 # 2026-07-28 defaults flip: object-slot-only ranking is
                 # unconditional (was REFCONF_SAMPLE_RANK_OBJ_ONLY,
                 # canonical since a194280).
-                _n_x_r = Q.shape[0]
-                _obj_mask = np.zeros(_n_x_r, dtype=bool)
-                _obj_mask[self.n_u:self.n_q] = True          # obj quat+pos
-                _obj_mask[self.n_q + self.n_u:_n_x_r] = True  # obj ω+v
-                _M_r = np.outer(_obj_mask, _obj_mask)
-                c_C3_raw = traj_cost(
-                    x_seq, u_seq,
-                    Q * _M_r, np.zeros_like(R), QN * _M_r, x_ref)
+                #
+                # F1 fix (2026-07-28b deep report): the slot arithmetic
+                # below assumes the R^7 layout [q_arm(n_u), q_box, v_arm,
+                # v_box]. The EE-space layout is [box_q(0:7), p_ee(7:10),
+                # box_v(10:16), v_ee(16:19)] — applying the R^7 indices
+                # there keeps the EE slots (error ≈ 0 vs their own sample
+                # ref) and drops most box weights, flattening every
+                # sample's rank to ~0.000 (COST-BD: c_C3_raw=0.000 vs true
+                # object cost 2411). EE-space paths use the layout-correct
+                # helper instead.
+                if _ee_space:
+                    Q_obj_r, QN_obj_r, R_obj_r = \
+                        _object_only_cost_matrices_ee_space(Q, QN, R)
+                    c_C3_raw = traj_cost(
+                        x_seq, u_seq, Q_obj_r, R_obj_r, QN_obj_r, x_ref)
+                else:
+                    _n_x_r = Q.shape[0]
+                    _obj_mask = np.zeros(_n_x_r, dtype=bool)
+                    _obj_mask[self.n_u:self.n_q] = True          # obj quat+pos
+                    _obj_mask[self.n_q + self.n_u:_n_x_r] = True  # obj ω+v
+                    _M_r = np.outer(_obj_mask, _obj_mask)
+                    c_C3_raw = traj_cost(
+                        x_seq, u_seq,
+                        Q * _M_r, np.zeros_like(R), QN * _M_r, x_ref)
             feasible = True
             if admm_iter_k >= self.base_admm_iter:
                 self.full_solves += 1
@@ -1367,11 +1389,11 @@ class InnerSolver:
         try:
             with ctx:
                 # Diag 2: same per-axis-bounds plumbing as the surrogate path.
-                # §9-leak gate: tshape only (see evaluate_sample gate above).
+                # F2 fix (2026-07-28b): all EE-space, not tshape-only —
+                # see evaluate_sample site.
                 _ee_space = (self.solver.n_u == 3)
-                _tshape_gate = _ee_space and self._object_shape == "tshape"
-                _u_lo = self._u_lo if _tshape_gate else None
-                _u_hi = self._u_hi if _tshape_gate else None
+                _u_lo = self._u_lo if _ee_space else None
+                _u_hi = self._u_hi if _ee_space else None
                 if not _ee_space:
                     # R^7 gravity-centered u-box (see surrogate site above).
                     # No plant_ctx in this method — uses the box cached at
@@ -1386,7 +1408,23 @@ class InnerSolver:
                     u_lower=_u_lo, u_upper=_u_hi,
                     phi=r.phi,
                 )
-            c_C3_raw = traj_cost(x_seq, u_seq, r.Q, r.R, r.QN, r.x_ref)
+            # F1 fix (2026-07-28b): score with the SAME object-only mask the
+            # ranking path uses, else this full-resolve value (full Q/R,
+            # ~1.5× larger) is scale-inconsistent with the c_samples it is
+            # compared against in the dispatcher.
+            if _ee_space:
+                _Qm, _QNm, _Rm = _object_only_cost_matrices_ee_space(
+                    r.Q, r.QN, r.R)
+                c_C3_raw = traj_cost(x_seq, u_seq, _Qm, _Rm, _QNm, r.x_ref)
+            else:
+                _n_x_r = r.Q.shape[0]
+                _obj_mask = np.zeros(_n_x_r, dtype=bool)
+                _obj_mask[self.n_u:self.n_q] = True
+                _obj_mask[self.n_q + self.n_u:_n_x_r] = True
+                _M_r = np.outer(_obj_mask, _obj_mask)
+                c_C3_raw = traj_cost(
+                    x_seq, u_seq,
+                    r.Q * _M_r, np.zeros_like(r.R), r.QN * _M_r, r.x_ref)
             self.full_solves += 1
             r.u_seq    = u_seq
             r.x_seq    = x_seq
