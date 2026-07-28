@@ -22,6 +22,10 @@
 #                                     watchdog (b6e1c22) — INVERTED SENSE:
 #                                     =0 enables. Aborts phantom retreats in
 #                                     ~0.5 s (the p118 17-cycle mechanism).
+#   PORT_ACHIEVED_VERTICAL_RETRACT=1  vertical-first retraction after the
+#                                     goal latch (e46afdb; prevents the p121
+#                                     corner-cut shove that pushed the T
+#                                     +90 mm past goal post-achievement).
 #
 # Usage: scripts/run_t_r7_canonical.sh [STEM] [MAX_TIME]
 set -euo pipefail
@@ -37,6 +41,7 @@ REFCONF_SAMPLE_RANK_OBJ_ONLY=1 \
 PORT_EE_Z_HOLD=1 \
 PORT_FREE_STALL_JOINT_RECOVERY=1 \
 PORT_DISABLE_CONTACT_LOSS_GATE=0 \
+PORT_ACHIEVED_VERTICAL_RETRACT=1 \
 python main.py push_t --solver c3plus --admm-iter 3 \
     --max-time "${MAX_TIME}" \
     --sampling-c3 config/sampling_c3_kik_t.yaml \
