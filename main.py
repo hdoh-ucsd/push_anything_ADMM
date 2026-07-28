@@ -389,6 +389,19 @@ def main():
               f"max_time={args.max_time}")
     print(f"[RUN-META] git={_git_head} seed={_seed_str} task={task_name} "
           f"stem={stem} flags=[{_flags}]", flush=True)
+    # 2026-07-27: full launch provenance. The short flags list above hides
+    # both the argv tail (--sampling-c3 YAML path!) and the env-gated
+    # feature set — reconstructing them from banners cost real time twice:
+    # the YAML mismatch (p106 recipe hunt) and the missed
+    # REFCONF_USE_G_MATRIX=1, which silently ran p106-p111 on the G-off
+    # rho=100 ADMM and contaminated the series comparison. Dump both,
+    # verbatim, once per run.
+    _env_gates = {k: v for k, v in sorted(os.environ.items())
+                  if k.startswith(("REFCONF_", "PORT_", "DIAG_"))}
+    print(f"[RUN-META-ARGV] {' '.join(sys.argv)}", flush=True)
+    print(f"[RUN-META-ENV] "
+          f"{' '.join(f'{k}={v}' for k, v in _env_gates.items()) or '(none)'}",
+          flush=True)
 
     # Resolve recording paths.  --no-record wins; otherwise AUTO sentinels
     # produce shared-stem filenames, "" maps to legacy default-named files,
