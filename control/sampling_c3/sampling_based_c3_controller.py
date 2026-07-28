@@ -4364,6 +4364,72 @@ class SamplingC3Controller:
                     v_ee_desired=None,
                     mode="free",
                 ))
+
+        # --- Free-mode Cartesian-trap stall recovery (PORT-only, gated) ---
+        # p115 anatomy: after the phantom-λ retreat parked the arm at a
+        # stretched high posture, the free-mode OSC sat 43 s producing a
+        # healthy ~15 Nm toward a 2 cm-away reference with ~zero motion —
+        # a Cartesian local trap. The per-tick IK meanwhile found a valid
+        # in-limits solution ~30° away in joint space (a configuration-
+        # branch jump the task-space OSC cannot take). The reposition
+        # machinery itself is reference-conformant (rebuild-per-tick +
+        # nominal_ee_accel=2 leash match cc:1457-1474), so the conformant
+        # stack cannot escape a posture the reference never reaches; this
+        # recovery is a PORT_* workaround for the port-specific upstream
+        # (phantom retreat) until that cluster is fixed.
+        # Detection: EE displacement < 1 mm per tick for ≥10 consecutive
+        # free ticks while > 5 cm from the tracker target. Action: IK the
+        # CURRENT free-mode Cartesian target, drive joint-PD toward that
+        # solution (sub-tick replayed via 'free_joint_recovery').
+        if (mode != "c3"
+                and os.environ.get(
+                    "PORT_FREE_STALL_JOINT_RECOVERY", "0") == "1"):
+            _ee_prev = getattr(self, "_free_stall_ee_prev", None)
+            _stride = (float(np.linalg.norm(ee_pos_now - _ee_prev))
+                       if _ee_prev is not None else 1.0)
+            self._free_stall_ee_prev = np.asarray(ee_pos_now, float).copy()
+            _tgt_now = np.asarray(_p_ee_des, dtype=float).reshape(3)
+            _far = float(np.linalg.norm(_tgt_now - ee_pos_now)) > 0.05 \
+                or (self._pwl_traj is not None and float(np.linalg.norm(
+                    np.asarray(self._pwl_traj.p_target) - ee_pos_now)) > 0.05)
+            if _stride < 0.001 and _far:
+                self._free_stall_streak = getattr(
+                    self, "_free_stall_streak", 0) + 1
+            else:
+                self._free_stall_streak = 0
+            if self._free_stall_streak >= 10:
+                from control.sampling_c3.ik import solve_ik_to_ee_pos
+                _q_saved_rec = self.plant.GetPositions(plant_ctx).copy()
+                try:
+                    _q_rec, _rec_err, _rec_it = solve_ik_to_ee_pos(
+                        self.plant, self.ee_frame,
+                        p_target=_tgt_now, q_init=current_q.copy(),
+                        plant_ctx=plant_ctx, n_arm_dofs=self.n_u)
+                finally:
+                    self.plant.SetPositions(plant_ctx, _q_saved_rec)
+                if _rec_err < 0.02:
+                    _kp_r = float(os.environ.get(
+                        "PORT_FREE_RECOVERY_KP", "40.0"))
+                    _kd_r = float(os.environ.get(
+                        "PORT_FREE_RECOVERY_KD", "4.0"))
+                    _qd_rec = np.asarray(_q_rec[: self.n_u], float)
+                    _qe_rec = _qd_rec - np.asarray(
+                        current_q[: self.n_u], float)
+                    u_imp = np.clip(
+                        _kp_r * _qe_rec
+                        - _kd_r * np.asarray(current_v[: self.n_u], float),
+                        -87.0, +87.0)
+                    self._last_osc_call = ("free_joint_recovery", dict(
+                        q_des=_qd_rec.copy(), kp=_kp_r, kd=_kd_r))
+                    if self.log_diag and (self._free_stall_streak == 10
+                                          or self._step % 20 == 0):
+                        print(f"[FREE-RECOVERY] step={self._step} "
+                              f"streak={self._free_stall_streak} "
+                              f"q_err_max_deg="
+                              f"{np.degrees(np.max(np.abs(_qe_rec))):.1f} "
+                              f"ik_err={_rec_err:.4f} "
+                              f"tgt=({_tgt_now[0]:+.3f},{_tgt_now[1]:+.3f},"
+                              f"{_tgt_now[2]:+.3f})", flush=True)
         u_opt = u_imp
 
         # --- λ_planned per-step trace ---------------------------------
@@ -4675,6 +4741,14 @@ class SamplingC3Controller:
             n_u = int(getattr(self.executor, "n_arm", 7))
             return np.zeros(n_u)
         kind, kw = self._last_osc_call
+        if kind == "free_joint_recovery":
+            # Cartesian-trap escape: joint-PD toward the cached IK branch
+            # solution on fresh state (see PORT_FREE_STALL_JOINT_RECOVERY).
+            _qe = kw["q_des"] - np.asarray(current_q[: self.n_u], float)
+            return np.clip(
+                kw["kp"] * _qe
+                - kw["kd"] * np.asarray(current_v[: self.n_u], float),
+                -87.0, +87.0)
         if kind == "c3_r7_direct":
             # R^7 full-plant direct-torque: re-evaluate feedforward + joint-PD
             # on fresh state at 1 kHz. base_mpc's cached _last_u_seq / last_x_seq
