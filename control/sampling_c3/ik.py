@@ -29,7 +29,9 @@ def solve_ik_to_ee_pos(plant,
                        damping:     float = 0.05,
                        q_lo:        np.ndarray | None = None,
                        q_hi:        np.ndarray | None = None,
-                       limit_margin: float = 0.005) -> Tuple[np.ndarray, float, int]:
+                       limit_margin: float = 0.005,
+                       R_target=None,
+                       rot_weight:  float = 0.15) -> Tuple[np.ndarray, float, int]:
     """Iterated DLS IK: find q s.t. FK_ee(q) ≈ p_target.
 
     Parameters
@@ -54,6 +56,16 @@ def solve_ik_to_ee_pos(plant,
                   reachability but large enough that a downstream joint-
                   limit safety check at ±50 mrad does not flag a freshly
                   converged pose.
+    R_target    : optional pydrake RotationMatrix. When given, the DLS
+                  runs 6-DOF: angular error (exact angle-axis of
+                  R_target·R_now⁻¹, world frame) is stacked under the
+                  position error, scaled by `rot_weight` (m per rad).
+                  Added 2026-07-28 (lunge fix): the spawn preposition must
+                  hold the tool vertical (identity) so the OSC rotation
+                  hold (Kp_rot=800) starts satisfied — a 64.7° spawn tilt
+                  wrenched the arm through the box at >1.5 m/s (box p5).
+                  err_norm/tol still measure the POSITION error only.
+    rot_weight  : scale on the angular rows (default 0.15).
 
     Returns
     -------
@@ -80,17 +92,39 @@ def solve_ik_to_ee_pos(plant,
         err      = p_target - p_curr
         err_norm = float(np.linalg.norm(err))
         iters    = i + 1
-        if err_norm < tol:
-            break
-        J_ee = plant.CalcJacobianTranslationalVelocity(
-            plant_ctx, ad.JacobianWrtVariable.kV,
-            ee_frame, np.zeros(3),
-            world, world,
-        )
-        J_arm = J_ee[:, :n_arm_dofs]
-        dq    = J_arm.T @ np.linalg.solve(
-            J_arm @ J_arm.T + damping ** 2 * np.eye(3), err
-        )
+        if R_target is None:
+            if err_norm < tol:
+                break
+            J_ee = plant.CalcJacobianTranslationalVelocity(
+                plant_ctx, ad.JacobianWrtVariable.kV,
+                ee_frame, np.zeros(3),
+                world, world,
+            )
+            J_arm = J_ee[:, :n_arm_dofs]
+            dq    = J_arm.T @ np.linalg.solve(
+                J_arm @ J_arm.T + damping ** 2 * np.eye(3), err
+            )
+        else:
+            R_now = plant.CalcRelativeTransform(
+                plant_ctx, world, ee_frame).rotation()
+            aa = (R_target @ R_now.inverse()).ToAngleAxis()
+            w_err = float(aa.angle()) * np.asarray(
+                aa.axis(), dtype=float).reshape(3)
+            if err_norm < tol and float(np.linalg.norm(w_err)) < 0.05:
+                break
+            J_spatial = plant.CalcJacobianSpatialVelocity(
+                plant_ctx, ad.JacobianWrtVariable.kV,
+                ee_frame, np.zeros(3),
+                world, world,
+            )
+            J6 = np.vstack([
+                J_spatial[3:6, :n_arm_dofs],              # translational
+                rot_weight * J_spatial[0:3, :n_arm_dofs], # angular (scaled)
+            ])
+            e6 = np.concatenate([err, rot_weight * w_err])
+            dq = J6.T @ np.linalg.solve(
+                J6 @ J6.T + damping ** 2 * np.eye(6), e6
+            )
         q[:n_arm_dofs] += dq
         if use_limits:
             np.clip(q[:n_arm_dofs], q_lo_eff, q_hi_eff, out=q[:n_arm_dofs])

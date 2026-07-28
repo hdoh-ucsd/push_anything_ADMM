@@ -741,19 +741,28 @@ def compute_safe_init_arm_q(plant,
     q_lo_arm = plant.GetPositionLowerLimits()[:n_arm_dofs]
     q_hi_arm = plant.GetPositionUpperLimits()[:n_arm_dofs]
 
+    # 2026-07-28 lunge fix: both stages solve 6-DOF with a TOOL-VERTICAL
+    # (world-identity) orientation target. The position-only spawn IK left
+    # the tool up to 64.7 deg tilted (box W preposition); the OSC's
+    # constant-identity rotation hold (Kp_rot=800) then wrenched the arm
+    # through the box at >1.5 m/s on the first ticks (box p5, 78.8%
+    # saturation). The reference's q_init_franka posture holds the tool
+    # vertical — this makes the spawn conformant with that property.
+    _R_vert = ad.RotationMatrix()
+
     # Stage 1: lifted waypoint to escape any pose-induced local minima.
     p_waypoint = np.array([p_target[0], p_target[1], intermediate_z])
     q1, err1, it1 = solve_ik_to_ee_pos(
         plant, ee_frame, p_waypoint, q_full, plant_ctx,
         n_arm_dofs=n_arm_dofs, max_iter=80, damping=0.05,
-        q_lo=q_lo_arm, q_hi=q_hi_arm,
+        q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_vert,
     )
 
     # Stage 2: descend onto the contact target.
     q2, err2, it2 = solve_ik_to_ee_pos(
         plant, ee_frame, p_target, q1, plant_ctx,
         n_arm_dofs=n_arm_dofs, max_iter=80, damping=0.02,
-        q_lo=q_lo_arm, q_hi=q_hi_arm,
+        q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_vert,
     )
 
     # Read EE position at the final iterate for the diagnostic line.
