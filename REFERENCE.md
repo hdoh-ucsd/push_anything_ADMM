@@ -1,6 +1,6 @@
 # DAIRlib `sampling_c3` Reference Code
 
-Source: `/root/reference_repos/dairlib_sampling_c3/` (DAIRLab/dairlib, branch `sampling_based_c3_public`, HEAD `b52c68d`).
+Source: `/root/reference_repos/dairlib_sampling_c3/` (DAIRLab/dairlib). The checkout is on the AUTHORITATIVE branch `push_anything_dev`, HEAD `257e3ede` (see docs/alignment-references.md). NOTE: quotes below were originally extracted at `sampling_based_c3_public` HEAD `b52c68d` — line numbers may have shifted on push_anything_dev; verify against the working tree before relying on exact lines.
 
 This document is a curated quote-and-cite extraction of the reference implementation. Each section gives file:line citations and the actual source so it can be referenced without re-grepping. All commentary is from the dairlib source — none added here.
 
