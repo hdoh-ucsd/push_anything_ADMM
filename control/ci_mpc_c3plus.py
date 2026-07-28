@@ -431,8 +431,9 @@ class C3PlusMPC:
                 except ValueError:
                     _u_lo = None
                     _u_hi = None
-        elif (not self.use_ee_space and self.solver.n_u > 3
-                and os.environ.get("REFCONF_R7_U_GRAVITY_CENTERED", "1") == "1"):
+        elif not self.use_ee_space and self.solver.n_u > 3:
+            # 2026-07-28 defaults flip: gravity-centered u-box unconditional
+            # (was REFCONF_R7_U_GRAVITY_CENTERED, default ON).
             # R^7 gravity-centered u-box (reference u-limit conformance).
             # The reference bounds PUSH EFFORT: u is a ~N-scale EE force with
             # u_horizontal/vertical_limits = ±50 N (push_t

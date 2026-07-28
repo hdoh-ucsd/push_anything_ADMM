@@ -231,14 +231,11 @@ class SamplingC3Controller:
                   "accel ENABLED (§7.34 OVER-DRIVES regime; source-conditional)",
                   flush=True)
 
-        # §7.42 — when REFCONF_OSC_ALIGN=1, override W_force to 1.0 to match
-        # the reference's `LambdaEndEffectorW = diag(1,1,1)` (osc_params.yaml:74).
-        # The bundling env flag (set in main.py) wires the routing + u-bounds +
-        # R-cost env vars together; W_force needs its own override here because
-        # it is read at construction (not via env at use-site like the others).
-        _ref_align = (os.environ.get("REFCONF_OSC_ALIGN", "0") == "1")
-        _W_force_val = (1.0 if _ref_align
-                        else float(getattr(params, "W_force", 100.0)))
+        # Reference `LambdaEndEffectorW = diag(1,1,1)` (osc_params.yaml:74).
+        # 2026-07-28 defaults flip: W_force=1.0 unconditional (was the
+        # REFCONF_OSC_ALIGN override; params.W_force default also flipped
+        # to 1.0).
+        _W_force_val = float(getattr(params, "W_force", 1.0))
         self.executor = OperationalSpaceController(
             plant        = plant,
             ee_frame     = ee_frame,
@@ -619,7 +616,10 @@ class SamplingC3Controller:
         # path below. Default OFF (fabricated path bit-identical to
         # pre-prototype).
         import os as _os
-        _fr = _os.environ.get("PORT_FORCE_ROUTING", "off").lower()
+        # 2026-07-28 defaults flip: reference force target = u_sol
+        # (sampling_based_c3_controller.cc:1820-1832). Env override
+        # retained for falsification runs only.
+        _fr = _os.environ.get("PORT_FORCE_ROUTING", "u_sol").lower()
         if _fr in ("u_sol", "neg_u_sol"):
             _use_ee = bool(getattr(self.base_mpc, "use_ee_space", False))
             _u_seq  = getattr(self.base_mpc, "_last_u_seq", None)
@@ -1446,13 +1446,7 @@ class SamplingC3Controller:
         # Env: REFCONF_MODE_SWITCH_USE_C3_RAW=1 (default ON = reference-conformant).
         # In current push_t config (w_align=w_travel=w_rot=0) c_C3_raw equals
         # r.c_sample so this is a no-op; the change is defensive.
-        import os as _os_e3
-        _use_c3_raw_for_gate = (
-            _os_e3.environ.get("REFCONF_MODE_SWITCH_USE_C3_RAW", "1") == "1")
-        if _use_c3_raw_for_gate:
-            c_samples = [float(r.c_C3_raw) for r in results]
-        else:
-            c_samples = [r.c_sample for r in results]
+        c_samples = [float(r.c_C3_raw) for r in results]
 
         # 3b. Finished-reposition cost penalty.  Mirrors the reference
         #     (sampling_based_c3_controller.cc:1081-1084):
@@ -3150,39 +3144,14 @@ class SamplingC3Controller:
         # URDF limits. Revisit once the OSC baseline (position-only
         # tracking) is verified.
         if mode == "c3":
-            # 2026-07-27 R^7 full-plant direct-torque path. When use_ee_space=False,
-            # planner produces joint torques directly (u_seq[0] ∈ ℝ⁷). The port's
-            # OSC/impedance stack downstream is EE-space-only — it converts a
-            # Cartesian force intent into joint torques via J_ee^T. Under R^7
-            # that conversion is redundant and mis-steers (verified by p102
-            # rot regression). Bypass entirely: apply u_seq[0] as feedforward
-            # arm torque + gravity comp + small joint-PD for stability. Env-gate
-            # REFCONF_R7_DIRECT_TORQUE=1 (default ON when R^7 is active).
+            # 2026-07-28 defaults flip: the reference architecture is the
+            # DEFAULT — the OSC executes c3 mode too (franka_osc_controller
+            # is the reference's only executor). The R^7 direct-torque
+            # bypass (formerly REFCONF_R7_DIRECT_TORQUE=1, the p106-p123
+            # hybrid) is removed; `_compute_r7_c3_direct_torque` is retained
+            # for the historical record but is no longer dispatched.
             _use_ee_space = bool(getattr(self.base_mpc, "use_ee_space", False))
-            import os as _os_r7dt
-            _r7_direct = (
-                not _use_ee_space
-                and _os_r7dt.environ.get("REFCONF_R7_DIRECT_TORQUE", "1") == "1")
-            if _r7_direct:
-                u_imp, imp_diag = self._compute_r7_c3_direct_torque(
-                    current_q, current_v, plant_ctx)
-                # Cache for sub-tick decoupling; sub-tick will re-invoke this
-                # path via `compute_control_osc_only`.
-                self._last_osc_call = ("c3_r7_direct", dict())
-                # Skip all the EE-space downstream. Jump past the OSC dispatch.
-                _v_ee_des = None; _lam_des = None; _a_ee_des = None
-                _exec_lam_n = None; _exec_lam_t = None; _exec_Jn = None; _exec_Jt = None
-                _q_arm_ik = None; _traj_c3 = None
-                # No further executor call for this branch; mark flag for skip.
-                self._r7_direct_this_tick = True
-                # Preserve the informational-u path used by caller.
-                if self.log_diag:
-                    print(f"[R7-DIRECT] step={self._step} u_arm_norm="
-                          f"{float(np.linalg.norm(u_imp)):.3f} "
-                          f"tau_max={float(np.max(np.abs(u_imp))):.3f}",
-                          flush=True)
-            else:
-                self._r7_direct_this_tick = False
+            self._r7_direct_this_tick = False
             # Cartesian target from C3+'s next-step state prediction.
             _x_seq = self.base_mpc.last_x_seq
             # EE-space planner: p_ee is already a state slot in x_seq, read
@@ -3436,7 +3405,7 @@ class SamplingC3Controller:
 
             import os as _os_fr
             if _os_fr.environ.get("DIAG_FORCE_ROUTE_TRACE", "0") == "1":
-                _fr_env = _os_fr.environ.get("PORT_FORCE_ROUTING", "off").lower()
+                _fr_env = _os_fr.environ.get("PORT_FORCE_ROUTING", "u_sol").lower()
                 _u0 = getattr(self.base_mpc, "_last_u_seq", None)
                 if _u0 is not None and hasattr(_u0, "shape") and _u0.ndim == 2 and _u0.shape[1] == 3:
                     _u_seq0 = np.asarray(_u0[0], dtype=float).reshape(3)
@@ -3606,14 +3575,11 @@ class SamplingC3Controller:
             # for the first box closure in §7.51 (with PORT_EE_APPROACH_FACE_TARGET=1
             # + w_ee_approach=8000 + W_force=1). Default-OFF
             # byte-identical preserved. One-shot log on first c3 tick.
-            _disable_c3_override = (_os.environ.get(
-                "PORT_DISABLE_C3_OVERRIDE", "0") == "1")
-            if _disable_c3_override and not getattr(
-                    self, "_751_banner_printed", False):
-                print("[§7.51] PORT_DISABLE_C3_OVERRIDE=1 — LTD APPROACH-"
-                      "OVERRIDE skipped in c3; p_ee_des = FK(x_seq[1][7:10])",
-                      flush=True)
-                self._751_banner_printed = True
+            # 2026-07-28 defaults flip: the LTD approach-override is a
+            # port-only divergence with no reference analog — skipping it
+            # is now unconditional (was PORT_DISABLE_C3_OVERRIDE=1,
+            # canonical since the p10x series).
+            _disable_c3_override = True
             _no_admitted_pair = ((len(_ee_box_pairs) == 0)
                                  and not _disable_c3_override)
             _override_fired_this_tick = False

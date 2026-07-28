@@ -1,7 +1,12 @@
-"""Verify the default osc_franka.yaml provides joint-2 posture gains
-(Task 3 — kept) and the opt-in semantics of the §7.70 reference c3-gains
-flag (restored after Phase-1 re-cert on 2026-07-13 — see
-memory/project_reproduce_dairlib_phase1_recert_false_positive.md).
+"""Verify config/osc_franka.yaml carries the reference gain set as the
+DEFAULT (2026-07-28 defaults flip: the former §7.43/§7.70 env gates —
+REFCONF_OSC_ALIGN / REFCONF_OSC_C3_MODE_GAINS / REFCONF_OSC_FREE_MODE_GAINS
+/ REFCONF_OSC_EE_ROT_TASK — were removed; ONE gain set for all modes,
+matching reference osc_params.yaml + franka_osc_controller.cc:171-187).
+
+Joint-2 posture stays Option-A (W=0, port frame decision — the reference's
+raised-mount 1.1 rad elbow pin does not transfer; see
+memory/project_reproduce_dairlib_restored_main_joint2_flag).
 """
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -15,16 +20,11 @@ from control.osc.operational_space_controller import (
 
 
 def test_default_yaml_provides_joint2_gains_but_weight_off():
-    """Task 3 scaffolding kept, W_joint2 set to 0.0 post-recert.
-
-    The Kp/Kd/target/idx values remain reference-aligned so a future
-    coupled cost/executor re-tune can turn W back on without editing
-    the YAML. Post-2026-07-13-recert default: W=0 (cost term inert).
-    """
+    """Joint-2 scaffolding kept reference-valued, W=0 per Option A."""
     gains, _ = _load_osc_gains(Path("config/osc_franka.yaml"), n_arm=7)
     assert gains.Kp_joint2 == 200.0
     assert gains.Kd_joint2 == 10.0
-    assert gains.W_joint2 == 0.0     # default-OFF: see YAML comment for context
+    assert gains.W_joint2 == 0.0     # Option A: port-frame decision
     assert gains.joint2_target_rad == 1.1
     assert gains.joint2_idx == 1
 
@@ -36,49 +36,28 @@ def _stub_plant(n_v=8):
     return plant
 
 
-def test_default_c3_mode_uses_port_gains(monkeypatch):
-    """§7.70 semantics restored: reference c3-gains are OPT-IN, not default.
+def _make_osc():
+    return OperationalSpaceController(
+        plant=_stub_plant(), ee_frame=MagicMock(), n_arm_dofs=7,
+        q_nominal=np.zeros(7), gains_yaml="config/osc_franka.yaml",
+        use_force_tracking=True, W_force=1.0,
+    )
 
-    Post-recert (2026-07-13): the 18498c1 flip that made reference c3-gains
-    the default was reverted because it was 200× too gentle for the port's
-    clean Q (66.5% closure vs the clean 75.3% baseline on the same stack).
+
+def test_single_reference_gain_set_all_modes():
+    """The yaml IS the reference set; no per-mode gain structs remain.
+
+    Reference values: EndEffectorW=1, Kp=200, Kd=20 (osc_params.yaml:47-58),
+    EndEffectorRotW/Kp/Kd = 10/800/40 (:59-70), LambdaEndEffectorW=1 (:74),
+    end_effector_acceleration=10 (:36).
     """
-    monkeypatch.delenv("REFCONF_OSC_C3_MODE_GAINS", raising=False)
-    monkeypatch.delenv("REFCONF_OSC_ALIGN", raising=False)
-    plant = _stub_plant()
-    ee_frame = MagicMock()
-    osc = OperationalSpaceController(
-        plant=plant, ee_frame=ee_frame, n_arm_dofs=7,
-        q_nominal=np.zeros(7), gains_yaml="config/osc_franka.yaml",
-        use_force_tracking=True, W_force=1.0,
-    )
-    # No env var → yaml gains everywhere. Since fc51111 (reference-only
-    # cleanup) the yaml IS the reference set (Kp=200, W_track=1) — the
-    # legacy port alternates (Kp=400/W_track=100) no longer exist, so
-    # gains == gains_c3 in every active field and the §7.70 flag is a
-    # functional no-op (kept for provenance; see memory
-    # r7-overdrive-step1-falsified correction 2026-07-28).
-    assert osc._c3_ref_gains_flag is False
+    osc = _make_osc()
     assert osc.gains.Kp_cart.tolist() == [200.0, 200.0, 200.0]
+    assert osc.gains.Kd_cart.tolist() == [20.0, 20.0, 20.0]
     assert osc.gains.W_track == 1.0
-
-
-def test_opt_in_env_var_enables_reference_c3_gains(monkeypatch):
-    """REFCONF_OSC_C3_MODE_GAINS=1 activates reference gains in c3 mode."""
-    monkeypatch.setenv("REFCONF_OSC_C3_MODE_GAINS", "1")
-    monkeypatch.delenv("REFCONF_OSC_ALIGN", raising=False)
-    plant = _stub_plant()
-    ee_frame = MagicMock()
-    osc = OperationalSpaceController(
-        plant=plant, ee_frame=ee_frame, n_arm_dofs=7,
-        q_nominal=np.zeros(7), gains_yaml="config/osc_franka.yaml",
-        use_force_tracking=True, W_force=1.0,
-    )
-    assert osc._c3_ref_gains_flag is True
-    assert osc.gains_c3.Kp_cart.tolist() == [200.0, 200.0, 200.0]
-    assert osc.gains_c3.Kd_cart.tolist() == [20.0, 20.0, 20.0]
-    assert osc.gains_c3.W_track == 1.0
-    # Free-mode gains come from the YAML, which is itself the reference
-    # set post-fc51111 — identical to gains_c3.
-    assert osc.gains.Kp_cart.tolist() == [200.0, 200.0, 200.0]
-    assert osc.gains.W_track == 1.0
+    assert osc.gains.W_force == 1.0
+    assert osc.gains.W_rot == 10.0
+    assert osc.gains.a_ee_cap == 10.0
+    # The per-mode swap machinery is gone.
+    assert not hasattr(osc, "gains_c3")
+    assert not hasattr(osc, "_c3_ref_gains_flag")

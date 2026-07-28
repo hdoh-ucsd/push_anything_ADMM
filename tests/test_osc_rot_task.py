@@ -1,4 +1,4 @@
-"""Over-drive cluster step 2 — EE-orientation task conformance.
+"""EE-orientation task conformance (default-ON since the 2026-07-28 flip).
 
 Reference (dairlib push_anything_dev @ 257e3ed):
   * franka_osc_controller.cc:171-187 — RotTaskSpaceTrackingData is added
@@ -12,14 +12,13 @@ Reference (dairlib push_anything_dev @ 257e3ed):
     angle-axis of (q_des · q_now⁻¹): error_y = angle * axis (log map),
     not a small-angle skew extraction.
 
-Port: REFCONF_OSC_EE_ROT_TASK=1 (default OFF) applies W_rot=10,
-Kp_rot=800·1, Kd_rot=40·1 to BOTH gain structs (one set for all modes,
-as in the reference).
+Port: W_rot=10, Kp_rot=800·1, Kd_rot=40·1 are the config/osc_franka.yaml
+DEFAULTS (formerly behind REFCONF_OSC_EE_ROT_TASK; the env gate was
+removed in the defaults flip). One gain set for all modes.
 """
 from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 from pydrake.math import RotationMatrix, RollPitchYaw
 
 from control.osc.dynamics_helpers import rotation_error_world
@@ -37,26 +36,12 @@ def _make_osc():
     )
 
 
-def test_rot_task_default_off(monkeypatch):
-    """No env var → W_rot stays at the yaml default (0.0) in both structs."""
-    monkeypatch.delenv("REFCONF_OSC_EE_ROT_TASK", raising=False)
+def test_rot_task_default_on_reference_gains():
+    """Default yaml carries the reference rotation gains — no env needed."""
     osc = _make_osc()
-    assert osc.gains.W_rot == 0.0
-    assert osc.gains_c3.W_rot == 0.0
-
-
-def test_rot_task_flag_applies_reference_gains_both_modes(monkeypatch):
-    """REFCONF_OSC_EE_ROT_TASK=1 → 10/800/40 on BOTH gain structs.
-
-    Reference has ONE rotation tracking data active in every mode
-    (franka_osc_controller.cc:187 AddTrackingData, unconditional).
-    """
-    monkeypatch.setenv("REFCONF_OSC_EE_ROT_TASK", "1")
-    osc = _make_osc()
-    for g in (osc.gains, osc.gains_c3):
-        assert g.W_rot == 10.0
-        assert np.asarray(g.Kp_rot).tolist() == [800.0, 800.0, 800.0]
-        assert np.asarray(g.Kd_rot).tolist() == [40.0, 40.0, 40.0]
+    assert osc.gains.W_rot == 10.0
+    assert np.asarray(osc.gains.Kp_rot).tolist() == [800.0, 800.0, 800.0]
+    assert np.asarray(osc.gains.Kd_rot).tolist() == [40.0, 40.0, 40.0]
 
 
 def test_rotation_error_exact_angle_axis_90deg():
