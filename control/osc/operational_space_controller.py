@@ -30,6 +30,7 @@ from control.osc.dynamics_helpers import (
     franka_effort_limits,
     gravity_forces,
     mass_matrix,
+    rotation_error_world,
 )
 from control.osc.qp_builder import OscGains, OscLimits, build_and_solve_qp
 from pydrake.solvers import OsqpSolver
@@ -173,7 +174,29 @@ class OperationalSpaceController:
             print("[§7.70] REFCONF_OSC_C3_MODE_GAINS=1 — c3-mode "
                   "gains (Kp=[200,200,200], Kd=[20,20,20], W_track=1.0) "
                   "will be used for compute_torque(mode=\"c3\"); free/repos "
-                  "keeps port gains (Kp=[400,400,400], W_track=100).",
+                  f"uses the yaml gains (Kp={self.gains.Kp_cart.tolist()}, "
+                  f"W_track={self.gains.W_track}).",
+                  flush=True)
+
+        # Over-drive-cluster step 2 (2026-07-28): REFCONF_OSC_EE_ROT_TASK=1
+        # enables the reference EE-orientation task. The reference adds
+        # RotTaskSpaceTrackingData UNCONDITIONALLY (franka_osc_controller.cc:
+        # 171-187) with EndEffectorRotW/Kp/Kd = 10/800/40 (osc_params.yaml:
+        # 59-70); `track_end_effector_orientation: false` only pins the
+        # TARGET to a constant identity quaternion (end_effector_orientation
+        # .cc:49-57) — the rotation-hold cost is in the QP in every mode.
+        # One gain set for all modes, so both structs get it.
+        self._ee_rot_task_flag = (_os_ref.environ.get(
+            "REFCONF_OSC_EE_ROT_TASK", "0") == "1")
+        if self._ee_rot_task_flag:
+            for _g in (self.gains, self.gains_c3):
+                _g.W_rot = 10.0
+                _g.Kp_rot = np.array([800.0, 800.0, 800.0])
+                _g.Kd_rot = np.array([40.0, 40.0, 40.0])
+            print("[ROT-TASK] REFCONF_OSC_EE_ROT_TASK=1 — EE-orientation "
+                  "hold active in ALL modes (W_rot=10, Kp_rot=800, "
+                  "Kd_rot=40; ref osc_params.yaml:59-70, constant-target "
+                  "hold per end_effector_orientation.cc:49-57).",
                   flush=True)
 
         # Cache constant B matrix
@@ -272,18 +295,16 @@ class OperationalSpaceController:
             Jdot_w_v = ee_jacobian_angular_bias(plant, plant_ctx, self.ee_frame)
             R_now    = ee_rotation(plant, plant_ctx, self.ee_frame)
             if self._R_target is None:
-                # Snapshot the starting orientation as the hold target.
+                # Constant hold target, snapshotted at first call — the
+                # port-frame analog of the reference's constant identity-
+                # quaternion trajectory (end_effector_orientation.cc:49-57;
+                # the reference EE tip frame is welded with roll=π so
+                # world-identity = pusher-down there, which is the port's
+                # starting orientation in its own frame convention).
                 self._R_target = R_now
-            # Small-angle rotation-error vector: 0.5·(R_target·R_now^T -
-            # R_now·R_target^T) has axis-angle form; use Drake's log map
-            # via the difference rotation R_err = R_target · R_now^T.
-            R_err_mat = self._R_target.matrix() @ R_now.matrix().T
-            # skew(w) = 0.5·(R − R^T); extract axis-angle via ½·[R32−R23, R13−R31, R21−R12]
-            w_err = 0.5 * np.array([
-                R_err_mat[2, 1] - R_err_mat[1, 2],
-                R_err_mat[0, 2] - R_err_mat[2, 0],
-                R_err_mat[1, 0] - R_err_mat[0, 1],
-            ])
+            # Reference rot_space_tracking_data.cc:60-68 UpdateYError:
+            # exact angle-axis (log map) of R_target · R_now⁻¹, world frame.
+            w_err = rotation_error_world(self._R_target, R_now)
             w_ee_now = J_w @ current_v
         else:
             J_w = Jdot_w_v = w_err = w_ee_now = None

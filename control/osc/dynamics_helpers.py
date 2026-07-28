@@ -95,6 +95,20 @@ def ee_rotation(plant, plant_ctx, ee_frame):
     ).rotation()
 
 
+def rotation_error_world(R_target, R_now) -> np.ndarray:
+    """World-frame rotation error θ·axis of (R_target · R_now⁻¹).
+
+    Reference: rot_space_tracking_data.cc:60-68 UpdateYError —
+    `AngleAxis(q_des · q_now.inverse())`, error_y = angle * axis. Exact
+    log map (valid at any angle), NOT the small-angle skew extraction
+    ½·[R−Rᵀ] which returns sin(θ)·axis and degenerates at θ→π.
+
+    Both arguments are pydrake RotationMatrix.
+    """
+    aa = (R_target @ R_now.inverse()).ToAngleAxis()
+    return float(aa.angle()) * np.asarray(aa.axis(), dtype=float).reshape(3)
+
+
 def ee_position(plant, plant_ctx, ee_frame) -> np.ndarray:
     """Returns the EE origin in world frame (3,)."""
     return plant.CalcPointsPositions(

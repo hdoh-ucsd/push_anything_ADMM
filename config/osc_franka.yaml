@@ -74,12 +74,16 @@ osc:
   # Reference w_accel · W_accel = 1e-5 · 0.01 = 1e-7 per axis.
   W_acc:    0.0000001
 
-  # Reference osc_params.yaml:37 track_end_effector_orientation: false
-  # → the reference OSC does NOT add an EndEffectorRot tracking data,
-  # so the rotation cost never enters the QP even though EndEffectorRotW/
-  # Kp/Kd are defined in the yaml. Port's W_rot=10 was a divergence
-  # (port-only orientation-hold cost). Setting W_rot=0 removes the
-  # cost entirely; Kp/Kd left non-zero as spec-comparable diagnostic.
+  # CORRECTED 2026-07-28 (over-drive cluster step 2): the reference adds
+  # RotTaskSpaceTrackingData UNCONDITIONALLY (franka_osc_controller.cc:
+  # 171-187, EndEffectorRotW/Kp/Kd = 10/800/40, osc_params.yaml:59-70).
+  # `track_end_effector_orientation: false` (osc_params.yaml:37) gates
+  # ONLY the trajectory source: end_effector_orientation.cc:49-57 emits a
+  # CONSTANT identity-quaternion slerp when false, so the rotation-hold
+  # cost is in the reference QP in every mode. The previous comment here
+  # ("reference does NOT add the tracking data") misread that flag.
+  # W_rot stays 0.0 as the port default; REFCONF_OSC_EE_ROT_TASK=1
+  # applies the reference 10/800/40 at runtime (both gain structs).
   Kp_rot: [800.0, 800.0, 800.0]
   Kd_rot: [40.0,  40.0,  40.0]
   W_rot:  0.0
