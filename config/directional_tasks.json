@@ -1,25 +1,37 @@
 {
-  "description": "Directional pushing tasks for C3 greedy-contact-mode testing. Task ID selects goal direction; all other task parameters are inherited from tasks.yaml -> pushing. 2026-07-28 frame migration: goals re-centered on the reference box init (0.5, 0) — the old origin-centered goals predated ed16080's arm-base-at-origin move (box then spawned inside panda_link0). Offsets are 0.15 m so every goal stays inside the reference workspace annulus 0.25 <= r <= 0.75 (robot_radius_limits; +-0.3 offsets would put east at r=0.8 and west at r=0.2).",
+  "description": "Directional pushing tasks for C3 greedy-contact-mode testing. Task ID selects goal direction; all other task parameters are inherited from tasks.yaml -> pushing. Goals centered on the box init (0.45, 0) [2026-07-28b: init pulled 0.50->0.45 so east-face repos targets land near x=0.50, inside the T-proven reach zone \u2014 at 0.55+ the arm hover-stalls on wrist saturation]. Offsets 0.15 m keep every goal inside the reference workspace annulus 0.25 <= r <= 0.75.",
   "base_task": "pushing",
   "tasks": {
     "1": {
       "name": "north",
-      "goal": [0.5, 0.15],
+      "goal": [
+        0.45,
+        0.15
+      ],
       "description": "Push box 15cm north. Testing whether C3 can push orthogonally to the initial approach direction."
     },
     "2": {
       "name": "east",
-      "goal": [0.65, 0.0],
+      "goal": [
+        0.6,
+        0.0
+      ],
       "description": "Push box 15cm east (away from the arm). Contact normal aligned with goal direction. Baseline case."
     },
     "3": {
       "name": "south",
-      "goal": [0.5, -0.15],
+      "goal": [
+        0.45,
+        -0.15
+      ],
       "description": "Push box 15cm south. Orthogonal goal (opposite north)."
     },
     "4": {
       "name": "west",
-      "goal": [0.35, 0.0],
+      "goal": [
+        0.3,
+        0.0
+      ],
       "description": "Push box 15cm west (toward the arm). Contact normal anti-aligned with goal direction. Requires a contact mode switch."
     }
   }
