@@ -1127,11 +1127,21 @@ class SamplingC3Controller:
                 # are floating_velocities_start_in_v + [3,4,5].
                 _vxr, _vyr, _vzr = _nq + _vs + 3, _nq + _vs + 4, _nq + _vs + 5
                 x1 = _xseq[1]
+                # Twist-prediction probe (p113 rot diagnosis): planner-
+                # predicted box yaw at knot 1 and terminal knot vs current.
+                # Answers whether the LCS predicts the CCW twist the real
+                # push produces (model gap) or predicts it and accepts it
+                # (cost balance). qz≈sin(yaw/2) for upright box.
+                _qzc = float(current_q[_ps + 3])
+                _qz1 = float(x1[_ps + 3])
+                _qzN = float(_xseq[-1][_ps + 3])
                 print(
                     f"[X-SEQ-PROBE] step={self._step} "
                     f"x0_box=({current_q[_ox]:+.5f},{current_q[_oy]:+.5f},{current_q[_oz]:+.5f}) "
                     f"x1_box=({x1[_ox]:+.5f},{x1[_oy]:+.5f},{x1[_oz]:+.5f}) "
                     f"x1_box_v=({x1[_vxr]:+.5f},{x1[_vyr]:+.5f},{x1[_vzr]:+.5f}) "
+                    f"qz_now={_qzc:+.5f} qz_pred1={_qz1:+.5f} "
+                    f"qz_predN={_qzN:+.5f} "
                     f"dt={self.base_mpc.dt:.3f}",
                     flush=True,
                 )
