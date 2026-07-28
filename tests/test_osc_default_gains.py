@@ -52,10 +52,15 @@ def test_default_c3_mode_uses_port_gains(monkeypatch):
         q_nominal=np.zeros(7), gains_yaml="config/osc_franka.yaml",
         use_force_tracking=True, W_force=1.0,
     )
-    # No env var → port gains everywhere.
+    # No env var → yaml gains everywhere. Since fc51111 (reference-only
+    # cleanup) the yaml IS the reference set (Kp=200, W_track=1) — the
+    # legacy port alternates (Kp=400/W_track=100) no longer exist, so
+    # gains == gains_c3 in every active field and the §7.70 flag is a
+    # functional no-op (kept for provenance; see memory
+    # r7-overdrive-step1-falsified correction 2026-07-28).
     assert osc._c3_ref_gains_flag is False
-    assert osc.gains.Kp_cart.tolist() == [400.0, 400.0, 400.0]
-    assert osc.gains.W_track == 100.0
+    assert osc.gains.Kp_cart.tolist() == [200.0, 200.0, 200.0]
+    assert osc.gains.W_track == 1.0
 
 
 def test_opt_in_env_var_enables_reference_c3_gains(monkeypatch):
@@ -73,6 +78,7 @@ def test_opt_in_env_var_enables_reference_c3_gains(monkeypatch):
     assert osc.gains_c3.Kp_cart.tolist() == [200.0, 200.0, 200.0]
     assert osc.gains_c3.Kd_cart.tolist() == [20.0, 20.0, 20.0]
     assert osc.gains_c3.W_track == 1.0
-    # Free-mode gains untouched (port defaults from YAML).
-    assert osc.gains.Kp_cart.tolist() == [400.0, 400.0, 400.0]
-    assert osc.gains.W_track == 100.0
+    # Free-mode gains come from the YAML, which is itself the reference
+    # set post-fc51111 — identical to gains_c3.
+    assert osc.gains.Kp_cart.tolist() == [200.0, 200.0, 200.0]
+    assert osc.gains.W_track == 1.0
