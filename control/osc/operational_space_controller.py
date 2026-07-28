@@ -310,6 +310,16 @@ class OperationalSpaceController:
             J_w = Jdot_w_v = w_err = w_ee_now = None
 
         # --- Errors ---
+        # Non-finite desired-state sanitize (defense-in-depth; the known
+        # NaN source — degenerate RepositionTrajectory legs — is fixed at
+        # origin, but any NaN reaching the QP costs makes OSQP fail with
+        # kIterationLimit and the executor emit zero torque).
+        if v_ee_desired is not None and not np.all(
+                np.isfinite(np.asarray(v_ee_desired, dtype=float))):
+            v_ee_desired = None
+        if a_ee_desired is not None and not np.all(
+                np.isfinite(np.asarray(a_ee_desired, dtype=float))):
+            a_ee_desired = None
         p_err = np.asarray(p_ee_desired, dtype=float).reshape(3) - p_ee_now
         if v_ee_desired is None:
             v_err = -v_ee_now

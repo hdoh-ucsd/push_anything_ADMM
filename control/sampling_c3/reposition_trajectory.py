@@ -173,11 +173,18 @@ class RepositionTrajectory:
         t = float(sim_t)
         if t <= self.t_start:
             # Before start: hold start position, command initial leg velocity.
+            # seg_dt guarded like the interior branch: a degenerate leg
+            # (p_start == p_target through the straight-line / skip-lift
+            # branches) has zero length AND zero duration, so the guard
+            # yields v = 0 exactly — the unguarded 0/0 here produced NaN
+            # v_des on every build tick (eval at t == t_start), poisoning
+            # the OSC QP (kIterationLimit → zero torque; see
+            # tests/test_reposition_trajectory_degenerate.py).
             p = self.knot_positions[:, 0].copy()
             if self.knot_positions.shape[1] >= 2:
                 seg_dt = self.knot_times[1] - self.knot_times[0]
                 v = (self.knot_positions[:, 1]
-                     - self.knot_positions[:, 0]) / seg_dt
+                     - self.knot_positions[:, 0]) / max(seg_dt, 1e-12)
             else:
                 v = np.zeros(3)
             return p, v, False
