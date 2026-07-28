@@ -2393,7 +2393,23 @@ class SamplingC3Controller:
                     # restores plant_ctx to the current EE state, so
                     # _last_contact_info here is authoritative; up at the
                     # mode-decision gate it's stale from sample k=K-1.
-                    self._no_ee_box_streak = 0
+                    # PHANTOM-aware (2026-07-27): with the always-on EE-BOX
+                    # row (PORT_LCS_ALWAYS_ON_EE_BOX=1 default) a pair is
+                    # admitted at ANY distance, so the plain presence test
+                    # kept the streak permanently 0 and the contact-loss
+                    # gate — even when re-enabled — could never fire during
+                    # the phantom retreats (p111 wall crash, p115/p116
+                    # 43 s stalls, p117 ceiling crash all sat at
+                    # φ = 0.10-0.30 m with 'contact'). Count an admitted
+                    # pair beyond PORT_CONTACT_LOSS_PHI_THRESH (default
+                    # 0.04 m) as contact LOSS. Inert unless the gate is
+                    # re-enabled via PORT_DISABLE_CONTACT_LOSS_GATE=0.
+                    _phi_loss_thr = float(os.environ.get(
+                        "PORT_CONTACT_LOSS_PHI_THRESH", "0.04"))
+                    if float(_ci_sel["distance"]) > _phi_loss_thr:
+                        self._no_ee_box_streak += 1
+                    else:
+                        self._no_ee_box_streak = 0
                 else:
                     # No EE-BOX pair admitted this step. Emit a tagged
                     # line so the parser can distinguish "no EE-box
