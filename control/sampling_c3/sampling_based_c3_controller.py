@@ -4303,6 +4303,31 @@ class SamplingC3Controller:
                 _p_des, _v_des, _done = self._pwl_traj.eval(_sim_t)
                 _p_ee_des = _p_des
                 _v_ee_des = _v_des
+                # PORT_ACHIEVED_VERTICAL_RETRACT (default OFF) — p121
+                # overshoot bug: after the ACHIEVED-FIXED-GOAL latch, the
+                # get-out-of-the-way retraction cut the corner — ~30 mm of
+                # lateral creep while the EE was still at contact height
+                # (z 0.022→0.075) plowed through the T and shoved it
+                # +90 mm past the goal (tight latch at step 334, final
+                # loose FAIL). Geometry-dependent: p118/r1/r3 retracted
+                # clear. Guard: while achieved and below the clear height
+                # (T top 0.04 + tip radius 0.0195 + margin), command a
+                # STRICTLY VERTICAL hover ascent at the current xy; lateral
+                # motion resumes only above the clear height.
+                _avr = (getattr(self, "_achieved_fixed_goal", False)
+                        and os.environ.get(
+                            "PORT_ACHIEVED_VERTICAL_RETRACT", "0") == "1"
+                        and float(ee_pos_now[2]) < 0.10)
+                if _avr:
+                    _p_ee_des = np.array([float(ee_pos_now[0]),
+                                          float(ee_pos_now[1]), 0.12])
+                    _v_ee_des = None
+                    if self.log_diag and not getattr(
+                            self, "_avr_logged", False):
+                        self._avr_logged = True
+                        print(f"[ACHIEVED-VERT-RETRACT] step={self._step} "
+                              f"ee_z={float(ee_pos_now[2]):+.4f} — vertical "
+                              f"ascent before lateral retract", flush=True)
                 # 2026-07-19 trajectory-log for descent audit.  Emits the
                 # full knot z-profile at the planner tick so we can trace
                 # WHERE the arm is being commanded to go vs where it
@@ -4341,10 +4366,21 @@ class SamplingC3Controller:
                 )
                 # 1 kHz OSC decoupling: cache PWL traj object so sub-tick can
                 # re-evaluate the SAME piecewise-linear path at fresh t_sim.
-                self._last_osc_call = ("osc_pwl_free", dict(
-                    pwl_traj=self._pwl_traj,
-                    mode="free",
-                ))
+                # Under the vertical-retract override, cache the STATIC
+                # vertical target instead — sub-tick PWL re-eval would
+                # reintroduce the lateral corner-cut at 1 kHz.
+                if _avr:
+                    self._last_osc_call = ("osc_direct_free", dict(
+                        p_ee_desired=np.asarray(
+                            _p_ee_des, dtype=float).reshape(3).copy(),
+                        v_ee_desired=None,
+                        mode="free",
+                    ))
+                else:
+                    self._last_osc_call = ("osc_pwl_free", dict(
+                        pwl_traj=self._pwl_traj,
+                        mode="free",
+                    ))
             else:
                 # Legacy free-mode path (unchanged).
                 _p_des_wp = (free_diag.get("p_des")
