@@ -332,11 +332,24 @@ class OperationalSpaceController:
             F_ff_for_qp = F_ff
 
         # --- §7.70 gain selection: c3-mode reference gains (flag-gated) ---
-        if self._c3_ref_gains_flag and mode == "c3":
+        # Over-drive-cluster step 1 (2026-07-27): REFCONF_OSC_FREE_MODE_GAINS=1
+        # extends the SAME reference gains to mode="free". The reference has
+        # ONE OSC gain set for all modes (osc_params.yaml EndEffectorW/Kp/Kd
+        # = 1/200/20); the port's free-mode 100/400 (compound authority
+        # 40000 vs 200) was kept as a §7.47 handoff caution. The 2026-07-14
+        # recert that falsified the wholesale swap ran on the old stack
+        # (EE-space c3 executor, corrupted contact Jacobians, pre-reference-
+        # Q); on the current stack the OSC runs ONLY in free mode, so this
+        # flag completes the gain half of the over-drive cluster.
+        import os as _os_fmg
+        _free_ref = (mode != "c3"
+                     and _os_fmg.environ.get(
+                         "REFCONF_OSC_FREE_MODE_GAINS", "0") == "1")
+        if (self._c3_ref_gains_flag and mode == "c3") or _free_ref:
             _gains_active = self.gains_c3
             if not getattr(self, "_c3_ref_banner", False):
                 self._c3_ref_banner = True
-                print(f"[§7.70] first c3-mode compute_torque with "
+                print(f"[§7.70] first mode={mode} compute_torque with "
                       f"reference gains: Kp={_gains_active.Kp_cart.tolist()} "
                       f"Kd={_gains_active.Kd_cart.tolist()} "
                       f"W_track={_gains_active.W_track} "
