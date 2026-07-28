@@ -141,10 +141,16 @@ class OperationalSpaceController:
         self._n_calls = 0
         self._total_solve_ms = 0.0
         self._printed_setup = False
-        # 2.k — rotation-hold target R_WE_target. Snapshot on first call so
-        # the hold is against the starting orientation (mirrors reference's
-        # identity-quaternion trajectory in its own frame convention).
-        self._R_target = None
+        # Rotation-hold target R_WE_target = CONSTANT IDENTITY — the exact
+        # reference semantics (end_effector_orientation.cc:49-57 emits a
+        # constant identity-quaternion slerp; franka_osc_controller.cc:180
+        # orientation_target=(1,0,0,0)). Valid verbatim in the port frame:
+        # the EE weld chain is byte-identical to the reference (link7 +
+        # roll π @ kToolAttachmentFrame → flange → peg → tip), so the tip
+        # frame is 0.01° from identity at working pointing-down poses
+        # (measured 2026-07-28, mount-question close-out; replaces the
+        # first-tick-snapshot adaptation).
+        self._R_target = None  # resolved to identity at first use below
 
         # QP-signature dump hook. Env-gated, byte-identical when unset.
         # DIAG_QP_SIG_DUMP=1 → capture the full input tuple to the QP at
@@ -224,13 +230,12 @@ class OperationalSpaceController:
             Jdot_w_v = ee_jacobian_angular_bias(plant, plant_ctx, self.ee_frame)
             R_now    = ee_rotation(plant, plant_ctx, self.ee_frame)
             if self._R_target is None:
-                # Constant hold target, snapshotted at first call — the
-                # port-frame analog of the reference's constant identity-
-                # quaternion trajectory (end_effector_orientation.cc:49-57;
-                # the reference EE tip frame is welded with roll=π so
-                # world-identity = pusher-down there, which is the port's
-                # starting orientation in its own frame convention).
-                self._R_target = R_now
+                # Constant IDENTITY target — reference-exact (see the
+                # constructor note; the former first-tick snapshot is
+                # replaced now that the weld-chain conformance makes
+                # identity ≡ pusher-down in the port frame too).
+                from pydrake.math import RotationMatrix as _RotM
+                self._R_target = _RotM()
             # Reference rot_space_tracking_data.cc:60-68 UpdateYError:
             # exact angle-axis (log map) of R_target · R_now⁻¹, world frame.
             w_err = rotation_error_world(self._R_target, R_now)
