@@ -649,10 +649,21 @@ class SamplingC3Controller:
                     _n_u_arm = self.n_u
                     _J_arm = _J[:, :_n_u_arm]        # (3, n_arm)
                     _u7 = np.asarray(_u_seq[0], dtype=float).reshape(7)
+                    # The R^7 planner u-box is GRAVITY-CENTERED (37f7573):
+                    # u_sol contains the gravity-holding torque
+                    # u_hold = −τ_g_arm. The reference's u is a pure EE
+                    # push force (gravity absent by construction), so the
+                    # Cartesian push intent is u_sol − u_hold; mapping the
+                    # raw u_sol recovers the ~34 Nm gravity hold as a
+                    # spurious Cartesian force on top of the push.
+                    _tau_g = np.asarray(
+                        self.plant.CalcGravityGeneralizedForces(plant_ctx),
+                        dtype=float)
+                    _u_push = _u7 - (-_tau_g[:_n_u_arm])
                     # min ‖J^T f − u‖ → f = (J J^T)^-1 J u
                     _JJT = _J_arm @ _J_arm.T          # (3, 3)
                     _f_ee = np.linalg.solve(
-                        _JJT + 1e-6*np.eye(3), _J_arm @ _u7)  # (3,)
+                        _JJT + 1e-6*np.eye(3), _J_arm @ _u_push)  # (3,)
                     if _fr == "neg_u_sol":
                         _f_ee = -_f_ee
                     # Reference u_horizontal_limits=[-10,10], u_vertical=[-3,3]
