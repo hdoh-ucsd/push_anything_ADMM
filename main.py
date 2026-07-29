@@ -737,6 +737,27 @@ def main():
         _dt_ctrl_pass = _c3plus_dt if args.solver == "c3plus" else 0.1
         # W_force reference value (LambdaEndEffectorW = I_3, scalar 1.0).
         sc3_params.W_force = 1.0
+        # Planner workspace state constraints (reference cc:995-1025): hard
+        # per-knot bounds on the EE position slots (0-2) AND object position
+        # slots (7-9) of the EE-space state, widened by the margin — applied
+        # to every solve on this solver instance (full + surrogate), exactly
+        # like the reference's per-sample C3 objects. EE-space layout only;
+        # the --r7 falsification planner has a different state layout.
+        if args.ee_space and sc3_params.planner_workspace_x is not None:
+            _pw_m = float(sc3_params.planner_workspace_margin)
+            _pw = []
+            for _slot0 in (0, 7):   # EE pos, object pos
+                for _axis, _lims in enumerate((sc3_params.planner_workspace_x,
+                                               sc3_params.planner_workspace_y,
+                                               sc3_params.planner_workspace_z)):
+                    if _lims is None:
+                        continue
+                    _pw.append((_slot0 + _axis,
+                                float(_lims[0]) - _pw_m,
+                                float(_lims[1]) + _pw_m))
+            solver.state_position_bounds = _pw
+            print(f"[OVERRIDE] planner workspace state bounds ON "
+                  f"({len(_pw)} rows, margin={_pw_m}m, ref cc:995-1025)")
         mpc = SamplingC3Controller(
             base_mpc=mpc,
             plant=plant,

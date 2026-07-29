@@ -769,6 +769,20 @@ class SamplingC3Params:
     cost_lcs_pgs_tol: float = 1.0e-6
     cost_lcs_pgs_reg: float = 1.0e-8
 
+    # ----- Planner workspace state constraints (reference cc:995-1025) ----
+    # Reference sampling_c3_options.yaml:26-30 workspace_limits +
+    # workspace_margins: every per-sample C3 object gets hard linear STATE
+    # rows keeping EE position AND object position inside each half-space
+    # (bounds widened by the margin). Port applies them as per-knot
+    # BoundingBoxConstraints in _solve_c3plus via
+    # C3Solver.state_position_bounds (main.py wiring; EE slots 0-2, object
+    # position slots 7-9 of the EE-space state). None → no constraint
+    # (legacy behavior for configs that do not opt in).
+    planner_workspace_x: Optional[list] = None   # [lo, hi] m, world frame
+    planner_workspace_y: Optional[list] = None
+    planner_workspace_z: Optional[list] = None
+    planner_workspace_margin: float = 0.02       # reference workspace_margins
+
     # ----- Executor -----
     # The wrapper always instantiates `OperationalSpaceController` (a
     # per-tick QP). The alternate closed-form impedance executor was
@@ -1104,6 +1118,10 @@ class SamplingC3Params:
             cost_lcs_pgs_max_iter    = int(raw.get("cost_lcs_pgs_max_iter", 50)),
             cost_lcs_pgs_tol         = float(raw.get("cost_lcs_pgs_tol", 1.0e-6)),
             cost_lcs_pgs_reg         = float(raw.get("cost_lcs_pgs_reg", 1.0e-8)),
+            planner_workspace_x  = raw.get("planner_workspace_x", None),
+            planner_workspace_y  = raw.get("planner_workspace_y", None),
+            planner_workspace_z  = raw.get("planner_workspace_z", None),
+            planner_workspace_margin = float(raw.get("planner_workspace_margin", 0.02)),
             osc_gains_yaml       = str(raw.get("osc_gains_yaml", "config/osc_franka.yaml")),
             use_force_tracking   = bool(raw.get("use_force_tracking", True)),
             W_force              = float(raw.get("W_force", 1.0)),
