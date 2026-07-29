@@ -129,6 +129,22 @@ class SampleBuffer:
         for s in self._entries:
             s.age_steps += 1
 
+    def remove(self, entry: BufferedSample) -> bool:
+        """Remove exactly one entry by identity. Returns True if removed.
+
+        Mirrors reference sampling_based_c3_controller.cc:1196-1198: when a
+        c3 → repositioning exit pursues the buffer-sourced sample, that ONE
+        sample is removed from the buffer (so it cannot be re-cited as a
+        buffer candidate while being pursued as the repos target). Identity
+        match, not value match — the caller holds the exact BufferedSample
+        it augmented into the candidate list this tick.
+        """
+        for i, s in enumerate(self._entries):
+            if s is entry:
+                del self._entries[i]
+                return True
+        return False
+
     def clear(self) -> None:
         self._entries.clear()
 

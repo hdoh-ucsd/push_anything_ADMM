@@ -1506,6 +1506,12 @@ class SamplingC3Controller:
         # (1e-5 tolerance) with the current best — matches reference's
         # cc:2141-2146 check.
         sp = self.params.sampling_params
+        # Identity handle on the entry augmented THIS tick — consumed by the
+        # c3→free exit bookkeeping (reference cc:1196-1198 removes the pursued
+        # buffer sample). Captured here because _update_buffer runs between
+        # this block and the epilogue, so a late best_with_position() re-query
+        # could name a different entry.
+        self._augmented_buffer_entry = None
         if (self._prev_mode == "c3"
                 and sp.consider_best_buffer_sample_when_leaving_c3
                 and len(self.buffer) > 0):
@@ -1522,6 +1528,7 @@ class SamplingC3Controller:
                     labels.append("buffer")
                     c_samples.append(float(_best_buf.cost))
                     results.append(_best_buf.result)
+                    self._augmented_buffer_entry = _best_buf
             # Refresh mirrored bookkeeping.
             self._all_sample_locations = samples
             self._last_sample_labels = labels
@@ -4762,30 +4769,45 @@ class SamplingC3Controller:
                 self._print_table_diag(self._step, samples, labels, results, k_star)
 
         # 10. Bookkeeping
-        # Venkatesh 2025 §IV-D Step 4: on rich→free transition, refresh the
-        # sample buffer and clear the prev_repos slot so the next loop picks
-        # the lowest-cost sample from a freshly-evaluated set rather than
-        # re-selecting the stale prev_repos target.
+        # Reference cc:1186-1201 (c3 → repositioning exit, ALL exit reasons):
+        #   finished_reposition_flag_ = false;   ResetProgressMetrics();
+        #   if best_sample_index_ points at the buffer slot → remove THAT ONE
+        #   sample from the buffer (cc:1196-1198, kFromBuffer); else
+        #   kNewSample. Nothing else is cleared.
+        # The pursued target itself is RETAINED: cc:1845 stores it in
+        # prev_repositioning_target_ on every repositioning tick; next loop it
+        # re-enters the candidate set as kCurrentReposTarget (cc:914/932) with
+        # a FRESH cost (cc:1148) under repos_to_repos hysteresis
+        # (cc:1204-1230), so the arm actually travels to the promised sample.
+        # 2026-07-28d: the previous epilogue here ("Venkatesh 2025 §IV-D Step
+        # 4") cleared _current_repos_target and force-refreshed the strategy-
+        # sample cache — paper-derived, contradicting the reference
+        # implementation. Every c3 exit discarded the very sample it exited
+        # FOR: 1-tick c3 dwells + retarget-from-scratch churn (p134: 114
+        # entries / 9 kStayInC3 steps, goal_dist frozen at 0.150 for 180 s).
+        # _refresh_buffer_on_arrival keeps its arrival-site call (kToC3
+        # entry path); it no longer fires here.
         if self._prev_mode == "c3" and mode == "free":
-            self._refresh_buffer_on_arrival()
-            self._current_repos_target     = None
-            self._current_repos_cost       = None
-            self._prev_logged_repos_target = None
-            self._last_repos_finished      = False
+            _removed_buf = False
+            if (best_src == "buffer"
+                    and self._augmented_buffer_entry is not None):
+                _removed_buf = self.buffer.remove(self._augmented_buffer_entry)
+            self._last_repos_finished = False
             # Reset _c3_geom_z_target so the next c3 entry re-captures obj_z.
             # Prevents stale z-target if the object shifted vertically during
             # a c3 stint (e.g., box tilted then relaxed).
             self._c3_geom_z_target = None
-            # Reference sampling_based_c3_controller.cc:1189 resets progress
-            # metrics on entry to repositioning. Without this, a freshly-entered
-            # free stint carries the c3-stint's accumulated steps_since_improve,
-            # so any brief free->c3 re-entry immediately re-triggers
+            # Reference cc:1189 resets progress metrics on entry to
+            # repositioning. Without this, a freshly-entered free stint
+            # carries the c3-stint's accumulated steps_since_improve, so any
+            # brief free->c3 re-entry immediately re-triggers
             # kToReposUnproductive instead of getting a fresh grinding budget.
             self.progress.reset()
             if self.log_diag:
-                print(f"[RICH-EXIT-REFRESH] step={self._step} "
+                print(f"[RICH-EXIT] step={self._step} "
                       f"mode {self._prev_mode}->{mode} reason={reason.name} "
-                      f"forcing buffer refresh + clearing prev_repos + progress reset")
+                      f"pursued_src={best_src} target_retained=Y "
+                      f"buf_removed={'Y' if _removed_buf else 'N'}")
         self._prev_mode              = mode
         self.last_mode               = mode
         self.last_switch_reason      = reason
