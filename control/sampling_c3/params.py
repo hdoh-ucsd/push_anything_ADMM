@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from enum import IntEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -309,6 +309,12 @@ class SamplingParams:
     # keeping 0.055m margin above the 0.075m hard collision floor
     # (box_half 0.05 + pusher_radius 0.025).
     sampling_height:                     float = 0.05   # m, contact-plane EE z
+    # Reference sampling_params.yaml:50 `z_height` — the c3-mode EE z-freeze
+    # plane AND the c3-entry altitude-ceiling base (cc:1290, cc:1759). The
+    # reference keeps this SEPARATE from sampling_height (samples at 34mm
+    # above ground, c3 tracks at 25mm, in reference-ground-relative terms).
+    # None → fall back to sampling_height (legacy port behavior).
+    z_height:                            Optional[float] = None
 
     # Face-normal projection (kFaceNormal strategy — Push-Anything §IV-B1):
     # samples are a point on a box face projected outward along the face's
