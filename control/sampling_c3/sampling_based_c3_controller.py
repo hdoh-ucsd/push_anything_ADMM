@@ -389,9 +389,6 @@ class SamplingC3Controller:
         # has a stable target to converge to. See params.SamplingParams.
         # Refresh triggers: (a) age >= lifetime, (b) finished_repos arrival,
         # (c) n_strategy changes (e.g., mode transition c3↔free).
-        self._sample_buffer:            Optional[list]       = None
-        self._sample_buffer_age:        int                  = 0
-        self._sample_buffer_n_strategy: Optional[int]        = None
 
         # Reference-conformant sample bookkeeping. Mirrors dairlib
         # `all_sample_locations_` / `all_sample_costs_` / `best_sample_index_`
@@ -455,10 +452,11 @@ class SamplingC3Controller:
         workaround, but that produced sample-slot duplicates (chosen sample
         stayed in cache AND appeared as prev_repos next tick).
 
-        2026-07-19 refactor: match reference. Cache-related state
-        (_sample_buffer, _sample_buffer_age, _sample_buffer_n_strategy,
-        _refresh_buffer_on_arrival) is now inert — kept for API surface
-        stability but no longer read.
+        2026-07-19 refactor: match reference (fresh every tick).
+        2026-07-28e: the residual inert cache state (_sample_buffer,
+        _sample_buffer_age, _sample_buffer_n_strategy,
+        _refresh_buffer_on_arrival) was deleted outright;
+        sample_buffer_lifetime_s is dead config.
         """
         sp = self.params.sampling_params
         # Draw generously — up to 3× requested — so downstream filtering
@@ -522,23 +520,10 @@ class SamplingC3Controller:
                   f"n_strategy={n_strategy} samples={_tup}")
         return _samples
 
-    def _refresh_buffer_on_arrival(self) -> None:
-        """Force buffer refresh next loop. Called when finished_repos
-        fires (EE reached the pursued repos target) so we don't keep
-        proposing the already-reached target as a strategy sample."""
-        sp = self.params.sampling_params
-        # 2026-06-25 reconciliation: sim-time _s field → integer ticks.
-        # At 100 Hz lifetime_s=0.30 → lifetime=30 (byte-equivalent prior int).
-        # At 1 kHz lifetime_s=0.30 → lifetime=300 (300 ms wall time, same).
-        _lifetime_s = float(getattr(sp, "sample_buffer_lifetime_s", 0.0))
-        lifetime = int(round(_lifetime_s / self._dt_ctrl))
-        if lifetime <= 0:
-            return
-        # Sentinel-trigger the refresh path: clearing the buffer is enough,
-        # but setting age past lifetime makes the [PERSIST] log line at
-        # the next call explicit.
-        self._sample_buffer = None
-        self._sample_buffer_age = lifetime + 1
+    # _refresh_buffer_on_arrival was deleted 2026-07-28e: a no-op since the
+    # 2026-07-19 fresh-samples refactor (wrote _sample_buffer* fields nothing
+    # read). Reference has no arrival-refresh concept. sample_buffer_lifetime_s
+    # is dead config as a consequence.
 
     # ----------------------------------------------------------------------
     def _reconcile_surface_target(self,
@@ -3003,20 +2988,15 @@ class SamplingC3Controller:
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(
                     free_diag.get("finished", False))
-                # On arrival, force the ring-sample buffer to refresh next
-                # loop. Otherwise the now-reached point persists as a
-                # strategy sample and the cost gate keeps re-firing
-                # kToC3ReachedReposTarget for it.
+                # 2026-07-28e: the arrival-time _refresh_buffer_on_arrival()
+                # call was deleted — it had been a no-op since the 2026-07-19
+                # fresh-samples refactor (it wrote _sample_buffer* fields that
+                # nothing read). Reference has no arrival-refresh concept:
+                # samples are regenerated fresh every tick (cc:898-938) and
+                # the arrived target never enters the sample buffer
+                # (MaintainSampleBuffers skips the pursued repos target).
+                # Only the DIAG landing-trace timestamp remains.
                 if self._last_repos_finished:
-                    # Stage C landing-storm trace: mark the call (the
-                    # leading-hypothesis suspect for the per-tick rebuild
-                    # storm at 1 kHz). Default-OFF.
-                    import os as _os_lt0
-                    if _os_lt0.environ.get("DIAG_LANDING_TRACE", "0") == "1":
-                        print(f"[LANDING-REFRESH] step={self._step} "
-                              f"_refresh_buffer_on_arrival FIRED",
-                              flush=True)
-                    self._refresh_buffer_on_arrival()
                     self._landing_trace_refresh_fired_at = int(self._step)
 
                 if self.log_diag:
@@ -4809,8 +4789,8 @@ class SamplingC3Controller:
         # implementation. Every c3 exit discarded the very sample it exited
         # FOR: 1-tick c3 dwells + retarget-from-scratch churn (p134: 114
         # entries / 9 kStayInC3 steps, goal_dist frozen at 0.150 for 180 s).
-        # _refresh_buffer_on_arrival keeps its arrival-site call (kToC3
-        # entry path); it no longer fires here.
+        # (_refresh_buffer_on_arrival was later deleted entirely, 2026-07-28e
+        # — it had been a no-op since the 2026-07-19 fresh-samples refactor.)
         if self._prev_mode == "c3" and mode == "free":
             _removed_buf = False
             if (best_src == "buffer"
