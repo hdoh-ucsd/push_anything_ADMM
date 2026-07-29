@@ -525,6 +525,30 @@ class SamplingC3Controller:
     # read). Reference has no arrival-refresh concept. sample_buffer_lifetime_s
     # is dead config as a consequence.
 
+    def _buffer_cost_with_current_travel(self,
+                                         buf_entry,
+                                         ee_pos_now: np.ndarray) -> float:
+        """Price a (travel-free) buffered cost at the CURRENT EE position.
+
+        Reference cc:2113-2118 (AugmentSamplesWithBuffer):
+            travel_cost = travel_cost_per_meter *
+                          ||sample_buffer_.row(...).head(2) - ee_now.head(2)||
+            lowest_buffer_cost += travel_cost;
+        Buffer entries store cost MINUS append-time travel (cc:2064-2072 /
+        _update_buffer), so the promise is re-priced from wherever the EE is
+        NOW rather than replaying stale travel. Distance uses the port's own
+        3D ||sample - ee|| convention (matches inner_solve travel_dist, so
+        the subtract/re-add pair is self-consistent); the reference's xy
+        head(2) metric is a pre-existing, separate divergence.
+        """
+        w_travel = float(getattr(self.params, "w_travel", 0.0))
+        if w_travel <= 0.0:
+            return float(buf_entry.cost)
+        dist = float(np.linalg.norm(
+            np.asarray(buf_entry.position, dtype=float)
+            - np.asarray(ee_pos_now, dtype=float)))
+        return float(buf_entry.cost) + w_travel * dist
+
     # ----------------------------------------------------------------------
     def _reconcile_surface_target(self,
                                   default_p_ee_des: np.ndarray,
@@ -1027,9 +1051,16 @@ class SamplingC3Controller:
                 continue
             if not r.feasible:
                 continue
+            # Reference cc:2064-2072: store the cost TRAVEL-FREE
+            # (sample_costs_buffer_[i] = all_sample_costs_[i] - travel_cost).
+            # Append-time travel is meaningless later — the EE moves — so
+            # augmentation re-adds CURRENT-EE travel instead
+            # (_buffer_cost_with_current_travel, cc:2113-2118). Inert at
+            # w_travel=0 (both current tasks) but the stale-travel replay
+            # it prevents is real (p132 anatomy).
             self.buffer.append(BufferedSample(
                 position   = r.sample_pos.copy(),
-                cost       = r.c_sample,
+                cost       = float(r.c_sample) - float(r.travel_penalty),
                 obj_pos_xy = obj_xy_now.copy(),
                 obj_quat   = obj_quat.copy(),
                 result     = r,   # carry the SampleResult so
@@ -1516,25 +1547,30 @@ class SamplingC3Controller:
         sp = self.params.sampling_params
         # Identity handle on the entry augmented THIS tick — consumed by the
         # c3→free exit bookkeeping (reference cc:1196-1198 removes the pursued
-        # buffer sample). Captured here because _update_buffer runs between
-        # this block and the epilogue, so a late best_with_position() re-query
-        # could name a different entry.
+        # buffer sample). Captured by identity so the epilogue removes exactly
+        # the entry that was cited, even if the buffer's best shifts later.
         self._augmented_buffer_entry = None
         if (self._prev_mode == "c3"
                 and sp.consider_best_buffer_sample_when_leaving_c3
                 and len(self.buffer) > 0):
             _best_buf = self.buffer.best_with_position()
             if _best_buf is not None and _best_buf.result is not None:
+                # Reference cc:2113-2118: the stored cost is TRAVEL-FREE;
+                # price it with CURRENT-EE travel before comparing/injecting
+                # (lowest_buffer_cost += travel_cost_per_meter * dist).
+                _buf_cost_now = self._buffer_cost_with_current_travel(
+                    _best_buf, ee_pos_now)
                 _lowest_new_cost = float(min(c_samples))
                 _best_new_idx = int(np.argmin(c_samples))
                 _best_new_pos = np.asarray(samples[_best_new_idx])
                 _buf_pos = np.asarray(_best_buf.position)
-                _cost_match = abs(_best_buf.cost - _lowest_new_cost) < 1e-5
+                # cc:2141 compares the travel-ADDED buffer cost.
+                _cost_match = abs(_buf_cost_now - _lowest_new_cost) < 1e-5
                 _pos_match  = np.linalg.norm(_buf_pos - _best_new_pos) < 1e-5
                 if not (_cost_match and _pos_match):
                     samples.append(_buf_pos)
                     labels.append("buffer")
-                    c_samples.append(float(_best_buf.cost))
+                    c_samples.append(float(_buf_cost_now))
                     results.append(_best_buf.result)
                     self._augmented_buffer_entry = _best_buf
             # Refresh mirrored bookkeeping.
