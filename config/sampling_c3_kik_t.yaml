@@ -326,7 +326,25 @@ sampling_params:
   # T-shape overrides — see object_shape switch below.
   sampling_radius: 0.12         # m, candidate-ring radius approximating T's outer envelope
   repos_target_radius: 0.10     # m, IK proxy target — halfway between crossbar tip and stem back
-  sampling_height: 0.005        # m, EE sphere-center world-z; matches reference push_t/parameters/sampling_params.yaml:5 (5 mm above ground, ground-relative). Prior port comment claimed 0.034 was frame-adjusted to match reference; empirically ee_z ended up at 0.06 during Drake contact, riding the T top-corner (T body top at world-z=0.04). At 0.005 the pusher sphere (r=0.025) extends world-z ∈ [-0.02, 0.03], hitting T side face squarely.
+  # 2026-07-28c FRAME-SHIFT FIX (same family as the box-init bug): the
+  # reference's sampling_height 0.005 is in ITS world (ground top at
+  # z=-0.029) → 34 mm ABOVE GROUND. The port's ground top is at z=0, so
+  # the verbatim 0.005 put samples 5 mm above ground — the tip sphere
+  # (r=0.0195) would need 14.5 mm of TABLE PENETRATION; the EE-center
+  # floor is 0.0195, so every arrival plateaued at finished_val
+  # 0.0204-0.0207 vs the 0.020 threshold (p133 audit) and the priced
+  # pose was never reached. 0.034 = the reference's own 34 mm, in port
+  # coordinates. Sphere spans z ∈ [0.0145, 0.0535] on the T face —
+  # identical relative geometry to the reference (their sphere pokes the
+  # same 13.5 mm above the T top at z=0.040-equivalent). The old
+  # "riding the T top-corner at 0.034" observation dates from the
+  # r=0.025-pusher pre-conformance stack and was a stale-evidence revert.
+  sampling_height: 0.034        # m — reference 34 mm above ground, port frame
+  # Reference sampling_params.yaml:50 z_height: -0.004 (their world) =
+  # 25 mm above ground → port frame +0.025. Consumed by the c3-mode
+  # z-freeze (cc:1759) and the c3-entry altitude ceiling (cc:1290) —
+  # the reference keeps this SEPARATE from sampling_height.
+  z_height: 0.025               # m — reference 25 mm above ground, port frame
 
   # T-shape face table (Push-Anything §IV-B1 analog for the T).
   # The 8-patch table is hardcoded in sampling.py:_TSHAPE_FACE_TABLE — this

@@ -188,16 +188,22 @@ tasks:
     goal_xy:  [0.482, 0.187]
     goal_yaw: -0.7379    # rad = -42.28°, from reference push_t target quaternion
     color_rgba: [0.75, 0.75, 0.75, 1.0]
-    # Contact regime matched to reference push_t/parameters/sampling_params.yaml:5
-    # (sampling_height: 0.005 above ground). Port ground at world-z = 0, T body
-    # sits on ground at CoM z=0.02 (T bottom at 0, top at 0.04). Pusher sphere
-    # (r=0.025) at ee_z=0.005 extends z ∈ [-0.02, 0.03] — hits T side face
-    # squarely across nearly its full 0-0.04 height. Prior value 0.034 was based
-    # on a mistaken frame-offset argument and had the pusher center riding the
-    # T top corner (ee_z ~0.06 during Drake contact events).
-    # NOTE: This value OVERRIDES sampling_c3_kik_t.yaml `sampling_height` via
-    # main.py:598-603 — the sampling-c3 yaml value is inert for push_t.
-    sampling_height: 0.005
+    # 2026-07-28c FRAME-SHIFT FIX (same family as the box-init bug): the
+    # reference's sampling_height 0.005 (push_t/parameters/
+    # sampling_params.yaml:5) is in ITS world, where the ground top sits at
+    # z=-0.029 → the reference samples 34 mm ABOVE GROUND. Port ground top
+    # is at z=0, so the verbatim 0.005 put samples 5 mm above ground: the
+    # tip sphere (r=0.0195) would need 14.5 mm of table penetration, the
+    # EE-center floor is 0.0195, and every reposition arrival plateaued at
+    # finished_val 0.0204-0.0207 vs the 0.020 threshold (p133 audit).
+    # 0.034 = the reference's own 34 mm, expressed in port coordinates.
+    # The earlier "0.034 rides the T top corner" observation dates from the
+    # r=0.025-pusher pre-conformance stack and was a stale-evidence revert.
+    # PER-TASK VALUE — do not globalize. Each task sets its own height
+    # (pushing 0.050 sub-CoM cube, hard_pushing 0.03, push_t 0.034); this
+    # value OVERRIDES sampling_c3_kik_t.yaml `sampling_height` via
+    # main.py:706-708 — the sampling-c3 yaml value is inert for push_t.
+    sampling_height: 0.034
     # PWL waypoint height (sphere-center z) for the reposition trajectory's
     # traverse leg above the object. Must be > T_top + pusher_radius
     # (= 0.04 + 0.025 = 0.065) so the pusher sphere clears the T's top face

@@ -1954,7 +1954,7 @@ class SamplingC3Controller:
         if (self._prev_mode == "free"
                 and getattr(self.params, "ee_z_close", True)
                 and _obj_shape == "tshape"):
-            _sampling_z = float(self.params.sampling_params.sampling_height)
+            _sampling_z = self._c3_track_z()   # ref cc:1290 uses z_height
             _c3_min_clearance = float(getattr(
                 self.params, "c3_min_clearance", 0.01))
             _wall_offset = 0.0
@@ -3228,7 +3228,7 @@ class SamplingC3Controller:
                     # LCS included the contact pair; x_seq[1][9] retreated;
                     # arm lost contact. Freeze Z at sampling_height to hold
                     # contact height stable — matches reference OSC track_z.
-                    _sh = float(self.params.sampling_params.sampling_height)
+                    _sh = self._c3_track_z()   # ref cc:1759 uses z_height
                     _p_ee_des[2] = _sh
                 else:
                     _q_full_next = current_q.copy()
@@ -3302,8 +3302,7 @@ class SamplingC3Controller:
                     # T (obj_z=0.020) is below reference's z_height=0.034
                     # equivalent. Aligning to sampling_height matches
                     # reference's constant-plane push posture.
-                    _sampling_z = float(
-                        self.params.sampling_params.sampling_height)
+                    _sampling_z = self._c3_track_z()  # ref z_height plane
                     if getattr(self, "_c3_geom_z_target", None) is None:
                         self._c3_geom_z_target = _sampling_z
                     _p_ee_geom = np.array([
@@ -4013,8 +4012,8 @@ class SamplingC3Controller:
                 _knots = np.array([
                     _x_seq_full[i][7:10] for i in range(1, _N_plan + 1)
                 ], dtype=float).T
-                _sh_c3 = float(self.params.sampling_params.sampling_height)
-                _knots[2, :] = _sh_c3   # z-freeze every knot (ref cc:1757)
+                _sh_c3 = self._c3_track_z()   # ref cc:1757-1759 z_height
+                _knots[2, :] = _sh_c3   # z-freeze every knot
                 _ts = [_sim_t_c3 + i * _dt_plan for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
                 # 2026-07-19 trajectory-log for descent audit (c3 mode).
@@ -5083,6 +5082,16 @@ class SamplingC3Controller:
                   f"travel={r.travel_dist:.3f}m(pen={r.travel_penalty:6.2f}) "
                   f"c_sample={r.c_sample:10.2f} "
                   f"feas={feas} ik_err={r.ik_err:.4f}m{win}")
+
+
+    def _c3_track_z(self) -> float:
+        """Reference z_height (cc:1290 entry ceiling, cc:1759 c3 z-freeze).
+        Falls back to sampling_height when the yaml doesn't set z_height
+        (legacy port behavior; the reference keeps them separate)."""
+        _zh = getattr(self.params.sampling_params, "z_height", None)
+        if _zh is not None:
+            return float(_zh)
+        return float(self.params.sampling_params.sampling_height)
 
     def print_perf_summary(self) -> None:
         avg_ms = (sum(self._step_times_ms) / len(self._step_times_ms)
