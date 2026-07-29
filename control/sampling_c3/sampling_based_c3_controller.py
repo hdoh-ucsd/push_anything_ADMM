@@ -999,7 +999,8 @@ class SamplingC3Controller:
     def _update_buffer(self,
                        results:    list[SampleResult],
                        obj_xy_now: np.ndarray,
-                       obj_quat:   np.ndarray) -> None:
+                       obj_quat:   np.ndarray,
+                       labels:     Optional[list] = None) -> None:
         # Age existing entries; prune those whose object pose has drifted
         self.buffer.tick_age()
         self.buffer.prune(obj_xy_now, obj_quat_now=obj_quat)
@@ -1028,6 +1029,16 @@ class SamplingC3Controller:
             if k == 0:                       # always skip current
                 continue
             if k == 1 and _skip_prev_repos:  # skip prev_repos in repos mode
+                continue
+            # Skip the AugmentSamplesWithBuffer re-injection. Reference calls
+            # MaintainSampleBuffers (cc:1094) BEFORE AugmentSamplesWithBuffer
+            # (cc:1097), so its append loop never sees the augmented stale
+            # entry; the port maintains after augmenting, and without this
+            # skip the stale SampleResult re-enters the buffer with its
+            # ORIGINAL cost every c3 tick — self-replicating and defeating
+            # the exit-side removal (cc:1196-1198). p135: one step-2 promise
+            # (c=1454.81) ejected all 121 c3 stints across 180 s.
+            if labels is not None and k < len(labels) and labels[k] == "buffer":
                 continue
             if not r.feasible:
                 continue
@@ -2307,7 +2318,7 @@ class SamplingC3Controller:
             self._mode_time_free += 1
 
         # 7. Maintain sample buffer (independent of mode)
-        self._update_buffer(results, obj_xy, obj_quat)
+        self._update_buffer(results, obj_xy, obj_quat, labels=labels)
 
         # 8. Execute
         # Populated by the IK tracker in the free branch when target_idx is
