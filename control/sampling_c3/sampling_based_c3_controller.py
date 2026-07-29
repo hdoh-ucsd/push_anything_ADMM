@@ -1030,14 +1030,14 @@ class SamplingC3Controller:
                 continue
             if k == 1 and _skip_prev_repos:  # skip prev_repos in repos mode
                 continue
-            # Skip the AugmentSamplesWithBuffer re-injection. Reference calls
-            # MaintainSampleBuffers (cc:1094) BEFORE AugmentSamplesWithBuffer
-            # (cc:1097), so its append loop never sees the augmented stale
-            # entry; the port maintains after augmenting, and without this
-            # skip the stale SampleResult re-enters the buffer with its
-            # ORIGINAL cost every c3 tick — self-replicating and defeating
-            # the exit-side removal (cc:1196-1198). p135: one step-2 promise
-            # (c=1454.81) ejected all 121 c3 stints across 180 s.
+            # Defense-in-depth guard: never append an AugmentSamplesWithBuffer
+            # re-injection back into the buffer. Since the reference-order
+            # restructure (call site at step 3b', BEFORE augmentation —
+            # cc:1094/1097) the candidate list cannot contain "buffer" labels
+            # here, so this is inert; it stays as a regression tripwire for
+            # the p135 immortal-promise defect (one step-2 promise, c=1454.81,
+            # re-appended every c3 tick and ejecting all 121 stints — the
+            # exit-side removal cc:1196-1198 was defeated by the re-append).
             if labels is not None and k < len(labels) and labels[k] == "buffer":
                 continue
             if not r.feasible:
@@ -1509,6 +1509,18 @@ class SamplingC3Controller:
             c_samples[1] = (c_samples[1]
                             + self.params.progress_params.finished_reposition_cost)
             self._last_repos_finished = False   # match reference reset
+
+        # 3b'. MaintainSampleBuffers — reference cc:1094, which runs BETWEEN
+        # the finished-reposition inflation (cc:1081-1084) and
+        # AugmentSamplesWithBuffer (cc:1097). Order is load-bearing twice:
+        #   1. the maintenance append loop sees only THIS tick's fresh
+        #      samples — the augmented stale re-injection can never re-enter
+        #      the buffer (the p135 immortal-promise defect, fixed b9218ab);
+        #   2. augmentation reads the just-maintained buffer (pruned + fresh
+        #      appends), so the buffer's best can be a sample from this very
+        #      tick — reference semantics. The port previously maintained
+        #      after the mode decision (post-augmentation).
+        self._update_buffer(results, obj_xy, obj_quat, labels=labels)
 
         # 3c. AugmentSamplesWithBuffer — reference cc:2106-2158.
         # Re-enabled 2026-07-19 after BufferedSample now carries the full
@@ -2317,8 +2329,9 @@ class SamplingC3Controller:
         else:
             self._mode_time_free += 1
 
-        # 7. Maintain sample buffer (independent of mode)
-        self._update_buffer(results, obj_xy, obj_quat, labels=labels)
+        # 7. (moved) Sample-buffer maintenance now runs at step 3b' —
+        # BEFORE AugmentSamplesWithBuffer, matching reference cc:1094/1097
+        # call order. See the 3b' comment for why the order is load-bearing.
 
         # 8. Execute
         # Populated by the IK tracker in the free branch when target_idx is
