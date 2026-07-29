@@ -321,13 +321,23 @@ def main():
     # FAIL). Componentwise is the reference C3+ projection and delivers
     # tight_goal PASS at admm_iter=3. The LCP path is gone; only the
     # componentwise projection remains inside _solve_c3plus.
+    # 2026-07-28 divergence removal: the EE-space LCS planner is the
+    # DEFAULT for ALL tasks. The reference plans every sampling-c3 task
+    # with the point-EE simple model (franka_sampling_c3_controller.cc:
+    # 143-146 DRAKE_DEMANDs no orientation because the LCS plant IS the
+    # simple EE model); the R^7 full-plant planner was a port-era
+    # divergence (p106 arc) with no reference analog. --ee-space is kept
+    # as a no-op for script compatibility; --r7 opts back into the
+    # legacy R^7 joint-torque planner for falsification runs only.
     parser.add_argument("--ee-space", action="store_true",
-                        help="Use the paper-aligned EE-space LCS planner "
-                             "(Push-Anything §IV-A): x ∈ ℝ^19, u ∈ ℝ^3 EE force. "
-                             "Solver dims auto-set to n_x=19, n_u=3. Downstream OSC "
-                             "still handles the J^-T mapping to joint torques. "
-                             "Replaces the R^7-joint-torque LCS path. Force-limit "
-                             "(--torque-limit semantics) is now Newtons.")
+                        help="No-op (EE-space is the default planner since "
+                             "the 2026-07-28 divergence removal). Kept for "
+                             "script compatibility.")
+    parser.add_argument("--r7", action="store_true",
+                        help="LEGACY: use the port-only R^7 joint-torque "
+                             "full-plant LCS planner instead of the "
+                             "reference EE-space planner. Falsification "
+                             "runs only — no reference analog.")
     parser.add_argument("--workspace-y-max", type=float, default=None,
                         metavar="YMAX",
                         help="F3 sweep override: override sampling_params."
@@ -344,6 +354,10 @@ def main():
                              "for deterministic sampling-circle angle draws. "
                              "Only takes effect with --sampling-c3.")
     args = parser.parse_args()
+
+    # 2026-07-28 divergence removal: EE-space is the default planner;
+    # --r7 is the explicit legacy opt-out (see the --ee-space help text).
+    args.ee_space = not args.r7
 
     if args.workspace_y_max is not None and not (-1.0 <= args.workspace_y_max <= 1.0):
         parser.error(f"--workspace-y-max {args.workspace_y_max} out of "
@@ -573,7 +587,9 @@ def main():
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
-    # R^7 path remains the default unless --ee-space is passed.
+    # DEFAULT since the 2026-07-28 divergence removal (reference plans all
+    # tasks with the point-EE simple model); --r7 opts out to the legacy
+    # port-only full-plant planner.
     # Supported on BOTH solvers — c3plus (componentwise projection) and c3
     # (LCP projection, Aydinoglu §V-B.3.b feasibility-guaranteed) — so the
     # projection variant can be flipped as a clean CLI test holding all

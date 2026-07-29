@@ -19,6 +19,10 @@
 #   ONE reference OSC gain set incl. (REFCONF_OSC_ALIGN / _C3_MODE_GAINS /
 #     rot task W=10/Kp=800/Kd=40      _FREE_MODE_GAINS / _EE_ROT_TASK)
 #   OSC executes c3 mode             (REFCONF_R7_DIRECT_TORQUE removed)
+#   EE-space planner (all tasks)     (2026-07-28b divergence removal —
+#                                     the R^7 full-plant planner was
+#                                     port-only; --r7 re-enables it for
+#                                     falsification runs)
 #   u_sol force target               (PORT_FORCE_ROUTING default u_sol)
 #   LTD approach-override skipped    (PORT_DISABLE_C3_OVERRIDE hard-wired)
 #
