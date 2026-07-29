@@ -36,7 +36,10 @@ class BufferedSample:
     """One historical sample.
 
     position      : (3,) Cartesian EE target in world frame (m)
-    cost          : float — the c_sample (post-alignment-bonus) value at insert
+    cost          : float — TRAVEL-FREE cost at insert (c_sample minus
+                    append-time travel_penalty, reference cc:2064-2072);
+                    consumers re-add current-EE travel via
+                    _buffer_cost_with_current_travel (cc:2113-2118)
     obj_pos_xy    : (2,) box xy at insert time (used for pos-retention check)
     obj_quat      : (4,) box quaternion (qw, qx, qy, qz) at insert time;
                     pass None to disable the angular-retention check
