@@ -709,7 +709,20 @@ def _random_on_perimeter(n_samples: int,
     obj_xy_2 = np.asarray(obj_xy, dtype=float).flatten()[:2]
     shape = getattr(params, "object_shape", "box")
     z_target = float(params.sampling_height)
-    clearance = float(params.sampling_setback)
+    # Outward projection distance — reference generate_samples.cc:854-866
+    # (ProjectSampleOutsideObject): sample point = witness point +
+    # (ee_radius + sample_projection_clearance) · n̂, then re-checked and
+    # retried until strictly clear (cc:340-348). The point-to-surface
+    # distance is therefore ee_radius + clearance — clearing the per-tick
+    # pursued-target gate (cc:908-926, distance <= clearance) with an
+    # ee_radius margin. The port previously projected by sampling_setback
+    # alone (kik_t yaml 0.020, misread as the reference clearance): samples
+    # landed exactly AT the gate boundary and p139 rejected 698 of the
+    # sampler's own fresh outputs. sampling_setback remains the kFaceNormal
+    # knob; it is not used here.
+    from sim.env_builder import PUSHER_RADIUS as _PUSHER_R
+    clearance = float(_PUSHER_R) + float(getattr(
+        params, "sample_projection_clearance", 0.02))
 
     R = _quat_to_rot(obj_quat) if obj_quat is not None else np.eye(3)
 
