@@ -525,6 +525,44 @@ class SamplingC3Controller:
     # read). Reference has no arrival-refresh concept. sample_buffer_lifetime_s
     # is dead config as a consequence.
 
+    def _pursued_target_in_collision(self, plant_ctx) -> bool:
+        """Per-tick collision check on the pursued repositioning target.
+
+        Reference cc:908-926: ComputeSignedDistanceToPoint(
+        prev_repositioning_target_) against the object geometries;
+        in_collision when any signed distance <=
+        sampling_params.sample_projection_clearance (push_t reference value
+        0.02 m, push_t/parameters/sampling_params.yaml:30). Consumed at the
+        cc:931 candidate-insertion gate and the cc:1205-1213 repos-branch
+        rejection ("Previous repositioning target in penetration with the
+        object ... switching to new sample"). Targets are generated for the
+        object pose at sampling time; once the object rotates under c3
+        pushes, a retained target can sit at/inside the moved face and the
+        tracker would otherwise press the EE into it indefinitely (p138:
+        all net translation drift, (-25,-27) mm, was free-mode pressing
+        creep at contact range).
+        """
+        p = self._current_repos_target
+        if p is None:
+            return False
+        sp = self.params.sampling_params
+        clearance = float(getattr(sp, "sample_projection_clearance", 0.02))
+        geom_ids = getattr(self, "_collision_check_geom_ids", None)
+        if geom_ids is None:
+            geom_ids = getattr(
+                getattr(self.base_mpc, "formulator", None),
+                "_manipuland_geom_ids", None)
+        if not geom_ids:
+            return False
+        query_object = self.plant.get_geometry_query_input_port().Eval(
+            plant_ctx)
+        results = query_object.ComputeSignedDistanceToPoint(
+            np.asarray(p, dtype=float).reshape(3), clearance)
+        for r in results:
+            if r.id_G in geom_ids and float(r.distance) <= clearance:
+                return True
+        return False
+
     def _buffer_cost_with_current_travel(self,
                                          buf_entry,
                                          ee_pos_now: np.ndarray) -> float:
@@ -922,6 +960,7 @@ class SamplingC3Controller:
                        prev_mode:   str,
                        obj_quat:    Optional[np.ndarray] = None,
                        yaw_delta:   Optional[float]      = None,
+                       in_collision: bool                 = False,
                        ) -> tuple[list[np.ndarray], list[str]]:
         """Construct the per-loop sample list. Returns (positions, labels).
 
@@ -946,11 +985,15 @@ class SamplingC3Controller:
         positions: list[np.ndarray] = []
         labels:    list[str]        = []
 
-        # prev_repos only in REPOS mode (matches reference's !is_doing_c3_).
-        # Reference also checks !in_collision; port skips that here — the
-        # workspace filter in generate_samples handles collision-avoidance for
-        # freshly generated samples, and prev_repos is a previously-cleared
-        # target so unlikely to be in collision.
+        # prev_repos only in REPOS mode (matches reference's !is_doing_c3_),
+        # and only when NOT in collision (reference cc:931). The caller
+        # computes in_collision per tick via _pursued_target_in_collision
+        # (cc:908-926); a retained target the object has rotated into is
+        # excluded here so argmin re-targets a fresh sample (cc:1205-1213)
+        # instead of the tracker pressing the EE into the moved face.
+        # (Pre-2026-07-28f the port skipped this check on the rationale that
+        # a previously-cleared target is "unlikely to be in collision" —
+        # false once the object rotates under c3 pushes; p138 forensics.)
         # Achieved-fixed-goal exception: skip prev_repos add. Reference
         # (cc:928-936) still inserts prev_repos, but its cost fn is
         # c3_cost + travel_cost_per_meter × xy_travel only, so a far retreat
@@ -963,6 +1006,7 @@ class SamplingC3Controller:
         # samples with retreat copies below makes the sample list
         # [current, retreat, retreat, ...] so best_other = retreat.
         if (prev_mode == "free" and self._current_repos_target is not None
+                and not in_collision
                 and not getattr(self, "_achieved_fixed_goal", False)):
             positions.append(self._current_repos_target.copy())
             labels.append("prev_repos")
@@ -1456,9 +1500,21 @@ class SamplingC3Controller:
             np.arctan2(np.sin(_dy_samp), np.cos(_dy_samp)))
 
         # 2. Build sample list (k=0 = current EE always first)
+        # Reference cc:908-926: per-tick in_collision check on the pursued
+        # repos target — a target the object has rotated into is excluded
+        # from the candidate set (cc:931), so the free branch re-targets
+        # (cc:1205-1213 "switching to new sample") instead of pressing.
+        _repos_tgt_in_collision = self._pursued_target_in_collision(plant_ctx)
+        if _repos_tgt_in_collision and self.log_diag:
+            _p = self._current_repos_target
+            print(f"[REPOS-COLLIDE] step={self._step} pursued target "
+                  f"({_p[0]:+.4f},{_p[1]:+.4f},{_p[2]:+.4f}) within "
+                  f"sample_projection_clearance of object — rejected, "
+                  f"switching to new sample (ref cc:1205-1213)", flush=True)
         samples, labels = self._build_samples(
             ee_pos_now, obj_xy, g_hat, self._prev_mode,
-            obj_quat=obj_quat, yaw_delta=yaw_delta_samp)
+            obj_quat=obj_quat, yaw_delta=yaw_delta_samp,
+            in_collision=_repos_tgt_in_collision)
 
         # Reference-conformant bookkeeping (dairlib
         # sampling_based_c3_controller.cc:945-949). `samples` == candidate EE

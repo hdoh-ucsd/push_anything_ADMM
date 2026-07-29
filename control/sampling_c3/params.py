@@ -324,6 +324,15 @@ class SamplingParams:
     box_half_extent:                     float = 0.05   # m, half-extent of the cube
     sampling_setback:                    float = 0.030  # m, outward projection along face normal (pusher_radius 0.025 + 5 mm margin)
     sample_reject_clearance:             float = 0.005  # m, post-projection minimum gap to box surface
+    # Per-tick collision clearance for the PURSUED repositioning target
+    # (reference sample_projection_clearance,
+    # push_t/parameters/sampling_params.yaml:30 = 0.02). Reference
+    # cc:908-926 flags the retained target in_collision when its signed
+    # distance to any object geometry is <= this; cc:931/cc:1205-1213 then
+    # exclude/reject it so the tracker never presses the EE into a face
+    # that rotated under the target. Distinct from generation-time
+    # sample_reject_clearance above.
+    sample_projection_clearance:         float = 0.02   # m — reference value
 
     # kRandomOnPerimeter sampling window (body-frame bounding box).
     # Reference push_t/parameters/sampling_params.yaml:39-40 grid_x/y_limits.
