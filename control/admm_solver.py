@@ -67,6 +67,10 @@ class C3Solver:
                  math_diag: bool = False, mode: str = "c3",
                  penalize_input_change: bool = True):
         assert mode in ("c3", "c3plus"), f"unknown solver mode: {mode}"
+        # Workspace state constraints (reference cc:995-1025): list of
+        # (state_idx, lo, hi) applied per-knot in _solve_c3plus. Set by
+        # main.py from planner_workspace_* yaml keys; None → no constraint.
+        self.state_position_bounds: list | None = None
         # C3+ δ-projection is the paper's `componentwise` (Bui 2026
         # eq 12) per-scalar-pair test — matches reference
         # sampling_c3plus_options.yaml projection_type: 'C3+'. The
@@ -1249,6 +1253,31 @@ class C3Solver:
                 prog.AddBoundingBoxConstraint(
                     _u_lo, _u_hi, z_var[ui : ui + n_u],
                 )
+
+            # Workspace state constraints — reference cc:995-1025 adds, to
+            # EVERY per-sample C3 object, AddLinearConstraint(A·x ∈
+            # [lb − workspace_margins, ub + workspace_margins], STATE) rows
+            # selecting the EE position AND object position slots (push_t
+            # values sampling_c3_options.yaml:26-30). The port had carried
+            # over only the adjacent EE-velocity rows (cc:1027-1034, below);
+            # without the position rows the planner was free to plan EE
+            # excursions anywhere in R^3 (p140/p141: phantom stints walked
+            # the EE into the r=0.25 workspace abort). Instance attribute
+            # `state_position_bounds` = [(state_idx, lo, hi), ...] so the
+            # surrogate per-sample solves (inner_solve → this same solver)
+            # inherit the constraint exactly like the reference's per-sample
+            # C3 objects. None/empty → byte-identical legacy behavior.
+            _spb = getattr(self, "state_position_bounds", None)
+            if _spb:
+                _spb_idx = np.array([int(b[0]) for b in _spb])
+                _spb_lo  = np.array([float(b[1]) for b in _spb])
+                _spb_hi  = np.array([float(b[2]) for b in _spb])
+                for i in range(N):
+                    _base = i * TOT + SX
+                    prog.AddBoundingBoxConstraint(
+                        _spb_lo, _spb_hi, z_var[_spb_idx + _base])
+                prog.AddBoundingBoxConstraint(
+                    _spb_lo, _spb_hi, z_var[_spb_idx + N * TOT])
 
             # State velocity bounds (ee_velocity_limits). Reference cc:1027-1034
             # applies at each knot: A · x_k ∈ [lo, hi] where A selects the EE
