@@ -172,3 +172,38 @@ def test_iter_yields_all_entries_in_order():
         b.append(_entry(cost=c))
     costs = [s.cost for s in b]
     assert costs == [5.0, 6.0, 7.0]
+
+
+# ---------------------------------------------------------------------------
+# remove() — reference cc:1196-1198 (pursued buffer sample removed on
+# c3 → repositioning exit; ONE entry, not a whole-buffer clear)
+# ---------------------------------------------------------------------------
+
+def test_remove_best_entry_by_identity():
+    b = SampleBuffer()
+    a1 = _entry(pos=(0.1, 0.0, 0.05), cost=100.0)
+    a2 = _entry(pos=(0.2, 0.0, 0.05), cost=50.0)
+    a3 = _entry(pos=(0.3, 0.0, 0.05), cost=75.0)
+    for e in (a1, a2, a3):
+        b.append(e)
+    best = b.best_with_position()
+    assert best is a2
+    assert b.remove(best) is True
+    assert len(b) == 2
+    assert b.best_with_position() is a3   # next-lowest survives
+    assert all(s is not a2 for s in b)
+
+
+def test_remove_absent_entry_returns_false_and_keeps_buffer():
+    b = SampleBuffer()
+    a1 = _entry(cost=10.0)
+    b.append(a1)
+    ghost = _entry(cost=10.0)   # equal fields, different identity
+    assert b.remove(ghost) is False
+    assert len(b) == 1
+    assert b.best_with_position() is a1
+
+
+def test_remove_from_empty_returns_false():
+    b = SampleBuffer()
+    assert b.remove(_entry()) is False
