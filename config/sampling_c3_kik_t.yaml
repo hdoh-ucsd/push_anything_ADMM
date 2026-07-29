@@ -349,6 +349,12 @@ sampling_params:
   box_half_extent:         0.05    # m, retained for legacy readers; unused for tshape
   sampling_setback:        0.020   # m, reference push_t/parameters/sampling_params.yaml:15 (sample_projection_clearance=0.02)
   sample_reject_clearance: 0.005   # m, applied only for object_shape=box
+  # Per-tick collision clearance for the PURSUED repos target — reference
+  # push_t/parameters/sampling_params.yaml:30 sample_projection_clearance.
+  # cc:908-926/931/1205-1213: a retained target within this distance of the
+  # (possibly rotated) object is excluded from candidates and re-targeted,
+  # instead of the tracker pressing the EE into the face (p138 drift creep).
+  sample_projection_clearance: 0.02  # m — reference value
 
   # 2026-07-22 kRandomOnPerimeter sampling window — reference parity.
   # Reference push_t/parameters/sampling_params.yaml:39-40 bounds. Port
