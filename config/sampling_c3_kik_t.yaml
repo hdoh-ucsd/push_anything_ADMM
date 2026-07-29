@@ -309,18 +309,13 @@ sampling_params:
   pos_error_sample_retention:  0.003   # m — reference value
   ang_error_sample_retention:  0.0349  # rad = 2 deg — reference value
 
-  # Sample buffer lifetime in SIM SECONDS. Use `_s` variant to bypass the
-  # 100 Hz compat shim (params.py:387-394 assumes old int form is in
-  # 100 Hz ticks). At planner rate 13.3 Hz, old `sample_buffer_lifetime: 30`
-  # → shim → 0.30 s → 4 planner loops — 7.5× shorter than intended and
-  # caused sample thrashing (strat_0 flipped between faces every 3 ticks
-  # in results/push_t_check_20260719_002243, forcing arm to re-target
-  # constantly and hesitate to make contact).
-  # 2.25 s ≈ 30 planner loops at 13.3 Hz. Matches reference behavior:
-  # arm commits to one sample for the IK-convergence window.
-  # Buffer also force-refreshes on arrival (finished_repos fires) and
-  # on mode transitions that change n_strategy.
-  sample_buffer_lifetime_s:    2.25
+  # DEAD CONFIG (2026-07-28e): sample_buffer_lifetime_s is no longer read
+  # anywhere. The strategy-sample position cache it governed was removed in
+  # the 2026-07-19 fresh-samples refactor (reference GenerateSampleStates
+  # cc:898-938 regenerates every tick, no caching), and the residual no-op
+  # machinery (_refresh_buffer_on_arrival, _sample_buffer* fields) was
+  # deleted 2026-07-28e. Key kept commented for historical context only.
+  # sample_buffer_lifetime_s:    2.25
 
   # Geometric parameters (interpretation depends on sampling_strategy).
   # T-shape overrides — see object_shape switch below.

@@ -421,15 +421,12 @@ class SamplingParams:
     filter_samples_for_safety:           bool  = True
 
     # Number of control loops a random ring sample buffer persists before
-    # re-randomization. 0 disables (re-samples every loop, the broken
-    # behavior). 30 ≈ 0.3 sec at dt_ctrl=0.01s, roughly the IK tracker's
-    # convergence time to a target on the sampling ring. Buffer also
-    # refreshes on arrival (finished_repos fires) and on mode transitions
-    # that change n_strategy.
-    # 2026-06-25 reconciliation: source-of-truth in seconds. Default
-    # preserves 100 Hz value (30 ticks × 10 ms = 300 ms). RATE-INDEPENDENT
-    # only; NOT reconciled to a reference (no reference analog: reference
-    # uses event-driven LCM output ports for sample buffer).
+    # DEAD FIELD (2026-07-28e): no longer read anywhere. The position cache
+    # it governed was removed in the 2026-07-19 fresh-samples refactor
+    # (reference GenerateSampleStates regenerates every tick, no caching);
+    # the residual no-op machinery (_refresh_buffer_on_arrival,
+    # _sample_buffer* fields) was deleted 2026-07-28e. Field + the
+    # from_dict compat shim are kept only so old YAMLs still load.
     sample_buffer_lifetime_s:            float = 0.30
 
     # Retreat position when achieved_fixed_goal_ latches.
