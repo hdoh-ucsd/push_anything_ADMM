@@ -71,6 +71,11 @@ class C3Solver:
         # (state_idx, lo, hi) applied per-knot in _solve_c3plus. Set by
         # main.py from planner_workspace_* yaml keys; None → no constraint.
         self.state_position_bounds: list | None = None
+        # Lifetime count of QP-step failures (OSQP infeasible / not solved).
+        # On failure the ADMM iter reuses the stale z_sol, which degenerates
+        # to an all-zero plan when every solve fails (run p142) — so failures
+        # must be counted and surfaced, never silent.
+        self.qp_failures: int = 0
         # C3+ δ-projection is the paper's `componentwise` (Bui 2026
         # eq 12) per-scalar-pair test — matches reference
         # sampling_c3plus_options.yaml projection_type: 'C3+'. The
@@ -1543,6 +1548,12 @@ class C3Solver:
 
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
+            else:
+                self.qp_failures += 1
+                if self.qp_failures == 1 or self.qp_failures % 100 == 0:
+                    print(f"[QP-INFEASIBLE] count={self.qp_failures} it={it} "
+                          f"status={res.get_solution_result()} — QP step "
+                          f"failed; ADMM reuses stale z_sol", flush=True)
 
             # §7.67 — B1-A: on the FINAL iter with G-weighting active,
             # SKIP the projection + ω-update. Paper §IV-B.2 says

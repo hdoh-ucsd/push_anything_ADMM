@@ -111,3 +111,27 @@ def test_spawn_state_feasible_under_own_bounds():
         assert lo - 1e-9 <= x0[state_idx] <= hi + 1e-9, (
             f"knot-0 infeasible: x0[{state_idx}]={x0[state_idx]} "
             f"outside [{lo}, {hi}]")
+
+
+def test_infeasible_qp_is_counted_and_surfaced(capsys):
+    """A state bound that contradicts the hard x_0 = x0 equality makes the
+    QP primal-infeasible. The solver must count it (qp_failures) and emit a
+    [QP-INFEASIBLE] line — p142 ran 5392 silently-failed solves with zero
+    warnings."""
+    dt, mass = 0.05, 0.2
+    n_x, n_u, A, B, D, d, J_n, J_t, phi, mu = _build_synthetic_lcs(
+        dt=dt, mass=mass)
+    Q, R, QN, x_ref = _build_cost(n_x, n_u)
+    E, F, H, c = _build_complementarity(
+        dt=dt, mass=mass, A=A, B=B, D=D, J_n=J_n, J_t=J_t, phi=phi, mu=mu)
+    solver = C3Solver(n_x=n_x, n_u=n_u, rho=1.0, mode="c3plus")
+    solver.state_position_bounds = [(0, 5.0, 6.0)]   # x0[0]=0 → infeasible
+    solver.solve(
+        np.zeros(n_x), A, B, D, d, J_n, J_t, mu,
+        Q, R, QN, x_ref,
+        N=8, admm_iter=3, torque_limit=30.0,
+        phi=phi,
+        E=E, F=F, H=H, c_lcs=c,
+    )
+    assert solver.qp_failures > 0, "infeasible QP not counted"
+    assert "[QP-INFEASIBLE]" in capsys.readouterr().out
