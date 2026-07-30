@@ -189,6 +189,32 @@ def _obj_size_from_cfg(task_cfg: dict) -> float:
     return float(task_cfg["size"][0])
 
 
+def build_planner_workspace_bounds(sc3_params) -> list:
+    """Planner workspace state rows (reference cc:995-1025) for the EE-space
+    LCS: [(state_idx, lo, hi), ...] bounding the EE position AND object
+    position slots, widened by the margin. Returns [] when the config does
+    not opt in (planner_workspace_x is None)."""
+    if sc3_params.planner_workspace_x is None:
+        return []
+    _pw_m = float(sc3_params.planner_workspace_margin)
+    _pw = []
+    # EE-space state is x = [box_q(quat 0-3 + pos 4-6), p_ee(7-9), box_v,
+    # v_ee] (lcs_formulator.linearize_discrete_ee_space) — box FIRST, unlike
+    # the reference's EE-first layout, so the reference slot numbers (EE 0-2,
+    # obj 7-9) do not transfer. p142 regression: copying them bounded the
+    # box quaternion and made every QP primal-infeasible.
+    for _slot0 in (7, 4):   # EE pos, object pos
+        for _axis, _lims in enumerate((sc3_params.planner_workspace_x,
+                                       sc3_params.planner_workspace_y,
+                                       sc3_params.planner_workspace_z)):
+            if _lims is None:
+                continue
+            _pw.append((_slot0 + _axis,
+                        float(_lims[0]) - _pw_m,
+                        float(_lims[1]) + _pw_m))
+    return _pw
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -738,26 +764,19 @@ def main():
         # W_force reference value (LambdaEndEffectorW = I_3, scalar 1.0).
         sc3_params.W_force = 1.0
         # Planner workspace state constraints (reference cc:995-1025): hard
-        # per-knot bounds on the EE position slots (0-2) AND object position
-        # slots (7-9) of the EE-space state, widened by the margin — applied
-        # to every solve on this solver instance (full + surrogate), exactly
-        # like the reference's per-sample C3 objects. EE-space layout only;
-        # the --r7 falsification planner has a different state layout.
-        if args.ee_space and sc3_params.planner_workspace_x is not None:
-            _pw_m = float(sc3_params.planner_workspace_margin)
-            _pw = []
-            for _slot0 in (0, 7):   # EE pos, object pos
-                for _axis, _lims in enumerate((sc3_params.planner_workspace_x,
-                                               sc3_params.planner_workspace_y,
-                                               sc3_params.planner_workspace_z)):
-                    if _lims is None:
-                        continue
-                    _pw.append((_slot0 + _axis,
-                                float(_lims[0]) - _pw_m,
-                                float(_lims[1]) + _pw_m))
-            solver.state_position_bounds = _pw
-            print(f"[OVERRIDE] planner workspace state bounds ON "
-                  f"({len(_pw)} rows, margin={_pw_m}m, ref cc:995-1025)")
+        # per-knot bounds on the EE position and object position slots of the
+        # EE-space state, widened by the margin — applied to every solve on
+        # this solver instance (full + surrogate), exactly like the
+        # reference's per-sample C3 objects. EE-space layout only; the --r7
+        # falsification planner has a different state layout.
+        if args.ee_space:
+            _pw = build_planner_workspace_bounds(sc3_params)
+            if _pw:
+                solver.state_position_bounds = _pw
+                print(f"[OVERRIDE] planner workspace state bounds ON "
+                      f"({len(_pw)} rows, "
+                      f"margin={sc3_params.planner_workspace_margin}m, "
+                      f"ref cc:995-1025)")
         mpc = SamplingC3Controller(
             base_mpc=mpc,
             plant=plant,
