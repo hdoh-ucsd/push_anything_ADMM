@@ -63,3 +63,51 @@ def test_bounded_plan_respects_position_limit():
     for k, x in enumerate(x_seq):
         assert x[0] <= 0.15 + 1e-6, f"knot {k}: pos {x[0]:.4f} > bound"
         assert x[0] >= -0.1 - 1e-6, f"knot {k}: pos {x[0]:.4f} < bound"
+
+
+# ---------------------------------------------------------------------------
+# Slot wiring against the real EE-space state layout (p142 regression).
+#
+# The EE-space LCS state is x = [box_q(7: quat 0-3 + pos 4-6), p_ee(7-9),
+# box_v(6), v_ee(3)] (lcs_formulator.py, linearize_discrete_ee_space
+# docstring) — box FIRST. The reference orders EE first, so its cc:995-1025
+# slot numbers (EE 0-2, obj 7-9) must NOT be copied verbatim: doing so
+# bounds the box quaternion (w,x,y) to workspace metres. quat-w sits at
+# slot 0 and is ~1.0, above the x-workspace ceiling 0.92, so together with
+# the hard x_0 = x0 equality every QP goes primal-infeasible and the
+# planner outputs u=0, λ=0 forever (run p142: 0/1716 c3 ticks with λ>0).
+# ---------------------------------------------------------------------------
+
+from main import build_planner_workspace_bounds
+from control.sampling_c3.params import SamplingC3Params
+
+
+def _push_t_params():
+    p = SamplingC3Params()
+    p.planner_workspace_x = [0.15, 0.9]
+    p.planner_workspace_y = [-0.6, 0.6]
+    p.planner_workspace_z = [0.019, 0.329]
+    p.planner_workspace_margin = 0.02
+    return p
+
+
+def test_bounds_select_ee_and_object_position_slots():
+    """Rows must land on p_ee (7-9) and box position (4-6) of the EE-space
+    state — never on the box quaternion (slots 0-3)."""
+    rows = build_planner_workspace_bounds(_push_t_params())
+    idx = sorted(r[0] for r in rows)
+    assert idx == [4, 5, 6, 7, 8, 9], f"wrong state slots bounded: {idx}"
+
+
+def test_spawn_state_feasible_under_own_bounds():
+    """The QP pins knot 0 with x_0 = x0; the workspace rows apply at knot 0
+    too. A representative push_t spawn state must satisfy every row, else
+    every solve of the run is primal-infeasible."""
+    x0 = np.zeros(19)
+    x0[0:4] = [1.0, 0.0, 0.0, 0.0]        # box quat (identity, w first)
+    x0[4:7] = [0.5, 0.0, 0.02]            # box position
+    x0[7:10] = [0.525, -0.2603, 0.09]     # EE position (safe-init pose)
+    for state_idx, lo, hi in build_planner_workspace_bounds(_push_t_params()):
+        assert lo - 1e-9 <= x0[state_idx] <= hi + 1e-9, (
+            f"knot-0 infeasible: x0[{state_idx}]={x0[state_idx]} "
+            f"outside [{lo}, {hi}]")
