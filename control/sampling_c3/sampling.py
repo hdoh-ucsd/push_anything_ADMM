@@ -839,8 +839,11 @@ _WORKSPACE_BOUND_TOL: float = 1e-3  # 1 mm
 
 
 def is_in_workspace(p: np.ndarray, params: SamplingParams) -> bool:
-    """True iff sample p satisfies the workspace_xy / workspace_z bounds
-    (within _WORKSPACE_BOUND_TOL)."""
+    """True iff sample p satisfies the workspace_xy / workspace_z bounds and
+    the robot_radius_limits shell (within _WORKSPACE_BOUND_TOL).
+
+    Reference IsSampleInWorkspace (generate_samples.cc:364-378) tests the
+    AABB and candidate_radius = sqrt(x^2+y^2) against robot_radius_limits."""
     if p.shape != (3,):
         raise ValueError(f"sample must be (3,), got {p.shape}")
     tol = _WORKSPACE_BOUND_TOL
@@ -849,5 +852,9 @@ def is_in_workspace(p: np.ndarray, params: SamplingParams) -> bool:
     if not (params.workspace_xy_min[1] - tol <= p[1] <= params.workspace_xy_max[1] + tol):
         return False
     if not (params.workspace_z_min   - tol <= p[2] <= params.workspace_z_max   + tol):
+        return False
+    r = float(np.hypot(p[0], p[1]))
+    r_min, r_max = params.robot_radius_limits
+    if not (r_min - tol <= r <= r_max + tol):
         return False
     return True
