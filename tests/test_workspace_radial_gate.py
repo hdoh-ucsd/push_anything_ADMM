@@ -48,9 +48,42 @@ def test_accepts_inside_shell():
     assert is_in_workspace(np.array([0.50, 0.0, 0.1]), sp)
 
 
-def test_default_limits_change_nothing():
-    # Default [0.0, 100.0] is effectively unbounded: legacy callers see no
-    # behaviour change.
+def test_default_limits_reject_only_margin_shell():
+    # Default [0.0, 100.0] is effectively unbounded; only the
+    # workspace_margins inset (0.02) around r=0 can reject.
     sp = _params([0.0, 100.0])
-    assert is_in_workspace(np.array([0.01, 0.0, 0.1]), sp)
+    assert is_in_workspace(np.array([0.03, 0.0, 0.1]), sp)
     assert is_in_workspace(np.array([1.9, 0.0, 0.1]), sp)
+
+
+# ---------------------------------------------------------------------------
+# workspace_margins inset — reference IsSampleInWorkspace
+# (generate_samples.cc:760-775) rejects samples within `workspace_margins`
+# of the x/y bounds and the radial shell; z bounds carry no margin. The
+# live-EE DRAKE_DEMAND check (sampling_based_c3_controller.cc:1476-1494)
+# has NO margin, so this inset is what keeps commanded targets clear of
+# the crash boundary.
+# ---------------------------------------------------------------------------
+
+def test_margin_rejects_just_inside_r_min():
+    sp = _params([0.25, 0.75])          # workspace_margins default 0.02
+    # r = 0.26 is inside the shell but within the 0.02 margin of r_min.
+    assert not is_in_workspace(np.array([0.26, 0.0, 0.1]), sp)
+    # r = 0.28 clears the margin.
+    assert is_in_workspace(np.array([0.28, 0.0, 0.1]), sp)
+
+
+def test_margin_rejects_just_inside_r_max():
+    sp = _params([0.25, 0.75])
+    assert not is_in_workspace(np.array([0.74, 0.0, 0.1]), sp)
+    assert is_in_workspace(np.array([0.72, 0.0, 0.1]), sp)
+
+
+def test_margin_insets_xy_bounds_not_z():
+    sp = _params([0.0, 100.0])
+    sp.workspace_xy_min = [-0.5, -0.5]
+    sp.workspace_xy_max = [0.5, 0.5]
+    # x within 0.02 of x_max → reject; z exactly at its bound → accept
+    # (reference applies no margin on z).
+    assert not is_in_workspace(np.array([0.49, 0.0, 0.1]), sp)
+    assert is_in_workspace(np.array([0.47, 0.0, sp.workspace_z_min]), sp)

@@ -45,10 +45,14 @@ def test_is_in_workspace_z_too_high():
     assert is_in_workspace(np.array([0.0, -0.3, 1.00]), s) is False
 
 
-def test_is_in_workspace_boundary_inclusive():
+def test_is_in_workspace_xy_boundary_rejected_z_inclusive():
+    # Reference IsSampleInWorkspace insets x/y by workspace_margins, so a
+    # sample exactly on the xy bound is rejected; z has no margin and its
+    # boundary stays inclusive.
     s = _params()
-    assert is_in_workspace(np.array([s.workspace_xy_min[0], s.workspace_xy_min[1], s.workspace_z_min]), s) is True
-    assert is_in_workspace(np.array([s.workspace_xy_max[0], s.workspace_xy_max[1], s.workspace_z_max]), s) is True
+    m = s.workspace_margins
+    assert is_in_workspace(np.array([s.workspace_xy_min[0], s.workspace_xy_min[1], s.workspace_z_min]), s) is False
+    assert is_in_workspace(np.array([s.workspace_xy_min[0] + m, s.workspace_xy_min[1] + m, s.workspace_z_min]), s) is True
 
 
 def test_is_in_workspace_wrong_shape_raises():
