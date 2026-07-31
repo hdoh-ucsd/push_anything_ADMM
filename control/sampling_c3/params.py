@@ -417,6 +417,14 @@ class SamplingParams:
     robot_radius_limits:                 list  = field(
         default_factory=lambda: [0.0, 100.0])
 
+    # Port of reference `workspace_margins` (sampling_c3_options.yaml:30,
+    # 0.02 in every reference task). IsSampleInWorkspace
+    # (generate_samples.cc:760-775) insets the x/y bounds and the radial
+    # shell by this margin — z bounds carry no margin — so samples stay
+    # `margin` clear of the live-EE DRAKE_DEMAND boundary
+    # (sampling_based_c3_controller.cc:1476-1494), which has none.
+    workspace_margins:                   float = 0.02
+
     # Port of reference `CheckForWorkspaceLimitViolations` DRAKE_DEMAND
     # (sampling_based_c3_controller.cc:1476-1494). When True, the workspace
     # + radius check raises RuntimeError on first violation (matching

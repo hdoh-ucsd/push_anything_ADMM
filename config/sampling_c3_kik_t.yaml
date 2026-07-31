@@ -444,6 +444,13 @@ sampling_params:
   # CheckForWorkspaceLimitViolations DRAKE_DEMANDs r_min² < x²+y² < r_max².
   robot_radius_limits: [0.25, 0.75]
 
+  # Port of reference workspace_margins (sampling_c3plus_options.yaml:33,
+  # 0.02 in every reference task). IsSampleInWorkspace
+  # (generate_samples.cc:760-775) insets the x/y bounds and radial shell
+  # by this margin (z has no margin) so samples stay clear of the
+  # no-margin live-EE DRAKE_DEMAND boundary above.
+  workspace_margins: 0.02
+
   # Port-todo #5 (2026-07-22 arc). When true, workspace or radius exit
   # raises RuntimeError on first violation, matching reference
   # DRAKE_DEMAND intent (sampling_based_c3_controller.cc:1476-1494).

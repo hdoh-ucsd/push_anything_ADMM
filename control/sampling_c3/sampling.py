@@ -835,26 +835,27 @@ def _fixed_samples(n_samples: int,
 # workspace_xy_max[1] = 0.0) are systematically rejected — see step 8
 # receipts for the diag-kik 176/200-loop trace where every behind-box
 # proxy sample was rejected at proxy_y ≈ +2.4e-6 m.
-_WORKSPACE_BOUND_TOL: float = 1e-3  # 1 mm
-
-
 def is_in_workspace(p: np.ndarray, params: SamplingParams) -> bool:
     """True iff sample p satisfies the workspace_xy / workspace_z bounds and
-    the robot_radius_limits shell (within _WORKSPACE_BOUND_TOL).
+    the robot_radius_limits shell, with x/y and the radial shell inset by
+    `workspace_margins`.
 
-    Reference IsSampleInWorkspace (generate_samples.cc:364-378) tests the
-    AABB and candidate_radius = sqrt(x^2+y^2) against robot_radius_limits."""
+    Reference IsSampleInWorkspace (generate_samples.cc:760-775) rejects
+    samples within workspace_margins of the x/y bounds and the radial
+    shell; z bounds carry no margin. The live-EE DRAKE_DEMAND check
+    (sampling_based_c3_controller.cc:1476-1494) has NO margin — this inset
+    is what keeps commanded targets clear of the abort boundary."""
     if p.shape != (3,):
         raise ValueError(f"sample must be (3,), got {p.shape}")
-    tol = _WORKSPACE_BOUND_TOL
-    if not (params.workspace_xy_min[0] - tol <= p[0] <= params.workspace_xy_max[0] + tol):
+    m = float(params.workspace_margins)
+    if not (params.workspace_xy_min[0] + m <= p[0] <= params.workspace_xy_max[0] - m):
         return False
-    if not (params.workspace_xy_min[1] - tol <= p[1] <= params.workspace_xy_max[1] + tol):
+    if not (params.workspace_xy_min[1] + m <= p[1] <= params.workspace_xy_max[1] - m):
         return False
-    if not (params.workspace_z_min   - tol <= p[2] <= params.workspace_z_max   + tol):
+    if not (params.workspace_z_min <= p[2] <= params.workspace_z_max):
         return False
     r = float(np.hypot(p[0], p[1]))
     r_min, r_max = params.robot_radius_limits
-    if not (r_min - tol <= r <= r_max + tol):
+    if not (r_min + m <= r <= r_max - m):
         return False
     return True
