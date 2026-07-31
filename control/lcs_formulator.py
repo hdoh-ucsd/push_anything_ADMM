@@ -2053,11 +2053,14 @@ class LCSFormulator:
             c_const_v_ee_t  = J_t_ee  @ (v_ee  + dt * d_v_ee_offset)
             c_lcs[SLT:SLT + n_t] = c_const_v_box_t + c_const_v_ee_t
 
-            # Subtract E·x* and H·u* so c carries the "value of η at (x*, u*)".
-            # This makes η(x*, u*, λ=?) = E·x* + F·λ + H·u* + c equal to the
-            # linearization value at the operating point — same convention as
-            # the R^7 path.
-            c_lcs -= E_lcs @ x_star + H_lcs @ u_star
+            # Subtract E·x* so c carries η's affine offset. The value
+            # expression above is evaluated at u = 0 (d_v_ee_offset = 0 —
+            # "purely linear in u"), so H·u* must NOT be subtracted: doing so
+            # shifted every EE-coupled row by −H·u* whenever the full solve
+            # linearized at u_lin = _last_u ≠ 0 (p146 walk root cause; ground
+            # rows have H ≈ 0 and surrogates pass u_lin = 0, which is why
+            # only the committed plan's EE-BOX gap row was corrupted).
+            c_lcs -= E_lcs @ x_star
 
         # =================================================================
         # §7.36 ANITESCU FRICTION-FOLDED LCS — opt-in OVERWRITE of D/E/F/H/c
@@ -2150,12 +2153,15 @@ class LCSFormulator:
                 # H — u-coupling: only v_ee path contributes, M_ee_op_inv scaling.
                 H_an = dt * (J_c_ee @ M_ee_op_inv)                # (4n_c, 3)
 
-                # c — linearization-point value of η; subtraction below
-                # converts to constant offset (same convention as ST :1652).
+                # c — linearization-point value of η at u = 0 (d_v_ee_offset
+                # = 0); subtraction converts to the affine offset. H·u* must
+                # NOT be subtracted — the value expression excludes u, so
+                # subtracting H·u* shifted the EE-coupled rows by −H·u*
+                # whenever u_lin ≠ 0 (p146 walk root cause; see ST-path note).
                 c_an = (E_t_an.T @ phi / dt
                         + J_c_box @ (box_v + dt * d_box_v_offset)
                         + J_c_ee  @ (v_ee  + dt * d_v_ee_offset))
-                c_an -= E_an @ x_star + H_an @ u_star
+                c_an -= E_an @ x_star
             else:
                 # No contacts: trivial dimensions (n_lam_an = 0)
                 D_an = np.zeros((N_X, n_lam_an))
