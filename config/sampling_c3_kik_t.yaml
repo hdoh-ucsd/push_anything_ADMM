@@ -75,7 +75,15 @@ use_surface_entry_gate: false
 # Without this, PWL rebuilds on dispatcher retargets keep lifting EE to
 # z_safe=77mm while the 44mm ceiling blocks c3 entry — arm never lands, never
 # pushes. Box path unaffected (its yaml stays silent, port default True holds).
-ee_z_close: false
+# 2026-08-02 (user-directed): false → true, adopting the reference `anything`
+# matched-plane mechanism wholesale (gen_planar_samples analog + ee_z_close
+# gate + z-freeze, all on ONE plane = task sampling_height 0.034; see
+# z_height: null below). Ceiling = 0.034 + c3_min_clearance 0.01 = 0.044.
+# The historical never-lands deadlock (comment above) predates the unified
+# plane and the 6a9a241+b9218ab retarget-churn fixes; samples now sit ON the
+# plane so arrival passes the gate by construction. Revert to false for the
+# push_t-literal (gate-bypassed) behavior.
+ee_z_close: true
 
 # T1b — reference 3-leg high-waypoint reposition (reposition.cc:394,
 # RepositionPiecewiseLinear). Activates the Stage A `RepositionTrajectory`
