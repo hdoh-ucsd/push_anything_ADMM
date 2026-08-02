@@ -136,7 +136,7 @@ def main():
     print("[render-log-drake] building Drake env (add_camera=True, "
           f"PORT_CAMERA_PERSPECTIVE={os.environ.get('PORT_CAMERA_PERSPECTIVE')})",
           flush=True)
-    diagram, plant, panda_model, obj_model, meshcat, _pad, _cad = \
+    diagram, plant, panda_model, obj_model, meshcat, _pad, _cad, _vw = \
         build_environment(task_cfg, add_camera=True)
 
     simulator = ad.Simulator(diagram)
