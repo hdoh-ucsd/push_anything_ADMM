@@ -852,7 +852,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.d | Horizon N | LOAD-BEARING | CONFIRMED at runtime — port N=20; reference N=5 |
 | 4.e | Planning dt | LOAD-BEARING | CONFIRMED at runtime — port dt=0.05; reference dt=0.1; horizon_time port 1.0s vs reference 0.5s |
 | 4.f | delta initial guess | LOAD-BEARING | NEW DIVERGENCE — reference `delta_option=1` initializes `delta.head=x0`; port always zeros |
-| 4.g | end_on_qp_step (final rollout) | LOAD-BEARING at non-convergence | NEW DIVERGENCE — reference `end_on_qp_step=false` computes `x_seq` via LCS rollout; port returns direct QP solution |
+| 4.g | end_on_qp_step (final rollout) | LOAD-BEARING at non-convergence | REFERENCE-MATCH 2026-08-02 (with 4.t) — published z copy now u/λ from δ + half-step x from final-QP copies + CalcCost x_N append; 2026-07-27 recursive re-roll interim was itself divergent |
 | 4.h | Cross-tick warm-start | COSMETIC (both OFF) | CONFIRMED — both cold-start per tick |
 | 4.i | Within-Solve warm-start (ADMM iter carryforward) | COSMETIC | CONFIRMED — both agents implicitly warm-start delta/omega across iterations |
 | 4.j | penalize_changes_in_u_across_solves | LOAD-BEARING → PARTIAL-REFERENCE-MATCH | RESOLVED 2026-07-17 commit 84823fe — port now task-gates the flag (push_t: false, box/other: true) per reference `push_t/sampling_c3plus_options.yaml` (false) and `anything/sampling_c3plus_options.yaml` (true) |
@@ -922,6 +922,15 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 - **Tag:** LOAD-BEARING at non-convergence. At full convergence the QP-solved x IS LCS-feasible so the rollout is a no-op; at non-convergence they differ.
 - **Confidence:** high.
 - **Tier 2:** NEW DIVERGENCE surfaced. Given port ADMM does NOT converge (4.l `iters=25/25 primal ~3.87`), the port's `x_seq` may be LCS-infeasible in ways the reference's rollout would correct. Belongs in the coupled band-aid subset with 3.j and 3.g.
+- **2026-08-02 RESOLUTION (with 4.t):** the 2026-07-27 interim port (recursive re-roll from the last in-loop z's u/λ) was itself divergent in two ways: (1) reference computes a ONE-STEP half-step from the final-QP `x_sol_[i-1]` per knot (`c3.cc:340-346`), not a recursive rollout; (2) the sources are the FINAL-QP `x/u/λ_sol_` (`StoreQPResults(..., is_final_solve=true)`), which the port lacked entirely (see 4.t). Published copy now: u and λ slots from δ, x slots half-step from final-QP copies, x_N appended CalcCost-style (`sampling_based_c3_controller.cc:519-524`) from δ (u, λ). Pre-fix tail preserved under `REFCONF_FINAL_QP_STEP=0`.
+
+## 4.t — Final QP solve after ADMM loop (is_final_solve)
+
+- **Reference:** `c3.cc:332` — after the ADMM loop, `SolveQP(x0, G, WD, delta, admm_iter, /*is_final_solve=*/true)`. Since `ADMMStep` ends every iteration with `w /= rho_scale; G *= rho_scale` (`c3.cc:389-390`), this extra solve runs at `rho_scale^admm_iter` (27× for push_t's 3-iter/rho_scale=3 regime) against the FINAL (δ, w). `StoreQPResults(..., true)` publishes it as `x_sol_/λ_sol_/u_sol_` — consumed by `UpdateC3ExecutionTrajectory` (`sampling_based_c3_controller.cc:1703-1704`) for the OSC-tracked trajectory. On QP failure, `SetFallbackSolution` holds x0 with zero u/λ.
+- **Port:** pre-fix `_solve_c3plus` had exactly ONE Solve site inside the loop — the published QP copy was one consensus solve behind (9×, pulled toward the second-to-last δ). Fixed 2026-08-02: post-loop QP added (grep `[FINAL-QP]` / `REFCONF_FINAL_QP_STEP` in `admm_solver.py`), reusing the loop-exit `P_sym`/ρ (already ramped to `rho_scale^admm_iter` by 4.c) and rebuilding the linear term from the final (δ, ω). Reference fallback mirrored. QP copies stashed as `_last_x_qp_horizon/_last_u_qp_horizon` for a follow-up wrapper wiring of the OSC target (port currently FKs the published z-copy `x_seq`).
+- **Tag:** LOAD-BEARING at non-convergence (identical solves at convergence; the port's 3-iter regime does not converge).
+- **Confidence:** high (source-verified both sides).
+- **Discovery context:** 2026-08-02 reinvestigation of the phantom-λ walk (p148); the final QP is the reference's structural realization of Bui §IV-B.2's final-paragraph consensus boost — supersedes the B1-A port-only EE-BOX slot hack (`PORT_G_WEIGHT_EE_BOX_FINAL`, stays default-OFF).
 
 ## 4.h — Cross-tick warm-start
 
