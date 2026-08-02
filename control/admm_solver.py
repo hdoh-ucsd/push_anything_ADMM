@@ -2142,6 +2142,54 @@ class C3Solver:
         # ---------------------------------------------------------------
         # Extract outputs
         # ---------------------------------------------------------------
+        # 4.t — reference FINAL QP (c3.cc:332). After the ADMM loop the
+        # reference solves ONE more QP against the FINAL (δ, ω) at the
+        # ramped G: ADMMStep scales G·rho_scale at the end of EVERY iter
+        # (c3.cc:389-390), so this solve runs at rho_scale^admm_iter (27×
+        # for the push_t 3-iter/rho_scale=3 regime).
+        # StoreQPResults(..., is_final_solve=true) publishes THIS solve as
+        # x_sol_/λ_sol_/u_sol_ — the copies UpdateC3ExecutionTrajectory
+        # tracks with the OSC (sampling_based_c3_controller.cc:1703-1704).
+        # The port loop ends on a projection, so pre-fix its published QP
+        # copy was one consensus solve behind the reference's.
+        # REFCONF_FINAL_QP_STEP=0 restores the whole pre-fix tail
+        # (including the recursive 4.g re-roll below). Mutually exclusive
+        # with B1-A, which terminates on its own boosted quadratic step.
+        _final_qp_on = ((_os_g.environ.get("REFCONF_FINAL_QP_STEP", "1")
+                         == "1") and not _b1a_active)
+        if _final_qp_on:
+            if not getattr(self, "_final_qp_banner", False):
+                self._final_qp_banner = True
+                print(f"[FINAL-QP] active (c3.cc:332 conformance): "
+                      f"post-loop QP at rho={rho:.1f} "
+                      f"(= rho_start·rho_scale^{admm_iter}); published "
+                      f"x_seq/u_seq switch to the reference z_sol_ copy "
+                      f"(c3.cc:336-347 half-step + CalcCost x_N append)",
+                      flush=True)
+            with timed("admm.final_qp"):
+                if _use_g:
+                    q_total = (q_ref - 2.0 * rho
+                               * self._g_diag_c3p_cache * (delta - omega))
+                else:
+                    q_total = q_ref - rho * (delta - omega)
+                cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+                res = self._solver.Solve(prog, None,
+                                         self._osqp_solver_options)
+            if res.is_success():
+                z_sol = res.GetSolution(z_var)
+            else:
+                # Reference SetFallbackSolution: hold current state, zero
+                # inputs and forces.
+                self.qp_failures += 1
+                print(f"[FINAL-QP] INFEASIBLE "
+                      f"status={res.get_solution_result()} — reference "
+                      f"fallback x=x0, u=0, λ=0", flush=True)
+                z_sol = np.zeros_like(z_sol)
+                for i in range(N):
+                    z_sol[i * TOT : i * TOT + n_x] = x0
+                z_sol[N * TOT : N * TOT + n_x] = x0
+
+        # ---------------------------------------------------------------
         u_seq = np.zeros((N, n_u))
         x_seq = np.zeros((N + 1, n_x))
         for i in range(N):
@@ -2149,10 +2197,38 @@ class C3Solver:
             u_seq[i] = z_sol[i * TOT + SU : i * TOT + SU + n_u]
         x_seq[N] = z_sol[N * TOT : N * TOT + n_x]
 
-        # 4.g — end_on_qp_step=False (reference default): re-roll x forward
-        # from x_0 using solved (u, λ) so the returned x_seq is LCS-feasible
-        # even under ADMM non-convergence. Mirrors c3.cc:336-347.
-        if not self._end_on_qp_step and n_lambda > 0:
+        # QP-copy stash (reference x_sol_/u_sol_, final-QP under 4.h) for
+        # consumers that track the QP trajectory — the reference OSC
+        # target comes from these, NOT from the published z copy.
+        self._last_x_qp_horizon = x_seq.copy()
+        self._last_u_qp_horizon = u_seq.copy()
+
+        # 4.g — end_on_qp_step=False (reference default): publish the
+        # reference z_sol_ copy. Under 4.t this is c3.cc:336-347 +
+        # CalcCost:501-524 verbatim: u and λ slots from δ; x slots the
+        # HALF-STEP A·x_qp[i−1] + B·u_qp[i−1] + D·λ_qp[i−1] + d from the
+        # final-QP copies (NOT a recursive rollout); x_N appended
+        # CalcCost-style from δ (u, λ). With 4.t off, the pre-fix
+        # recursive re-roll from the last in-loop z is preserved for A/B.
+        if _final_qp_on and not self._end_on_qp_step and n_lambda > 0:
+            _x_z = np.zeros((N + 1, n_x))
+            _x_z[0] = x0
+            for i in range(1, N):
+                _p = (i - 1) * TOT
+                _x_z[i] = (A @ z_sol[_p : _p + n_x]
+                           + B_ctrl @ z_sol[_p + SU : _p + SU + n_u]
+                           + D @ z_sol[_p + SL : _p + SL + n_lambda]
+                           + d)
+            _u_z = np.zeros((N, n_u))
+            for i in range(N):
+                _u_z[i] = delta[i * TOT + SU : i * TOT + SU + n_u]
+            _lam_dN = delta[(N - 1) * TOT + SL
+                            : (N - 1) * TOT + SL + n_lambda]
+            _x_z[N] = (A @ _x_z[N - 1] + B_ctrl @ _u_z[N - 1]
+                       + D @ _lam_dN + d)
+            x_seq = _x_z
+            u_seq = _u_z
+        elif not self._end_on_qp_step and n_lambda > 0:
             _x_roll = np.zeros((N + 1, n_x))
             _x_roll[0] = x0
             for i in range(N):
