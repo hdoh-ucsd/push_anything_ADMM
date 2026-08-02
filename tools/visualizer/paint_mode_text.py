@@ -38,7 +38,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 _FRAME_RE = re.compile(r"^frame_(\d+)\.png$")
 
-_LABEL_C3   = "CONTACT-RICH (C3)"
+_LABEL_C3   = "CONTACT-RICH (C3+)"   # (C3+) default; --solver-label overrides
 _LABEL_FREE = "CONTACT-FREE (REPOSITION)"
 _LABEL_NA   = "MODE: n/a"
 
@@ -136,7 +136,14 @@ def main() -> int:
                     help="Output frame rate (default 30)")
     ap.add_argument("--keep-painted", action="store_true",
                     help="Keep the painted PNG intermediate dir (debug)")
+    ap.add_argument("--solver-label", default="C3+",
+                    help="Solver name in the contact-rich banner "
+                         "(default C3+, main.py's default; pass C3 for "
+                         "--solver c3 runs)")
     args = ap.parse_args()
+
+    global _LABEL_C3
+    _LABEL_C3 = f"CONTACT-RICH ({args.solver_label})"
 
     frames_dir = args.frames_dir.resolve()
     if not frames_dir.is_dir():
