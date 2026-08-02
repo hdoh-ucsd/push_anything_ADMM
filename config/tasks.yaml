@@ -342,7 +342,13 @@ tasks:
       # target z. Under the mismatch the planner drove arm to z=0.034
       # while repos drove it to z=0.005, producing conflicting z-targets
       # in the C3+ solve.
-      z_ee_target:      0.005
+      # 2026-08-02 (user-directed height unification): 0.005 → 0.034. The
+      # 2026-07-28c frame-shift fix moved sampling_height 0.005 → 0.034
+      # but left this stale AGAIN (same family). Inert on the active path
+      # (use_reference_q_vector: true retires the proxy branch; only
+      # PORT_EE_Z_HOLD fallback + evaluation-only ManipulationCost read
+      # it) — aligned to the task height to defuse the trap.
+      z_ee_target:      0.034
       z_obj_target:     0.020   # T stays on ground (reference target z = init z)
       d_push:           0.05
       w_ee_approach: 8000.0

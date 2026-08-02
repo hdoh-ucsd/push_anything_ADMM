@@ -350,7 +350,14 @@ sampling_params:
   # 25 mm above ground → port frame +0.025. Consumed by the c3-mode
   # z-freeze (cc:1759) and the c3-entry altitude ceiling (cc:1290) —
   # the reference keeps this SEPARATE from sampling_height.
-  z_height: 0.025               # m — reference 25 mm above ground, port frame
+  # 2026-08-02 (user-directed, OFF-REFERENCE): null → _c3_track_z() falls
+  # back to the task's sampling_height (tasks.yaml push_t 0.034), so the
+  # c3 z-freeze plane matches the sample plane. The 9 mm descend at every
+  # c3 entry (samples at 0.034, freeze at 0.025) is a phantom-contact
+  # aggravator: the LCS admits the EE-BOX pair during the descend while
+  # Drake reports no force. Reference value was 0.025 — restore the
+  # literal to revert.
+  z_height: null                # m — null → follow task sampling_height
 
   # T-shape face table (Push-Anything §IV-B1 analog for the T).
   # The 8-patch table is hardcoded in sampling.py:_TSHAPE_FACE_TABLE — this
