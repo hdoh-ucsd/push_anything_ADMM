@@ -851,7 +851,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.c | rho / rho_scale | LOAD-BEARING → REFERENCE-MATCH | CONFIRMED — port `_rho_scale = 3.0` (commit 08003e1) applied per ADMM iter with initial `rho_init=100.0`; reference `rho_scale=3` per iter. Ramp trace: 100 → 300 → 900 → 2700 over 3 iters. Legacy "adaptive-ρ every 10 iters" branch retained but unreachable at admm_iter≤10. |
 | 4.d | Horizon N | LOAD-BEARING | CONFIRMED at runtime — port N=20; reference N=5 |
 | 4.e | Planning dt | LOAD-BEARING | CONFIRMED at runtime — port dt=0.05; reference dt=0.1; horizon_time port 1.0s vs reference 0.5s |
-| 4.f | delta initial guess | LOAD-BEARING | NEW DIVERGENCE — reference `delta_option=1` initializes `delta.head=x0`; port always zeros |
+| 4.f | delta initial guess | LOAD-BEARING | REFERENCE-MATCH — c3plus path since fc51111 (2026-07-14, row was stale); Lorentz path completed 2026-08-03; both seed δ.head=x0 per knot per `delta_option: 1` |
 | 4.g | end_on_qp_step (final rollout) | LOAD-BEARING at non-convergence | REFERENCE-MATCH 2026-08-02 (with 4.t) — published z copy now u/λ from δ + half-step x from final-QP copies + CalcCost x_N append; 2026-07-27 recursive re-roll interim was itself divergent |
 | 4.h | Cross-tick warm-start | COSMETIC (both OFF) | CONFIRMED — both cold-start per tick |
 | 4.i | Within-Solve warm-start (ADMM iter carryforward) | COSMETIC | CONFIRMED — both agents implicitly warm-start delta/omega across iterations |
@@ -909,11 +909,11 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 ## 4.f — delta initial guess
 
-- **Reference:** `c3.cc:312-316` — `delta_init = zeros; if (delta_option == 1) delta_init.head(n_x_) = x0`. YAML default `delta_option: 1` → first n_x components of every delta[k] initialized with the CURRENT STATE.
-- **Port:** `admm_solver.py` — `_solve_c3plus` initializes delta with zeros unconditionally (I did not find a `delta_option` analog in the port).
-- **Tag:** LOAD-BEARING (ADMM initial guess).
-- **Confidence:** high.
-- **Tier 2 — NEW DIVERGENCE surfaced by c3 lib deep read.** Reference bias-initializes delta.head=x0, port starts from origin. At convergence both should converge to same delta*, but at 25 iterations of non-converging port ADMM the initial condition may matter more.
+- **Reference:** `c3.cc:311-316` — `delta_init = zeros; if (delta_option == 1) delta_init.head(n_x_) = x0; vector delta(N_, delta_init)`. YAML `delta_option: 1` in BOTH `push_t/sampling_c3plus_options.yaml:7` and `anything/sampling_c3_options.yaml:7` → first n_x components of every delta[k] initialized with the CURRENT STATE. w stays zeros.
+- **Port:** `_solve_c3plus` bias-initializes δ x-slots (all N knots + terminal x block) with x0 — landed in fc51111 (2026-07-14, the all-75 defaults flip; grep `Reference delta_option=1` in admm_solver.py). The Lorentz `_solve_c3` path zeroed δ until 2026-08-03, when the same init was mirrored there (reference C3::Solve is shared across projection variants). λ/η/u slots zero, ω zeros — both match reference.
+- **Tag:** LOAD-BEARING (ADMM initial guess) → REFERENCE-MATCH (both paths).
+- **Confidence:** high (source-verified both sides, 2026-08-03).
+- **History:** the Tier-2 "NEW DIVERGENCE" note (2026-07-14 c3-lib deep read) was written the SAME DAY fc51111 landed the fix and was never reconciled — this row sat stale for 3 weeks and re-entered the 2026-08-03 mission queue before the pre-implementation audit caught it. Lesson per `feedback_audit_port_todo_before_attempting`: grep the code before implementing a map row.
 
 ## 4.g — end_on_qp_step (final rollout)
 
@@ -1080,8 +1080,8 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 | 4.c | rho / rho_scale | LOAD-BEARING → REF-MATCH | **CONFIRMED runtime** — port `_rho_scale=3.0` per-iter (commit 08003e1); reference `rho_scale=3` per iter; runtime ρ ramp 100→2700 over 3 iters |
 | 4.d | Horizon N | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — task-conditional (T=5, box=7) per `main.py:611-629` |
 | 4.e | Planning dt | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — task-conditional (T=0.1, box=0.075) per `main.py:611-629` |
-| 4.f | delta initial guess | LOAD-BEARING | **NEW DIVERGENCE** — port zeros; reference `delta_option=1` → head=x0 |
-| 4.g | end_on_qp_step (rollout) | LOAD-BEARING at non-conv | **NEW DIVERGENCE** — port direct QP; reference LCS rollout |
+| 4.f | delta initial guess | LOAD-BEARING | **REFERENCE-MATCH** — c3plus since fc51111, Lorentz path 2026-08-03 (this table sat stale; see main 4.f section) |
+| 4.g | end_on_qp_step (rollout) | LOAD-BEARING at non-conv | **REFERENCE-MATCH 2026-08-02 with 4.t** — final QP + z-copy half-step publication @ db556db (see 4.t section) |
 | 4.h | Cross-tick warm-start | COSMETIC (both off) | **CONFIRMED conformant** — corrects prior memory framing |
 | 4.i | Within-Solve warm-start | COSMETIC | **CONFIRMED conformant** — both implicit carry across iters |
 | 4.j | penalize_input_change | LOAD-BEARING | **NEW DIVERGENCE** — port always absolute; reference toggles |
