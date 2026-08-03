@@ -846,7 +846,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 | # | Divergence | Tier-1 tag | Tier-2 |
 |---|---|---|---|
-| 4.a | Solver class / projection algorithm | LOAD-BEARING | CONFIRMED — port `C3PlusMPC` + `componentwise` projection (script override `--c3plus-projection lcp` removed for T-push 2026-07-17, commit 08003e1); reference default MIQP (C3MIQP class) |
+| 4.a | Solver class / projection algorithm | LOAD-BEARING → REFERENCE-MATCH (both tasks) | 2026-08-03 correction: reference `anything` runs **C3+** (`sampling_c3_controller_params.yaml:1` → c3plus options, `projection_type: 'C3+'`), NOT MIQP — the MIQP yaml is a legacy alternative. Port C3+ on both tasks = solver-class conformant |
 | 4.b | admm_iter count | LOAD-BEARING → REFERENCE-MATCH | CONFIRMED at runtime — T-push port 3 (commit 4c3bad5) and box-push port 3 (commit 952c8a3) both match reference `admm_iter: 3` YAML for `push_t` and `anything`; single canonical setting across both tasks |
 | 4.c | rho / rho_scale | LOAD-BEARING → REFERENCE-MATCH | CONFIRMED — port `_rho_scale = 3.0` (commit 08003e1) applied per ADMM iter with initial `rho_init=100.0`; reference `rho_scale=3` per iter. Ramp trace: 100 → 300 → 900 → 2700 over 3 iters. Legacy "adaptive-ρ every 10 iters" branch retained but unreachable at admm_iter≤10. |
 | 4.d | Horizon N | LOAD-BEARING | CONFIRMED at runtime — port N=20; reference N=5 |
@@ -931,6 +931,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 - **Tag:** LOAD-BEARING at non-convergence (identical solves at convergence; the port's 3-iter regime does not converge).
 - **Confidence:** high (source-verified both sides).
 - **Discovery context:** 2026-08-02 reinvestigation of the phantom-λ walk (p148); the final QP is the reference's structural realization of Bui §IV-B.2's final-paragraph consensus boost — supersedes the B1-A port-only EE-BOX slot hack (`PORT_G_WEIGHT_EE_BOX_FINAL`, stays default-OFF).
+- **2026-08-03 completion — C3Plus final-solve override (c3_plus.cc:117-172, paper 2510.19974 §IV-B.2 final ¶):** the C3+ subclass overrides the final-solve augmentation: (1) `WD_i = delta` — pull toward δ ALONE, ω dropped (port initially used δ−ω; fixed); (2) optional `final_augmented_cost_contact_scaling` (reference `anything` yaml: 1000 on indices [0,1,2,3] = EE-object λ components; push_t leaves the optional absent) — per component, boost the λ slot when δ_λ == 0 else the η slot, hard-enforcing the projection's complementarity branch. Port: plumbed via params yaml key → wrapper → `solver._final_aug_contact_scaling`; slots derived from `_ee_box_pair_idx` per port layout (ST and Anitescu branches), NEVER copying reference indices. Box yaml sets 1000; T yaml does not. B1-A retrospect: it was the paper's mechanism in spirit (vindicated) but wrong in details (in-loop, unconditional both-slot boost) — remains retired. Also confirmed: reference augments λ/η blocks only, x/u never — equivalent to port's g_x=g_u=0.
 
 ## 4.h — Cross-tick warm-start
 
@@ -1075,7 +1076,7 @@ User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5
 
 | # | Divergence | Tier-1 | Tier-2 (this pass) |
 |---|---|---|---|
-| 4.a | Solver class / projection | LOAD-BEARING → PARTIAL-REF-MATCH | **REFERENCE-MATCH for T-push** (C3+ + componentwise via commit 08003e1); reference `push_t` also C3+; reference `anything` = MIQP; box-push in port stays C3+ |
+| 4.a | Solver class / projection | LOAD-BEARING → REFERENCE-MATCH (both tasks) | **2026-08-03 correction**: reference `anything` ALSO runs C3+ (its controller params point at the c3plus options yaml); "anything = MIQP" was stale — MIQP yaml is legacy. Port C3+ both tasks = conformant |
 | 4.b | admm_iter | LOAD-BEARING → PARTIAL-REF-MATCH | **CONFIRMED runtime** — T-push port 3 (matches ref, commit 4c3bad5); box-push port 25 (off-ref); reference 3 |
 | 4.c | rho / rho_scale | LOAD-BEARING → REF-MATCH | **CONFIRMED runtime** — port `_rho_scale=3.0` per-iter (commit 08003e1); reference `rho_scale=3` per iter; runtime ρ ramp 100→2700 over 3 iters |
 | 4.d | Horizon N | LOAD-BEARING → REFERENCE-MATCH | **REFERENCE-MATCH 2026-07-25** — task-conditional (T=5, box=7) per `main.py:611-629` |
