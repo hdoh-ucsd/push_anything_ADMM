@@ -595,6 +595,15 @@ class C3Solver:
         omega      = np.zeros(total_dim)
         delta_prev = np.zeros(total_dim)
 
+        # 4.f — reference delta_option=1 (c3.cc:311-316; yaml delta_option:
+        # 1 for both push_t and anything): bias-initialize delta.head=x0
+        # for every knot's state slot. The c3plus path has had this since
+        # fc51111; reference C3::Solve applies it regardless of projection
+        # variant, so the Lorentz path gets the same init.
+        for i in range(N + 1):
+            base = i * TOT if i < N else N * TOT
+            delta[base : base + n_x] = x0
+
         # Warm-start z: fill every x_i block with x0
         z_sol = np.zeros(total_dim)
         for i in range(N):
