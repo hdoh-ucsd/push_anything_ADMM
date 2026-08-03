@@ -166,6 +166,13 @@ class C3PlusMPC:
 
         # Last predicted trajectory — set after every solve, used for Meshcat viz
         self.last_x_seq: np.ndarray | None = None   # (N+1, n_x)
+        # Final-QP x copy (reference GetStateSolution/x_sol_) — the copy the
+        # reference's UpdateC3ExecutionTrajectory consumers track with the
+        # OSC (cc:1701-1732). Published x_seq stays the z copy (CalcCost
+        # source). REFCONF_OSC_TARGET_QP_COPY=0 reverts consumers to x_seq.
+        self.last_x_qp_seq: np.ndarray | None = None   # (N+1, n_x)
+        self._osc_target_qp_copy = (
+            os.environ.get("REFCONF_OSC_TARGET_QP_COPY", "1") == "1")
         # Previous solve's u_seq[0] for the next-step linearization (Aydinoglu eq. 8).
         self._last_u: np.ndarray = np.zeros(solver.n_u)
         # First-horizon planned contact force λ_d (Aydinoglu eq. 36 feedforward).
@@ -539,6 +546,10 @@ class C3PlusMPC:
 
         # 5. Store predicted trajectory + u[0] for next-step linearization
         self.last_x_seq = x_seq        # (N+1, n_x)
+        # QP-copy mirror (4.t stash): reference x_sol_ for the OSC-target /
+        # x_pred consumers. None on solver paths that don't stash (Lorentz).
+        _x_qp_h = getattr(self.solver, "_last_x_qp_horizon", None)
+        self.last_x_qp_seq = _x_qp_h.copy() if _x_qp_h is not None else None
         self._last_u    = u_seq[0].copy()
         # Save x_pred_curr_plan_ for next tick's ClampEndEffectorAcceleration.
         # Reference sampling_based_c3_controller.cc:1723-1732 sets this by
@@ -553,17 +564,26 @@ class C3PlusMPC:
         # clamp to fight nondeterminism instead of damping it.
         # For EE-space runs only; joint-torque path skips clamp entirely.
         if self.use_ee_space and x_seq is not None and len(x_seq) > 1:
+            # Reference cc:1723-1732 interpolates into the SAME knots the
+            # OSC tracks — UpdateC3ExecutionTrajectory's x_sol (final-QP)
+            # copy, not the published z copy. Fall back to x_seq when the
+            # QP copy is unavailable or the wiring is switched off.
+            _x_knots = (self.last_x_qp_seq
+                        if (self._osc_target_qp_copy
+                            and self.last_x_qp_seq is not None
+                            and len(self.last_x_qp_seq) > 1)
+                        else x_seq)
             _dt_pred = self.dt_pose if self._crossed_switching_threshold else self.dt
             _idx_f = float(self._filtered_solve_time) / _dt_pred
             _last_idx = int(_idx_f)
             _frac = _idx_f - _last_idx
-            _N_knots = len(x_seq)
+            _N_knots = len(_x_knots)
             if _last_idx < _N_knots - 1:
-                _pred = (np.asarray(x_seq[_last_idx], dtype=float)
-                         + _frac * (np.asarray(x_seq[_last_idx + 1], dtype=float)
-                                    - np.asarray(x_seq[_last_idx], dtype=float)))
+                _pred = (np.asarray(_x_knots[_last_idx], dtype=float)
+                         + _frac * (np.asarray(_x_knots[_last_idx + 1], dtype=float)
+                                    - np.asarray(_x_knots[_last_idx], dtype=float)))
             else:
-                _pred = np.asarray(x_seq[_N_knots - 1], dtype=float)
+                _pred = np.asarray(_x_knots[_N_knots - 1], dtype=float)
             self._x_pred_curr_plan = _pred.copy()
         # Plumb first-horizon λ for the impedance controller's feedforward
         # contact-force term. None until the first solve produces them.
