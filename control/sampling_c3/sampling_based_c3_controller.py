@@ -3290,6 +3290,23 @@ class SamplingC3Controller:
             self._r7_direct_this_tick = False
             # Cartesian target from C3+'s next-step state prediction.
             _x_seq = self.base_mpc.last_x_seq
+            # OSC-target QP-copy wiring (2026-08-03): the reference OSC
+            # tracks GetStateSolution() = the FINAL-QP x_sol_ copy
+            # (UpdateC3ExecutionTrajectory, cc:1701-1717) — NOT the
+            # published z copy that feeds CalcCost. Target extraction reads
+            # the QP copy; _x_seq stays the source for cost/viz/guidance.
+            # REFCONF_OSC_TARGET_QP_COPY=0 restores z-copy targeting.
+            _x_tgt = _x_seq
+            if os.environ.get("REFCONF_OSC_TARGET_QP_COPY", "1") == "1":
+                _x_qp_seq = getattr(self.base_mpc, "last_x_qp_seq", None)
+                if _x_qp_seq is not None and len(_x_qp_seq) > 1:
+                    _x_tgt = _x_qp_seq
+                    if not getattr(self, "_osc_tgt_qp_banner", False):
+                        self._osc_tgt_qp_banner = True
+                        print(f"[OSC-TGT] QP-copy wiring active "
+                              f"(cc:1701-1717 conformance): executor "
+                              f"target from final-QP x_sol_; cost/viz "
+                              f"keep the z copy", flush=True)
             # EE-space planner: p_ee is already a state slot in x_seq, read
             # it directly — no FK. (Slice indices verified bit-equal to FK
             # at the linearization point by scripts/verify_slice_indices.py;
@@ -3297,7 +3314,7 @@ class SamplingC3Controller:
             # below retains the original FK extraction.
             if _x_seq is not None and len(_x_seq) > 1:
                 if _use_ee_space:
-                    _p_ee_des = _x_seq[1][7:10].copy()
+                    _p_ee_des = _x_tgt[1][7:10].copy()
                     # Bug 3 guard (2026-07-22): if LCS predicted unphysical
                     # one-step EE displacement, clip to a plausible target.
                     # Franka arm max EE Cartesian velocity is ~1 m/s; with
@@ -3335,7 +3352,7 @@ class SamplingC3Controller:
                     _p_ee_des[2] = _sh
                 else:
                     _q_full_next = current_q.copy()
-                    _q_full_next[:self.n_u] = _x_seq[1][:self.n_u]
+                    _q_full_next[:self.n_u] = _x_tgt[1][:self.n_u]
                     self.plant.SetPositions(plant_ctx, _q_full_next)
                     _p_ee_des = self.plant.CalcPointsPositions(
                         plant_ctx, self.ee_frame, np.zeros(3), self.world_frame,
