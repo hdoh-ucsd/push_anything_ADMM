@@ -58,9 +58,16 @@ class PursuedTargetSource(IntEnum):
     kNoTarget   = 0   # in c3 mode (no reposition target)
     kPrevious   = 1   # reusing prior reposition target
     kNewSample  = 2   # freshly sampled
-    kFromBuffer = 3   # reserved — port lacks the unsuccessful-sample buffer
-                      # `AddToUnsuccessfulBuffer` (reference cc:2161-2177);
-                      # never emitted until that buffer lands
+    kFromBuffer = 3   # reference cc:1192-1194 — pursued target came from the
+                      # SAMPLE buffer (AugmentSamplesWithBuffer injection).
+                      # STALE-COMMENT FIX 2026-08-03: the old note claimed the
+                      # port "lacks the unsuccessful-sample buffer" — false
+                      # since UnsuccessfulSampleBuffer landed (wired at
+                      # sampling_based_c3_controller.py: instantiation,
+                      # sample_avoids_bad_spots gate, prune+append on c3
+                      # entry). Whether THIS enum value is emitted depends on
+                      # the wrapper's label→source mapping below, not on that
+                      # buffer.
 
 
 def pursued_from_label(mode: str, best_src: str) -> "PursuedTargetSource":
