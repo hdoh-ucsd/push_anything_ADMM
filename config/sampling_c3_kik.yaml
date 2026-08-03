@@ -68,6 +68,15 @@ w_rot:    800000.0
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
 
+# C3Plus final-solve contact boost — mirrors reference
+# anything/sampling_c3plus_options.yaml:180-181
+# (final_augmented_cost_contact_scaling: 1000, indices [0,1,2,3] = the
+# EE-object λ components). The port derives the pair's slots from
+# _ee_box_pair_idx at solve time; per component the λ slot is boosted when
+# δ_λ == 0, else the η slot (c3_plus.cc:131-145). push_t's yaml does NOT
+# set this key (reference push_t leaves the optional absent).
+final_augmented_cost_contact_scaling: 1000
+
 # T-architecture rate decoupling (Stage 2b adds the machinery; Stage 2c
 # flips values). At defaults dt_osc == dt_mpc so N_plan = 1 and the
 # planner solves every OSC tick — pre-Stage-2b behavior preserved.

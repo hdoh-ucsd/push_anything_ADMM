@@ -92,6 +92,14 @@ class SamplingC3Controller:
             does not use the diagram and ignores this kwarg.
         """
         self.base_mpc    = base_mpc
+        # C3Plus final-solve contact boost (c3_plus.cc:131-145): plumb the
+        # per-task yaml optional into the solver. None = no boost (reference
+        # push_t); the box yaml mirrors reference anything's 1000.
+        _fs_cfg = getattr(params, "final_augmented_cost_contact_scaling", None)
+        _slv = getattr(base_mpc, "solver", None)
+        if _slv is not None:
+            _slv._final_aug_contact_scaling = (
+                float(_fs_cfg) if _fs_cfg is not None else None)
         self.plant       = plant
         self.ee_frame    = ee_frame
         self.world_frame = plant.world_frame()

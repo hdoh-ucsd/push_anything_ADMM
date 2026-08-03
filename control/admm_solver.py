@@ -2152,10 +2152,13 @@ class C3Solver:
         # Extract outputs
         # ---------------------------------------------------------------
         # 4.t — reference FINAL QP (c3.cc:332). After the ADMM loop the
-        # reference solves ONE more QP against the FINAL (δ, ω) at the
-        # ramped G: ADMMStep scales G·rho_scale at the end of EVERY iter
-        # (c3.cc:389-390), so this solve runs at rho_scale^admm_iter (27×
-        # for the push_t 3-iter/rho_scale=3 regime).
+        # reference solves ONE more QP at the ramped G: ADMMStep scales
+        # G·rho_scale at the end of EVERY iter (c3.cc:389-390), so this
+        # solve runs at rho_scale^admm_iter (27× for the push_t
+        # 3-iter/rho_scale=3 regime). C3Plus overrides the final-solve
+        # augmentation (c3_plus.cc:117-172): pull toward δ ALONE (ω
+        # dropped) + optional per-task EE-contact GScaling — see the
+        # block inside `timed("admm.final_qp")`.
         # StoreQPResults(..., is_final_solve=true) publishes THIS solve as
         # x_sol_/λ_sol_/u_sol_ — the copies UpdateC3ExecutionTrajectory
         # tracks with the OSC (sampling_based_c3_controller.cc:1703-1704).
@@ -2176,12 +2179,64 @@ class C3Solver:
                       f"(c3.cc:336-347 half-step + CalcCost x_N append)",
                       flush=True)
             with timed("admm.final_qp"):
-                if _use_g:
-                    q_total = (q_ref - 2.0 * rho
-                               * self._g_diag_c3p_cache * (delta - omega))
+                # C3Plus::AddAugmentedCost final-solve semantics
+                # (c3_plus.cc:117-172, paper 2510.19974 §IV-B.2 final ¶):
+                #   1. WD_i = δ — the final pull targets the PROJECTED copy
+                #      alone; ω is dropped (in-loop iterations keep δ−ω).
+                #   2. If the task config sets
+                #      final_augmented_cost_contact_scaling (reference
+                #      anything yaml: 1000; push_t: absent → None), scale
+                #      the EE-object pair's chosen complementarity slot per
+                #      component: the λ slot when δ_λ == 0 (pin no-force),
+                #      else the η slot (pin the gap slack) — hard-enforcing
+                #      the projection's branch on the load-bearing pair.
+                #      Exact ==0 test matches the reference (projection
+                #      writes exact zeros).
+                _fs = getattr(self, "_final_aug_contact_scaling", None)
+                _fp_idx = getattr(self, "_ee_box_pair_idx", None)
+                _boost_slots = []
+                if _fs is not None and n_lambda > 0 and _fp_idx is not None:
+                    _i_p = int(_fp_idx)
+                    if _is_st_c3p and num_normals > 0:
+                        # ST layout: pair's λ_n + 4 λ_t components (γ slots
+                        # are an ST artifact absent in the reference — not
+                        # boosted, matching B1-A precedent).
+                        _lam_comps = ([num_normals + _i_p]
+                                      + list(range(2 * num_normals + 4 * _i_p,
+                                                   2 * num_normals + 4 * _i_p + 4)))
+                    elif num_normals > 0:
+                        # Anitescu layout: pair's 4-component block.
+                        _lam_comps = list(range(4 * _i_p, 4 * _i_p + 4))
+                    else:
+                        _lam_comps = []
+                    for _c_f in _lam_comps:
+                        for _k_f in range(N):
+                            _b_f = _k_f * TOT
+                            if delta[_b_f + SL + _c_f] == 0.0:
+                                _boost_slots.append(_b_f + SL + _c_f)
+                            else:
+                                _boost_slots.append(_b_f + SE + _c_f)
+                    if _boost_slots and not getattr(
+                            self, "_final_boost_banner", False):
+                        self._final_boost_banner = True
+                        print(f"[FINAL-QP-BOOST] contact scaling "
+                              f"{_fs:.0f}× active (c3_plus.cc:131-145): "
+                              f"pair_idx={_i_p} slots/solve="
+                              f"{len(_boost_slots)} (δ-conditional λ/η)",
+                              flush=True)
+                _aug_vec = (2.0 * rho * self._g_diag_c3p_cache
+                            if _use_g else np.full(total_dim, rho))
+                if _boost_slots:
+                    _gsc = np.ones(total_dim)
+                    _gsc[_boost_slots] = float(_fs)
+                    _P_fin = P_sym.copy()
+                    np.fill_diagonal(
+                        _P_fin, _P_fin.diagonal() + (_gsc - 1.0) * _aug_vec)
+                    q_total = q_ref - _gsc * _aug_vec * delta
                 else:
-                    q_total = q_ref - rho * (delta - omega)
-                cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+                    _P_fin = P_sym
+                    q_total = q_ref - _aug_vec * delta
+                cost_bd.evaluator().UpdateCoefficients(_P_fin, q_total)
                 res = self._solver.Solve(prog, None,
                                          self._osqp_solver_options)
             if res.is_success():

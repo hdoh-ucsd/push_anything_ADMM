@@ -733,6 +733,17 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
+    # C3Plus final-solve contact boost — reference c3_options.h
+    # `final_augmented_cost_contact_scaling` (std::optional<double>).
+    # Reference anything/sampling_c3plus_options.yaml:180 sets 1000;
+    # push_t does NOT set it (optional absent → no boost) — so this stays
+    # None for T and is set in the box yaml. The reference companion key
+    # `..._contact_indices: [0,1,2,3]` names the EE-object λ components in
+    # ITS layout; the port derives the pair's slots at solve time from
+    # `_ee_box_pair_idx` instead (never copy reference state/λ indices
+    # verbatim — wsbounds lesson).
+    final_augmented_cost_contact_scaling: Optional[float] = None
+
     # ---- Parallel sample evaluation (port-todo #1) -----------------------
     # Port of reference `num_outer_threads`
     # (sampling_c3plus_options.yaml:6, sampling_based_c3_controller.cc:415-422,
@@ -1115,6 +1126,10 @@ class SamplingC3Params:
             w_travel             = float(raw.get("w_travel", 200.0)),
             w_rot                = float(raw.get("w_rot", 0.0)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
+            final_augmented_cost_contact_scaling = (
+                float(raw["final_augmented_cost_contact_scaling"])
+                if raw.get("final_augmented_cost_contact_scaling") is not None
+                else None),
             num_threads_to_use   = int(raw.get(
                 "num_threads_to_use",
                 raw.get("num_outer_threads", 1))),  # ref name alias
