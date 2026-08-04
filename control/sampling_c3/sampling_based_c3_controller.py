@@ -100,6 +100,16 @@ class SamplingC3Controller:
         if _slv is not None:
             _slv._final_aug_contact_scaling = (
                 float(_fs_cfg) if _fs_cfg is not None else None)
+        # Per-task planner u-force limits (reference u_horizontal/vertical_
+        # limits; push_t ±50/±50, anything ±10/±3). Consumed by the EE-space
+        # u-box in ci_mpc_c3plus.compute_control; None → legacy scalar
+        # torque_limit fallback.
+        _uh_cfg = getattr(params, "u_horizontal_limit", None)
+        _uv_cfg = getattr(params, "u_vertical_limit", None)
+        base_mpc._u_horizontal_cfg = (
+            float(_uh_cfg) if _uh_cfg is not None else None)
+        base_mpc._u_vertical_cfg = (
+            float(_uv_cfg) if _uv_cfg is not None else None)
         self.plant       = plant
         self.ee_frame    = ee_frame
         self.world_frame = plant.world_frame()

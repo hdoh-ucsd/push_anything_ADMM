@@ -733,6 +733,16 @@ class SamplingC3Params:
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
 
+    # Per-task planner u-force limits — reference sampling_c3plus_options
+    # `u_horizontal_limits` / `u_vertical_limits` (push_t: ±50/±50 @ :34-35;
+    # anything: ±10/±3). Scalar symmetric bound per axis pair:
+    # u = [Fx, Fy, Fz], Fx,Fy ∈ ±u_horizontal_limit, Fz ∈ ±u_vertical_limit.
+    # None → legacy scalar torque_limit fallback (pre-2026-08-04 behavior;
+    # canonical task yamls always set these). Env PORT_U_HORIZONTAL/_VERTICAL
+    # still override for falsification runs.
+    u_horizontal_limit: Optional[float] = None
+    u_vertical_limit:   Optional[float] = None
+
     # C3Plus final-solve contact boost — reference c3_options.h
     # `final_augmented_cost_contact_scaling` (std::optional<double>).
     # Reference anything/sampling_c3plus_options.yaml:180 sets 1000;
@@ -1130,6 +1140,12 @@ class SamplingC3Params:
                 float(raw["final_augmented_cost_contact_scaling"])
                 if raw.get("final_augmented_cost_contact_scaling") is not None
                 else None),
+            u_horizontal_limit = (
+                float(raw["u_horizontal_limit"])
+                if raw.get("u_horizontal_limit") is not None else None),
+            u_vertical_limit = (
+                float(raw["u_vertical_limit"])
+                if raw.get("u_vertical_limit") is not None else None),
             num_threads_to_use   = int(raw.get(
                 "num_threads_to_use",
                 raw.get("num_outer_threads", 1))),  # ref name alias

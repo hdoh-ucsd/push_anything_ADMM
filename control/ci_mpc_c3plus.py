@@ -435,9 +435,31 @@ class C3PlusMPC:
                     _uv = float(_uv_s)
                     _u_lo = np.array([-_uh, -_uh, -_uv])
                     _u_hi = np.array([+_uh, +_uh, +_uv])
+                    _u_src = "env"
                 except ValueError:
                     _u_lo = None
                     _u_hi = None
+            # 2026-08-04 u-limit conformance: flagless runs previously fell
+            # through to the scalar torque_limit (±87 N/axis on a Cartesian
+            # force!) — off-reference for BOTH tasks (push_t ±50/±50,
+            # anything ±10/±3 per sampling_c3plus_options.yaml:34-35). The
+            # per-task yaml values (plumbed via params →
+            # _u_horizontal_cfg/_u_vertical_cfg) are now the flagless
+            # default; env vars above remain a falsification override.
+            if _u_lo is None:
+                _uh_c = getattr(self, "_u_horizontal_cfg", None)
+                _uv_c = getattr(self, "_u_vertical_cfg", None)
+                if _uh_c is not None and _uv_c is not None:
+                    _u_lo = np.array([-_uh_c, -_uh_c, -_uv_c])
+                    _u_hi = np.array([+_uh_c, +_uh_c, +_uv_c])
+                    _u_src = "yaml"
+            if _u_lo is not None and not getattr(
+                    self, "_u_limits_banner", False):
+                self._u_limits_banner = True
+                print(f"[U-LIMITS] per-axis u-box active "
+                      f"(source={_u_src}): Fx,Fy ∈ ±{_u_hi[0]:.0f}N "
+                      f"Fz ∈ ±{_u_hi[2]:.0f}N (reference "
+                      f"u_horizontal/vertical_limits)", flush=True)
         elif not self.use_ee_space and self.solver.n_u > 3:
             # 2026-07-28 defaults flip: gravity-centered u-box unconditional
             # (was REFCONF_R7_U_GRAVITY_CENTERED, default ON).

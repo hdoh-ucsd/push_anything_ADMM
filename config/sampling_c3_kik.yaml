@@ -68,6 +68,14 @@ w_rot:    800000.0
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
 
+# Planner u-force limits — reference anything/sampling_c3plus_options.yaml
+# :34-35: u_horizontal_limits [-10,10], u_vertical_limits [-3,3]. Before
+# 2026-08-04 flagless runs fell through to the scalar torque_limit
+# (±87 N/axis) — 8.7×/29× the reference bounds; the 36 N phantom fling in
+# box_W_wdboost would have been ≤14.5 N total under these.
+u_horizontal_limit: 10.0
+u_vertical_limit: 3.0
+
 # C3Plus final-solve contact boost — mirrors reference
 # anything/sampling_c3plus_options.yaml:180-181
 # (final_augmented_cost_contact_scaling: 1000, indices [0,1,2,3] = the
