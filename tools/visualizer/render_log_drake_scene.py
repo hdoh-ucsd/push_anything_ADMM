@@ -91,16 +91,47 @@ def parse_log(path: Path):
     return frames
 
 
-def load_task_cfg(task_name: str, task_id: int):
-    """Reproduce main.py's load_task + directional override for task_id=4=west."""
+def parse_log_goal(log_path: Path):
+    """Extract the run's ACTUAL goal from its own `[ENV]  Goal coords:` line.
+
+    2026-08-05 fix (reference-shaped): the reference's video pipeline takes
+    goal poses from the LOG (process_lcm_logs.py make_video: goals_by_obj
+    parsed from LCM messages), never from config files. The prior port
+    behavior — unconditionally overriding with directional_tasks.json at
+    the --task-id DEFAULT (4 = box-west) — painted a fabricated goal on
+    every render whose run didn't use that task-id (p152: goal drawn at
+    (0.30, 0) while the run pushed toward (0.482, 0.187)).
+    """
+    pat = re.compile(r"\[ENV\]\s+Goal coords:\s*\[([-\d.eE+]+),\s*([-\d.eE+]+)\]")
+    with open(log_path, errors="replace") as f:
+        for _ in range(500):
+            line = f.readline()
+            if not line:
+                break
+            m = pat.search(line)
+            if m:
+                return [float(m.group(1)), float(m.group(2))]
+    return None
+
+
+def load_task_cfg(task_name: str, task_id, log_goal):
+    """main.py's load_task; goal priority: explicit --task-id > log > yaml."""
     root = Path(__file__).resolve().parents[2]
     with open(root / "config" / "tasks.yaml") as f:
         all_tasks = yaml.safe_load(f)["tasks"]
     task_cfg = dict(all_tasks[task_name])
-    with open(root / "config" / "directional_tasks.json") as f:
-        dir_cfg = json.load(f)
-    entry = dir_cfg["tasks"][str(task_id)]
-    task_cfg["goal_xy"] = entry["goal"]
+    if task_id is not None:
+        with open(root / "config" / "directional_tasks.json") as f:
+            dir_cfg = json.load(f)
+        task_cfg["goal_xy"] = dir_cfg["tasks"][str(task_id)]["goal"]
+        print(f"[render-log-drake] goal from --task-id {task_id}: "
+              f"{task_cfg['goal_xy']}")
+    elif log_goal is not None:
+        task_cfg["goal_xy"] = log_goal
+        print(f"[render-log-drake] goal from log [ENV] line: {log_goal}")
+    else:
+        print(f"[render-log-drake] goal from tasks.yaml: "
+              f"{task_cfg.get('goal_xy')}")
     return task_cfg
 
 
@@ -115,7 +146,10 @@ def main():
                     help="Sim-tick stride (3 → ~200 frames of a 6s run → "
                          "30fps mp4 plays close to real-time)")
     ap.add_argument("--task", default="pushing")
-    ap.add_argument("--task-id", type=int, default=4)  # west
+    ap.add_argument("--task-id", type=int, default=None,
+                    help="EXPLICIT directional-goal override only; when "
+                         "omitted the goal comes from the log's [ENV] line "
+                         "(per-run ground truth, reference-shaped).")
     ap.add_argument("--max-step", type=int, default=None,
                     help="Optional cap on the last rendered step")
     args = ap.parse_args()
@@ -131,7 +165,7 @@ def main():
           f"(first={valid[0]}, last={valid[-1]})", flush=True)
 
     print("[render-log-drake] loading task config", flush=True)
-    task_cfg = load_task_cfg(args.task, args.task_id)
+    task_cfg = load_task_cfg(args.task, args.task_id, parse_log_goal(args.log))
 
     print("[render-log-drake] building Drake env (add_camera=True, "
           f"PORT_CAMERA_PERSPECTIVE={os.environ.get('PORT_CAMERA_PERSPECTIVE')})",

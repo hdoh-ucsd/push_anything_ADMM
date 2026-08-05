@@ -3,31 +3,17 @@ C3 Contact-Implicit MPC — main entry point.
 
 Usage
 -----
-    python main.py [task] [--drake-frames-dir DIR] [--video-path PATH.html]
+    python main.py [pushing|push_t] [--task-id N] [--max-time SEC]
+                   [--sampling-c3 PATH.yaml] [--name BASENAME] [--seed INT]
 
-Task options
-------------
-    pushing       (default) — light box (0.2 kg, mu=0.4)
-    hard_pushing            — heavy box (1.5 kg, mu=0.8)
-    shepherding             — rolling ball (0.15 kg, mu=0.2)
+Canonical launches (flag-minimal since the 2026-08-05 CLI prune):
+    python main.py push_t  --max-time 180 --sampling-c3 config/sampling_c3_kik_t.yaml --name X
+    python main.py pushing --task-id 4 --max-time 180 --sampling-c3 config/sampling_c3_kik.yaml --name X
 
-Flags
------
-    --drake-frames-dir DIR  OOM-safe Drake VTK PNG-per-tick capture.
-                            Encode to MP4 offline via ffmpeg (or use
-                            tools/visualizer/paint_mode_text.py for
-                            the annotated-render pipeline).
-    --video-path            Auto-name HTML as results/<stem>.html
-    --video-path PATH.html  Save Meshcat replay HTML to a specific path
-    --no-record             Disable HTML recording
-    --name BASENAME         Shared <stem> for all outputs (txt + html)
-
-Default behavior records the Meshcat HTML replay sharing the same
-stem as the _Tee log (results/<stem>.txt). The stem is BASENAME when
---name is given, else <task>_<timestamp>. MP4 capture is opt-in via
---drake-frames-dir.
-
-Visualisation: Meshcat at http://127.0.0.1:7000
+Outputs: results/<stem>.txt run log (stem = --name or <task>_<timestamp>).
+Replay video (reference-shaped, post-hoc from the log — the reference's
+process_lcm_logs.py paradigm): scripts/make_run_video.sh <stem>.
+Live view during the run: Meshcat at http://127.0.0.1:7000
 
 MPC parameters (reference-conformant defaults, dairlib push_anything_dev@257e3ed):
     horizon    = 7     steps (c3plus; c3 uses 5)   sampling_c3plus_options.yaml:20
@@ -243,13 +229,8 @@ def main():
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
                         help="Directional task ID from config/directional_tasks.json "
                              "(1=north, 2=east, 3=south, 4=west). Overrides tasks.yaml goal.")
-    parser.add_argument("--video-path", type=str, nargs="?",
-                        const="AUTO", default="AUTO", metavar="PATH.html",
-                        help="Save Meshcat HTML replay. With no arg or absent, "
-                             "auto-names results/<task>_<timestamp>.html. "
-                             "Use --no-record to disable.")
-    parser.add_argument("--no-record", action="store_true",
-                        help="Disable HTML recording. Speeds up smoke tests.")
+    # (--video-path / --no-record removed 2026-08-05 with the StaticHtml
+    #  retirement — replay video = scripts/make_run_video.sh over the log.)
     parser.add_argument("--max-time", type=float, default=None,
                         help="Override simulation duration in seconds (default: 8.0).")
     parser.add_argument("--math-diag", action="store_true",
@@ -371,19 +352,12 @@ def main():
           f"{' '.join(f'{k}={v}' for k, v in _env_gates.items()) or '(none)'}",
           flush=True)
 
-    # Resolve recording paths.  --no-record wins; otherwise AUTO sentinels
-    # produce shared-stem filenames, "" maps to legacy default-named files,
-    # and any other string is taken as an explicit path.  MP4 capture is
-    # opt-in via --drake-frames-dir; this block governs Meshcat HTML only.
-    if args.no_record:
-        html_path  = None
-    else:
-        if args.video_path == "AUTO":
-            html_path = f"results/{stem}.html"
-        elif args.video_path == "":
-            html_path = f"results/{task_name}.html"
-        else:
-            html_path = args.video_path
+    # (Meshcat StaticHtml "replay" emission retired 2026-08-05: it had NO
+    # reference analog — the reference records nothing live and renders
+    # video post-hoc from logs (process_lcm_logs.py) — and it never worked:
+    # every html ever written was a static scene snapshot (zero animation
+    # tracks, byte-identical sizes). The port's reference-shaped replay
+    # path is scripts/make_run_video.sh over the run log.)
 
     _log_path = f"results/{stem}.txt"
     _log      = open(_log_path, "w", buffering=1)
@@ -391,8 +365,6 @@ def main():
     print(f"[C3] Log: {_log_path}")
 
     print(f"[C3] Task: {task_name}")
-    if html_path:
-        print(f"[C3] HTML replay output: {html_path}")
 
     task_cfg = load_task(task_name)
 
@@ -713,9 +685,6 @@ def main():
 
     print("[C3] Running simulation ...")
 
-    if html_path:
-        meshcat.StartRecording()
-
     # ------------------------------------------------------------------
     # Joint limit constants for arm safety check
     # ------------------------------------------------------------------
@@ -747,7 +716,6 @@ def main():
     step          = 0
     if args.max_time is not None:
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
-    _record_every = max(1, round(1.0 / (20.0 * dt_ctrl)))
 
     while sim_time < max_time:
         current_q = plant.GetPositions(plant_ctx)
@@ -1012,16 +980,6 @@ def main():
           f"success={'YES' if final_dist < 0.05 else 'NO'}  "
           f"tight_goal={'PASS' if _tight else 'FAIL'}({_tight_reason})  "
           f"loose_goal={'PASS' if _loose else 'FAIL'}")
-
-    if html_path:
-        meshcat.StopRecording()
-        meshcat.PublishRecording()
-        html = meshcat.StaticHtml()
-        html_dir = Path(html_path).parent
-        html_dir.mkdir(parents=True, exist_ok=True)
-        with open(html_path, "w") as f:
-            f.write(html)
-        print(f"[VIDEO] Saved replay to {html_path}")
 
     # 2026-07-22: reference-style pydrake.visualization.VideoWriter finalize.
     # Mirrors process_lcm_logs.py:501-509 make_video pattern — Drake wrote
