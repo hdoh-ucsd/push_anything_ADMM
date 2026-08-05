@@ -137,7 +137,6 @@ class QuadraticManipulationCost:
 
     def __init__(self, plant, ee_frame_name: str, obj_body, cost_cfg: dict,
                  n_x: int, n_u: int, math_diag: bool = False,
-                 cost_bias: bool = False,
                  object_shape: str = None,
                  object_half_extent: float = None,
                  pusher_radius: float = None):
@@ -290,15 +289,7 @@ class QuadraticManipulationCost:
         self._math_diag = math_diag
         self._q_printed = False
 
-        # Cost-bias state (all variables inactive when cost_bias=False)
-        self._cost_bias         = cost_bias
-        self._bias_phase        = 'PUSH'  # 'PUSH' | 'LIFT' | 'APPROACH'
-        self._bias_counter      = 0       # steps elapsed in current timed phase
-        self._bias_step         = 0       # total build() calls (for [BIAS] diagnostic)
-        self._bias_prev_obj_xy  = None    # obj_xy at previous step for delta progress
-        self._bias_progress_buf = []      # per-step goal-aligned box progress samples
-        self._bias_last_face    = None    # last correct face label ('E','W','N','S')
-        self._bias_face_init    = False   # one-time initial wrong-face check done
+        # (Cost-bias state removed in the 2026-08-05 CLI prune.)
 
         # EE-approach cost diagnostic (off by default; enabled via --ee-cost-diag)
         self._diag_ee_cost      = False
@@ -622,119 +613,9 @@ class QuadraticManipulationCost:
                 perp_vec       = rel_vec - along_push * g_hat
                 perp_magnitude = float(np.linalg.norm(perp_vec))
 
-                # --- Cost-bias heuristic (face-transition, Phase 2 design) --------
-                # Guarded by self._cost_bias; when False, output is byte-identical to
-                # the baseline (no state is read or written from this block).
-                # Overrides effective_proxy in LIFT/APPROACH phases; PUSH is unchanged.
-                # Inserted BEFORE lateral alignment so alignment always applies.
-                # Out of scope: shepherding (sphere has no faces — bias is a no-op).
-                if self._cost_bias:
-                    self._bias_step += 1
-
-                    # --- Constants (all derived from Phase 1 data; see design memo) ---
-                    # Z_LIFT: box_top(0.10m) + pusher_radius(0.025m) + distance_threshold(0.10m)
-                    # Must exceed distance_threshold above box_top so no phantom contacts fire.
-                    _Z_LIFT       = 0.225
-                    # N_I: E1 showed ~50 steps to lift clear; 60 = 1.2× observed margin
-                    _N_I          = 60
-                    # N_II: E1 far-approach ~100 steps before contact; matched here
-                    _N_II         = 100
-                    # N_STALL: 100-step window (1.0 s at dt_osc=0.01s)
-                    _N_STALL      = 100
-                    # STALL_THRESH: 0.003m cumulative goal progress in N_STALL steps;
-                    # E1 active push ≈106mm in 100 steps >> 3mm; plateau ≈1mm < 3mm
-                    _STALL_THRESH = 0.003
-                    # CONTACT_PROX: 3D dist threshold to consider face check relevant
-                    _CONTACT_PROX = 0.12
-                    # FACE_ALIGN: cos(60°); EE must be within 60° of correct face normal
-                    _FACE_ALIGN   = 0.5
-                    # Box geometry for 3D distance (pushes task is axis-aligned box)
-                    _BOX_HALF_Z   = 0.05
-                    _PUSHER_R     = 0.025
-
-                    # Correct face: axis-aligned face most anti-aligned to g_hat.
-                    # The EE should push against this face to move the box toward goal.
-                    _face_candidates = [
-                        ('E', np.array([1., 0.])),
-                        ('W', np.array([-1., 0.])),
-                        ('N', np.array([0., 1.])),
-                        ('S', np.array([0., -1.])),
-                    ]
-                    _best = min(_face_candidates,
-                                key=lambda fn: float(np.dot(fn[1], g_hat)))
-                    _correct_face, _n_correct = _best[0], _best[1]
-
-                    # 3D EE-to-box distance: captures the phantom-contact scenario
-                    # (E1 plateau) where EE is above box top but 2D ee_to_box ≈ 0.04m.
-                    _obj_z      = current_q[self._obj_z_idx]
-                    _box_top    = _obj_z + _BOX_HALF_Z
-                    _ee_z_above = max(0.0, ee_pos[2] - (_box_top + _PUSHER_R))
-                    _ee_box_3d  = float(np.sqrt(ee_to_box_dist**2 + _ee_z_above**2))
-
-                    # Goal-aligned progress tracking (raw Δobj_xy·g_hat per step).
-                    # Using |Δobj_xy| not F·g_hat — avoids the zero-threshold bug
-                    # where F·g_hat=0.000 is printed as "→goal ✓" (see Phase 1).
-                    if self._bias_prev_obj_xy is not None:
-                        _delta = float(np.dot(obj_xy - self._bias_prev_obj_xy, g_hat))
-                        self._bias_progress_buf.append(max(0.0, _delta))
-                        if len(self._bias_progress_buf) > _N_STALL:
-                            self._bias_progress_buf.pop(0)
-                    self._bias_prev_obj_xy = obj_xy.copy()
-                    _buf_full        = len(self._bias_progress_buf) >= _N_STALL
-                    _progress_sum    = sum(self._bias_progress_buf)
-                    _progress_recent = _buf_full and (_progress_sum >= _STALL_THRESH)
-
-                    # Face-change detection: fires when the correct face changes
-                    # (goal direction rotated — e.g., box overshot or displaced).
-                    _face_changed = (self._bias_last_face is not None and
-                                     self._bias_last_face != _correct_face)
-                    self._bias_last_face = _correct_face
-
-                    # Initial wrong-face check (fires once at first build() call).
-                    # If EE is already in contact-range of a wrong face, start LIFT
-                    # immediately rather than waiting N_STALL steps for stall detection.
-                    if not self._bias_face_init:
-                        self._bias_face_init = True
-                        if (self._bias_phase == 'PUSH' and
-                                _ee_box_3d < _CONTACT_PROX and
-                                ee_to_box_dist > 1e-4):
-                            _rel_hat = (ee_xy - obj_xy) / (ee_to_box_dist + 1e-9)
-                            if float(np.dot(_rel_hat, _n_correct)) < _FACE_ALIGN:
-                                self._bias_phase   = 'LIFT'
-                                self._bias_counter = 0
-
-                    # Advance counter for timed phases (counter ticks on entry step).
-                    if self._bias_phase in ('LIFT', 'APPROACH'):
-                        self._bias_counter += 1
-
-                    # State transitions
-                    if self._bias_phase == 'PUSH':
-                        if _face_changed or (_buf_full and not _progress_recent):
-                            self._bias_phase   = 'LIFT'
-                            self._bias_counter = 0
-                    elif self._bias_phase == 'LIFT':
-                        if self._bias_counter >= _N_I:
-                            self._bias_phase   = 'APPROACH'
-                            self._bias_counter = 0
-                    else:  # APPROACH
-                        if self._bias_counter >= _N_II:
-                            self._bias_phase        = 'PUSH'
-                            self._bias_counter      = 0
-                            self._bias_progress_buf = []  # flush stale samples so stall detection needs a full N_STALL window
-
-                    # Override effective_proxy (PUSH: unchanged from three-stage logic)
-                    if self._bias_phase == 'LIFT':
-                        effective_proxy = np.array([obj_xy[0], obj_xy[1], _Z_LIFT])
-                    elif self._bias_phase == 'APPROACH':
-                        effective_proxy = approach_3d.copy()
-
-                    print(f"[BIAS] step={self._bias_step} "
-                          f"phase={self._bias_phase} "
-                          f"face={_correct_face} "
-                          f"target={np.round(effective_proxy, 3).tolist()} "
-                          f"progress_recent={_progress_recent} "
-                          f"face_changed={_face_changed}")
-                # --- end cost-bias block ---
+                # (Cost-bias face-transition machinery removed in the
+                #  2026-08-05 CLI prune — cube-era port-only heuristic,
+                #  byte-identical OFF since it shipped.)
 
                 if ee_to_box_dist < 0.15 and perp_magnitude > 1e-4:
                     extra_shift = -perp_vec * min(1.0,

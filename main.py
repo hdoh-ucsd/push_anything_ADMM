@@ -224,18 +224,21 @@ def main():
         description="C3 Contact-Implicit MPC",
         formatter_class=argparse.RawTextHelpFormatter,
     )
+    # CLI prune 2026-08-05: removed the stale/off-reference flags —
+    # --reset-every, --drake-frames-dir/-stride, --force-save-video,
+    # --video-out, --hud-video (in-sim video pipeline superseded by
+    # scripts/make_run_video.sh), --early-exit-goal-d/--goal-settle-time/
+    # --early-exit-orient-err (superseded by the in-controller ACHIEVED
+    # latch), --sampling-height/--workspace-y-max/--goal-xy (off-reference
+    # override levers), --pitch-probe (pre-DIAG_* diagnostic),
+    # --extra-log-path (superseded by scripts/sync_results_to_d.sh),
+    # --ee-space (no-op; the ee_space ATTRIBUTE is still derived from
+    # --r7 below). Dead task choices (hard_pushing/shepherding/
+    # cube_turning) pruned; their tasks.yaml entries remain as inert data.
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "hard_pushing", "shepherding", "cube_turning", "push_t"],
+        choices=["pushing", "push_t"],
         help="Task to run (default: pushing)",
-    )
-    parser.add_argument(
-        "--reset-every",
-        metavar="N",
-        type=int,
-        default=None,
-        help="Reset arm + box to initial pose every N control steps "
-             "(useful to test first-contact behaviour repeatedly)",
     )
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
                         help="Directional task ID from config/directional_tasks.json "
@@ -247,59 +250,8 @@ def main():
                              "Use --no-record to disable.")
     parser.add_argument("--no-record", action="store_true",
                         help="Disable HTML recording. Speeds up smoke tests.")
-    parser.add_argument("--drake-frames-dir", type=str, default=None,
-                        metavar="DIR",
-                        help="OOM-safe Drake VTK frame capture: write one PNG per "
-                             "control step to DIR (real 3D Drake scene render). "
-                             "Encode to MP4 after the sim with ffmpeg.")
-    parser.add_argument("--drake-frames-stride", type=int, default=3,
-                        metavar="N",
-                        help="Capture one Drake VTK frame every N control steps "
-                             "(default 3 -> 100Hz/3 ~= 33 fps).")
     parser.add_argument("--max-time", type=float, default=None,
                         help="Override simulation duration in seconds (default: 8.0).")
-    parser.add_argument("--early-exit-goal-d", type=float, default=None,
-                        metavar="METRES",
-                        help="Goal-reached threshold: mark reach when "
-                             "goal_dist <= this value (typical 0.05 m). "
-                             "Combined with --goal-settle-time, the sim continues "
-                             "past the reach for the settle window before breaking. "
-                             "When omitted, the loop runs to --max-time.")
-    parser.add_argument("--goal-settle-time", type=float, default=1.0,
-                        metavar="SEC",
-                        help="After the goal is reached, continue the sim for SEC "
-                             "seconds so the video shows the arrival before ending. "
-                             "Default 1.0 s.  Requires --early-exit-goal-d.")
-    parser.add_argument("--early-exit-orient-err", type=float, default=None,
-                        metavar="RAD",
-                        help="Additional gate on --early-exit-goal-d: also require "
-                             "|target_yaw - current_yaw| <= RAD before starting the "
-                             "settle window. Reference push_t/goal_params.yaml:11 "
-                             "orientation_success_threshold=0.1 rad (5.7°). Ignored "
-                             "when --early-exit-goal-d is not set. Default: no orient "
-                             "gate (position-only).")
-    parser.add_argument("--force-save-video", action="store_true",
-                        help="Encode the Drake-frames mp4 even if the goal was NOT "
-                             "reached. Default: encode only on goal-reach.")
-    parser.add_argument("--video-out", type=str, default=None, metavar="PATH.mp4",
-                        help="Output path for the encoded Drake-frames mp4 "
-                             "(runs the paint HUD post-sim). Requires "
-                             "--drake-frames-dir.")
-    parser.add_argument("--hud-video", action=argparse.BooleanOptionalAction,
-                        default=True,
-                        help="Overlay the per-step log HUD (paint_full_hud.py) "
-                             "onto the encoded video. Default ON — pass "
-                             "--no-hud-video for the minimal mode-only pill "
-                             "(paint_mode_text.py).")
-    parser.add_argument("--sampling-height", type=float, default=None, metavar="Z",
-                        help="Override task_cfg['sampling_height'] in-memory. "
-                             "Must be >= sphere radius 0.025 m.")
-    parser.add_argument("--extra-log-path", type=str, default=None, metavar="PATH",
-                        help="Additionally copy the run log to PATH at end "
-                             "(e.g., a Windows-side results sink).")
-    parser.add_argument("--pitch-probe", action="store_true",
-                        help="Emit per-tick [PITCH-PROBE] rows: EE_z, box pitch "
-                             "angle, contact z on box face. For §7.74 diagnosis.")
     parser.add_argument("--math-diag", action="store_true",
                         help="Print math-level solver diagnostics ([MATH.*] tags). "
                              "Zero overhead when off.")
@@ -311,9 +263,6 @@ def main():
                              "notes adaptive-ρ fires every 10 iters, so values "
                              "≥ 10 also enable rho adaptation. Diagnostic use; "
                              "increases per-step solve time roughly linearly.")
-    parser.add_argument("--cost-bias", action="store_true",
-                        help="Enable C3 face-transition cost bias (lift/approach/push "
-                             "state machine for sequential contact on correct cube face).")
     parser.add_argument("--name", type=str, default=None, metavar="BASENAME",
                         help="Shared basename (no extension) for all run outputs in "
                              "results/: <BASENAME>.txt and <BASENAME>.html. "
@@ -324,15 +273,17 @@ def main():
                         metavar="PATH.yaml",
                         help="Enable Venkatesh-2025 sampling-C3 outer controller.\n"
                              "Optional PATH = YAML config "
-                             "(default: config/sampling_c3_params.yaml).\n"
-                             "Cannot be combined with --cost-bias.")
-    parser.add_argument("--solver", choices=["c3", "c3plus"], default="c3",
-                        help="Inner ADMM solver. c3=Aydinoglu 2024 (default; "
-                             "DEPRECATED — gated diagnostic, shares the LCS "
-                             "with c3plus and carries the current contact "
-                             "model, but the Lorentz-cone projection is no "
-                             "longer the recommended path; prefer c3plus). "
-                             "c3plus=Bui 2026 with slack variable η = E x + "
+                             "(default: config/sampling_c3_params.yaml).")
+    # 2026-08-05 CLI prune: default flipped c3 → c3plus. The c3 default
+    # contradicted its own DEPRECATED help text; reference push_t AND
+    # anything both run C3+ (projection_type 'C3+'). The c3 choice stays
+    # as the Lorentz-projection falsification lever.
+    parser.add_argument("--solver", choices=["c3", "c3plus"], default="c3plus",
+                        help="Inner ADMM solver. c3plus=Bui 2026 (DEFAULT; "
+                             "reference projection for both tasks). "
+                             "c3=Aydinoglu 2024 Lorentz-cone projection — "
+                             "DEPRECATED falsification lever. "
+                             "c3plus uses slack variable η = E x + "
                              "F λ + H u + c (eq. 5c) and Bui eq (12) "
                              "componentwise δ-projection. v1 implements "
                              "normal-direction complementarity only — "
@@ -352,29 +303,15 @@ def main():
     # with the point-EE simple model (franka_sampling_c3_controller.cc:
     # 143-146 DRAKE_DEMANDs no orientation because the LCS plant IS the
     # simple EE model); the R^7 full-plant planner was a port-era
-    # divergence (p106 arc) with no reference analog. --ee-space is kept
-    # as a no-op for script compatibility; --r7 opts back into the
-    # legacy R^7 joint-torque planner for falsification runs only.
-    parser.add_argument("--ee-space", action="store_true",
-                        help="No-op (EE-space is the default planner since "
-                             "the 2026-07-28 divergence removal). Kept for "
-                             "script compatibility.")
+    # divergence (p106 arc) with no reference analog. --r7 opts back into
+    # the legacy R^7 joint-torque planner for falsification runs only
+    # (the --ee-space no-op flag was pruned 2026-08-05; the args.ee_space
+    # ATTRIBUTE below is still the load-bearing planner selector).
     parser.add_argument("--r7", action="store_true",
                         help="LEGACY: use the port-only R^7 joint-torque "
                              "full-plant LCS planner instead of the "
                              "reference EE-space planner. Falsification "
                              "runs only — no reference analog.")
-    parser.add_argument("--workspace-y-max", type=float, default=None,
-                        metavar="YMAX",
-                        help="F3 sweep override: override sampling_params."
-                             "workspace_xy_max[1] in-memory after yaml load. "
-                             "Valid range [-1.0, +1.0]. Only takes effect with "
-                             "--sampling-c3.")
-    parser.add_argument("--goal-xy", type=str, default=None, metavar="X,Y",
-                        help="Contact-free sweep override: override task_cfg "
-                             "['goal_xy'] in-memory after load_task(). Format "
-                             "'X,Y' in meters (comma-separated). Overrides any "
-                             "value from tasks.yaml or --task-id.")
     parser.add_argument("--seed", type=int, default=None, metavar="INT",
                         help="Contact-free sweep: seed the SamplingC3Controller rng "
                              "for deterministic sampling-circle angle draws. "
@@ -385,19 +322,10 @@ def main():
     # --r7 is the explicit legacy opt-out (see the --ee-space help text).
     args.ee_space = not args.r7
 
-    if args.workspace_y_max is not None and not (-1.0 <= args.workspace_y_max <= 1.0):
-        parser.error(f"--workspace-y-max {args.workspace_y_max} out of "
-                     f"sane band [-1.0, +1.0].")
-
-    if args.sampling_c3 is not None and args.cost_bias:
-        parser.error("--sampling-c3 and --cost-bias are mutually exclusive. "
-                     "Use one or the other.")
-
     # (Reference-alignment env bundle removed; all downstream reference
     # settings are now unconditional defaults.)
 
     task_name   = args.task
-    reset_every = args.reset_every
     # init_q is computed below via compute_safe_init_arm_q — IK-solved so
     # EE starts OPPOSITE goal direction at safe altitude above object top.
     # Prior INITIAL_ARM_Q placed EE directly over box CoM, causing PWL
@@ -482,24 +410,6 @@ def main():
     else:
         print(f"[ENV]  Goal coords: {task_cfg.get('goal_xy', 'default')}")
 
-    if args.goal_xy is not None:
-        try:
-            _gx, _gy = [float(s) for s in args.goal_xy.split(",")]
-        except ValueError:
-            parser.error(f"--goal-xy {args.goal_xy!r} must be 'X,Y' in meters.")
-        _was_goal = task_cfg.get("goal_xy")
-        task_cfg["goal_xy"] = [_gx, _gy]
-        print(f"[OVERRIDE] goal_xy=[{_gx}, {_gy}] (was {_was_goal})")
-
-    if args.sampling_height is not None:
-        if args.sampling_height < 0.025:
-            parser.error(f"--sampling-height {args.sampling_height} < "
-                         f"sphere radius 0.025 m — pusher would clip the table.")
-        _was_sh = task_cfg.get("sampling_height")
-        task_cfg["sampling_height"] = float(args.sampling_height)
-        print(f"[OVERRIDE] sampling_height={args.sampling_height:.4f} "
-              f"(was {_was_sh})")
-
     # ---- Structured log header -------------------------------------------
     _cost = task_cfg.get("cost", {})
     # Read PORT_RHO once for both the log header and the C3Solver ctor.
@@ -522,24 +432,10 @@ def main():
     # Build Drake environment
     # ------------------------------------------------------------------
     print("[C3] Building Drake environment ...")
-    _add_cam = args.drake_frames_dir is not None
+    # In-sim frame capture pruned 2026-08-05 (scripts/make_run_video.sh is
+    # the post-hoc render path); build without the render camera.
     (diagram, plant, panda_model, _, meshcat, plant_ad, context_ad,
-     drake_video_writer) = build_environment(task_cfg, add_camera=_add_cam)
-
-    drake_cam = None
-    drake_frames_dir = None
-    mode_timeline_fp = None
-    if _add_cam:
-        drake_frames_dir = Path(args.drake_frames_dir)
-        drake_frames_dir.mkdir(parents=True, exist_ok=True)
-        drake_cam = diagram.GetSubsystemByName("drake_render_camera")
-        # mode_timeline.csv lives next to the frames so the post-sim
-        # paint_mode_text.py step can frame-sync without re-parsing run.log.
-        mode_timeline_fp = open(
-            drake_frames_dir / "mode_timeline.csv", "w", buffering=1)
-        mode_timeline_fp.write("step,sim_t,mode,switch\n")
-        print(f"[C3] Drake VTK frames -> {drake_frames_dir}  "
-              f"(stride={args.drake_frames_stride})")
+     drake_video_writer) = build_environment(task_cfg, add_camera=False)
 
     simulator = ad.Simulator(diagram)
     context   = simulator.get_mutable_context()
@@ -659,7 +555,6 @@ def main():
     quad_cost  = QuadraticManipulationCost(
         plant, EE_BODY_NAME, obj_body, task_cfg["cost"], n_x, n_u,
         math_diag=args.math_diag,
-        cost_bias=args.cost_bias,
         object_shape=_obj_shape,
         object_half_extent=_obj_half_extent,
         pusher_radius=_EFFECTIVE_PUSHER_RADIUS,
@@ -722,10 +617,6 @@ def main():
     if args.sampling_c3 is not None:
         _yaml_path = args.sampling_c3
         sc3_params = SamplingC3Params.from_yaml(_yaml_path)
-        if args.workspace_y_max is not None:
-            _was = sc3_params.sampling_params.workspace_xy_max[1]
-            sc3_params.sampling_params.workspace_xy_max[1] = args.workspace_y_max
-            print(f"[OVERRIDE] workspace_xy_max[1]={args.workspace_y_max} (was {_was})")
         # D6: per-task sampling_height override. pushing/hard_pushing set 0.03
         # (sub-CoM, restoring tip moment); cube_turning/shepherding read the
         # sampler default. tasks.yaml is the source of truth; absent → no override.
@@ -854,31 +745,11 @@ def main():
     _N_OSC_PER_OUTER = int(round(dt_ctrl / _DT_OSC))     # 75 for c3plus
     max_time      = args.max_time if args.max_time is not None else 8.0
     step          = 0
-    # §7.74 goal-reach-then-settle: on first tick with goal_dist <=
-    # --early-exit-goal-d, record the reach step and continue for
-    # --goal-settle-time seconds so the video captures the arrival.
-    _goal_reach_step = None
-    _goal_reach_t = None
-    _settle_until_t = None
     if args.max_time is not None:
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
     _record_every = max(1, round(1.0 / (20.0 * dt_ctrl)))
 
-    if reset_every is not None:
-        print(f"[C3] Reset mode: resetting arm + box every {reset_every} steps "
-              f"({reset_every * dt_ctrl:.2f} s)")
-
     while sim_time < max_time:
-        # ---- periodic state reset ----------------------------------------
-        if reset_every is not None and step > 0 and step % reset_every == 0:
-            print(f"[C3] Reset at step {step} (t={sim_time:.2f}s)")
-            plant.SetPositions(plant_ctx, panda_model, init_q)
-            plant.SetVelocities(plant_ctx, np.zeros(n_v))
-            plant.SetFreeBodyPose(
-                plant_ctx, obj_body,
-                ad.RigidTransform(ad.RotationMatrix(), task_cfg["init_xyz"])
-            )
-
         current_q = plant.GetPositions(plant_ctx)
         current_v = plant.GetVelocities(plant_ctx)
 
@@ -998,27 +869,6 @@ def main():
                 f"goal_dist={dist:.3f} m"
             )
 
-        # Drake VTK frame capture: one PNG per stride ticks (streamed to disk
-        # so RAM stays flat — OOM-safe path for 16s runs).  mode_timeline.csv
-        # gets one row per captured frame for paint_mode_text.py to consume.
-        if drake_cam is not None and step % args.drake_frames_stride == 0:
-            _cam_ctx = drake_cam.GetMyContextFromRoot(context)
-            _img = drake_cam.color_image_output_port().Eval(_cam_ctx)
-            _arr = np.asarray(_img.data, dtype=np.uint8)  # (H, W, 4) RGBA
-            try:
-                from PIL import Image as _PILImage
-                _PILImage.fromarray(_arr, mode="RGBA").save(
-                    drake_frames_dir / f"frame_{step:06d}.png", optimize=False)
-            except ImportError:
-                import imageio.v2 as _imageio
-                _imageio.imwrite(
-                    drake_frames_dir / f"frame_{step:06d}.png", _arr)
-            _mode = getattr(mpc, "last_mode", "n/a")
-            _switch = getattr(mpc, "last_switch_reason", None)
-            _switch_name = _switch.name if _switch is not None else ""
-            mode_timeline_fp.write(
-                f"{step},{sim_time:.4f},{_mode},{_switch_name}\n")
-
         # 1 kHz OSC inner loop. Sub-step 0 uses the u_opt just computed by
         # the full planner+OSC path (still applied via FixValue above); each
         # subsequent sub-step re-reads the plant state, calls
@@ -1047,7 +897,6 @@ def main():
             _gate_F_W = None
             _gate_n_BA = None
             _gate_ia_ee = None
-            _pp_contact_pt = None
             _n_pairs = _cr.num_point_pair_contacts()
             for _i in range(_n_pairs):
                 _info = _cr.point_pair_contact_info(_i)
@@ -1065,12 +914,6 @@ def main():
                     _gate_F_W   = np.asarray(_Fvec, dtype=float).reshape(3)
                     _gate_n_BA  = np.asarray(_pp.nhat_BA_W, dtype=float).reshape(3)
                     _gate_ia_ee = (_ia in formulator._ee_geom_ids)
-                    # §7.74: contact point in world for pitch-probe.
-                    try:
-                        _pp_contact_pt = np.asarray(
-                            _info.contact_point(), dtype=float).reshape(3)
-                    except Exception:
-                        _pp_contact_pt = None
                     break
             print(f"[DRAKE-CONTACT] step={step} n_pairs={_n_pairs} "
                   f"ee_box_normal={_eebox_fmag:.3f}", flush=True)
@@ -1103,68 +946,8 @@ def main():
                 flush=True,
             )
 
-            # §7.74 [PITCH-PROBE]: EE_z, box CoM z, contact z on box face
-            # (world frame), tip angle from vertical.  Tip = angle between
-            # box body +Z and world +Z, computed as acos(R(q)[2,2]) which is
-            # gimbal-lock-free at 90 deg (the observed §7.73 outcome).
-            if args.pitch_probe:
-                _qw = float(_box_q[0]); _qx = float(_box_q[1])
-                _qy = float(_box_q[2]); _qz = float(_box_q[3])
-                _r22 = 1.0 - 2.0 * (_qx*_qx + _qy*_qy)
-                _r22 = max(-1.0, min(1.0, _r22))
-                _tip_deg = float(np.degrees(np.arccos(_r22)))
-                _ee_z_now = float(ee_pos[2])
-                _box_z_com = float(current_q[obj_z_idx])
-                if _pp_contact_pt is not None:
-                    _cz = float(_pp_contact_pt[2])
-                    _cz_rel = _cz - _box_z_com
-                    _has_contact = 1
-                    _cz_str = f"{_cz:+.5f}"
-                    _cz_rel_str = f"{_cz_rel:+.5f}"
-                else:
-                    _has_contact = 0
-                    _cz_str = "nan"
-                    _cz_rel_str = "nan"
-                print(f"[PITCH-PROBE] step={step} t={sim_time:.3f}s "
-                      f"ee_z={_ee_z_now:+.5f} box_z_com={_box_z_com:+.5f} "
-                      f"contact_z={_cz_str} contact_z_rel_com={_cz_rel_str} "
-                      f"has_contact={_has_contact} tip_deg={_tip_deg:.2f}",
-                      flush=True)
         except Exception as _e:
             print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
-
-        # Goal-reach + settle (opt-in via --early-exit-goal-d).  Mark the
-        # first tick that hits the threshold, then continue for
-        # --goal-settle-time seconds so the video shows the arrival before
-        # breaking.  Pre-reach behavior unchanged.
-        if args.early_exit_goal_d is not None:
-            _ex_obj_xy = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
-            _ex_gd = float(np.linalg.norm(_ex_obj_xy - target_xy))
-            # Reference push_t/goal_params.yaml requires BOTH position AND
-            # orientation to succeed. When --early-exit-orient-err is set, also
-            # gate on |Δyaw| — matches reference SamplingC3Controller success
-            # check (position_success_threshold + orientation_success_threshold).
-            _orient_ok = True
-            _abs_dyaw = None
-            if args.early_exit_orient_err is not None:
-                _abs_dyaw = abs(_dyaw)  # already computed above from current box quat
-                _orient_ok = _abs_dyaw <= args.early_exit_orient_err
-            if _goal_reach_step is None and _ex_gd <= args.early_exit_goal_d and _orient_ok:
-                _goal_reach_step = step
-                _goal_reach_t = sim_time
-                _settle_until_t = sim_time + float(args.goal_settle_time)
-                _orient_note = (f" orient_err={_abs_dyaw:.4f}rad <= "
-                                f"{args.early_exit_orient_err:.4f}rad"
-                                if _abs_dyaw is not None else "")
-                print(f"[GOAL-REACH] step={step} t={sim_time:.3f}s "
-                      f"goal_d={_ex_gd:.4f}m <= threshold={args.early_exit_goal_d:.4f}m"
-                      f"{_orient_note} "
-                      f"-> settling +{args.goal_settle_time:.2f}s then breaking")
-            if _goal_reach_step is not None and sim_time >= _settle_until_t:
-                print(f"[GOAL-SETTLE-DONE] step={step} t={sim_time:.3f}s "
-                      f"(reached step={_goal_reach_step} at t={_goal_reach_t:.3f}s) "
-                      f"-> breaking sim loop")
-                break
 
     print("[C3] Simulation complete.")
     if isinstance(mpc, SamplingC3Controller):
@@ -1255,65 +1038,9 @@ def main():
             print(f"[VIDEO] VideoWriter.Save() failed: "
                   f"{type(_vw_err).__name__}: {_vw_err}", flush=True)
 
-    if mode_timeline_fp is not None:
-        mode_timeline_fp.close()
-        print(f"[VIDEO] mode_timeline -> {drake_frames_dir / 'mode_timeline.csv'}")
-
-    # §7.74 auto-encode: run paint_mode_text.py on the captured Drake frames
-    # when either the goal was reached OR --force-save-video was set.
-    # Non-success runs stay silent unless --force-save-video, to keep sweep
-    # output clean.
-    _goal_reached = _goal_reach_step is not None
-    if drake_frames_dir is not None and (args.force_save_video or _goal_reached):
-        _video_out = args.video_out or f"results/{stem}.mp4"
-        _video_out_path = Path(_video_out)
-        _video_out_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[VIDEO] encoding {drake_frames_dir} -> {_video_out_path}  "
-              f"(goal_reached={_goal_reached}, "
-              f"force_save={args.force_save_video})")
-        import subprocess as _sp
-        _visualizer_dir = (Path(__file__).resolve().parent
-                           / "tools" / "visualizer")
-        # Compute encode fps so video plays at 1× real-time (video_duration
-        # == max_time). Frames captured at stride N control-steps produce
-        # (steps_run / stride) frames total; encoding at (frame_count /
-        # max_time) fps yields sim_duration = playback_duration.
-        _frame_count = len(list(drake_frames_dir.glob("frame_*.png")))
-        _fps_dyn = max(1.0, _frame_count / max_time) if _frame_count else 30.0
-        if args.hud_video:
-            _paint = _visualizer_dir / "paint_full_hud.py"
-            _paint_argv = [
-                sys.executable, str(_paint),
-                "--frames-dir", str(drake_frames_dir),
-                "--log-path", str(_log_path),
-                "--output", str(_video_out_path),
-                "--fps", f"{_fps_dyn:.3f}",
-            ]
-        else:
-            _paint = _visualizer_dir / "paint_mode_text.py"
-            _paint_argv = [
-                sys.executable, str(_paint),
-                "--frames-dir", str(drake_frames_dir),
-                "--output", str(_video_out_path),
-                "--fps", f"{_fps_dyn:.3f}",
-            ]
-        _rc = _sp.run(_paint_argv).returncode
-        if _rc == 0:
-            print(f"[VIDEO] mp4 saved -> {_video_out_path}  "
-                  f"(hud={'full' if args.hud_video else 'minimal'})")
-        else:
-            print(f"[VIDEO] {_paint.name} failed rc={_rc}")
-
-    # §7.74 side-load the log to a Windows sink (or any secondary path).
-    if args.extra_log_path is not None:
-        import shutil as _sh
-        _dst = Path(args.extra_log_path)
-        _dst.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            _sh.copy2(_log_path, _dst)
-            print(f"[LOG-COPY] {_log_path} -> {_dst}")
-        except Exception as _e:
-            print(f"[LOG-COPY] failed: {type(_e).__name__}: {_e}")
+    # (In-sim frame encode + extra-log copy pruned 2026-08-05:
+    #  scripts/make_run_video.sh renders post-hoc from the run log;
+    #  scripts/sync_results_to_d.sh mirrors results/ to the D sink.)
 
 
 if __name__ == "__main__":
