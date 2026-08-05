@@ -865,9 +865,14 @@ class SamplingC3Controller:
           * planner has no last_x_seq (cold start, or free mode where
             the IK tracker — not the C3 solver — drives p_ee_des)
         """
-        # §7.32 — FAITHFUL-DESIRED-STATE: the planner's predicted velocity
-        # is fed undamped (alpha = 1.0) to match the reference's
-        # `ydot_des = traj.EvalDerivative(t, 1)` (osc_tracking_data.cc:87-111).
+        # §7.32 — FAITHFUL-DESIRED-STATE. CORRECTION 2026-08-05: this
+        # path injects the planner state's VELOCITY SLOTS — that is NOT
+        # the reference mechanism. Reference ydot_des =
+        # traj.EvalDerivative(t, 1) (osc_tracking_data.cc:91-99) is the
+        # derivative of the POSITION knot track (knot differences / dt),
+        # which compute_torque_from_trajectory already derives from the
+        # multi-knot _traj_c3. This flag therefore stays False as an
+        # off-reference extra; kept only as a falsification lever.
         # Honor the documented opt-in flag: when use_velocity_feedforward is
         # False (default), return None so callers pass None to the OSC and
         # v_err falls back to -v_ee_now. Diagnostic [VFF] reads the same flag
@@ -4070,7 +4075,26 @@ class SamplingC3Controller:
             # = 0.375 s of look-ahead), so OSC has continuous forward-motion
             # info as it evaluates at increasing t_sim between planner solves.
             _use_ee_space = bool(getattr(self.base_mpc, "use_ee_space", False))
+            # 2026-08-05 completion of the p150 QP-copy wiring: THIS
+            # multi-knot trajectory is what the OSC actually tracks in c3
+            # mode. The reference builds these knots from x_sol_
+            # (GetStateSolution, cc:1703-1717) and its OSC derives
+            # ydot_des from the trajectory derivative
+            # (osc_tracking_data.cc:91-99) — so both the position track
+            # AND the implied velocity feedforward come from the final-QP
+            # copy. p150 rewired only _p_ee_des (2-knot fallback
+            # branches); the primary branch below still read the z copy.
+            # NOTE: use_velocity_feedforward (state-velocity-SLOT
+            # injection) is NOT the reference mechanism and stays False —
+            # its docstring's reference claim is corrected there.
+            # Kill-switch shared with p150: REFCONF_OSC_TARGET_QP_COPY=0.
             _x_seq_full = getattr(self.base_mpc, "last_x_seq", None)
+            if os.environ.get("REFCONF_OSC_TARGET_QP_COPY", "1") == "1":
+                _x_qp_full = getattr(self.base_mpc, "last_x_qp_seq", None)
+                if (_x_qp_full is not None and hasattr(_x_qp_full, "shape")
+                        and _x_qp_full.ndim == 2
+                        and _x_qp_full.shape[0] >= 2):
+                    _x_seq_full = _x_qp_full
             _dt_plan = float(getattr(self.base_mpc, "dt", 0.075))
             # Near-goal (pose regime): planner uses dt_pose. Trajectory
             # knot spacing must match so the OSC eval times land on the
