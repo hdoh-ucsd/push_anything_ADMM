@@ -4171,12 +4171,29 @@ class SamplingC3Controller:
                 # 2026-07-19 revision: prior port used raw z (comment on
                 # line 3479 misread reference); reference cc:1757-1761
                 # clearly z-freezes every knot.
+                # 2026-08-05 knot-timestamp conformance (cc:1715-1718):
+                # reference knots = x_sol[0..N-1] INCLUDING knot 0 (= x0,
+                # the current state — the pursuit anchor), and
+                # timestamps[i] = t_context + filtered_solve_time + i·dt.
+                # Port previously used knots x_seq[1..N] anchored at
+                # _sim_t_c3 with NO filtered_solve_time offset — shifting
+                # which plan point the OSC chases each instant (measured
+                # as the zero-net-approach orbit in the p152
+                # contact-sustain investigation). Port fst is the same
+                # EMA-filtered solve wall time as reference cc:1394
+                # (steady ≈22 ms < dt_ctrl, so no permanent clamp; the
+                # early-run decay from the dt init briefly clamps to
+                # knot 0 = hold current state, same as reference under
+                # slow warmup solves).
+                _fst = float(getattr(self.base_mpc,
+                                     "_filtered_solve_time", 0.0))
                 _knots = np.array([
-                    _x_seq_full[i][7:10] for i in range(1, _N_plan + 1)
+                    _x_seq_full[i][7:10] for i in range(0, _N_plan)
                 ], dtype=float).T
                 _sh_c3 = self._c3_track_z()   # ref cc:1757-1759 z_height
                 _knots[2, :] = _sh_c3   # z-freeze every knot
-                _ts = [_sim_t_c3 + i * _dt_plan for i in range(_N_plan)]
+                _ts = [_sim_t_c3 + _fst + i * _dt_plan
+                       for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
                 # 2026-07-19 trajectory-log for descent audit (c3 mode).
                 # x_seq layout for EE-space: [box_q(7), p_ee(3), box_v(6),
