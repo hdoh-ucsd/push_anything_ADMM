@@ -188,6 +188,52 @@ class C3PlusMPC:
         # True until the first solve (so a missing flag doesn't trip the cap).
         self.last_converged: bool = True
 
+    def _emit_reference_plan_diag(self, x_seq, u_seq) -> None:
+        """Mirror the reference's verbose plan diagnostics.
+
+        sampling_based_c3_controller.cc:1344-1378 prints, per knot:
+          - "Right side of complementarity": E x + F λ + H u + c
+          - "Complementarity violation":     λ · (E x + F λ + H u + c)
+          - "Dynamically feasible ee current plan":     x[0:3]
+          - "Dynamically feasible object current plan": x[n_q-7 : n_q]
+        The port's EE-space layout is x = [box_q(7), p_ee(3), box_v(6),
+        v_ee(3)], so the EE slice is [7:10] and the object pose slice is
+        [0:7] — the reference's own indices are NOT copied verbatim (they
+        assume its actor-first layout); the SLOTS are matched instead.
+        """
+        try:
+            _f = self.formulator
+            E = getattr(_f, "_last_E", None)
+            F = getattr(_f, "_last_F", None)
+            H = getattr(_f, "_last_H", None)
+            c = getattr(_f, "_last_c", None)
+            lam_h = getattr(self.solver, "_last_lambda_anitescu_horizon", None)
+            N = len(u_seq)
+            print(f"[C3-PLAN] step={self._mpc_step} "
+                  f"--- reference verbose plan dump (cc:1344-1378) ---",
+                  flush=True)
+            if E is not None and lam_h is not None and lam_h.size:
+                print("[C3-PLAN] right side of complementarity "
+                      "(E x + F lam + H u + c), per knot:", flush=True)
+                for i in range(min(N, len(lam_h))):
+                    _eta = (E @ x_seq[i] + F @ lam_h[i]
+                            + H @ u_seq[i] + c)
+                    _viol = float(np.dot(lam_h[i], _eta))
+                    print(f"[C3-PLAN]   k={i} eta_min={_eta.min():+.5f} "
+                          f"eta_max={_eta.max():+.5f} "
+                          f"|lam|={np.linalg.norm(lam_h[i]):.4f} "
+                          f"violation=lam.eta={_viol:+.5f}", flush=True)
+            # Plan knots: EE (slot 7:10) and object pose (slot 0:7).
+            for _tag, _sl in (("ee", slice(7, 10)), ("object", slice(0, 7))):
+                print(f"[C3-PLAN] {_tag} current plan, per knot:", flush=True)
+                for i in range(len(x_seq)):
+                    _v = np.asarray(x_seq[i][_sl], dtype=float)
+                    print("[C3-PLAN]   k=%d %s" % (
+                        i, " ".join(f"{q:+.5f}" for q in _v)), flush=True)
+        except Exception as _e:      # diagnostic must never break a run
+            print(f"[C3-PLAN] diag error {type(_e).__name__}: {_e}",
+                  flush=True)
+
     def compute_control(self,
                         current_q:  np.ndarray,
                         current_v:  np.ndarray,
@@ -565,6 +611,19 @@ class C3PlusMPC:
                   f"delta_pos={_delta_pos_next*1000:.2f}mm  "
                   f"(ref cc:1394,1460)", flush=True)
             self._filtered_solve_time_logged += 1
+
+        # ---- Reference verbose diagnostics (sampling_based_c3_controller.cc
+        # :1344-1378). Mirrors, in the reference's own order and formulas:
+        #   "Right side of complementarity:"  E x + F λ + H u + c   per knot
+        #   "Complementarity violation:"      λ · (E x + F λ + H u + c)
+        #   "Dynamically feasible ee/object current plan:"  per-knot EE and
+        #                                                   object plan
+        # Enable with DIAG_C3_PLAN=1 (optionally DIAG_C3_PLAN_AT_STEP=N to
+        # emit only at one tick). Off = zero cost.
+        if os.environ.get("DIAG_C3_PLAN", "0") == "1":
+            _at = os.environ.get("DIAG_C3_PLAN_AT_STEP", "")
+            if (not _at) or int(_at) == int(self._mpc_step):
+                self._emit_reference_plan_diag(x_seq, u_seq)
 
         # 5. Store predicted trajectory + u[0] for next-step linearization
         self.last_x_seq = x_seq        # (N+1, n_x)
