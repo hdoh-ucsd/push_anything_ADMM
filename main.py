@@ -843,9 +843,32 @@ def main():
         # mpc.compute_control_osc_only using the cached planner output, and
         # re-applies torque. This mirrors dairlib's decoupled OSC ticking at
         # osc_params.yaml `controller_frequency: 1000`.
+        # [F1K] 1 kHz contact-force aggregation. The physics and OSC run at
+        # 1 kHz but [GATE-CONTACT] samples force once per planner tick
+        # (13 Hz) — a 75x decimation that hides the stick-slip transients
+        # which are the only thing that moves the T (delivered mean 2.5 N <
+        # stiction 4.53 N; motion happens in unseen spikes). Aggregate the
+        # EE-object |F| across every sub-step and report min/mean/max plus
+        # the fraction of sub-steps above the stiction threshold.
+        _f1k_vals = []
         for _osc_i in range(_N_OSC_PER_OUTER):
             sim_time += _DT_OSC
             simulator.AdvanceTo(sim_time)
+            try:
+                _cr1k = plant.get_contact_results_output_port().Eval(plant_ctx)
+                _fm = 0.0
+                for _ci in range(_cr1k.num_point_pair_contacts()):
+                    _in1k = _cr1k.point_pair_contact_info(_ci)
+                    _pa, _pb = _in1k.point_pair().id_A, _in1k.point_pair().id_B
+                    if ((_pa in formulator._ee_geom_ids
+                         and _pb in formulator._manipuland_geom_ids)
+                            or (_pb in formulator._ee_geom_ids
+                                and _pa in formulator._manipuland_geom_ids)):
+                        _fm = float(np.linalg.norm(_in1k.contact_force()))
+                        break
+                _f1k_vals.append(_fm)
+            except Exception:
+                pass
             if _osc_i == _N_OSC_PER_OUTER - 1:
                 break
             _cur_q = plant.GetPositions(plant_ctx)
@@ -855,6 +878,17 @@ def main():
                 _cur_q, _cur_v, plant_ctx, sim_time)
             _total_i = _tau_g_i[:n_u] + _u_osc
             plant.get_actuation_input_port().FixValue(plant_ctx, _total_i)
+        if _f1k_vals:
+            _fa = np.asarray(_f1k_vals)
+            _n_contact_1k = int((_fa > 1e-6).sum())
+            if _n_contact_1k > 0:
+                _stick_thr = 4.53   # mu_comb(0.3,1.0)*m*g, report-only
+                print(f"[F1K] step={step} sub={len(_fa)} "
+                      f"contact_sub={_n_contact_1k} "
+                      f"F(min/mean/max)=({_fa.min():.2f}/"
+                      f"{_fa[_fa>1e-6].mean():.2f}/{_fa.max():.2f})N "
+                      f"above_stiction={int((_fa > _stick_thr).sum())}",
+                      flush=True)
         step     += 1
 
         # Sink 3 vs Sink 4 diagnostic: Drake-realized contact force on the
