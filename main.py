@@ -948,6 +948,38 @@ def main():
                 flush=True,
             )
 
+            # [OSC-DEBUG] face-normal / tangential decomposition — the
+            # port's analog of the reference's osc_debug tracking channels.
+            # Quantifies FACE-SKATING: how much of the delivered force and
+            # of the EE's actual motion is press (along −n_face_out, into
+            # the face) vs slide (tangential). Emitted only when a real
+            # EE-object contact exists this tick.
+            if _gate_F_W is not None and _n_face_out is not None:
+                _n_hat = np.asarray(_n_face_out, dtype=float).reshape(3)
+                _n_nrm = float(np.linalg.norm(_n_hat))
+                if _n_nrm > 1e-9:
+                    _n_hat = _n_hat / _n_nrm
+                    # Force ON THE BOX: press = component along −n (into
+                    # the face); tangential = the rest (friction drag).
+                    _Fb = np.asarray(_F_on_box, dtype=float).reshape(3)
+                    _F_press = float(-np.dot(_Fb, _n_hat))
+                    _F_tan   = float(np.linalg.norm(
+                        _Fb + _F_press * _n_hat))
+                    # EE motion this tick: press-directed vs tangential.
+                    _ee_prev = getattr(mpc, "_oscdbg_prev_ee", None)
+                    _d_ee = (np.asarray(ee_pos) - _ee_prev
+                             if _ee_prev is not None else np.zeros(3))
+                    _d_press = float(-np.dot(_d_ee, _n_hat))
+                    _d_tan   = float(np.linalg.norm(
+                        _d_ee + _d_press * _n_hat))
+                    print(f"[OSC-DEBUG] step={step} "
+                          f"F_press={_F_press:+.3f}N F_tan={_F_tan:.3f}N "
+                          f"dEE_press={_d_press*1000:+.3f}mm "
+                          f"dEE_tan={_d_tan*1000:.3f}mm "
+                          f"n=({_n_hat[0]:+.3f},{_n_hat[1]:+.3f},"
+                          f"{_n_hat[2]:+.3f})", flush=True)
+            mpc._oscdbg_prev_ee = np.asarray(ee_pos, dtype=float).copy()
+
         except Exception as _e:
             print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
 
