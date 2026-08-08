@@ -484,6 +484,22 @@ class C3Solver:
         TOT         = n_x + n_lam + n_u
         total_dim   = N * TOT + n_x
 
+        # LCS scaling (reference C3::ScaleLCS, c3.cc:203-212 — a BASE-class
+        # step, so it applies to every projection variant, Lorentz included).
+        # scale = ||A||/||D||; D *= s; E,c,H /= s. Internal λ = λ_phys / s;
+        # un-scaled back to Newtons at the end of this method (c3.cc:350-353).
+        # Added 2026-08-08 when the duplicate formulator-side scaling was
+        # removed, so this path keeps its conditioning.
+        _lcs_scale_c3 = 1.0
+        if (getattr(self, "_scale_lcs_in_solver", True)
+                and E is not None and D is not None
+                and np.linalg.norm(D) > 1e-12):
+            _lcs_scale_c3 = float(np.linalg.norm(A) / np.linalg.norm(D))
+            D     = D     * _lcs_scale_c3
+            E     = E     / _lcs_scale_c3
+            H     = (H / _lcs_scale_c3) if H is not None else H
+            c_lcs = (c_lcs / _lcs_scale_c3) if c_lcs is not None else c_lcs
+
         # Per-step λ slot offsets (within an n_lam-sized block).
         # ST layout: γ=[0:n_c), λ_n=[n_c:2n_c), λ_t=[2n_c:6n_c).
         # Anitescu layout: single λ block [0:4n_c) — SLN/SLT are not
@@ -760,6 +776,19 @@ class C3Solver:
             self._last_lambda_t_horizon = np.zeros((N, 0))
             self._last_lambda_anitescu_first = np.zeros(0)
             self._last_lambda_anitescu_horizon = np.zeros((N, 0))
+
+        # LCS-scaling un-scale (reference c3.cc:350-353 `lambda_sol_ *=
+        # AnDn_`): the ADMM solved with λ_internal = λ_phys / scale, so
+        # multiply the published views back into Newtons. Unconditional on
+        # the scale value — matching the reference, which has no guard.
+        if _lcs_scale_c3 != 1.0:
+            for _attr_c3 in ("_last_lambda_n_first", "_last_lambda_t_first",
+                             "_last_lambda_n_horizon", "_last_lambda_t_horizon",
+                             "_last_lambda_anitescu_first",
+                             "_last_lambda_anitescu_horizon"):
+                _v_c3 = getattr(self, _attr_c3, None)
+                if _v_c3 is not None and hasattr(_v_c3, "size") and _v_c3.size:
+                    setattr(self, _attr_c3, _v_c3 * _lcs_scale_c3)
 
         # ---- Contact diagnostics (Phase 2: LCP projection) --------------
         self._diag_step += 1
@@ -1139,6 +1168,16 @@ class C3Solver:
             E     = E     / _lcs_scale
             c_lcs = c_lcs / _lcs_scale
             H     = H     / _lcs_scale
+            # 2026-08-08: this is now the SOLE scaling site (the duplicate
+            # in lcs_formulator was removed — it made this recompute to
+            # exactly 1.0 and thereby disabled the un-scale below, leaving
+            # every published λ at λ_phys/scale = 5.05× too large).
+            if not getattr(self, "_lcs_scale_banner", False):
+                self._lcs_scale_banner = True
+                print(f"[LCS-SCALE] solver-side (sole site, ref "
+                      f"C3::ScaleLCS): scale={_lcs_scale:.4f} — λ published "
+                      f"in Newtons via ×{_lcs_scale:.4f} un-scale "
+                      f"(c3.cc:350-353)", flush=True)
 
         # ---------------------------------------------------------------
         # QP cost: P = 2·diag(Q,_,_,_,_, R block, _,_,...)·etc + ρ·I

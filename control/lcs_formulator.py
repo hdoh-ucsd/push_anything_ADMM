@@ -2179,35 +2179,28 @@ class LCSFormulator:
             c_lcs = c_an
 
         # -----------------------------------------------------------------
-        # 5.5. Reference-conformant LCS scaling (scale_lcs: true).
+        # 5.5. LCS scaling REMOVED here 2026-08-08 — moved to the solver.
         # -----------------------------------------------------------------
-        # Mirrors c3/core/lcs.cc:46 ScaleComplementarityDynamics.
-        # scale = ||A|| / ||D||;  D *= scale;  E/=scale;  c/=scale;  H/=scale.
-        # Algebraically preserves 0 ≤ λ ⊥ Ex+Fλ+Hu+c ≥ 0 and x_{k+1} = ...
-        # (D*scale·λ · 1/scale-nothing... actually the state-update D·λ term
-        # gets D_new·λ_new where λ_new = λ_old/scale — but the port passes
-        # the raw λ_seq from ADMM which now solves for a rescaled λ. The
-        # planner's λ output is scaled; the wrapper's contact-force use
-        # (_derive_force_command → OSC feedforward) reads λ_n as-is. This
-        # matches reference: reference downstream also sees the scaled λ.
-        # Guard against zero D (no contact predicted this tick — leave
-        # matrices unscaled to avoid divide-by-zero).
-        if self._scale_lcs:
-            _A_norm = float(np.linalg.norm(A))
-            _D_norm = float(np.linalg.norm(D))
-            if _D_norm > 1e-12:
-                _scale = _A_norm / _D_norm
-                D     = D * _scale
-                E_lcs = E_lcs / _scale
-                H_lcs = H_lcs / _scale
-                c_lcs = c_lcs / _scale
-                # One-shot log so we can verify the scaling is active.
-                if not getattr(self, "_scale_lcs_logged", False):
-                    print(f"[LCS-SCALE] scale_lcs active: ||A||={_A_norm:.3f} "
-                          f"||D_raw||={_D_norm:.3f} scale={_scale:.3f} "
-                          f"(D scaled UP, E/H/c scaled DOWN by same factor)",
-                          flush=True)
-                    self._scale_lcs_logged = True
+        # Reference structure: LCSFactory produces a RAW (physical) LCS;
+        # `C3::ScaleLCS()` (c3.cc:203-212) scales it inside the SOLVER and
+        # `C3::Solve` un-scales λ back to physical units before publishing
+        # (c3.cc:350-353 `lambda_sol_ *= AnDn_`). So every LCS consumer
+        # outside the solver — cost simulation, diagnostics, the surrogate
+        # evaluators — sees physical matrices, and every λ consumer sees
+        # Newtons.
+        #
+        # The port previously scaled HERE as well as in the solver. The
+        # double application was idempotent for the dynamics (the solver's
+        # recomputed scale came out exactly 1.0 because ||D_scaled|| ==
+        # ||A|| by construction) but it silently DISABLED the solver's
+        # un-scale, which is guarded by `_lcs_scale != 1.0`. Net effect:
+        # every λ reported to the executor, the force-command thresholds
+        # and the logs was the internal value λ_phys/scale — 5.05× too
+        # large at the measured push_t scale of 0.198. The prior comment
+        # here ("reference downstream also sees the scaled λ") was wrong:
+        # c3.cc:350-353 un-scales unconditionally.
+        # `self._scale_lcs` is retained as the reference `scale_lcs` option
+        # and is now read by the solver.
 
         # -----------------------------------------------------------------
         # 6. Stash for diagnostics + return (mirror R^7 path's API).
