@@ -119,14 +119,16 @@ class LCSFormulator:
         self._normal_velocity_level = False
         self._normal_phi_clamp_v_cap = None
 
-        # 2026-07-26 arc-2 A1 fix: replace the point-mass EE (_EE_MASS=1 kg,
-        # `1/m_ee · I` in B/D/H/F rows) with the arm's operational-space
-        # inverse inertia `M_ee_op_inv = J_ee_arm · M_arm^-1 · J_ee_arm.T`.
-        # This is the same 3×3 SPD matrix the reference full-plant LCS
-        # produces at the EE Cartesian block (via c3/multibody/lcs_factory.cc).
-        # 2026-07-28 defaults flip: reference-conformant arm-Cartesian
-        # inertia is the DEFAULT (was REFCONF_ARM_CART_INERTIA env gate).
-        self._use_arm_cartesian_inertia = True
+        # LCS EE inertia: the reference's 0.057 kg free-floating point mass
+        # (end_effector_simple_model.urdf). The arc-2 "A1" arm operational-
+        # space inertia was REMOVED 2026-08-08 — its premise ("the same 3x3
+        # the reference full-plant LCS produces") was false: the reference's
+        # LCS plant has no arm at all (AddLCSModelsToPlant loads EE + ground
+        # + objects only). See the LCS-EE-MASS block in
+        # linearize_discrete_ee_space for the measured 152x divergence and
+        # its mechanism. Flag retained (False) only so the removal is
+        # explicit to readers; nothing reads it.
+        self._use_arm_cartesian_inertia = False
         self._arm_cart_inertia_banner_done = False
 
         # Lazy-initialized box half-extents (queried from geometry inspector
@@ -1501,7 +1503,12 @@ class LCSFormulator:
     # scalar ρ ADMM augmentation, reference uses per-slot G matrix.
     # Without matching G, no combination of parameters yields convergent
     # ADMM under the reference qvector. Reverted to 1.0.
-    _EE_MASS = 1.0   # kg
+    # Reference literal: examples/sampling_c3/urdf/end_effector_simple_model
+    # .urdf `<mass value="0.057"/>` — the EE body in the reference's LCS
+    # plant (a free-floating point mass on 3 prismatic joints; the arm is
+    # NOT in that plant). Was 1.0 kg = 17.5x too heavy; corrected 2026-08-08
+    # together with the removal of the arm operational-space inertia path.
+    _EE_MASS = 0.057   # kg
 
     def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
@@ -1643,30 +1650,35 @@ class LCSFormulator:
         tau_g_box = tau_g_full[BS:BE]                     # (6,)
         M_box_inv = np.linalg.inv(M_box)
 
-        # 2026-07-26 arc-2 A1 fix: compute operational-space inverse inertia
-        # at the EE Cartesian block. Matches reference full-plant LCS coupling
-        # `J_ee · M_full^-1 · (J_ee^T u + J_c^T λ)`. When flag OFF, falls
-        # back to the port's isotropic `1/m_ee · I` (byte-identical to
-        # pre-fix behaviour). Both branches produce a (3, 3) SPD matrix so
-        # all downstream `(1/m_ee) · X` sites are rewritten as `M_ee_op_inv @ X`
-        # uniformly regardless of which branch fired.
-        if self._use_arm_cartesian_inertia:
-            # Arm block: v[0:BS] (arm dofs first, box floating dofs after).
-            M_arm      = M_full[0:BS, 0:BS]                    # (n_arm, n_arm)
-            M_arm_inv  = np.linalg.inv(M_arm)
-            J_ee_arm   = J_ee_full[:, 0:BS]                    # (3, n_arm)
-            M_ee_op_inv = J_ee_arm @ M_arm_inv @ J_ee_arm.T   # (3, 3) SPD
-            if not self._arm_cart_inertia_banner_done:
-                self._arm_cart_inertia_banner_done = True
-                _diag = M_ee_op_inv.diagonal()
-                _eff_m = np.where(_diag > 1e-9, 1.0 / _diag, np.inf)
-                print(f"[ARM-CART-INERTIA] active: M_ee_op_inv diag={_diag}  "
-                      f"eff m_ee=({_eff_m[0]:.3f},{_eff_m[1]:.3f},{_eff_m[2]:.3f}) kg  "
-                      f"(replaces _EE_MASS={float(self._EE_MASS)} isotropic)",
-                      flush=True)
-        else:
-            _m_ee_iso = float(self._EE_MASS)
-            M_ee_op_inv = (1.0 / _m_ee_iso) * np.eye(3)        # (3, 3) isotropic
+        # EE inertia in the LCS = the REFERENCE's free-floating point mass.
+        # 2026-08-08: the arc-2 "A1 fix" (arm Cartesian operational-space
+        # inverse inertia, M_ee_op_inv = J_arm M_arm^-1 J_arm^T) is REMOVED —
+        # it was a port-only addition, not a conformance fix. The reference
+        # LCS plant contains NO ARM: `AddLCSModelsToPlant`
+        # (sampling_c3_utils.cc:175-190, called from
+        # franka_sampling_c3_controller.cc:99-108) loads exactly
+        # end_effector_simple_model.urdf + ground + object models, and that
+        # URDF is a point mass on 3 prismatic joints with mass 0.057 kg.
+        # Measured divergence at the canonical seed pose: the arm operational
+        # -space effective EE mass eigenvalues were 1.79-21.14 kg (mean ~8.7)
+        # = 152x the reference; the prior isotropic _EE_MASS=1.0 was 17.5x.
+        # Consequence of the too-heavy EE: with u bounded at +/-50 N over
+        # N=5 x 0.1 s the planner could barely translate the EE, so it bought
+        # object progress with phantom lambda instead (object cost weight 200
+        # vs EE 0.01) -> plans with no approach phase. The same term enters
+        # F = dt*(J_box M_box^-1 J_box^T + J_ee M_ee_op_inv J_ee^T), where a
+        # 152x-small EE contribution suppressed eta's response to lambda and
+        # pinned the eq-12 projection in case-2 (lambda wins) = the phantom
+        # endorsement. Isotropic by construction: the reference's 3 prismatic
+        # joints give an isotropic 0.057 kg point mass with no arm coupling.
+        _m_ee_iso = float(self._EE_MASS)
+        M_ee_op_inv = (1.0 / _m_ee_iso) * np.eye(3)        # (3, 3) isotropic
+        if not self._arm_cart_inertia_banner_done:
+            self._arm_cart_inertia_banner_done = True
+            print(f"[LCS-EE-MASS] reference point-mass EE: m_ee="
+                  f"{_m_ee_iso:.4f} kg isotropic "
+                  f"(end_effector_simple_model.urdf; arm operational-space "
+                  f"inertia removed 2026-08-08)", flush=True)
 
         # Box's N(q) sub-block: q_dot_box = N_box · box_v.
         N_box = np.zeros((BOX_N_Q, BOX_N_V))
