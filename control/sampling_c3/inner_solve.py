@@ -337,6 +337,15 @@ class InnerSolver:
             params, "Kp_for_ee_pd_rollout", 100.0))
         self._Kd_ee_pd_rollout = float(getattr(
             params, "Kd_for_ee_pd_rollout", 0.5))
+        # Reference builds the cost-LCS at N·res knots and dt/res
+        # (sampling_based_c3_controller.cc:1658-1659, push_t
+        # sampling_c3plus_options.yaml `lcs_dt_resolution: 4`), then ZOHs the
+        # coarse plan onto that fine grid, rolls out, and downsamples. The
+        # refinement is load-bearing: at the coarse planning dt the PD rollout
+        # has rho(A_cl) = 2.61 (dt=0.05) / 16.41 (dt=0.1) and diverges; at
+        # dt/4 it is 0.94 / 0.88 and is stable.
+        self._lcs_dt_resolution = max(1, int(getattr(
+            params, "lcs_dt_resolution", 4)))
         self._pgs_max_iter = int(getattr(params, "cost_lcs_pgs_max_iter", 50))
         self._pgs_tol      = float(getattr(params, "cost_lcs_pgs_tol", 1.0e-6))
         self._pgs_reg      = float(getattr(params, "cost_lcs_pgs_reg", 1.0e-8))
@@ -725,7 +734,9 @@ class InnerSolver:
                          E_c, F_c, H_c, c_lcs_c,
                          J_n_c, J_t_c, phi_c, mu_c) = \
                             self.formulator.linearize_discrete_ee_space(
-                                plant_ctx, _dt_effective, n_ee_top_k=2,
+                                plant_ctx,
+                                _dt_effective / self._lcs_dt_resolution,
+                                n_ee_top_k=2,
                                 force_top_k_ee_box=True)
                         # Cost-LCS admission audit for the crux instrumentation
                         # (task 2): number of EE-manipuland rows in the actual
@@ -739,12 +750,17 @@ class InnerSolver:
                             float(phi_c[i])
                             for i, info in enumerate(_cost_cinfo)
                             if info.get("tag", "") == "EE-BOX"]
+                        # Fine cost-LCS built at dt/res → ZOH the coarse plan
+                        # onto it and downsample the rollout.
+                        _cost_lcs_rate = self._lcs_dt_resolution
                     except Exception:
                         # Fall back to planner LCS if the top-2 build fails.
+                        # That LCS is at the COARSE dt, so no upsampling.
                         A_c, B_c, D_c, d_c = A, B, D, d
                         E_c, F_c, H_c, c_lcs_c = E_lcs, F_lcs, H_lcs, c_lcs
                         _n_ee_t_cost = -1        # signals cost-LCS build failed
                         _ee_t_phi_cost = []
+                        _cost_lcs_rate = 1
                     # Restore plant to the state expected by downstream
                     # callers (matches the pre-existing R^7 path's convention
                     # of leaving plant_ctx at current_q/current_v).
@@ -762,6 +778,7 @@ class InnerSolver:
                         lcp_max_iter=self._pgs_max_iter,
                         lcp_tol=self._pgs_tol,
                         lcp_reg=self._pgs_reg,
+                        upsample_rate=_cost_lcs_rate,
                     )
                     c_C3_raw = traj_cost(XX_sim, UU_sim,
                                          Q_obj, R_obj, QN_obj, x_ref)
