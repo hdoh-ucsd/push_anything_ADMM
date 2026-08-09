@@ -205,8 +205,14 @@ progress_params:
   #   num_control_loops_to_wait_position: 5 → 0.375 s
   # Use _s form to bypass params.py:239 100Hz compat shim (which turns
   # `_n_loops: 5` into 0.05 s, ≈0.67 ticks at port planner 13.3 Hz).
-  num_control_loops_to_wait_s:          0.375
-  num_control_loops_to_wait_position_s: 0.375
+  # 2026-08-09: switched to the reference's own unit (control loops).
+  # push_t/parameters/progress_params_c3plus.yaml:41-42 = 5 / 5. The previous
+  # `_s: 0.375` was derived as 5 x 0.075 s, but 0.075 is the `anything` task's
+  # planning_dt — push_t's is 0.05 (pose) / 0.1 (position). Worse, the seconds
+  # value is divided by dt_ctrl (0.1) downstream, so it resolved to 4 loops
+  # where the reference specifies 5. Loop form is exact and rate-independent.
+  num_control_loops_to_wait_loops:          5
+  num_control_loops_to_wait_position_loops: 5
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
@@ -232,7 +238,11 @@ progress_params:
   # kToReposUnproductive firing every ~17 c3 steps — window fills too
   # quickly, dispatcher exits c3 before contact accumulates useful push.
   progress_enforced_cost_drop:        0.01
-  progress_enforced_over_duration_s:  13.5
+  # 2026-08-09: reference unit is loops — push_t/progress_params_c3plus.yaml:45
+  # = 180. The previous 13.5 s came from 180 x 0.075 (`anything`'s planning_dt,
+  # not push_t's) and then resolved to 13.5 / dt_ctrl 0.1 = 135 loops — 25%
+  # short of the reference's 180. Loop form removes both conversion errors.
+  progress_enforced_over_n_loops_ref: 180
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
