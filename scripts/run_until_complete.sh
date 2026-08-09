@@ -43,15 +43,26 @@ fi
 echo "[run-until-complete] attempt at $(date '+%F %T'), boot age $(cut -d. -f1 /proc/uptime)s" \
   >> "$ATTEMPT_LOG"
 
+# Highest SIM step reached in a log. Must be anchored to [GATE-CONTACT], which
+# emits exactly once per sim step (verified: max == count). A bare
+# `grep -o "step=[0-9]*"` is wrong — [CONTACT-ELEM] and [CONSENSUS-STEP] carry
+# their own counters that run far ahead of the sim step (66697 and 37732 in a
+# 9689-step log), so `tail -1` returns whichever inflated counter printed last
+# and the comparison below could discard the longer partial.
+sim_steps() {
+  grep -ao "\[GATE-CONTACT\] step=[0-9]*" "$1" 2>/dev/null \
+    | tail -1 | grep -o "[0-9]*$"
+}
+
 # main.py opens RESULT_PATH with "w", so it truncates on startup and a killed
 # attempt's progress would be destroyed by the next one. Preserve it first,
 # keeping only the furthest-progressed partial (they are ~40 MB each).
 if [ -f "$RESULT_PATH" ]; then
-  prev_steps=$(grep -ao "step=[0-9]*" "$RESULT_PATH" 2>/dev/null | tail -1 | cut -d= -f2)
+  prev_steps=$(sim_steps "$RESULT_PATH")
   prev_steps=${prev_steps:-0}
   best_steps=0
   if [ -f "results/.${RUN_NAME}.best" ]; then
-    best_steps=$(grep -ao "step=[0-9]*" "results/.${RUN_NAME}.best" 2>/dev/null | tail -1 | cut -d= -f2)
+    best_steps=$(sim_steps "results/.${RUN_NAME}.best")
     best_steps=${best_steps:-0}
   fi
   if [ "$prev_steps" -gt "$best_steps" ]; then
@@ -73,6 +84,6 @@ if grep -aq "Simulation complete" "$RESULT_PATH" 2>/dev/null; then
   exit 0
 fi
 
-LAST_STEP=$(grep -ao "step=[0-9]*" "$RESULT_PATH" 2>/dev/null | tail -1)
+LAST_STEP="step=$(sim_steps "$RESULT_PATH")"
 echo "[run-until-complete] INCOMPLETE (rc=$rc, $LAST_STEP) — will retry" >> "$ATTEMPT_LOG"
 exit 1   # non-zero so systemd Restart=always fires again
