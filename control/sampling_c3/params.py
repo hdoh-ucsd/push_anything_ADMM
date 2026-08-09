@@ -257,6 +257,21 @@ class ProgressParams:
 class SamplingParams:
     sampling_strategy:                   SamplingStrategy = SamplingStrategy.kRandomOnCircle
 
+    # --- Adaptive c3 contact height (spec 2026-08-08) --------------------
+    # The c3-mode press plane is derived from LIVE object geometry rather
+    # than a hardcoded per-task constant:
+    #     z_track = obj_z_center + contact_height_offset_above_mid
+    # The reference's z_height (-0.004 in ITS frame) is frame-bound; the
+    # frame-INVARIANT statement of the same geometry is "pusher-sphere
+    # centre 5 mm above the object mid-plane", which is this default.
+    # For push_t this reproduces the reference's 0.025 in port frame
+    # exactly; three past frame changes silently invalidated the
+    # hand-translated constant, which is what this removes.
+    # Set offset to 0.0 for true mid-face (better physics, a deliberate
+    # 5 mm departure — see the spec's conformance section).
+    use_adaptive_contact_height:         bool  = True
+    contact_height_offset_above_mid:     float = 0.005
+
     # Total samples evaluated each control loop:
     #   1                                (current EE / "k=0")
     # + (1 if previous-repos target valid)
