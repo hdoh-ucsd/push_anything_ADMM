@@ -1171,6 +1171,13 @@ class SamplingC3Controller:
         fires every tick with elapsed=0, and the system behaves like
         pre-Stage-2b within the sim's noise floor."""
         self._step += 1
+        # Capture the object's REST height once on the first tick — the
+        # adaptive c3 press plane uses it as the object half-height (a body
+        # resting on the z=0 ground has its origin one half-height up).
+        if getattr(self, "_init_obj_z", None) is None:
+            self._init_obj_z = float(current_q[self._obj_z_idx])
+        # Cache the live plant context for the adaptive press-plane query.
+        self._ctx_for_z = plant_ctx
         t_step_start = time.perf_counter()
 
         # Gating: how many OSC ticks per planner solve?
@@ -5279,13 +5286,86 @@ class SamplingC3Controller:
 
 
     def _c3_track_z(self) -> float:
-        """Reference z_height (cc:1290 entry ceiling, cc:1759 c3 z-freeze).
-        Falls back to sampling_height when the yaml doesn't set z_height
-        (legacy port behavior; the reference keeps them separate)."""
-        _zh = getattr(self.params.sampling_params, "z_height", None)
-        if _zh is not None:
-            return float(_zh)
-        return float(self.params.sampling_params.sampling_height)
+        """c3-mode press plane (cc:1290 entry ceiling, cc:1759 z-freeze).
+
+        ADAPTIVE (spec docs/superpowers/specs/2026-08-08-adaptive-contact-
+        height-design.md): derived from LIVE object geometry instead of a
+        hardcoded per-task constant —
+
+            z_track = obj_z_center + contact_height_offset_above_mid
+
+        The reference's `z_height = -0.004` is frame-BOUND; the same geometry
+        stated frame-invariantly is "pusher-sphere centre 5 mm above the
+        object mid-plane", which is the default offset. For push_t this
+        reproduces the reference's 0.025 in port frame EXACTLY, and it stays
+        correct across frame changes — three of which silently invalidated
+        the hand-translated constant.
+
+        Clamps (corrected vs the spec draft, which had the upper bound
+        wrong): the sphere CENTRE must stay at/below the object's top face
+        so contact lands on the SIDE face — the sphere legitimately pokes
+        above the top (reference: 4.5 mm at z=0.025), so `obj_top -
+        r_pusher` would have been over-tight and would have broken the
+        exact-reference match. Lower bound keeps the sphere off the table.
+
+        Falls back to explicit yaml z_height, then sampling_height, and
+        never raises — a geometry query failure must not kill a run.
+        """
+        sp = self.params.sampling_params
+        _explicit = getattr(sp, "z_height", None)
+        if not bool(getattr(sp, "use_adaptive_contact_height", False)):
+            return float(_explicit if _explicit is not None
+                         else sp.sampling_height)
+        try:
+            _off = float(getattr(sp, "contact_height_offset_above_mid", 0.005))
+            _ctx = getattr(self, "_ctx_for_z", None)
+            if _ctx is None:
+                raise ValueError("no cached plant context yet")
+            _z_c = float(self.plant.EvalBodyPoseInWorld(
+                _ctx, self.obj_body).translation()[2])
+            _half = self._object_half_height()
+            _r = float(PUSHER_RADIUS)
+            _z = _z_c + _off
+            _lo = _r + 1.0e-3                 # sphere clears the table
+            _hi = _z_c + _half                # centre stays on the side face
+            _z_cl = min(max(_z, _lo), _hi) if _hi > _lo else max(_z, _lo)
+            if not getattr(self, "_c3_z_banner", False):
+                self._c3_z_banner = True
+                print(f"[C3-Z] adaptive press plane: obj_z_center="
+                      f"{_z_c:.4f} + offset {_off:+.4f} -> z_track="
+                      f"{_z_cl:.4f} m (clamp [{_lo:.4f},{_hi:.4f}], "
+                      f"r_pusher={_r:.4f}, half_h={_half:.4f})", flush=True)
+            return float(_z_cl)
+        except Exception as _e:
+            _fb = float(_explicit if _explicit is not None
+                        else sp.sampling_height)
+            if not getattr(self, "_c3_z_fallback_warned", False):
+                self._c3_z_fallback_warned = True
+                print(f"[C3-Z] adaptive height unavailable "
+                      f"({type(_e).__name__}: {_e}) — falling back to "
+                      f"{_fb:.4f} m", flush=True)
+            return _fb
+
+    def _object_half_height(self) -> float:
+        """Half-height of the manipuland along world z.
+
+        Taken as the object's centre height at REST on the ground plane:
+        a body resting on z=0 has its origin exactly one half-height up.
+        Both tasks satisfy this (T init z=0.020 for 0.040-tall bars; box
+        init z=0.050 for a 0.100 cube), and it is shape-agnostic with no
+        geometry-API dependency and no per-task constant. Captured once on
+        the first call — do that before the object is disturbed, which
+        holds because `_c3_track_z` is first reached at c3 entry.
+        """
+        _cached = getattr(self, "_obj_half_h_cache", None)
+        if _cached is not None:
+            return _cached
+        _z0 = float(self._init_obj_z) if getattr(
+            self, "_init_obj_z", None) is not None else None
+        if _z0 is None or _z0 <= 1.0e-6:
+            raise ValueError("object rest height unavailable")
+        self._obj_half_h_cache = _z0
+        return _z0
 
     def print_perf_summary(self) -> None:
         avg_ms = (sum(self._step_times_ms) / len(self._step_times_ms)
