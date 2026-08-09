@@ -66,7 +66,11 @@ def _parse_triple(s: str) -> np.ndarray:
 def parse_log(path: Path):
     """Return dict step → {box_p, box_q, ee_p, mode, switch, sim_t}."""
     frames = {}
-    with open(path) as f:
+    # errors="replace" to match the other log readers here and in
+    # paint_log_sidepanel.py: the 1 kHz OSC sub-loop can interleave a write
+    # mid-way through a multi-byte glyph (the logs carry φ/λ/ρ), leaving a
+    # stray continuation byte that would otherwise abort the whole render.
+    with open(path, errors="replace") as f:
         for line in f:
             if line.startswith("[GATE-CONTACT]"):
                 m = RE_GATE.match(line)
