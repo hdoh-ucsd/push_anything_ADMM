@@ -43,6 +43,24 @@ fi
 echo "[run-until-complete] attempt at $(date '+%F %T'), boot age $(cut -d. -f1 /proc/uptime)s" \
   >> "$ATTEMPT_LOG"
 
+# main.py opens RESULT_PATH with "w", so it truncates on startup and a killed
+# attempt's progress would be destroyed by the next one. Preserve it first,
+# keeping only the furthest-progressed partial (they are ~40 MB each).
+if [ -f "$RESULT_PATH" ]; then
+  prev_steps=$(grep -ao "step=[0-9]*" "$RESULT_PATH" 2>/dev/null | tail -1 | cut -d= -f2)
+  prev_steps=${prev_steps:-0}
+  best_steps=0
+  if [ -f "results/.${RUN_NAME}.best" ]; then
+    best_steps=$(grep -ao "step=[0-9]*" "results/.${RUN_NAME}.best" 2>/dev/null | tail -1 | cut -d= -f2)
+    best_steps=${best_steps:-0}
+  fi
+  if [ "$prev_steps" -gt "$best_steps" ]; then
+    mv "$RESULT_PATH" "results/.${RUN_NAME}.best"
+    echo "[run-until-complete]   kept prior partial (step=$prev_steps) as .best" \
+      >> "$ATTEMPT_LOG"
+  fi
+fi
+
 "$PY" main.py "$TASK" --sampling-c3 "$CONFIG" --max-time "$MAX_TIME" \
   --name "$RUN_NAME" > "$SHELL_LOG" 2>&1
 rc=$?
