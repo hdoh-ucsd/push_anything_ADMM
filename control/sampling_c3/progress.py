@@ -112,6 +112,24 @@ class ProgressTracker:
         self._n_updates: int = 0
 
     # ------------------------------------------------------------------
+    # Window sizing
+    # ------------------------------------------------------------------
+    def _window_loops(self, loops_attr: str, seconds_attr: str) -> int:
+        """Resolve a progress window to a count of CONTROL LOOPS.
+
+        The reference states these windows in control loops and ticks its
+        progress tracker once per controller update, so a loop count is the
+        reference-native unit. When the `_loops` field is set we use it
+        verbatim; otherwise fall back to the legacy seconds form divided by
+        dt_ctrl (which the pre-2026-08-09 configs rely on).
+        """
+        n = getattr(self.params, loops_attr, None)
+        if n is not None:
+            return int(n)
+        return int(round(float(getattr(self.params, seconds_attr))
+                         / self._dt_ctrl))
+
+    # ------------------------------------------------------------------
     # Per-step update
     # ------------------------------------------------------------------
 
@@ -126,9 +144,12 @@ class ProgressTracker:
         # Cap history length at the larger of the two relevant windows
         # (2026-06-25 reconciliation: read from _s fields, convert to ticks)
         cap = max(
-            int(round(self.params.num_control_loops_to_wait_s / self._dt_ctrl)),
-            int(round(self.params.num_control_loops_to_wait_position_s / self._dt_ctrl)),
-            int(round(self.params.progress_enforced_over_duration_s / self._dt_ctrl)),
+            self._window_loops("num_control_loops_to_wait_loops",
+                               "num_control_loops_to_wait_s"),
+            self._window_loops("num_control_loops_to_wait_position_loops",
+                               "num_control_loops_to_wait_position_s"),
+            self._window_loops("progress_enforced_over_n_loops_ref",
+                               "progress_enforced_over_duration_s"),
         ) + 1
         for hist in (self._c3_cost_history,
                      self._config_cost_history,
@@ -183,9 +204,11 @@ class ProgressTracker:
         # Port previously inverted this (used _position when near_goal=True,
         # i.e. CLOSE to goal). Fixed by flipping condition.
         _use_position = not near_goal
-        wait_s = (self.params.num_control_loops_to_wait_position_s
-                  if _use_position else self.params.num_control_loops_to_wait_s)
-        wait = int(round(wait_s / self._dt_ctrl))
+        wait = (self._window_loops("num_control_loops_to_wait_position_loops",
+                                   "num_control_loops_to_wait_position_s")
+                if _use_position
+                else self._window_loops("num_control_loops_to_wait_loops",
+                                        "num_control_loops_to_wait_s"))
 
         m = self.params.track_c3_progress_via
 
@@ -221,7 +244,8 @@ class ProgressTracker:
             # made yaml value 0.5 mean "0.5 raw cost units" — trivially
             # satisfied at 100k-scale costs. Now interpreted as a fraction
             # (0.5 = 50% cost drop required).
-            n = int(round(self.params.progress_enforced_over_duration_s / self._dt_ctrl))
+            n = self._window_loops("progress_enforced_over_n_loops_ref",
+                                   "progress_enforced_over_duration_s")
             if len(self._config_cost_history) < n + 1:
                 return True   # not enough history yet — give the benefit of the doubt
             window = self._config_cost_history[-(n + 1):]

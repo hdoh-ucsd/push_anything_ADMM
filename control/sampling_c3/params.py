@@ -171,6 +171,23 @@ class ProgressParams:
     num_control_loops_to_wait_s:         float = 0.60
     num_control_loops_to_wait_position_s: float = 0.30
 
+    # Reference-unit form. The reference expresses these as CONTROL LOOPS
+    # (push_t/parameters/progress_params_c3plus.yaml: num_control_loops_to_wait
+    # 5, progress_enforced_over_n_loops 180) and ticks its progress tracker
+    # once per controller update. When set, these are used as loop counts
+    # DIRECTLY and take precedence over the `_s` forms.
+    #
+    # Why they exist: the `_s` path round-trips loops → seconds → loops through
+    # a hardcoded 100 Hz shim (`_resolve_legacy_int_to_seconds`, ×0.01) and then
+    # `/ dt_ctrl` in ProgressTracker. At the port's 10 Hz control loop that
+    # silently rescales the reference values — push_t was running 135 loops
+    # where the reference specifies 180, and 4 where it specifies 5. The `_s`
+    # keys stay for the legacy configs whose 60/30 values really were authored
+    # as 100 Hz ticks; do NOT repurpose the bare int keys, the shim owns those.
+    num_control_loops_to_wait_loops:          Optional[int] = None
+    num_control_loops_to_wait_position_loops: Optional[int] = None
+    progress_enforced_over_n_loops_ref:       Optional[int] = None
+
     # Absolute-regression early-exit threshold (metres). When the current
     # pos_error minus the best pos_error since reset() exceeds this, the
     # dispatcher forces met_progress=False at wrapper.py:979 — regardless
