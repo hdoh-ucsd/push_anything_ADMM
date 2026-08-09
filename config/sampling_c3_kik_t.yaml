@@ -167,6 +167,11 @@ use_reference_pair_admission_planner_lcs: true
 use_cost_lcs_ranking: true
 Kp_for_ee_pd_rollout: 100.0
 Kd_for_ee_pd_rollout: 0.5
+# Reference push_t/parameters/sampling_c3plus_options.yaml:220. Cost-LCS is
+# built at N*res knots / dt/res and the coarse plan is zero-order-held onto it
+# (sampling_based_c3_controller.cc:1658-1659). Required for the PD rollout to
+# be stable: rho(A_cl)=16.41 at dt=0.1 vs 0.88 at dt=0.1/4.
+lcs_dt_resolution: 4
 
 # T-architecture rate decoupling (Stage 2b adds the machinery; Stage 2c
 # flips values). At defaults dt_osc == dt_mpc so N_plan = 1 and the

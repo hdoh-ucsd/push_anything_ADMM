@@ -807,6 +807,14 @@ class SamplingC3Params:
     # Scalars broadcast to per-axis EE PD gains during cost simulation.
     Kp_for_ee_pd_rollout: float = 100.0
     Kd_for_ee_pd_rollout: float = 0.5
+    # Reference `lcs_dt_resolution` (push_t sampling_c3plus_options.yaml:220).
+    # The cost-LCS is built at N·res knots / dt÷res
+    # (sampling_based_c3_controller.cc:1658-1659) and the coarse plan is
+    # zero-order-held onto it. Load-bearing for stability, not accuracy: the
+    # PD rollout has rho(A_cl)=2.61 (dt=0.05) / 16.41 (dt=0.1) at the coarse
+    # planning dt and diverges; at dt/4 it is 0.94 / 0.88. res=1 reproduces
+    # the pre-fix divergent behaviour.
+    lcs_dt_resolution: int = 4
     # PGS LCP knobs (Tikhonov regularization matches reference
     # simulate_config.regularized=true, min_exp=-8).
     cost_lcs_pgs_max_iter: int = 50
@@ -1169,6 +1177,7 @@ class SamplingC3Params:
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
             Kp_for_ee_pd_rollout     = float(raw.get("Kp_for_ee_pd_rollout", 100.0)),
             Kd_for_ee_pd_rollout     = float(raw.get("Kd_for_ee_pd_rollout", 0.5)),
+            lcs_dt_resolution        = int(raw.get("lcs_dt_resolution", 4)),
             cost_lcs_pgs_max_iter    = int(raw.get("cost_lcs_pgs_max_iter", 50)),
             cost_lcs_pgs_tol         = float(raw.get("cost_lcs_pgs_tol", 1.0e-6)),
             cost_lcs_pgs_reg         = float(raw.get("cost_lcs_pgs_reg", 1.0e-8)),
