@@ -1672,6 +1672,14 @@ class SamplingC3Controller:
         # slot to `target_idx`, at which point `_best_sample_index` is
         # overwritten to match (see :2343-nearby edit).
         self._all_sample_costs  = c_samples
+        # Reference cc:1128 semantics: best_sample_index_ is the ARGMIN and
+        # stays the argmin even while c3 executes from the current EE — it
+        # identifies the BEST sample (feeding the reference's separate
+        # best-plan output ports, cc:1323 c3_best_plan_ / cc:1848
+        # all_sample_locations_[best_sample_index_]), NOT the executed one.
+        # Do NOT "correct" it to 0 in c3 mode: that would diverge. It is
+        # currently write-only here only because the port does not yet
+        # publish the best-plan ports.
         self._best_sample_index = k_star
 
         # === B3c-prime selection audit (env-gated, hot-path-cheap) ===========
@@ -5260,7 +5268,18 @@ class SamplingC3Controller:
         else:
             _cmp = "transition"
         print(f"[GS] step={step} mode={mode} switch={switch_reason.name} "
-              f"best_k={best_k} best_src={best_src} "
+              # NOTE: these two answer DIFFERENT questions and were
+              # previously easy to misread as contradictory.
+              #   argmin_k  = index of the LOWEST-COST sample this tick
+              #               (reference best_sample_index_, cc:1128 — it
+              #               stays the argmin even in c3 mode, feeding the
+              #               reference's separate best-plan output ports at
+              #               cc:1323/1848; it is NOT the executed sample).
+              #   exec_src  = where the EXECUTED motion comes from. In c3
+              #               mode this is always "current" by construction
+              #               (c3 pushes from where the EE already is); in
+              #               free mode it is the pursued sample's label.
+              f"argmin_k={best_k} exec_src={best_src} "
               f"pursued={self._pursued_target_source.name} "
               f"curr_cost={c_samples[0]:.2f} repos_cost={repos_cost_str} "
               f"best_other={best_other_str} "
