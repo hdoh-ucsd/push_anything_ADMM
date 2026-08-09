@@ -28,6 +28,7 @@ MPC parameters (reference-conformant defaults, dairlib push_anything_dev@257e3ed
 """
 import argparse
 import os
+import stat
 import sys
 from pathlib import Path
 import yaml
@@ -360,8 +361,35 @@ def main():
     # path is scripts/make_run_video.sh over the run log.)
 
     _log_path = f"results/{stem}.txt"
-    _log      = open(_log_path, "w", buffering=1)
-    sys.stdout = _Tee(sys.__stdout__, _log)
+    # Guard against the shell ALSO redirecting stdout to this same path
+    # (`main.py --name X > results/X.txt`). That is the natural thing to type,
+    # because --name X is what makes us write results/X.txt -- but it gives two
+    # independent file handles at independent offsets writing one file, which
+    # shreds the log: lines spliced mid-token, whole lines lost, invalid UTF-8
+    # from half-written glyphs, trailing NUL blocks. It cost a day of analysis
+    # on 2026-08-09 (counts undercounted, a banner "missing" that was really
+    # overwritten). If stdout already points at this file, skip the tee so
+    # there is exactly one writer.
+    _tee_stdout = True
+    try:
+        _st_out = os.fstat(sys.__stdout__.fileno())
+        if stat.S_ISREG(_st_out.st_mode):
+            _st_log = os.stat(_log_path) if os.path.exists(_log_path) else None
+            if (_st_log is not None
+                    and (_st_out.st_dev, _st_out.st_ino)
+                    == (_st_log.st_dev, _st_log.st_ino)):
+                _tee_stdout = False
+    except (OSError, ValueError, AttributeError):
+        pass    # non-file stdout (tty/pipe) — tee normally
+
+    if _tee_stdout:
+        _log = open(_log_path, "w", buffering=1)
+        sys.stdout = _Tee(sys.__stdout__, _log)
+    else:
+        print(f"[C3] NOTE: stdout is already redirected to {_log_path}; "
+              f"skipping the internal tee to avoid double-writing it "
+              f"(drop the shell redirect — --name already writes this file).",
+              flush=True)
     print(f"[C3] Log: {_log_path}")
 
     print(f"[C3] Task: {task_name}")
