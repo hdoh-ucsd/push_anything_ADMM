@@ -35,20 +35,55 @@ TASK="push_t"
 STRIDE=2
 FPS=10
 KEEP_FRAMES=0
+REALTIME=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --task)   TASK="$2";   shift 2 ;;
     --stride) STRIDE="$2"; shift 2 ;;
     --fps)    FPS="$2";    shift 2 ;;
+    --realtime) REALTIME=1; shift ;;
     --keep-frames) KEEP_FRAMES=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
 LOG="results/${RUN_NAME}.txt"
-OUT="results/${RUN_NAME}_sidepanel.mp4"
+# Stride is in the filename: renders at different strides are different
+# artifacts (stride 2 = frame-accurate detail, stride 24 = motion visible
+# over a long run). A stride-agnostic name silently clobbered the previous
+# render -- and its D-drive copy -- when re-rendering the same run.
 [ -f "$LOG" ] || { echo "no such log: $LOG" >&2; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ffmpeg not found" >&2; exit 1; }
+
+# --realtime: play back at 1:1 with simulated time (1 s of video == 1 s of sim).
+# One frame covers `stride` planner ticks of `dt_sim` seconds each, and is shown
+# for 1/fps seconds, so real time requires stride * dt_sim == 1/fps, i.e.
+#   stride = 1 / (dt_sim * fps)
+# dt_sim is read from the log rather than assumed, since it differs per task and
+# per regime (push_t is 0.1 s; the pose/position swap changes the LCS dt but not
+# the controller tick that [STEP] timestamps).
+if [ "$REALTIME" = 1 ]; then
+  DT_SIM=$(python3 - "$LOG" <<'PY'
+import re, sys, collections
+t = open(sys.argv[1], errors="replace").read()
+ts = [(int(s), float(v)) for s, v in
+      re.findall(r"\[STEP\] step=(\d+) mode=\w+ t=([\d.]+)s", t)]
+ts = sorted(dict(ts).items())
+d = collections.Counter(round((b[1]-a[1])/(b[0]-a[0]), 6)
+                        for a, b in zip(ts, ts[1:]) if b[0] > a[0])
+print(d.most_common(1)[0][0] if d else 0.1)
+PY
+)
+  STRIDE=$(python3 -c "print(max(1, round(1.0/($DT_SIM*$FPS))))")
+  echo "[make_run_video] --realtime: dt_sim=${DT_SIM}s fps=${FPS} -> stride=${STRIDE}" \
+       "(1 s video == 1 s sim)"
+fi
+
+# Stride is in the filename: renders at different strides are different
+# artifacts (stride 2 = frame-accurate detail, stride 24 = motion visible
+# over a long run). A stride-agnostic name silently clobbered the previous
+# render -- and its D-drive copy -- when re-rendering the same run.
+OUT="results/${RUN_NAME}_sidepanel_s${STRIDE}.mp4"
 
 FRAMES_DIR="$(mktemp -d /tmp/${RUN_NAME}_frames.XXXX)"
 cleanup() { [ "$KEEP_FRAMES" = 1 ] || rm -rf "$FRAMES_DIR"; }
