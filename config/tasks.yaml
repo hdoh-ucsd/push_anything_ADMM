@@ -483,7 +483,13 @@ tasks:
   push_jack:
     object_type: jack
     link_name: jack_link
-    mass: 0.156              # 3 x 0.052, urdf/jack.sdf
+    mass: 0.156              # 3 x 0.052, urdf/jack.sdf (SIM)
+    # Reference plans with urdf/jack_control.sdf = 3 x 0.33 = 0.99 kg, 6.35x
+    # the sim mass. Not cosmetic: at the sim mass the LCS predicts a phantom
+    # LAUNCH (u=1 N across a 16 mm gap lifts the object 19.45 mm in the model,
+    # 0.00 mm in reality) that swamps the 5.11 mm the real topple needs, so the
+    # planner never plans the roll. At 0.99 kg the modelled launch is 0.00 mm.
+    controller_mass: 0.99
     friction: 0.3            # jack.sdf drake:mu_dynamic
     pusher_friction: 1.0
     mu_per_pair_type:        # sampling_c3plus_options.yaml mu_per_pair_type

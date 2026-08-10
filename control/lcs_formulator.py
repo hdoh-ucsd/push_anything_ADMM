@@ -22,6 +22,7 @@ Contact geometry:
     mu  : float        uniform friction coefficient from task config
 """
 import os
+import contextlib
 import numpy as np
 import pydrake.all as ad
 from pydrake.autodiffutils import (
@@ -55,7 +56,8 @@ class LCSFormulator:
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
                  object_shape: str = "box",
-                 mu_per_pair_type: dict | None = None):
+                 mu_per_pair_type: dict | None = None,
+                 controller_object_mass: float | None = None):
         """
         mu_per_pair_type : optional dict mapping contact-pair tag
             ("EE-BOX", "BOX-GND", "EE-GND") to a per-pair friction
@@ -65,6 +67,23 @@ class LCSFormulator:
         """
         self.plant = plant
         self.mu    = float(mu)
+        # Reference ships a SEPARATE, heavier object model for the CONTROLLER
+        # than for the sim, and the difference is task-specific:
+        #     push_t   push_t.sdf 1.0 kg  == push_t_control.sdf 1.0 kg   (1x)
+        #     jacktoy  jack.sdf 0.156 kg  vs jack_control.sdf 0.99 kg    (6.35x)
+        #     anything H_shape_texture.sdf 0.05 kg vs
+        #              H_shape_texture_controller.sdf 1.0 kg             (20x)
+        # i.e. the planning model is always ~1 kg regardless of the true mass.
+        # The port runs ONE plant for sim and control, so without this it plans
+        # at the SIM mass -- fine for push_t (they coincide), but 6.35x too
+        # light for the jack, where it makes the LCS predict a phantom LAUNCH:
+        # at 0.156 kg, u=1 N across a 16 mm gap lifts the object 19.45 mm in
+        # the model (physics: 0.00 mm) while a real topple needs only 5.11 mm,
+        # so the planner never plans the roll. At 0.99 kg the launch is 0.00 mm.
+        # None => use the plant's own mass (the historical behaviour).
+        self._controller_object_mass = (
+            None if controller_object_mass is None
+            else float(controller_object_mass))
         self._obj_body = obj_body
         self._object_shape = str(object_shape)
         self._mu_per_pair_type = (
@@ -1249,7 +1268,13 @@ class LCSFormulator:
             f.close()
 
     # ------------------------------------------------------------------
-    def linearize_discrete(self, context, dt: float, u_lin=None):
+    def linearize_discrete(self, context, *a, **kw):
+        """Reference-conformant controller mass applied around the build.
+        See _controller_inertia_scope."""
+        with self._controller_inertia_scope(context):
+            return self._linearize_discrete_impl(context, *a, **kw)
+
+    def _linearize_discrete_impl(self, context, dt: float, u_lin=None):
         self._last_planner_dt = float(dt)
         """
         Linearize the Drake plant into a discrete-time LCS at (q*, v*, u*).
@@ -1656,7 +1681,51 @@ class LCSFormulator:
     # together with the removal of the arm operational-space inertia path.
     _EE_MASS = 0.057   # kg
 
-    def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
+    @contextlib.contextmanager
+    def _controller_inertia_scope(self, context):
+        """Temporarily give the manipuland its CONTROLLER-model mass.
+
+        Drake carries mass/inertia as context PARAMETERS, so the swap is
+        per-context: the simulator's own context keeps the true sim mass and
+        the physics is untouched. Applied to both the double and autodiff
+        plants, since the LCS reads M/Cv/tau_g from one and the linearization
+        Jacobian from the other. Restores on exit even if the build throws.
+        """
+        if self._controller_object_mass is None or self._obj_body is None:
+            yield
+            return
+        pairs = []
+        try:
+            for pl, cx in ((self.plant, context),
+                           (self.plant_ad, self.context_ad)):
+                if pl is None or cx is None:
+                    continue
+                body = pl.GetBodyByName(self._obj_body.name())
+                M0 = body.CalcSpatialInertiaInBodyFrame(cx)
+                m0 = float(ad.ExtractValue(np.array([[M0.get_mass()]]))[0, 0]
+                           if hasattr(M0.get_mass(), "value") else M0.get_mass())
+                if m0 <= 0.0:
+                    continue
+                scale = self._controller_object_mass / m0
+                # Scaling the SpatialInertia's mass while holding com and unit
+                # inertia fixed scales the rotational inertia by the same
+                # factor, which is what a denser copy of the same shape gives.
+                Mnew = M0.__class__(M0.get_mass() * scale, M0.get_com(),
+                                    M0.get_unit_inertia())
+                body.SetSpatialInertiaInBodyFrame(cx, Mnew)
+                pairs.append((body, cx, M0))
+            yield
+        finally:
+            for body, cx, M0 in pairs:
+                body.SetSpatialInertiaInBodyFrame(cx, M0)
+
+    def linearize_discrete_ee_space(self, context, *a, **kw):
+        """Reference-conformant controller mass applied around the build.
+        See _controller_inertia_scope."""
+        with self._controller_inertia_scope(context):
+            return self._linearize_discrete_ee_space_impl(context, *a, **kw)
+
+    def _linearize_discrete_ee_space_impl(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
                                     force_top_k_ee_box: bool = False):
         self._last_planner_dt = float(dt)
