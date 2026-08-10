@@ -4283,6 +4283,20 @@ class SamplingC3Controller:
                     _ee_zs_str  = ",".join(f"{z:+.4f}" for z in _ee_zs)
                     _box_zs_str = ",".join(f"{z:+.4f}" for z in _box_zs)
                     _box_ys_str = ",".join(f"{y:+.4f}" for y in _box_ys)
+                    # Commanded EE target actually handed to the OSC this
+                    # tick (the z-frozen trajectory sampled at the same time
+                    # the executor samples it). Logged so the "does the planner
+                    # drive the EE THROUGH the object" question can be measured
+                    # rather than inferred from |x_err| magnitude alone.
+                    try:
+                        _pdes_dbg = np.asarray(
+                            _traj_c3.value(_sim_t_c3 + _fst), dtype=float).flatten()[:3]
+                    except Exception:
+                        _pdes_dbg = np.full(3, np.nan)
+                    print(f"[C3-PDES] step={self._step} "
+                          f"p_des=({_pdes_dbg[0]:+.4f},{_pdes_dbg[1]:+.4f},{_pdes_dbg[2]:+.4f}) "
+                          f"ee_now=({float(ee_pos_now[0]):+.4f},{float(ee_pos_now[1]):+.4f},"
+                          f"{float(ee_pos_now[2]):+.4f})", flush=True)
                     print(f"[C3-TRAJ] step={self._step} "
                           f"ee_now_z={float(ee_pos_now[2]):+.4f} "
                           f"planned_ee_z=[{_ee_zs_str}] "
