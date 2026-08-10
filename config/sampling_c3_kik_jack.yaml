@@ -1,19 +1,14 @@
 #
-# KNOWN DEVIATION -- reposition_params.traj_type.
-# jacktoy sets traj_type: 1, which in the REFERENCE enum
-# (parameter_headers/reposition_params.h:18-23  kSpline, kSpherical,
-# kCircular, kPiecewiseLinear) is kSpherical: the EE repositions along an arc
-# on a sphere of radius `sphere_radius` around the object -- the natural
-# partner of kRandomOnSphere, since the samples themselves lie on that sphere.
-# The port does NOT implement kSpherical (its enum is kStraightLine=0,
-# kSawtoothLine=1, kPiecewiseLinear=3, and only kPiecewiseLinear has a
-# tracker; repositioning actually runs through the IK tracker in
-# control/sampling_c3/ik.py). Writing 1 here would silently coerce to
-# kSawtoothLine -- a DIFFERENT and unimplemented trajectory -- so
-# kPiecewiseLinear is used instead and the gap is recorded here rather than
-# hidden. Expect reposition paths to cut across the sphere rather than arc
-# around it; if the jack's repositioning proves to be the binding constraint,
-# implementing kSpherical is the first thing to try.
+# reposition_params.traj_type: kSpherical -- jacktoy's traj_type 1. The EE
+# joins a sphere of radius `sphere_radius` (0.12 m) centred on the OBJECT,
+# arcs around it to the target's bearing, then leaves for the target
+# (reference reposition.cc RepositionSpherical). This is not cosmetic: the
+# jack stands 0.122 m tall, so the piecewise-linear traverse at
+# pwl_waypoint_height 0.06 passes within 3 mm of the jack's CENTRE -- the EE
+# bulldozes the object across the table. Measured on the arc the closest
+# approach is exactly 0.120 m, i.e. +32.5 mm clear of the jack's 0.0875 m tip
+# reach. pwl_waypoint_height is retained below only because other traj_types
+# read it; kSpherical never does.
 # =====================================================================
 # sampling_c3_kik_jack.yaml — controller config for the `push_jack` task.
 #
@@ -140,7 +135,7 @@ sampling_params:
   min_angle_from_vertical: 0.2
   max_angle_from_vertical: 1.95
 reposition_params:
-  traj_type: kPiecewiseLinear
+  traj_type: kSpherical
   speed: 0.2
   use_straight_line_traj_under_piecewise_linear: 0.008
   pwl_waypoint_height: 0.06
