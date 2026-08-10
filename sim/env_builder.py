@@ -258,6 +258,115 @@ def _tshape_sdf(cfg: dict) -> str:
 </sdf>"""
 
 
+def _hshape_sdf(cfg: dict) -> str:
+    """Low-CoM H, dimensionally conformant to the reference H_shape_texture.
+
+    Reference (examples/sampling_c3/urdf/H_shape_texture/) ships the H as four
+    convex MESH pieces. Their combined bounding box is 0.111 x 0.128 x 0.032 m,
+    with mass 1.0 kg and drake:mu_dynamic 0.3. The port has no mesh pipeline for
+    the manipuland (the sampler face tables and the LCS ground witnesses are
+    both analytic), so this reproduces the same envelope as three boxes, exactly
+    the way _tshape_sdf collapses the reference's two-link T into one body:
+
+        left  bar  x[-0.056,-0.032]  y[-0.064,+0.064]   0.024 x 0.128 x 0.032
+        right bar  x[+0.032,+0.056]  y[-0.064,+0.064]   0.024 x 0.128 x 0.032
+        crossbar   x[-0.032,+0.032]  y[-0.012,+0.012]   0.064 x 0.024 x 0.032
+
+    Conformant to the reference H: total mass 1.0 kg, mu_dynamic 0.3, overall
+    envelope, and the identical hydroelastic block used by both push_t.sdf and
+    H_shape_texture.sdf (modulus 3.0e7, resolution hint 0.18, dissipation 10).
+
+    DELIBERATE DEVIATION -- the low centre of mass. The reference H puts its CoM
+    at the geometric centre (<inertial><pose>0 0 0</pose>, i.e. 16 mm above the
+    base). `com_height_frac` (default 0.25) places it at 8 mm instead. Rationale:
+    the EE presses at sampling_height, which for a 32 mm object sits at or above
+    mid-height, so a centred CoM gives the push a tipping moment about the
+    leading bottom edge. Dropping the CoM increases the gravitational restoring
+    moment and biases the contact into sliding rather than rocking.
+
+    Inertia is computed for the actual 3-box geometry at uniform density about
+    the geometric centre, then parallel-axis reduced to the lowered CoM. That
+    reduction models "same envelope, mass biased toward the base" (a weighted
+    base plate); it is an approximation, since a genuinely redistributed body
+    would also change the in-plane terms slightly. izz is unaffected by a
+    z-shift and is therefore exact.
+    """
+    m  = cfg["mass"]
+    mu = cfg["friction"]
+    r, g, b, a = cfg["color_rgba"]
+    # Fraction of the object's height at which the CoM sits (0.5 = geometric
+    # centre = reference behaviour; lower = bottom-weighted).
+    com_frac = float(cfg.get("com_height_frac", 0.25))
+
+    HX, HY, HZ = 0.112, 0.128, 0.032          # overall envelope
+    ax, ay, az = 0.024, HY,    HZ             # side bar
+    cx, cy, cz = 0.064, 0.024, HZ             # crossbar
+    d_bar      = 0.044                        # side-bar |x| offset
+
+    scale = m / 1.0
+    # Uniform-density masses for the 3-box decomposition (0.4/0.4/0.2 at 1 kg).
+    Vb, Vc = ax * ay * az, cx * cy * cz
+    mb = m * Vb / (2.0 * Vb + Vc)
+    mc = m * Vc / (2.0 * Vb + Vc)
+
+    def _box_I(mm, u, v, w):
+        return (mm / 12.0 * (v * v + w * w),
+                mm / 12.0 * (u * u + w * w),
+                mm / 12.0 * (u * u + v * v))
+
+    bx, by, bz = _box_I(mb, ax, ay, az)
+    Cx, Cy, Cz = _box_I(mc, cx, cy, cz)
+    ixx_gc = 2.0 * bx + Cx
+    iyy_gc = 2.0 * (by + mb * d_bar ** 2) + Cy
+    izz_gc = 2.0 * (bz + mb * d_bar ** 2) + Cz
+
+    # CoM offset below the geometric centre (negative z in link frame).
+    z_com = (com_frac - 0.5) * HZ
+    ixx = ixx_gc - m * z_com ** 2
+    iyy = iyy_gc - m * z_com ** 2
+    izz = izz_gc
+
+    def _collision(name, pose, size):
+        return f"""      <collision name="{name}">
+        <pose>{pose}</pose>
+        <geometry><box><size>{size}</size></box></geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="{name}_vis">
+        <pose>{pose}</pose>
+        <geometry><box><size>{size}</size></box></geometry>
+        <material><diffuse>{r} {g} {b} {a}</diffuse></material>
+      </visual>"""
+
+    parts = "\n".join([
+        _collision("left_bar",  f"{-d_bar} 0 0 0 0 0", f"{ax} {ay} {az}"),
+        _collision("right_bar", f"{+d_bar} 0 0 0 0 0", f"{ax} {ay} {az}"),
+        _collision("crossbar",  "0 0 0 0 0 0",         f"{cx} {cy} {cz}"),
+    ])
+    return f"""<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="manipulated_object">
+    <link name="h_link">
+      <inertial>
+        <pose>0 0 {z_com:.6f} 0 0 0</pose>
+        <mass>{m}</mass>
+        <inertia>
+          <ixx>{ixx:.6e}</ixx><iyy>{iyy:.6e}</iyy><izz>{izz:.6e}</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+{parts}
+    </link>
+  </model>
+</sdf>"""
+
+
 # ---------------------------------------------------------------------------
 # Main builder
 # ---------------------------------------------------------------------------
@@ -476,10 +585,12 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         sdf_str = _sphere_sdf(task_cfg)
     elif obj_type == "tshape":
         sdf_str = _tshape_sdf(task_cfg)
+    elif obj_type == "hshape":
+        sdf_str = _hshape_sdf(task_cfg)
     else:
         raise ValueError(
             f"Unknown object_type '{obj_type}' in task config. "
-            "Use 'box', 'sphere', or 'tshape'."
+            "Use 'box', 'sphere', 'tshape', or 'hshape'."
         )
 
     object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
@@ -712,10 +823,15 @@ def compute_safe_init_arm_q(plant,
         # T occupies x∈[-0.07,+0.13], y∈[-0.08,+0.08], z half-extent 0.02.
         half_extent = abs(g_hat[0]) * 0.13 + abs(g_hat[1]) * 0.08
         obj_top_z   = init_xyz[2] + 0.02
+    elif obj_type == "hshape":
+        # H occupies x∈[-0.056,+0.056], y∈[-0.064,+0.064], z half-extent 0.016
+        # (see _hshape_sdf). Envelope is symmetric, unlike the T's.
+        half_extent = abs(g_hat[0]) * 0.056 + abs(g_hat[1]) * 0.064
+        obj_top_z   = init_xyz[2] + 0.016
     else:
         raise ValueError(
             f"compute_safe_init_arm_q: unknown object_type '{obj_type}' "
-            "(expected 'box', 'sphere', or 'tshape')."
+            "(expected 'box', 'sphere', 'tshape', or 'hshape')."
         )
 
     # SAFE-OFFSET target: xy offset opposite goal direction by
