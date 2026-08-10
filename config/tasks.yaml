@@ -460,3 +460,91 @@ tasks:
       d_push:           0.05
       w_ee_approach: 8000.0
       w_torque:         0.001
+
+  # ---------------------------------------------------------------------
+  # push_jack — reference `jacktoy` family (examples/sampling_c3/jacktoy).
+  #
+  # THE ONLY SE(3) TASK IN THE PORT. Every other task rests on a flat face,
+  # so its reachable pose set is {position} x {yaw} and a scalar goal_yaw
+  # suffices. The jack is a caltrop: three mutually orthogonal capsules that
+  # balance on a tripod of tip spheres and reorient by ROLLING onto a
+  # different tripod. Its goal orientation tilts out of the plane and is not
+  # any yaw, so it uses goal_quat (and main.py's SE(3) branches).
+  #
+  # Geometry/mass from urdf/jack.sdf (the SIM model): 3 capsules, r=0.025,
+  # l=0.125, 0.052 kg each. Note urdf/jack_control.sdf — the model the
+  # reference CONTROLLER plans with — declares 0.33 kg per capsule (0.99 kg
+  # total, 6.35x heavier). The port runs ONE plant for sim and control, so it
+  # cannot hold both; it uses the SIM mass, the same choice made for push_h.
+  #
+  # Frame: reference ground top is z=-0.029, port ground is z=0, so every
+  # reference z here is shifted +0.029.
+  # ---------------------------------------------------------------------
+  push_jack:
+    object_type: jack
+    link_name: jack_link
+    mass: 0.156              # 3 x 0.052, urdf/jack.sdf
+    friction: 0.3            # jack.sdf drake:mu_dynamic
+    pusher_friction: 1.0
+    mu_per_pair_type:        # sampling_c3plus_options.yaml mu_per_pair_type
+      EE-BOX:  1.0
+      BOX-GND: 0.4615
+      EE-GND:  0.4165
+
+    # Resting CoM height = h/sqrt(3) + r = 0.0625/sqrt(3) + 0.025 = 0.061084,
+    # the tripod rest. Reference goal_params resting_object_height 0.031971466
+    # + 0.029 = 0.060971 -- agreement to 0.1 mm confirms the frame shift.
+    init_xyz: [0.400, 0.300, 0.061084]
+    # sim_params.yaml q_init_object[0:4] — an exact tripod rest (verified: the
+    # three lowest tips agree to 2.7e-07 m; the 4th sits 72 mm clear).
+    init_quat: [-0.3347435, -0.026718954, 0.8878204, 0.31518626]
+
+    goal_xy: [0.450, 0.200]
+    # goal_params.yaml fixed_target_orientation. Also an exact tripod rest,
+    # but a DIFFERENT tripod: 97.0 deg of geodesic rotation from init, i.e.
+    # the task cannot be solved without physically rolling the jack over.
+    goal_quat: [0.8804762392171493, 0.27984814233312133,
+                -0.3647051996310009, -0.11591689595929514]
+    goal_yaw: 0.0            # inert — goal_quat takes precedence
+
+    color_rgba: [0.90, 0.45, 0.10, 1.0]
+    sampling_height: 0.069   # 0.04 + 0.029; unused by kRandomOnSphere
+    pwl_waypoint_height: 0.06   # reposition_params.yaml
+
+    cost:
+      # jacktoy/parameters/sampling_c3plus_options.yaml q_vector / w_Q.
+      use_reference_q_vector: true
+      w_Q: 45.0
+      q_vector_ee_pos:      [0.01, 0.01, 0.01]
+      q_vector_obj_quat:    [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos:     [200.0, 200.0, 120.0]
+      q_vector_ee_vel:      [5.0, 5.0, 5.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 2500.0     # jacktoy value (push_t: 1000)
+      q_quaternion_dependent_regularizer_fraction: 0.0
+
+      # --- the two SE(2) assumptions that MUST be disabled ---------------
+      # w_box_rp penalizes roll/pitch away from upright. For a flat-resting
+      # object that is a helpful regularizer; for the jack, roll and pitch
+      # ARE the task -- a nonzero weight would penalize the 97 deg roll the
+      # goal demands. w_yaw is the port-only rank-1 yaw form, meaningless for
+      # an out-of-plane goal and would fight the quaternion Hessian.
+      w_box_rp: 0.0
+      w_yaw: 0.0
+
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 10.0            # NOT push_h's 12490: the jack's CoM height
+                               # legitimately rises while it rolls over.
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 10.0
+      ee_target_z_offset_above_object: 0.06   # goal_params.yaml
+      w_terminal: 1.0
+      z_ee_target: 0.069
+      z_obj_target: 0.061084
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01

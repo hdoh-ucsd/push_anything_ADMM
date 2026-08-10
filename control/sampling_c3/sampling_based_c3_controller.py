@@ -163,6 +163,9 @@ class SamplingC3Controller:
             base_admm_iter=self._admm_iter,
             params=params,
         )
+        # SE(3) goal orientation [w,x,y,z]; None => planar yaw-only task.
+        # See set_goal_quat -- switches rot_error onto the geodesic angle.
+        self._goal_quat = None
         self.progress = ProgressTracker(params.progress_params,
                                         dt_ctrl=self._dt_ctrl)
         self.buffer   = SampleBuffer(
@@ -1157,6 +1160,20 @@ class SamplingC3Controller:
     # Main control entry
     # ------------------------------------------------------------------
 
+    def set_goal_quat(self, q):
+        """Install a full SE(3) goal orientation [w, x, y, z], or None.
+
+        Planar tasks leave this None and the rotation error stays the yaw
+        difference against target_yaw. The jack sets it, which switches
+        rot_error -- and therefore the ProgressTracker's rotation branch and
+        the goal-achievement latch -- onto the geodesic angle.
+        """
+        if q is None:
+            self._goal_quat = None
+            return
+        q = np.asarray(q, dtype=float).flatten()
+        self._goal_quat = q / float(np.linalg.norm(q))
+
     def compute_control(self,
                         current_q:  np.ndarray,
                         current_v:  np.ndarray,
@@ -1738,9 +1755,23 @@ class SamplingC3Controller:
         # which does NOT read rot_error at all (progress.py:195-198),
         # so downstream met_progress is bit-identical for box. Only the
         # T config that opts into kPosOrRotCost sees behavior change.
-        _yaw_now = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
-        _dy = _yaw_now - float(target_yaw)
-        rot_error_now = float(np.abs(np.arctan2(np.sin(_dy), np.cos(_dy))))
+        if self._goal_quat is not None:
+            # SE(3) task (the jack): the goal is a full quaternion and the
+            # object reorients out of plane, so a yaw extraction is not a
+            # rotation error at all -- two different resting tripods can share
+            # a yaw. Use the geodesic angle, which is what the reference
+            # success gate compares against orientation_success_threshold
+            # (AngleAxis(q_goal * q_now^-1).angle(), goal_generator.cc:218-221)
+            # and which reduces to |dyaw| for planar tasks.
+            _qn = np.asarray(obj_quat, dtype=float)
+            _nn = float(np.linalg.norm(_qn))
+            _qn = _qn / _nn if _nn > 1e-12 else np.array([1.0, 0.0, 0.0, 0.0])
+            _dot = float(abs(np.dot(_qn, self._goal_quat)))
+            rot_error_now = float(2.0 * np.arccos(np.clip(_dot, -1.0, 1.0)))
+        else:
+            _yaw_now = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
+            _dy = _yaw_now - float(target_yaw)
+            rot_error_now = float(np.abs(np.arctan2(np.sin(_dy), np.cos(_dy))))
 
         # Include yaw component in config_cost (reference full Q_block covers
         # quat too). Uses the half-angle metric that w_yaw multiplies:

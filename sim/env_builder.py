@@ -367,6 +367,88 @@ def _hshape_sdf(cfg: dict) -> str:
 </sdf>"""
 
 
+
+def _jack_sdf(cfg: dict) -> str:
+    """Reference jack.sdf ported as a single-body-collapsed rigid.
+
+    Reference (examples/sampling_c3/urdf/jack.sdf) is three capsule LINKS welded
+    by two fixed joints. A fixed joint is a rigid connection, so one link with
+    three collision elements is dynamically equivalent -- the same collapse
+    _tshape_sdf applies to the reference's two-link T.
+
+    Geometry, verbatim from the reference: three capsules, radius 0.025,
+    length 0.125, mass 0.052 each (0.156 kg total), mutually orthogonal --
+
+        capsule_1  pose 0 0 0  0      0      0   -> axis +z
+        capsule_2  pose 0 0 0  0      1.5708 0   -> axis +x
+        capsule_3  pose 0 0 0  1.5708 0      0   -> axis +y
+
+    A caltrop: six tips at +/-(0.0625 + 0.025) = +/-0.0875 along each body axis.
+
+    This object is qualitatively unlike the T and H. It has no flat resting
+    face -- it balances on three tips and ROLLS between tripods, so its ground
+    contact set changes discontinuously with pose. That is why jacktoy uses
+    sampling_strategy 2 (kRandomOnSphere) rather than the perimeter sampler.
+
+    Inertia: each capsule is modelled about its own axis and the three are
+    summed about the shared origin. Because the capsules are orthogonal and
+    concentric the result is isotropic, which the reference's own per-link
+    values (ixx 7.072e-5, izz 5.72e-6 each) reproduce once summed.
+    """
+    m_total = float(cfg.get("mass", 0.156))
+    mu = float(cfg["friction"])
+    r, g, b, a = cfg["color_rgba"]
+    m_cap = m_total / 3.0
+    RAD, LEN = 0.025, 0.125
+
+    # Reference per-capsule inertia at 0.052 kg, scaled linearly with mass.
+    scale = m_cap / 0.052
+    i_perp = 7.072e-05 * scale    # about the two axes perpendicular to the capsule
+    i_axis = 5.72e-06 * scale     # about the capsule's own axis
+    # Three orthogonal, concentric capsules -> isotropic sum.
+    I = 2.0 * i_perp + i_axis
+
+    def _cap(name, pose):
+        return f"""      <collision name="{name}">
+        <pose>{pose}</pose>
+        <geometry><capsule><radius>{RAD}</radius><length>{LEN}</length></capsule></geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="{name}_vis">
+        <pose>{pose}</pose>
+        <geometry><capsule><radius>{RAD}</radius><length>{LEN}</length></capsule></geometry>
+        <material><diffuse>{r} {g} {b} {a}</diffuse></material>
+      </visual>"""
+
+    parts = "\n".join([
+        _cap("capsule_1", "0 0 0 0 0 0"),            # +z
+        _cap("capsule_2", "0 0 0 0 1.5708 0"),       # +x
+        _cap("capsule_3", "0 0 0 1.5708 0 0"),       # +y
+    ])
+    return f"""<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="manipulated_object">
+    <link name="jack_link">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>{m_total}</mass>
+        <inertia>
+          <ixx>{I:.6e}</ixx><iyy>{I:.6e}</iyy><izz>{I:.6e}</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+{parts}
+    </link>
+  </model>
+</sdf>"""
+
+
 # ---------------------------------------------------------------------------
 # Main builder
 # ---------------------------------------------------------------------------
@@ -587,10 +669,12 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
         sdf_str = _tshape_sdf(task_cfg)
     elif obj_type == "hshape":
         sdf_str = _hshape_sdf(task_cfg)
+    elif obj_type == "jack":
+        sdf_str = _jack_sdf(task_cfg)
     else:
         raise ValueError(
             f"Unknown object_type '{obj_type}' in task config. "
-            "Use 'box', 'sphere', 'tshape', or 'hshape'."
+            "Use 'box', 'sphere', 'tshape', 'hshape', or 'jack'."
         )
 
     object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
@@ -632,7 +716,45 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
                     _tag,
                     list(goal_ghost_rgba),
                 )
-        else:
+        elif task_cfg["object_type"] == "hshape":
+            # Ghost H: the same three boxes _hshape_sdf builds.
+            _R_goal = ad.RotationMatrix.MakeZRotation(
+                float(task_cfg.get("goal_yaw", 0.0)))
+            _T_goal = ad.RigidTransform(_R_goal,
+                [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
+            for _lx, _sz, _tag in (
+                (-0.044, (0.024, 0.128, 0.032), "goal_ghost_lbar"),
+                (+0.044, (0.024, 0.128, 0.032), "goal_ghost_rbar"),
+                ( 0.000, (0.064, 0.024, 0.032), "goal_ghost_cbar"),
+            ):
+                plant.RegisterVisualGeometry(
+                    plant.world_body(),
+                    _T_goal.multiply(ad.RigidTransform([_lx, 0.0, 0.0])),
+                    ad.Box(*_sz), _tag, list(goal_ghost_rgba),
+                )
+        elif task_cfg["object_type"] == "jack":
+            # Ghost jack: three orthogonal capsules at the goal POSE. The jack's
+            # goal is a full quaternion (it rolls onto a different tripod), so
+            # unlike every other task the ghost cannot be built from a yaw.
+            _gq = task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0])
+            _gq = np.asarray(_gq, dtype=float)
+            _gq = _gq / float(np.linalg.norm(_gq))
+            _T_goal = ad.RigidTransform(
+                ad.RotationMatrix(ad.Quaternion(_gq[0], _gq[1], _gq[2], _gq[3])),
+                [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
+            for _rpy, _tag in (
+                ((0.0, 0.0, 0.0),    "goal_ghost_cap1"),
+                ((0.0, 1.5708, 0.0), "goal_ghost_cap2"),
+                ((1.5708, 0.0, 0.0), "goal_ghost_cap3"),
+            ):
+                _T_local = ad.RigidTransform(
+                    ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])
+                plant.RegisterVisualGeometry(
+                    plant.world_body(),
+                    _T_goal.multiply(_T_local),
+                    ad.Capsule(0.025, 0.125), _tag, list(goal_ghost_rgba),
+                )
+        elif "radius" in task_cfg:
             _ghost_shape = ad.Sphere(task_cfg["radius"])
             plant.RegisterVisualGeometry(
                 plant.world_body(),

@@ -387,6 +387,35 @@ class LCSFormulator:
             [-0.05, -0.08, -0.02],   # stem -y tip
         ]).T   # (3, 3)
 
+    # Reference jack_control.sdf gives each tip sphere radius 0.025 with its
+    # CENTRE at +/-0.0625 along the capsule axis. The witness table below holds
+    # centres, so the ground witness sits one radius below -- unlike the box/T/H
+    # tables, whose entries are true corner points already on the surface.
+    _JACK_TIP_RADIUS = 0.025
+
+    def _jack_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
+        """Return the jack's SIX tip-sphere centres in the link frame.
+
+        Reference: examples/sampling_c3/urdf/jack_control.sdf declares
+        capsule_{1,2,3}_sphere_{1,2} at +/-0.0625 along each capsule's axis,
+        and franka_sampling_c3_controller.cc:193-204 pairs all six against
+        GROUND. `resolve_contacts_to = [0, 1, 3]` then keeps the THREE closest
+        (GetNClosestContactPairs) -- i.e. the reference does not hard-code
+        which tips are resting, it enumerates every candidate and lets the
+        signed distance rank them each tick.
+
+        This is why the jack needs no special case beyond the table: unlike the
+        T and H, whose bottom face is fixed in the body frame, the jack rolls
+        between tripods and its resting triple changes with pose. The caller
+        performs the closest-3 selection.
+        """
+        h = 0.0625
+        return np.array([
+            [0.0, 0.0, +h], [0.0, 0.0, -h],   # capsule_1 (body +z)
+            [+h, 0.0, 0.0], [-h, 0.0, 0.0],   # capsule_2 (body +x)
+            [0.0, +h, 0.0], [0.0, -h, 0.0],   # capsule_3 (body +y)
+        ]).T   # (3, 6)
+
     def _hshape_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
         """Return H-shape bottom-face witness points in the link frame.
 
@@ -444,7 +473,9 @@ class LCSFormulator:
         on self._object_shape:
           - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{4,8,12}].
           - "tshape" → _tshape_vertex_set_body_frame(n_synth) [n=3].
-          - "hshape" → _hshape_vertex_set_body_frame(n_synth) [n∈{3,4}].
+          - "hshape" → _hshape_vertex_set_body_frame(n_synth) [n∈{3,4,12}].
+          - "jack"   → _jack_vertex_set_body_frame(n_synth) [6 candidates,
+            closest n_synth kept per tick — the rolling tripod].
 
         Returns four parallel lists in the same format as Drake-admitted
         contacts:
@@ -460,6 +491,8 @@ class LCSFormulator:
             verts_body = self._tshape_vertex_set_body_frame(n_synth)
         elif self._object_shape == "hshape":
             verts_body = self._hshape_vertex_set_body_frame(n_synth)
+        elif self._object_shape == "jack":
+            verts_body = self._jack_vertex_set_body_frame(n_synth)
         elif self._object_shape == "box":
             half_extents = self._maybe_init_box_half_extents(query_obj)
             if not np.all(half_extents > 0):
@@ -473,13 +506,46 @@ class LCSFormulator:
         W            = self.plant.world_frame()
         nhat_ground  = np.array([0.0, 0.0, 1.0])    # ground normal: force on box +z
 
+        # Witness offset below the tabled point. Zero for the box/T/H, whose
+        # table entries are true surface corners; one sphere radius for the
+        # jack, whose entries are tip-sphere centres.
+        r_tip = self._JACK_TIP_RADIUS if self._object_shape == "jack" else 0.0
+
+        # Reference GetNClosestContactPairs (sampling_based_c3_controller.cc:
+        # 1605-1614): when a contact group offers more candidates than the
+        # group's resolve_contacts_to count, keep the CLOSEST n. The box/T/H
+        # tables are built exactly n_synth long so this is a no-op for them;
+        # the jack supplies 6 tips and keeps the resting 3, re-selected every
+        # tick as the object rolls.
+        if verts_body.shape[1] > n_synth:
+            R_WB = self.plant.CalcRelativeRotationMatrix(
+                context, W, box_frame).matrix()
+            _z = np.array([
+                float(self.plant.CalcPointsPositions(
+                    context, box_frame, verts_body[:, j:j+1], W).flatten()[2])
+                for j in range(verts_body.shape[1])
+            ])
+            keep = np.argsort(_z, kind="stable")[:n_synth]
+            verts_body = verts_body[:, np.sort(keep)]
+
         phis_s:     list = []
         J_n_rows_s: list = []
         J_t_rows_s: list = []
         ci_s:       list = []
 
+        # Body-frame offset that carries a tip-sphere centre down to the
+        # sphere's lowest surface point (world -z). Identity when r_tip == 0.
+        if r_tip > 0.0:
+            R_WB_now = self.plant.CalcRelativeRotationMatrix(
+                context, W, box_frame).matrix()
+            _drop_body = R_WB_now.T @ np.array([0.0, 0.0, -r_tip])
+        else:
+            _drop_body = np.zeros(3)
+
         for i in range(n_synth):
-            pt_body = verts_body[:, i:i+1]   # (3, 1) — Drake API takes column vec
+            # The witness — and the point the Jacobian must be taken at — is
+            # the surface point, not the tabled centre.
+            pt_body = (verts_body[:, i] + _drop_body).reshape(3, 1)
             # World position of this vertex
             pt_world = self.plant.CalcPointsPositions(
                 context, box_frame, pt_body, W,
@@ -513,6 +579,7 @@ class LCSFormulator:
             # synthesized rows are correctly excluded from EE-force intent.
             _tag_prefix = ("T-VERT" if self._object_shape == "tshape"
                            else "H-VERT" if self._object_shape == "hshape"
+                           else "J-TIP" if self._object_shape == "jack"
                            else "BOX-VERT")
             ci_s.append({
                 "body_A":       self._obj_body.name(),
@@ -521,7 +588,7 @@ class LCSFormulator:
                 "tag":          f"{_tag_prefix}-{i}",
                 "nhat_BA_W":    nhat_ground.copy(),
                 "nhat_onto_box": nhat_ground.copy(),
-                "p_ACa":        verts_body[:, i].copy(),
+                "p_ACa":        pt_body.flatten().copy(),
                 "p_BCb":        np.array([pt_world[0], pt_world[1], self._ground_z]),
                 "distance":     phi_i,
             })
