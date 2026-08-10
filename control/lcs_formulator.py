@@ -410,6 +410,18 @@ class LCSFormulator:
         that would let the LCS tip the object about that edge for free.
         """
         z = -0.016
+        if n_synth == 12:
+            # Reference `anything` resolve_contacts_to_lists starts [0, 1, 12,
+            # ...]: 0 EE-ground, 1 EE-object, 12 object-ground. Twelve maps
+            # exactly onto the H's 3-box decomposition as the 4 bottom corners
+            # of each box, which is also the densest support the geometry
+            # admits without duplicating points.
+            v = []
+            for (x0, x1, y0, y1) in ((-0.056, -0.032, -0.064, +0.064),
+                                     (+0.032, +0.056, -0.064, +0.064),
+                                     (-0.032, +0.032, -0.012, +0.012)):
+                v += [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]]
+            return np.array(v).T   # (3, 12)
         if n_synth == 4:
             return np.array([
                 [-0.044, -0.064, z],   # left bar, -y end
@@ -424,7 +436,7 @@ class LCSFormulator:
                 [ 0.000, +0.012, z],   # crossbar, +y centre
             ]).T   # (3, 3)
         raise ValueError(
-            f"H-shape vertex-set n_synth must be 3 or 4; got {n_synth}."
+            f"H-shape vertex-set n_synth must be 3, 4 or 12; got {n_synth}."
         )
 
     def _synthesize_manipuland_ground_contacts(self, context, query_obj):
