@@ -387,11 +387,52 @@ class LCSFormulator:
             [-0.05, -0.08, -0.02],   # stem -y tip
         ]).T   # (3, 3)
 
+    def _hshape_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
+        """Return H-shape bottom-face witness points in the link frame.
+
+        Geometry (see sim/env_builder.py:_hshape_sdf) — bottom face at
+        link-z = -0.016:
+          left  bar  x ∈ [-0.056, -0.032], y ∈ [-0.064, +0.064]
+          right bar  x ∈ [+0.032, +0.056], y ∈ [-0.064, +0.064]
+          crossbar   x ∈ [-0.032, +0.032], y ∈ [-0.012, +0.012]
+
+        n_synth = 4 (DEFAULT for the H): one witness per bar end, at the bar
+        centre-lines. A symmetric rectangular support 0.088 × 0.128 whose
+        interior contains the CoM projection with a wide margin — the natural
+        analogue of the box path's 4-vertex set, and the right choice for a
+        shape with two-fold symmetry.
+
+        n_synth = 3 is also accepted (matching the T's triangular support, for
+        A/B against push_t): the two bottom bar tips plus the crossbar's
+        top-centre. Verified to contain the CoM projection with barycentric
+        margin 0.079. Note the "three bar corners" triangle was REJECTED —
+        it puts the CoM exactly on an edge (margin 0.0), a degenerate support
+        that would let the LCS tip the object about that edge for free.
+        """
+        z = -0.016
+        if n_synth == 4:
+            return np.array([
+                [-0.044, -0.064, z],   # left bar, -y end
+                [+0.044, -0.064, z],   # right bar, -y end
+                [+0.044, +0.064, z],   # right bar, +y end
+                [-0.044, +0.064, z],   # left bar, +y end
+            ]).T   # (3, 4)
+        if n_synth == 3:
+            return np.array([
+                [-0.044, -0.064, z],   # left bar, -y end
+                [+0.044, -0.064, z],   # right bar, -y end
+                [ 0.000, +0.012, z],   # crossbar, +y centre
+            ]).T   # (3, 3)
+        raise ValueError(
+            f"H-shape vertex-set n_synth must be 3 or 4; got {n_synth}."
+        )
+
     def _synthesize_manipuland_ground_contacts(self, context, query_obj):
         """Synthesize N manipuland-vertex ↔ ground contact rows. Dispatches
         on self._object_shape:
           - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{4,8,12}].
           - "tshape" → _tshape_vertex_set_body_frame(n_synth) [n=3].
+          - "hshape" → _hshape_vertex_set_body_frame(n_synth) [n∈{3,4}].
 
         Returns four parallel lists in the same format as Drake-admitted
         contacts:
@@ -405,6 +446,8 @@ class LCSFormulator:
         n_synth = self.lcs_explicit_manipuland_ground_contacts
         if self._object_shape == "tshape":
             verts_body = self._tshape_vertex_set_body_frame(n_synth)
+        elif self._object_shape == "hshape":
+            verts_body = self._hshape_vertex_set_body_frame(n_synth)
         elif self._object_shape == "box":
             half_extents = self._maybe_init_box_half_extents(query_obj)
             if not np.all(half_extents > 0):
@@ -456,7 +499,9 @@ class LCSFormulator:
             # Downstream tag consumers (_derive_force_command EE-BOX filter,
             # B1-A pair-index scan) match on "EE-BOX" prefix only, so these
             # synthesized rows are correctly excluded from EE-force intent.
-            _tag_prefix = "T-VERT" if self._object_shape == "tshape" else "BOX-VERT"
+            _tag_prefix = ("T-VERT" if self._object_shape == "tshape"
+                           else "H-VERT" if self._object_shape == "hshape"
+                           else "BOX-VERT")
             ci_s.append({
                 "body_A":       self._obj_body.name(),
                 "body_B":       "ground (world_body)",
@@ -1174,7 +1219,7 @@ class LCSFormulator:
         # line 1405-1409). Bypasses the 2 mm distance threshold so the LCS
         # keeps an EE-T pair even during the arm's lift-traverse-descend,
         # preventing c3-chatter. Box path unchanged (gate requires tshape).
-        if (self._object_shape == "tshape"
+        if (self._object_shape in ("tshape", "hshape")
                 and getattr(self, "_ref_pair_admission_planner_lcs", False)):
             phi, J_n, J_t, mu = self.extract_lcs_contacts(
                 context, force_top_k_ee_box=True, n_ee_top_k=1)
@@ -1526,7 +1571,7 @@ class LCSFormulator:
         # Gated to tshape so the box planner path is byte-identical when the
         # class flag is True.
         if (not force_top_k_ee_box
-                and self._object_shape == "tshape"
+                and self._object_shape in ("tshape", "hshape")
                 and getattr(self, "_ref_pair_admission_planner_lcs", False)):
             force_top_k_ee_box = True
             n_ee_top_k = 1

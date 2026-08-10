@@ -16,6 +16,7 @@ re-drawn up to a small budget; failures are logged but not raised).
 """
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import numpy as np
@@ -81,6 +82,83 @@ _TSHAPE_HALF_HEIGHT = 0.020
 # PUSHER_RADIUS=0.0195 the sphere lowest sits 0.5 mm above the top surface
 # at the setback point, mirroring the 0.5 mm side-face gap.
 _TSHAPE_TOP_SETBACK = 0.020
+
+
+# H-shape side faces, body frame. Geometry from sim/env_builder.py
+# `_hshape_sdf` (envelope 0.112 x 0.128 x 0.032, centred on the link origin):
+#     left  bar  x[-0.056,-0.032]  y[-0.064,+0.064]
+#     right bar  x[+0.032,+0.056]  y[-0.064,+0.064]
+#     crossbar   x[-0.032,+0.032]  y[-0.012,+0.012]
+# Twelve faces trace the outline. Validated: the face half-lengths sum to
+# 0.688 m, exactly the analytic H perimeter, so the decomposition is complete
+# and non-overlapping. The four notch-inner faces are reachable — projecting
+# a sample outward by (pusher_r + clearance) = 39.5 mm leaves 24.5 mm of
+# clearance to the opposing bar, above the 19.5 mm sphere radius.
+_HSHAPE_FACE_TABLE = np.array([
+    # (cx,     cy,     nx,   ny,   half_len)
+    (-0.056,  0.000, -1.0,  0.0,  0.064),   # left bar, outer (-x)
+    (-0.044, -0.064,  0.0, -1.0,  0.012),   # left bar, bottom (-y)
+    (-0.044, +0.064,  0.0, +1.0,  0.012),   # left bar, top (+y)
+    (-0.032, -0.038, +1.0,  0.0,  0.026),   # left bar, inner lower (+x)
+    (-0.032, +0.038, +1.0,  0.0,  0.026),   # left bar, inner upper (+x)
+    ( 0.000, -0.012,  0.0, -1.0,  0.032),   # crossbar, bottom (-y)
+    ( 0.000, +0.012,  0.0, +1.0,  0.032),   # crossbar, top (+y)
+    (+0.032, -0.038, -1.0,  0.0,  0.026),   # right bar, inner lower (-x)
+    (+0.032, +0.038, -1.0,  0.0,  0.026),   # right bar, inner upper (-x)
+    (+0.044, -0.064,  0.0, -1.0,  0.012),   # right bar, bottom (-y)
+    (+0.044, +0.064,  0.0, +1.0,  0.012),   # right bar, top (+y)
+    (+0.056,  0.000, +1.0,  0.0,  0.064),   # right bar, outer (+x)
+], dtype=float)
+
+_HSHAPE_HALF_HEIGHT = 0.016
+
+
+# Registry of non-box ("polygonal") manipuland shapes. Each entry supplies the
+# three things the perimeter sampler needs: the outline face table, the
+# footprint as a union of body-frame AABBs, and the tight bounding box used to
+# seed the uniform draw. Adding a shape here is what makes the reference
+# kRandomOnPerimeter sampler work for it — the alternative is another
+# `shape == "..."` branch at each of the four sites below.
+_POLY_SHAPES = {
+    "tshape": {
+        "face_table": _TSHAPE_FACE_TABLE,
+        # (x_lo, x_hi, y_lo, y_hi) per rectangle
+        "rects": ((-0.03, +0.13, -0.02, +0.02),    # crossbar
+                  (-0.07, -0.03, -0.08, +0.08)),   # stem
+        "bbox":  (-0.07, +0.13, -0.08, +0.08),
+        "half_height": _TSHAPE_HALF_HEIGHT,
+    },
+    "hshape": {
+        "face_table": _HSHAPE_FACE_TABLE,
+        "rects": ((-0.056, -0.032, -0.064, +0.064),   # left bar
+                  (+0.032, +0.056, -0.064, +0.064),   # right bar
+                  (-0.032, +0.032, -0.012, +0.012)),  # crossbar
+        "bbox":  (-0.056, +0.056, -0.064, +0.064),
+        "half_height": _HSHAPE_HALF_HEIGHT,
+    },
+}
+
+
+def _poly_spec(shape: str):
+    """Return the _POLY_SHAPES entry for `shape`, or None for box/sphere."""
+    return _POLY_SHAPES.get(str(shape))
+
+
+def _surface_clearance(x: float, y: float, rects) -> float:
+    """Body-frame distance from (x, y) to the union of AABBs `rects`.
+
+    Zero inside the footprint. Used to re-check projected samples: a sample is
+    the EE SPHERE CENTRE, so anything closer than the pusher radius is a
+    position the sphere cannot occupy.
+    """
+    best = float("inf")
+    for x0, x1, y0, y1 in rects:
+        dx = max(x0 - x, 0.0, x - x1)
+        dy = max(y0 - y, 0.0, y - y1)
+        d = math.hypot(dx, dy)
+        if d < best:
+            best = d
+    return best
 
 
 # ---------------------------------------------------------------------------
@@ -738,18 +816,18 @@ def _random_on_perimeter(n_samples: int,
         gy = np.asarray(params.grid_y_limits, dtype=float).flatten()
         x_lo, x_hi = float(gx[0]), float(gx[1])
         y_lo, y_hi = float(gy[0]), float(gy[1])
-    elif shape == "tshape":
-        # Tight bounding box for T (from _TSHAPE_FACE_TABLE extents).
-        x_lo, x_hi = -0.07, +0.13
-        y_lo, y_hi = -0.08, +0.08
+    elif _poly_spec(shape) is not None:
+        # Tight bounding box from the shape's face-table extents.
+        x_lo, x_hi, y_lo, y_hi = _poly_spec(shape)["bbox"]
     else:
         h = float(params.box_half_extent)
         x_lo, x_hi = -h, +h
         y_lo, y_hi = -h, +h
 
     # Face table (body-frame).  Each row: (cx, cy, nx, ny, half_len).
-    if shape == "tshape":
-        face_table = _TSHAPE_FACE_TABLE
+    _spec = _poly_spec(shape)
+    if _spec is not None:
+        face_table = _spec["face_table"]
     else:
         h = float(params.box_half_extent)
         face_table = np.array([
@@ -760,12 +838,13 @@ def _random_on_perimeter(n_samples: int,
         ], dtype=float)
 
     def _inside_footprint(x: float, y: float) -> bool:
-        if shape == "tshape":
-            # T = union of crossbar and stem rectangles (from face-table
-            # extents; see _TSHAPE_FACE_TABLE header comment).
-            in_crossbar = (-0.03 <= x <= +0.13) and (-0.02 <= y <= +0.02)
-            in_stem     = (-0.07 <= x <= -0.03) and (-0.08 <= y <= +0.08)
-            return in_crossbar or in_stem
+        # Polygonal shapes are a union of body-frame AABBs (T = crossbar +
+        # stem; H = left bar + right bar + crossbar).
+        if _spec is not None:
+            for x0, x1, y0, y1 in _spec["rects"]:
+                if (x0 <= x <= x1) and (y0 <= y <= y1):
+                    return True
+            return False
         h = float(params.box_half_extent)
         return (abs(x) <= h) and (abs(y) <= h)
 
@@ -807,6 +886,20 @@ def _random_on_perimeter(n_samples: int,
             continue
         # Step 4: project outward to nearest face + clearance.
         proj_body = _project_to_nearest_face(x_body, y_body)
+        # Step 4b: RE-CHECK that the projected point is actually clear of the
+        # whole object, not just of the face it was projected from. Reference
+        # ProjectSampleOutsideObject re-checks and retries until strictly clear
+        # (generate_samples.cc:340-348); the port previously projected once and
+        # accepted. On a CONCAVE outline the nearest-face projection can land
+        # beside a different part of the body: measured 21% of T samples and
+        # 32% of H samples closer than the pusher radius, i.e. positions the EE
+        # sphere cannot physically occupy. Retry (the caller's while-loop draws
+        # a fresh point) rather than accept an unreachable target.
+        if _spec is not None:
+            if _surface_clearance(proj_body[0], proj_body[1],
+                                  _spec["rects"]) < _PUSHER_R:
+                tries += 1
+                continue
         # Step 2/5: rotate to world, snap z, filter workspace.
         p_body_3d = np.array([proj_body[0], proj_body[1], 0.0])
         p_world = R @ p_body_3d + np.array([obj_xy_2[0], obj_xy_2[1], 0.0])

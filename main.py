@@ -630,6 +630,20 @@ def main():
     if args.sampling_c3 is not None:
         _yaml_path = args.sampling_c3
         sc3_params = SamplingC3Params.from_yaml(_yaml_path)
+        # object_shape is a property of the TASK, not of the controller config,
+        # but the sampler reads it from the sampling-c3 yaml while the LCS and
+        # the cost read task_cfg["object_type"]. Two sources of truth for the
+        # same fact: a mismatch silently hands the sampler the WRONG face table
+        # (e.g. running push_h against sampling_c3_kik_t.yaml would project H
+        # samples off the T's outline) with no error anywhere. tasks.yaml wins,
+        # same precedent as the sampling_height override below.
+        _task_shape = str(task_cfg.get("object_type", "") or "")
+        if _task_shape:
+            _was_shape = str(sc3_params.sampling_params.object_shape)
+            if _was_shape != _task_shape:
+                sc3_params.sampling_params.object_shape = _task_shape
+                print(f"[OVERRIDE] object_shape={_task_shape} "
+                      f"(was '{_was_shape}', per-task '{task_name}')")
         # D6: per-task sampling_height override. pushing/hard_pushing set 0.03
         # (sub-CoM, restoring tip moment); cube_turning/shepherding read the
         # sampler default. tasks.yaml is the source of truth; absent → no override.

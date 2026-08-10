@@ -603,7 +603,10 @@ class InnerSolver:
                 # (sampling_based_c3_controller.cc:1040-1053); do the same
                 # for all EE-space surrogates.
                 _ee_space = (self.solver.n_u == 3)
-                _tshape_gate = _ee_space and self._object_shape == "tshape"
+                # Polygonal (non-box) manipulands share the cost-LCS ranking
+                # path: both T and H are concave outlines whose ranking needs
+                # the object-only forward-sim, unlike the convex box.
+                _tshape_gate = _ee_space and self._object_shape in ("tshape", "hshape")
                 _u_lo = self._u_lo if _ee_space else None
                 _u_hi = self._u_hi if _ee_space else None
                 if not _ee_space:
@@ -654,7 +657,7 @@ class InnerSolver:
             # variant) rather than SimulatePDControlWithLCS(...) on a
             # separate 5-pair cost-LCS. The full forward-sim (Stage 2) is
             # left for a follow-up if Stage 1 doesn't unblock c3 dispatch.
-            if _ee_space and self._object_shape == "tshape":
+            if _ee_space and self._object_shape in ("tshape", "hshape"):
                 Q_obj, QN_obj, R_obj = _object_only_cost_matrices_ee_space(
                     Q, QN, R)
                 # §9 Option B (Stage 2): forward-simulate the plan on the LCS
