@@ -4238,6 +4238,32 @@ class SamplingC3Controller:
                 ], dtype=float).T
                 _sh_c3 = self._c3_track_z()   # ref cc:1757-1759 z_height
                 _knots[2, :] = _sh_c3   # z-freeze every knot
+                # Consistency guard (2026-08-10). Freezing the track's z makes
+                # its z-derivative zero, which IS the reference's ydot_des
+                # (traj.EvalDerivative(t,1), osc_tracking_data.cc:91-99). But
+                # _velocity_feedforward_from_xseq feeds the OSC the planner's
+                # EE VELOCITY STATE slot instead, which still carries the
+                # planner's intended descent. The OSC then holds a frozen z
+                # position target against a downward z velocity target and
+                # settles at sag = (Kd_cart/Kp_cart)*|v_des_z| -- measured
+                # 3.21 mm on the jack (predicted 3.27), which ate the entire
+                # 5.4 mm margin between z_height and the workspace floor and
+                # tripped CheckForWorkspaceLimitViolations at t=8.2 s.
+                # One-shot warning only: no behaviour change, so configs that
+                # currently run with the flag on (push_h) keep their baseline.
+                if (bool(getattr(self.params, "use_velocity_feedforward", False))
+                        and not getattr(self, "_warned_vff_z_conflict", False)):
+                    self._warned_vff_z_conflict = True
+                    print("[VFF-Z-CONFLICT] use_velocity_feedforward=True while "
+                          "c3 mode freezes the trajectory z to "
+                          f"{_sh_c3:+.4f}. The frozen track has zero "
+                          "z-derivative but the planner's velocity slot does "
+                          "not, so the OSC receives contradictory z targets "
+                          "and will settle (Kd/Kp)*|v_des_z| BELOW the frozen "
+                          "height. Reference ydot_des is the position-track "
+                          "derivative; set use_velocity_feedforward: false to "
+                          "match it (push_t and push_jack already do).",
+                          flush=True)
                 _ts = [_sim_t_c3 + _fst + i * _dt_plan
                        for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)

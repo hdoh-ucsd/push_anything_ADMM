@@ -159,6 +159,20 @@ reposition_params:
   Ki_q: 8.0
   I_max: 4.0
   torque_limit: 87.0
-use_velocity_feedforward: true
+# 2026-08-10: OFF, matching push_t and the reference.
+# _velocity_feedforward_from_xseq injects the planner's EE VELOCITY STATE
+# slots (x_seq[1][16:19]). The reference's ydot_des is
+# traj.EvalDerivative(t,1) -- the derivative of the POSITION knot track,
+# which compute_torque_from_trajectory already derives from _traj_c3. Those
+# differ here because c3 mode FREEZES the trajectory's z to z_height
+# (sampling_based_c3_controller.py:4241 `_knots[2,:] = _sh_c3`): the frozen
+# track has zero z-derivative, but the planner's velocity slot still carries
+# its intended descent. The OSC then gets a frozen z target fighting a
+# downward z velocity target and settles at
+#     sag = (Kd_cart/Kp_cart) * |v_des_z| = 0.1 * 0.032 = 3.2 mm
+# (measured 3.21 mm over 39 settled c3 steps, r=0.81, residual 0.35 mm).
+# That eats the entire 5.4 mm margin between z_height 0.0244 and the
+# workspace floor 0.019 and trips CheckForWorkspaceLimitViolations.
+use_velocity_feedforward: false
 velocity_feedforward_alpha: 1.0
 velocity_feedforward_v_max: 1.5
