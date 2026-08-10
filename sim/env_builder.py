@@ -412,11 +412,15 @@ def _jack_sdf(cfg: dict) -> str:
         return f"""      <collision name="{name}">
         <pose>{pose}</pose>
         <geometry><capsule><radius>{RAD}</radius><length>{LEN}</length></capsule></geometry>
+        <!-- Reference urdf/jack.sdf declares ONLY mu_dynamic here: no
+             compliant_hydroelastic, no modulus, no dissipation. Unlike
+             push_t.sdf and H_shape_texture.sdf, which do declare hydroelastic
+             3.0e7, the jack is deliberately left as point contact. Copying the
+             box/T/H block here would be non-conformant (it is also inert,
+             since the port's pusher and table are registered with plain
+             CoulombFriction and Drake's kHydroelasticWithFallback needs BOTH
+             sides hydroelastic -- but inert-and-wrong still misleads). -->
         <drake:proximity_properties>
-          <drake:compliant_hydroelastic/>
-          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
-          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
-          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
           <drake:mu_dynamic>{mu}</drake:mu_dynamic>
         </drake:proximity_properties>
       </collision>
@@ -453,7 +457,7 @@ def _jack_sdf(cfg: dict) -> str:
 # Main builder
 # ---------------------------------------------------------------------------
 
-def build_environment(task_cfg: dict, time_step: float = 0.001,
+def build_environment(task_cfg: dict, time_step: float | None = None,
                       *, add_camera: bool = False,
                       camera_xyz=(-0.10, -0.05, 1.05),
                       camera_width: int = 1280,
@@ -484,7 +488,17 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
                    calls (positions/velocities reset per call).
     """
     builder = ad.DiagramBuilder()
+    # Sim timestep. Reference sets it PER TASK in sim_params.yaml:
+    #   push_t 0.0001, jacktoy 0.0001, anything 0.001
+    # The port historically hardcoded 0.001 for everything, i.e. 10x coarser
+    # than the reference for push_t and the jack. With Drake's discrete contact
+    # solver the penetration accumulated before the solver responds scales with
+    # the step, so a coarse step turns a light object's contacts into impacts.
+    # An explicit `time_step` argument still wins (callers that pass one).
+    if time_step is None:
+        time_step = float(task_cfg.get("sim_dt", 0.001))
     plant, scene_graph = ad.AddMultibodyPlantSceneGraph(builder, time_step=time_step)
+    print(f"[ENV]  sim time_step = {time_step:g} s", flush=True)
 
     parser = ad.Parser(plant)
 
