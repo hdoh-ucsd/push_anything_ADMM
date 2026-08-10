@@ -1,3 +1,14 @@
+# CONFIG FAMILY NOTE (2026-08-10)
+# The H is a LETTER-family object: reference examples/sampling_c3/anything/
+# loads the *_shape_texture / *_shape_video meshes via object_models, and
+# anything/parameters/letter_settings.yaml lists H_shape_texture explicitly.
+# push_t is a SEPARATE family with its own purpose-built box-primitive object
+# (urdf/push_t.sdf) and its own tuning -- the two are not interchangeable.
+#
+# This file was originally derived from sampling_c3_kik_t.yaml, i.e. push_t's
+# parameters, which was wrong. The governing values below are now taken from
+# anything/parameters/ and each carries the push_t value it replaced.
+#
 # Sampling-C3 config for push_h (low-CoM H manipuland).
 #
 # Derived from sampling_c3_kik_t.yaml -- every progress/hysteresis/ADMM value is
@@ -142,7 +153,7 @@ u_vertical_limit: 50.0
 # bottom-face friction so the planner's LCS models real torsional
 # resistance to yaw (v5 root cause: single ground contact → 0 torsional
 # resistance → planner predicts free yaw → tiny commanded λ_n → no push).
-lcs_explicit_manipuland_ground_contacts: 3
+lcs_explicit_manipuland_ground_contacts: 12   # anything resolve_contacts_to_lists [0,1,12,...] (push_t: 3)
 
 # d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
 # PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses
@@ -250,12 +261,12 @@ progress_params:
   # Iter1 (results/push_t_iter1_20260718_133821) log showed
   # kToReposUnproductive firing every ~17 c3 steps — window fills too
   # quickly, dispatcher exits c3 before contact accumulates useful push.
-  progress_enforced_cost_drop:        0.01
+  progress_enforced_cost_drop:        0.5    # anything (push_t: 0.01)
   # 2026-08-09: reference unit is loops — push_t/progress_params_c3plus.yaml:45
   # = 180. The previous 13.5 s came from 180 x 0.075 (`anything`'s planning_dt,
   # not push_t's) and then resolved to 13.5 / dt_ctrl 0.1 = 135 loops — 25%
   # short of the reference's 180. Loop form removes both conversion errors.
-  progress_enforced_over_n_loops_ref: 180
+  progress_enforced_over_n_loops_ref: 16     # anything (push_t: 180)
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
@@ -264,7 +275,7 @@ progress_params:
   # reference anything value of 0.05). Port previously had 0.05 (anything
   # default) → T at 0.188 m never crossed → dispatcher used _position
   # variants throughout. Fixed 2026-07-17.
-  cost_switching_threshold_distance: 0.50    # m
+  cost_switching_threshold_distance: 0.05   # anything (push_t: 0.50)
 
   # Reference-aligned arrival penalty (dairlib
   # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
@@ -303,16 +314,16 @@ progress_params:
   # (fresh must beat prev_repos by 70% — much easier). Fix-1 diagnosis
   # (2026-07-18) showed 88% of steps pursued stale prev_repos while fresh
   # face-3 samples existed in the buffer — the dispatcher wouldn't switch.
-  hyst_c3_to_repos_frac:                  0.4
-  hyst_c3_to_repos_frac_position:         0.6
+  hyst_c3_to_repos_frac:                  0.6   # anything (push_t: 0.4)
+  hyst_c3_to_repos_frac_position:         0.7   # anything (push_t: 0.6)
   hyst_repos_to_c3_frac:                  0.9
   hyst_repos_to_c3_frac_position:         0.5
   # 2026-07-19: revert 0.6 → 0.3 to match reference push_t exactly.
   # The 0.6 override was compensating for noisy per-tick sample costs; keep
   # tests clean under the reference-conformant sampler port (Option B —
   # kRandomOnPerimeter) so any remaining instability shows up as-is.
-  hyst_repos_to_repos_frac:               0.3
-  hyst_repos_to_repos_frac_position:      0.1
+  hyst_repos_to_repos_frac:               0.7   # anything (push_t: 0.3)
+  hyst_repos_to_repos_frac_position:      0.7   # anything (push_t: 0.1)
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
@@ -401,7 +412,10 @@ sampling_params:
   # aggravator: the LCS admits the EE-BOX pair during the descend while
   # Drake reports no force. Reference value was 0.025 — restore the
   # literal to revert.
-  z_height: null                # m — null → follow task sampling_height
+  z_height: 0.031   # ref anything 0.002 + 0.029 frame shift
+  # Adaptive plane OFF for the H: obj_z_center+5mm clamps to 0.021,
+  # 10 mm below the reference's 0.031. Exact for push_t, wrong here.
+  use_adaptive_contact_height: false
 
   # T-shape face table (Push-Anything §IV-B1 analog for the T).
   # The 8-patch table is hardcoded in sampling.py:_TSHAPE_FACE_TABLE — this
@@ -416,7 +430,7 @@ sampling_params:
   # cc:908-926/931/1205-1213: a retained target within this distance of the
   # (possibly rotated) object is excluded from candidates and re-targeted,
   # instead of the tracker pressing the EE into the face (p138 drift creep).
-  sample_projection_clearance: 0.02  # m — reference value
+  sample_projection_clearance: 0.027  # anything (push_t: 0.02)
 
   # 2026-07-22 kRandomOnPerimeter sampling window — reference parity.
   # Reference push_t/parameters/sampling_params.yaml:39-40 bounds. Port
@@ -606,3 +620,26 @@ reposition_params:
 use_velocity_feedforward:   true
 velocity_feedforward_alpha: 1.0
 velocity_feedforward_v_max: 1.5
+
+# --- c3 press plane (z-freeze) -----------------------------------------------
+# Reference OVERWRITES the planner's EE z before publishing to the OSC:
+#   sampling_based_c3_controller.cc:1762-1766
+#     knots(2,i)       = z_height + wall_offset;   // keep ee height constant
+#     knots(n_q+2,i)   = 0;                        // keep ee z-velo constant
+# C3 solves in 3D, then every knot's z is replaced by a CONSTANT and the
+# z-velocity zeroed. The same constant gates c3 entry (cc:1290):
+#   x_lcs_curr[2] < z_height + c3_min_clearance + wall_offset.
+#
+# anything/parameters/sampling_params.yaml: z_height 0.002, sampling_height
+# 0.005, both in the REFERENCE frame whose ground top is z=-0.029. The port's
+# ground top is z=0, so both shift by +0.029:
+#     z_height        ref  0.002 -> port 0.031
+#     sampling_height ref  0.005 -> port 0.034
+# H envelope in port frame is [0.000, 0.032], so the reference samples 2 mm
+# ABOVE the H's top face and presses 1 mm below it.
+#
+# use_adaptive_contact_height is turned OFF here. The adaptive rule
+# (obj_z_center + 5 mm, clamped) reproduces the reference EXACTLY for push_t
+# (0.025) but lands 10 mm low for the H (0.021 vs 0.031) because the clamp
+# pins it near mid-height. For a letter-family object the explicit reference
+# constant is correct.

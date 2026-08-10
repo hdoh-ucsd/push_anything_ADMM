@@ -588,6 +588,15 @@ def main():
             _c3plus_N  = 5
             _c3plus_dt = 0.1
             _c3plus_dt_pose = 0.05
+        elif task_name == "push_h":
+            # The H is a LETTER-family object (reference anything/ loads the
+            # *_shape_* meshes; letter_settings.yaml lists H_shape_texture).
+            # anything/parameters/sampling_c3plus_options.yaml:20,62-63:
+            #   N: 7, planning_dt_position: 0.075, planning_dt_pose: 0.075
+            # -- NOT push_t's N=5 / 0.1 / 0.05.
+            _c3plus_N  = 7
+            _c3plus_dt = 0.075
+            _c3plus_dt_pose = 0.075
         else:
             _c3plus_N  = 7
             _c3plus_dt = 0.075

@@ -401,7 +401,7 @@ tasks:
     # below ~0.0205. 0.021 is as low as the push can be applied, which keeps the
     # tipping moment about the leading bottom edge as small as the geometry
     # allows (push 13 mm above the 8 mm CoM).
-    sampling_height:     0.021
+    sampling_height:     0.034   # ref anything 0.005 + 0.029 frame shift
     pwl_waypoint_height: 0.075
     cost:
       use_reference_q_vector: true
@@ -424,7 +424,7 @@ tasks:
       q_quaternion_dependent_weight: 1000.0
       q_quaternion_dependent_regularizer_fraction: 0.0
       w_terminal:        1.0
-      z_ee_target:     0.021   # matches sampling_height
+      z_ee_target:     0.034   # matches sampling_height
       z_obj_target:    0.016   # H rests at z = half-height
       d_push:          0.05
       w_ee_approach: 8000.0
