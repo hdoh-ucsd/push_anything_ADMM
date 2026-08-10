@@ -373,7 +373,20 @@ tasks:
   push_h:
     object_type: hshape
     link_name:   h_link
-    mass:        1.0        # reference H_shape_texture.sdf <mass>
+    # 0.05 kg is the SIMULATED mass of the reference H
+    # (urdf/H_shape_texture/H_shape_texture.sdf <mass>0.05</mass>).
+    # CORRECTION 2026-08-10: this was 1.0 kg, which I took from
+    # H_shape_texture_CONTROLLER.sdf -- the controller model, not the
+    # simulated object. Every mesh object in the reference library carries
+    # that 20x split (sim 0.05 kg / controller 1.0 kg); push_t.sdf is the sole
+    # object that is 1.0 kg in BOTH, which is why push_t's mass is correct.
+    # Faithful would additionally give the CONTROLLER plant 1.0 kg; the port
+    # has a single mass for both, so this sets the simulated value only.
+    #
+    # Stiction consequence: mu_comb 0.4615 -> mu*m*g = 0.226 N at 0.05 kg,
+    # vs 4.53 N at 1.0 kg. Measured delivered force is ~1.6 N, so a 0.05 kg
+    # object should slide with ~7x margin instead of creeping.
+    mass:        0.05
     friction:    0.3        # reference drake:mu_dynamic
     com_height_frac: 0.25   # LOW CoM (reference = 0.5 = geometric centre)
     pusher_friction: 1.0
