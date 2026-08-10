@@ -19,6 +19,35 @@ Cost terms:
 import numpy as np
 
 
+def _goal_quaternion(target_yaw: float, target_quat=None) -> np.ndarray:
+    """Goal quaternion [w, x, y, z] for the object-orientation cost.
+
+    Legacy/planar tasks specify a scalar `goal_yaw` and the goal is the
+    Z-rotation [cos(a/2), 0, 0, sin(a/2)]. That is sufficient for every task
+    whose object rests on a fixed face (box, T, H) -- the reachable set of
+    resting orientations is a one-parameter yaw family.
+
+    The jack breaks that assumption: it rests on a tripod of tip spheres and
+    reorients by ROLLING onto a different tripod, so its goal
+    (jacktoy/parameters/goal_params.yaml fixed_target_orientation) tilts out
+    of the plane and cannot be written as any yaw. Such tasks pass the full
+    quaternion via `goal_quat` in tasks.yaml.
+
+    With target_quat=None this returns exactly the previous expression, so
+    all yaw-specified tasks are bit-identical.
+    """
+    if target_quat is None:
+        a_half = 0.5 * float(target_yaw)
+        return np.array([np.cos(a_half), 0.0, 0.0, np.sin(a_half)])
+    q = np.asarray(target_quat, dtype=float).flatten()
+    if q.shape[0] != 4:
+        raise ValueError(f"goal_quat must have 4 entries [w,x,y,z]; got {q.shape[0]}")
+    n = float(np.linalg.norm(q))
+    if n < 1e-12:
+        raise ValueError("goal_quat has zero norm")
+    return q / n
+
+
 class ManipulationCost:
     """
     Callable cost function shared by all three manipulation tasks.
@@ -192,6 +221,17 @@ class QuadraticManipulationCost:
         # invalid for a unit quaternion.
         self.w_yaw         = float(c.get("w_yaw",            0.0))
         self._target_yaw   = 0.0   # updated each build() call via target_yaw kwarg
+        # Optional full goal quaternion (tasks.yaml `goal_quat`). None => the
+        # goal is the yaw-only rotation built from target_yaw, which is what
+        # every flat-resting task (box, T, H) wants. Set for the jack, whose
+        # goal tilts out of the plane. See _goal_quaternion.
+        #
+        # This is STATIC: unlike target_yaw it is not re-clipped per tick by
+        # the angular lookahead. main.py asserts at startup that the task's
+        # total reorientation demand is under goal_params lookahead_angle, so
+        # the clip would never fire anyway; a task exceeding that needs the
+        # per-tick geodesic SLERP (reference goal_generator.cc:410-434).
+        self._goal_quat    = None
 
         # Near-goal quaternion-dependent Q_block (reference
         # sampling_based_c3_controller.cc:1517-1570). When enabled AND the
@@ -312,10 +352,20 @@ class QuadraticManipulationCost:
         Q[self._obj_ps + 2, self._obj_ps + 2] = self.w_box_rp   # qy (pitch)
         return Q
 
+    def set_goal_quat(self, q):
+        """Install a full goal quaternion [w, x, y, z] (or None to clear).
+
+        Called once at startup from main.py when tasks.yaml supplies
+        `goal_quat`. Every build() thereafter uses it in place of the
+        yaw-derived goal.
+        """
+        self._goal_quat = None if q is None else _goal_quaternion(0.0, q)
+
     def build(self, target_xy: np.ndarray,
               plant_ctx=None, current_q: np.ndarray = None,
               rich_mode: bool = False,
-              target_yaw: float = 0.0):
+              target_yaw: float = 0.0,
+              target_quat=None):
         """
         Return (Q, R, QN, x_ref) for one MPC step.
 
@@ -427,6 +477,8 @@ class QuadraticManipulationCost:
         # The xy components of c_yaw are zero, so this is orthogonal to the
         # existing w_box_rp roll/pitch regularization.
         self._target_yaw = float(target_yaw)
+        _q_goal = _goal_quaternion(
+            target_yaw, target_quat if target_quat is not None else self._goal_quat)
         a_half = 0.5 * self._target_yaw
         ps = self._obj_ps
         # Always seed the goal quaternion reference on qw/qz (parity with
@@ -829,7 +881,8 @@ class QuadraticManipulationCost:
 
     def build_ee_space(self, target_xy: np.ndarray,
                        plant_ctx=None, current_q: np.ndarray = None,
-                       target_yaw: float = 0.0):
+                       target_yaw: float = 0.0,
+                       target_quat=None):
         """
         Return (Q, R, QN, x_ref) for the EE-space LCS.
 
@@ -940,8 +993,12 @@ class QuadraticManipulationCost:
         # only drives x toward q_goal if x_ref = q_goal.
         self._target_yaw = float(target_yaw)
         a_half = 0.5 * self._target_yaw
-        x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
-        x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
+        # Full goal quaternion: seeds ALL FOUR slots, not just qw/qz. A tilted
+        # goal (the jack) has nonzero qx/qy; leaving those at 0 would make the
+        # quaternion Hessian pull toward a non-unit, non-reachable reference.
+        _q_goal = _goal_quaternion(
+            target_yaw, target_quat if target_quat is not None else self._goal_quat)
+        x_ref[self._NEW_OBJ_QW:self._NEW_OBJ_QW + 4] = _q_goal
         # Optional linear rank-1 form — port-only far-goal add-on. Set
         # w_yaw:0 in tasks.yaml to match reference (Hessian-only) behavior.
         if self.w_yaw > 0.0 and not self.use_reference_q_vector:
@@ -971,9 +1028,11 @@ class QuadraticManipulationCost:
                 current_q[ps], current_q[ps + 1],
                 current_q[ps + 2], current_q[ps + 3],
             ])
-            # Goal quaternion from target_yaw (yaw-only rotation about z).
-            a_half = 0.5 * float(target_yaw)
-            q_goal = np.array([np.cos(a_half), 0.0, 0.0, np.sin(a_half)])
+            # Goal quaternion: yaw-only for planar tasks, full quaternion
+            # when the task supplies goal_quat (see _goal_quaternion).
+            q_goal = _goal_quaternion(
+                target_yaw,
+                target_quat if target_quat is not None else self._goal_quat)
             Q_quat = build_regularized_quaternion_cost(
                 q_now, q_goal,
                 weight=self.q_quaternion_dependent_weight,

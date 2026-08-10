@@ -104,6 +104,22 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
             meshcat.SetObject(_tag, ad.Box(0.16, 0.04, 0.04),
                               ad.Rgba(0.1, 0.9, 0.1, 0.35))
             meshcat.SetTransform(_tag, _T_goal.multiply(_T_local))
+    elif task_cfg["object_type"] == "jack":
+        # Three-capsule ghost at the goal POSE (full quaternion, not a yaw).
+        _gq = np.asarray(task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0]), float)
+        _gq = _gq / float(np.linalg.norm(_gq))
+        _T_goal = ad.RigidTransform(
+            ad.RotationMatrix(ad.Quaternion(_gq[0], _gq[1], _gq[2], _gq[3])),
+            [target_xy[0], target_xy[1], init_z])
+        for _rpy, _tag in (
+            ((0.0, 0.0, 0.0),    "/goal_marker/cap1"),
+            ((0.0, 1.5708, 0.0), "/goal_marker/cap2"),
+            ((1.5708, 0.0, 0.0), "/goal_marker/cap3"),
+        ):
+            meshcat.SetObject(_tag, ad.Capsule(0.025, 0.125),
+                              ad.Rgba(0.1, 0.9, 0.1, 0.35))
+            meshcat.SetTransform(_tag, _T_goal.multiply(ad.RigidTransform(
+                ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])))
     elif task_cfg["object_type"] == "hshape":
         # Three-box ghost matching _hshape_sdf's decomposition.
         _goal_yaw = float(task_cfg.get("goal_yaw", 0.0))
@@ -237,7 +253,7 @@ def main():
     # cube_turning) pruned; their tasks.yaml entries remain as inert data.
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "push_t", "push_h"],
+        choices=["pushing", "push_t", "push_h", "push_jack"],
         help="Task to run (default: pushing)",
     )
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
@@ -470,9 +486,20 @@ def main():
     # Stage object pose first so compute_safe_init_arm_q's IK can see it,
     # then resolve init_q (IK-derived safe-offset pose), then set arm.
     # ------------------------------------------------------------------
+    # Initial object orientation. Flat-resting tasks (box, T, H) spawn upright
+    # and omit `init_quat`. The jack has no flat face -- it must be spawned
+    # already balanced on a tripod, so tasks.yaml gives the full quaternion
+    # (reference jacktoy/parameters/sim_params.yaml q_init_object[0:4]).
+    _init_quat = task_cfg.get("init_quat", None)
+    if _init_quat is None:
+        _R_init = ad.RotationMatrix()
+    else:
+        _qi = np.asarray(_init_quat, dtype=float)
+        _qi = _qi / float(np.linalg.norm(_qi))
+        _R_init = ad.RotationMatrix(ad.Quaternion(_qi[0], _qi[1], _qi[2], _qi[3]))
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
-        ad.RigidTransform(ad.RotationMatrix(), task_cfg["init_xyz"])
+        ad.RigidTransform(_R_init, task_cfg["init_xyz"])
     )
     init_q = compute_safe_init_arm_q(
         plant, plant_ctx, panda_model,
@@ -597,6 +624,13 @@ def main():
             _c3plus_N  = 7
             _c3plus_dt = 0.075
             _c3plus_dt_pose = 0.075
+        elif task_name == "push_jack":
+            # jacktoy/parameters/sampling_c3plus_options.yaml:16,61-62:
+            #   N: 5, planning_dt_position: 0.1, planning_dt_pose: 0.05
+            # -- same cadence as push_t, not the letter family's 7/0.075.
+            _c3plus_N  = 5
+            _c3plus_dt = 0.1
+            _c3plus_dt_pose = 0.05
         else:
             _c3plus_N  = 7
             _c3plus_dt = 0.075
@@ -630,6 +664,44 @@ def main():
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
     target_yaw  = float(task_cfg.get("goal_yaw", 0.0))   # radians; 0 for legacy tasks
+    # ------------------------------------------------------------------
+    # Optional full goal quaternion. Flat-resting tasks (box, T, H) reach
+    # every attainable orientation by yaw alone, so they specify goal_yaw and
+    # goal_quat is None. The jack rests on a tripod of tip spheres and
+    # reorients by ROLLING onto a different tripod -- its goal tilts out of
+    # the plane and is not any yaw, so tasks.yaml gives the quaternion
+    # (reference jacktoy/parameters/goal_params.yaml fixed_target_orientation).
+    # ------------------------------------------------------------------
+    _pending_goal_quat = None
+    target_quat = task_cfg.get("goal_quat", None)
+    if target_quat is not None:
+        target_quat = np.asarray(target_quat, dtype=float)
+        target_quat = target_quat / float(np.linalg.norm(target_quat))
+        quad_cost.set_goal_quat(target_quat)
+        _pending_goal_quat = target_quat
+        # The per-tick angular lookahead below is yaw-only and is bypassed for
+        # quaternion goals, so the goal handed to the cost is STATIC. That is
+        # only equivalent to the reference when the clip would never fire --
+        # i.e. when the whole reorientation demand is under lookahead_angle
+        # (reference goal_generator.cc:427 `angle = min(angle, lookahead)`).
+        # Check it at startup rather than silently mis-modelling the task.
+        _q0 = np.asarray(task_cfg.get("init_quat", [1.0, 0.0, 0.0, 0.0]), float)
+        _q0 = _q0 / float(np.linalg.norm(_q0))
+        _R0 = ad.RotationMatrix(ad.Quaternion(_q0[0], _q0[1], _q0[2], _q0[3])).matrix()
+        _Rg = ad.RotationMatrix(ad.Quaternion(
+            target_quat[0], target_quat[1], target_quat[2], target_quat[3])).matrix()
+        _demand = float(np.arccos(np.clip(
+            (np.trace(_R0.T @ _Rg) - 1.0) * 0.5, -1.0, 1.0)))
+        print(f"[GOAL-QUAT] goal_quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+              f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]  "
+              f"reorientation demand = {_demand:.4f} rad ({np.degrees(_demand):.1f} deg)")
+        if _demand > 2.0:
+            raise SystemExit(
+                f"[GOAL-QUAT] task demands {_demand:.3f} rad of reorientation, "
+                f"which exceeds goal_params lookahead_angle = 2.0 rad. The port's "
+                f"quaternion goal is static (no per-tick geodesic SLERP), so this "
+                f"task would be mis-modelled. Implement the SLERP lookahead "
+                f"(reference goal_generator.cc:410-434) before running it.")
     ee_frame    = plant.GetFrameByName(EE_BODY_NAME)
     world_frame = plant.world_frame()
 
@@ -646,6 +718,24 @@ def main():
         # (e.g. running push_h against sampling_c3_kik_t.yaml would project H
         # samples off the T's outline) with no error anywhere. tasks.yaml wins,
         # same precedent as the sampling_height override below.
+        # lcs_explicit_manipuland_ground_contacts is parsed into
+        # SamplingC3Params, but the LCSFormulator is constructed EARLIER (before
+        # the sampling yaml is read) and hardcodes `3 if tshape else 4`. The
+        # yaml key was therefore INERT -- unnoticed because push_t's configured
+        # 3 coincides with the hardcoded value, so the T looked correct while
+        # any other value was silently discarded. Push the configured count
+        # through here.
+        # Guarded on > 0: the dataclass default is 0, and blindly assigning that
+        # would disable ground contacts entirely for configs omitting the key.
+        _n_gnd = int(getattr(sc3_params,
+                             "lcs_explicit_manipuland_ground_contacts", 0) or 0)
+        if (_n_gnd > 0
+                and _n_gnd != formulator.lcs_explicit_manipuland_ground_contacts):
+            print(f"[OVERRIDE] lcs_explicit_manipuland_ground_contacts={_n_gnd} "
+                  f"(was {formulator.lcs_explicit_manipuland_ground_contacts}, "
+                  f"from {_yaml_path})")
+            formulator.lcs_explicit_manipuland_ground_contacts = _n_gnd
+
         _task_shape = str(task_cfg.get("object_type", "") or "")
         if _task_shape:
             _was_shape = str(sc3_params.sampling_params.object_shape)
@@ -723,6 +813,10 @@ def main():
             rng=_rng,
             diagram=diagram,
         )
+        # SE(3) tasks: hand the controller the full goal orientation so its
+        # rotation error is the geodesic angle rather than a yaw difference.
+        if _pending_goal_quat is not None:
+            mpc.set_goal_quat(_pending_goal_quat)
         print(f"[GS] SamplingC3Controller enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
               f"num_add_c3={sc3_params.sampling_params.num_additional_samples_c3} "
@@ -1079,7 +1173,12 @@ def main():
     _R_final = ad.RotationMatrix(ad.Quaternion(
         _final_quat[0], _final_quat[1], _final_quat[2], _final_quat[3]
     )).matrix()
-    _R_goal_mat = ad.RotationMatrix.MakeZRotation(target_yaw).matrix()
+    if target_quat is not None:
+        _R_goal_mat = ad.RotationMatrix(ad.Quaternion(
+            target_quat[0], target_quat[1],
+            target_quat[2], target_quat[3])).matrix()
+    else:
+        _R_goal_mat = ad.RotationMatrix.MakeZRotation(target_yaw).matrix()
     _tr = float(np.trace(_R_goal_mat.T @ _R_final))
     orient_err = float(np.arccos(np.clip((_tr - 1.0) * 0.5, -1.0, 1.0)))
     if args.sampling_c3 is not None:

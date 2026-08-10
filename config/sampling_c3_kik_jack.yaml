@@ -1,0 +1,161 @@
+#
+# KNOWN DEVIATION -- reposition_params.traj_type.
+# jacktoy sets traj_type: 1, which in the REFERENCE enum
+# (parameter_headers/reposition_params.h:18-23  kSpline, kSpherical,
+# kCircular, kPiecewiseLinear) is kSpherical: the EE repositions along an arc
+# on a sphere of radius `sphere_radius` around the object -- the natural
+# partner of kRandomOnSphere, since the samples themselves lie on that sphere.
+# The port does NOT implement kSpherical (its enum is kStraightLine=0,
+# kSawtoothLine=1, kPiecewiseLinear=3, and only kPiecewiseLinear has a
+# tracker; repositioning actually runs through the IK tracker in
+# control/sampling_c3/ik.py). Writing 1 here would silently coerce to
+# kSawtoothLine -- a DIFFERENT and unimplemented trajectory -- so
+# kPiecewiseLinear is used instead and the gap is recorded here rather than
+# hidden. Expect reposition paths to cut across the sphere rather than arc
+# around it; if the jack's repositioning proves to be the binding constraint,
+# implementing kSpherical is the first thing to try.
+# =====================================================================
+# sampling_c3_kik_jack.yaml — controller config for the `push_jack` task.
+#
+# Derived from config/sampling_c3_kik_h.yaml (so the port-specific keys the
+# H run established are inherited) with every value the reference specifies
+# for the jack replaced from:
+#     examples/sampling_c3/jacktoy/parameters/{sampling_params,
+#         sampling_c3plus_options, progress_params_c3plus, reposition_params}.yaml
+#
+# Frame: reference ground top is z=-0.029, port ground is z=0. Every z below
+# is the reference value + 0.029.
+#
+# THE SE(3) TASK. Two entries deserve attention:
+#   sampling_strategy: kRandomOnSphere -- the jack is sampled on a SPHERE
+#     around the object (elevation band 0.2..1.95 rad from vertical), not on a
+#     perimeter at a fixed height. It has no flat face and no outline to
+#     project onto, so the face-table samplers the box/T/H use do not apply.
+#   lcs_explicit_manipuland_ground_contacts: 3 -- from resolve_contacts_to
+#     [0, 1, 3] (0 EE-ground, 1 EE-object, 3 object-ground). Unlike the T/H,
+#     WHICH three witnesses these are changes every tick: the LCS formulator
+#     enumerates all six capsule tips and keeps the closest three, mirroring
+#     the reference's GetNClosestContactPairs over its six explicit tip
+#     spheres (jack_control.sdf / franka_sampling_c3_controller.cc:193-204).
+#
+# CAVEAT: jacktoy's reference param files do not set `lcs_dt_resolution` at
+# all, while push_t and anything both set 4 -- the jacktoy config predates
+# that field in this snapshot. 4 is used here, matching both maintained tasks.
+# =====================================================================
+w_align: 0.0
+w_travel: 0.0
+planner_workspace_x:
+- 0.15
+- 0.75
+planner_workspace_y:
+- -0.6
+- 0.6
+planner_workspace_z:
+- 0.019000000000000003
+- 0.329
+planner_workspace_margin: 0.02
+W_force: 1.0
+use_commit_face_gate: false
+use_contact_entry_gate: false
+use_surface_entry_gate: false
+ee_z_close: true
+use_reposition_pwl_trajectory: true
+w_rot: 0.0
+surrogate_admm_iters: 3
+u_horizontal_limit: 50.0
+u_vertical_limit: 50.0
+lcs_explicit_manipuland_ground_contacts: 3
+use_reference_pair_admission_planner_lcs: true
+use_cost_lcs_ranking: true
+Kp_for_ee_pd_rollout: 100.0
+Kd_for_ee_pd_rollout: 0.5
+lcs_dt_resolution: 4
+dt_osc: 0.01
+dt_mpc: 0.01
+entry_align_threshold: 0.0
+progress_params:
+  track_c3_progress_via: kConfigCostDrop
+  num_control_loops_to_wait_loops: 14
+  num_control_loops_to_wait_position_loops: 20
+  pos_regression_threshold: 0.0
+  progress_enforced_cost_drop: 0.015
+  progress_enforced_over_n_loops_ref: 40
+  cost_switching_threshold_distance: 0.5
+  finished_reposition_cost: 1000000000.0
+  hyst_c3_to_repos: 300000.0
+  hyst_c3_to_repos_position: 300000.0
+  hyst_repos_to_c3: 200000.0
+  hyst_repos_to_c3_position: 200000.0
+  hyst_repos_to_repos: 60000000000000.0
+  hyst_repos_to_repos_position: 60000000000000.0
+  use_relative_hysteresis: true
+  hyst_c3_to_repos_frac: 0.85
+  hyst_c3_to_repos_frac_position: 0.6
+  hyst_repos_to_c3_frac: 0.3
+  hyst_repos_to_c3_frac_position: 0.5
+  hyst_repos_to_repos_frac: 0.1
+  hyst_repos_to_repos_frac_position: 0.1
+  watchdog_steps_since_improve_threshold: 0
+sampling_params:
+  sampling_strategy: kRandomOnSphere
+  num_additional_samples_c3: 2
+  num_additional_samples_repos: 1
+  consider_best_buffer_sample_when_leaving_c3: true
+  N_sample_buffer: 100
+  pos_error_sample_retention: 0.005
+  ang_error_sample_retention: 0.087
+  sampling_radius: 0.1
+  repos_target_radius: 0.1
+  sampling_height: 0.069
+  z_height: 0.024431815000000003
+  use_adaptive_contact_height: false
+  object_shape: jack
+  box_half_extent: 0.0875
+  sampling_setback: 0.02
+  sample_reject_clearance: 0.005
+  sample_projection_clearance: 0.008
+  grid_x_limits:
+  - -0.16
+  - 0.16
+  grid_y_limits:
+  - -0.16
+  - 0.16
+  face_bias_strength: 0.0
+  use_mesh_normal_area_weighting: true
+  yaw_face_bias_strength: 500.0
+  workspace_xy_min:
+  - 0.15
+  - -0.6
+  workspace_xy_max:
+  - 0.75
+  - 0.6
+  workspace_z_min: 0.019000000000000003
+  workspace_z_max: 0.329
+  robot_radius_limits:
+  - 0.25
+  - 0.75
+  workspace_margins: 0.02
+  strict_workspace: true
+  filter_samples_for_safety: true
+  min_angle_from_vertical: 0.2
+  max_angle_from_vertical: 1.95
+reposition_params:
+  traj_type: kPiecewiseLinear
+  speed: 0.2
+  use_straight_line_traj_under_piecewise_linear: 0.008
+  pwl_waypoint_height: 0.06
+  pwl_speed: 0.18
+  use_straight_line_traj_under_spline: 0.12
+  use_straight_line_traj_within_angle: 0.3
+  spline_width: 0.17
+  sphere_radius: 0.12
+  circle_radius: 0.2
+  circle_height: 0.0
+  Kp_q: 60.0
+  Kd_q: 8.0
+  Ki_q: 8.0
+  I_max: 4.0
+  torque_limit: 87.0
+use_velocity_feedforward: true
+velocity_feedforward_alpha: 1.0
+velocity_feedforward_v_max: 1.5
