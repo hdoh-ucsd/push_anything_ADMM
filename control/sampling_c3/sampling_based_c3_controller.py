@@ -2127,9 +2127,18 @@ class SamplingC3Controller:
         # W_posture + a_ee_cap fixes) — box still regresses when gate is
         # enabled (goal_dist 0.109→0.374 → 0.602 m, orient 92°→180° tumble).
         # Kept tshape-only. Port divergence documented.
+        # 2026-08-10: extended to the jack. The reference applies this to all
+        # objects; the port had it tshape-only because the BOX regressed with
+        # it on. The jack needs it and is not the box: measured at its c3
+        # entries, the EE sits 132 mm above its own c3 tracking height when
+        # kToC3ReachedReposTarget fires (ee_z 0.1562 vs z_height 0.0244,
+        # ceiling 0.0344), and the z-freeze then commands that entire drop in
+        # one tick -- straight through the jack, whose top is at 0.122 m. Those
+        # ticks are 100% of the run's contact events and carry 123 N peaks on a
+        # 1.53 N object. Box and T behaviour is untouched.
         if (self._prev_mode == "free"
                 and getattr(self.params, "ee_z_close", True)
-                and _obj_shape == "tshape"):
+                and _obj_shape in ("tshape", "jack")):
             _sampling_z = self._c3_track_z()   # ref cc:1290 uses z_height
             _c3_min_clearance = float(getattr(
                 self.params, "c3_min_clearance", 0.01))
