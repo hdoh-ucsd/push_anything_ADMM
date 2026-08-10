@@ -4511,6 +4511,26 @@ class SamplingC3Controller:
                         # dt_plan feeds RepositionTrajectory's ref-conformant
                         # finished_reposition_flag (t_end-t_start ≤ dt_plan).
                         dt_plan=float(self._dt_ctrl),
+                        # kSpherical (reference reposition.cc:63-67). The arc
+                        # is centred on the OBJECT, so the trajectory needs the
+                        # object's live position; for every other traj_type
+                        # these are ignored. The jack needs this: a PWL
+                        # traverse at pwl_waypoint_height=0.06 passes within
+                        # 3 mm of the jack's centre (it is 0.122 m tall), i.e.
+                        # straight THROUGH it, whereas the arc never enters the
+                        # sphere of radius sphere_radius.
+                        traj_type=self.params.reposition_params.traj_type,
+                        obj_xyz=np.array([
+                            float(current_q[self._obj_x_idx]),
+                            float(current_q[self._obj_y_idx]),
+                            float(current_q[self._obj_z_idx])]),
+                        sphere_radius=float(
+                            self.params.reposition_params.sphere_radius),
+                        straight_line_within_angle=float(
+                            self.params.reposition_params
+                            .use_straight_line_traj_within_angle),
+                        z_min=float(
+                            self.params.sampling_params.workspace_z_min),
                     )
                     # Update the predicted state for NEXT tick's clamp.
                     # Reference cc:1858-1863: sample the just-built trajectory
