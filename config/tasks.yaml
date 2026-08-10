@@ -490,6 +490,11 @@ tasks:
     # 0.00 mm in reality) that swamps the 5.11 mm the real topple needs, so the
     # planner never plans the roll. At 0.99 kg the modelled launch is 0.00 mm.
     controller_mass: 0.99
+    # Reference jacktoy/parameters/sim_params.yaml dt: 0.0001 -- 10x finer than
+    # the port's historical 0.001. Matters here: the jack is 0.156 kg and the
+    # measured contacts are 52 g impulses, which is what a coarse discrete step
+    # produces when the planner drives the EE into a light object.
+    sim_dt: 0.0001
     friction: 0.3            # jack.sdf drake:mu_dynamic
     pusher_friction: 1.0
     mu_per_pair_type:        # sampling_c3plus_options.yaml mu_per_pair_type
