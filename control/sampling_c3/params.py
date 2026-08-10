@@ -814,6 +814,32 @@ class SamplingC3Params:
     # torsional resistance to yaw. Default 0 preserves prior behavior.
     # Env var LCS_EXPLICIT_MANIPULAND_GND takes precedence (backward compat:
     # LCS_EXPLICIT_BOX_GND also honored).
+    # Predicted-x0 mechanism (reference ResolvePredictedEEState,
+    # sampling_based_c3_controller.cc:1406-1454). The planner/reposition
+    # trajectory may start from a PREDICTED end-effector state rather than the
+    # measured one, to compensate solve latency. jacktoy enables all three.
+    #
+    # The reset is the part the port was missing entirely. Reference predicate:
+    #
+    #   if (((curr_ee - last_ee).norm() < (curr_ee - pred_ee).norm()) &&
+    #       (curr_ee - pred_ee).norm() > 0.01 && !pred.isZero() &&
+    #       use_predicted_x0_reset_mechanism)  -> skip the prediction
+    #   else                                   -> ClampEndEffectorAcceleration
+    #
+    # NOTE `x_from_last_control_loop_` is assigned from `x_lcs_curr` at the TOP
+    # of that function, so `last_ee == curr_ee` and the first term is always
+    # `0 < ...` — vacuous. The EFFECTIVE reference rule is therefore just:
+    # discard any prediction more than 10 mm from the measured EE. That is what
+    # is implemented here, deliberately, because it is what the reference does.
+    use_predicted_x0_c3:                float = True
+    use_predicted_x0_repos:             float = True
+    use_predicted_x0_reset_mechanism:   float = True
+    # Clamp half-width is nominal_ee_accel * dt^2 per axis. Reference push_t and
+    # anything set 2; jacktoy omits the key.
+    nominal_ee_accel:                   float = 2.0
+    # Reference threshold for "the prediction is too far" (metres).
+    x_pred_reset_threshold:             float = 0.01
+
     lcs_explicit_manipuland_ground_contacts: int = 0
 
     # Reference `resolve_contacts_to_for_cost` — the contact resolution used
@@ -1212,6 +1238,12 @@ class SamplingC3Params:
                 raw.get("num_outer_threads", 1))),  # ref name alias
             lcs_explicit_manipuland_ground_contacts = int(raw.get(
                 "lcs_explicit_manipuland_ground_contacts", 0)),
+            use_predicted_x0_c3 = bool(raw.get("use_predicted_x0_c3", True)),
+            use_predicted_x0_repos = bool(raw.get("use_predicted_x0_repos", True)),
+            use_predicted_x0_reset_mechanism = bool(raw.get(
+                "use_predicted_x0_reset_mechanism", True)),
+            nominal_ee_accel = float(raw.get("nominal_ee_accel", 2.0)),
+            x_pred_reset_threshold = float(raw.get("x_pred_reset_threshold", 0.01)),
             resolve_contacts_to_for_cost = raw.get(
                 "resolve_contacts_to_for_cost", None),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
