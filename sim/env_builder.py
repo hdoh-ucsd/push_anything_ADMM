@@ -408,7 +408,21 @@ def _jack_sdf(cfg: dict) -> str:
     # Three orthogonal, concentric capsules -> isotropic sum.
     I = 2.0 * i_perp + i_axis
 
+    # Per-capsule colours matching reference urdf/jack.sdf exactly:
+    #   capsule_1 (body +z) blue, capsule_2 (body +x) red, capsule_3 (body +y) green.
+    # These are not decoration -- the reference's eight nominal goal orientations
+    # are NAMED by them (kQuatRedUp, kQuatGreenDown, ...), each name being the
+    # sign triple of the (red, green, blue) axes, so the colour tells you at a
+    # glance which of the 8 tripods the jack is resting on. A single-colour jack
+    # makes a render unreadable: you cannot see which way it rolled.
+    _CAP_RGBA = {
+        "capsule_1": (0.0, 0.0, 1.0, 1.0),   # blue  — body +z
+        "capsule_2": (1.0, 0.0, 0.0, 1.0),   # red   — body +x
+        "capsule_3": (0.0, 1.0, 0.0, 1.0),   # green — body +y
+    }
+
     def _cap(name, pose):
+        r, g, b, a = _CAP_RGBA[name]
         return f"""      <collision name="{name}">
         <pose>{pose}</pose>
         <geometry><capsule><radius>{RAD}</radius><length>{LEN}</length></capsule></geometry>
