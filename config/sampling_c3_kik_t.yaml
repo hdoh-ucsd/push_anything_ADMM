@@ -562,3 +562,34 @@ reposition_params:
                        # return and slightly worsened landing. Residual is
                        # target-dynamics-bound, not cap-bound. Restored.
   torque_limit:  87.0
+
+# --- EE velocity feedforward (ydot_des tracking) ------------------------------
+# CONFORMANCE GAP, MEASURED INCONCLUSIVE -- read before changing.
+#
+# The reference OSC tracks a commanded EE velocity: osc_tracking_data.cc:94-99
+# takes ydot_des = traj.EvalDerivative(t,1), and the trajectory the controller
+# publishes carries EE velocity explicitly (OutputC3SolutionCurrPlanActor:
+# knots.topRows(3) = EE position, knots.bottomRows(3) = EE velocity from x_sol).
+# With this flag OFF the port passes v_ee_desired=None, so the OSC sets
+# v_err = -v_ee_now and the Kd term becomes PURE DAMPING -- the arm resists its
+# own commanded motion. So OFF is a genuine divergence from the reference.
+#
+# BUT the measured effect on the metric that matters is inconclusive. Matched
+# 60 s push_t runs, identical config except this flag:
+#
+#     .                       OFF     alpha=0.5   alpha=1.0
+#     F_press median (N)     1.08          3.52        1.97
+#     ticks above stiction   64.0%          7.1%      79.1%
+#     closed distance (mm)   29.6           8.2        16.8
+#
+# Closure goes 29.6 -> 8.2 -> 16.8: not a trend, scatter. The spread is the same
+# magnitude as run-to-run variation measured at IDENTICAL config earlier
+# (p163/p165/p166), so 60 s cannot resolve it. Do not quote any of these as a
+# win or a regression without a long matched pair.
+#
+# alpha=1.0 is the LITERAL reference (osc_tracking_data.cc applies no scaling).
+# alpha<1 and v_max are port-only bounds with no reference analogue.
+# T: left OFF (externally set). Flip to true for the conformant value.
+use_velocity_feedforward:   false
+velocity_feedforward_alpha: 1.0
+velocity_feedforward_v_max: 1.5
