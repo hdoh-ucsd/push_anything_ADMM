@@ -540,6 +540,11 @@ def main():
         plant_ad=plant_ad, context_ad=context_ad,
         object_shape=_obj_shape_for_defaults,
         mu_per_pair_type=_mu_per_pair,
+        # Reference plans with a SEPARATE, heavier object model than it
+        # simulates (jack_control.sdf 0.99 kg vs jack.sdf 0.156 kg;
+        # H_shape_texture_controller.sdf 1.0 kg vs 0.05 kg). push_t is the
+        # only task where the two coincide. See _controller_inertia_scope.
+        controller_object_mass=task_cfg.get("controller_mass", None),
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
