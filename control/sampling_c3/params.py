@@ -323,6 +323,13 @@ class SamplingParams:
 
     # Geometry shared across multiple strategies
     sampling_radius:                     float = 0.13   # m, candidate-ring radius for cost eval (samples 1..n-1)
+    # kRandomOnSphere / kRandomOnShell elevation band, measured from the
+    # +z axis. Reference jacktoy/parameters/sampling_params.yaml:
+    #   min_angle_from_vertical 0.2  (11.5 deg -- near straight down)
+    #   max_angle_from_vertical 1.95 (111.7 deg -- just below horizontal)
+    # Defaults span the full sphere so non-sphere strategies are unaffected.
+    min_angle_from_vertical:             float = 0.0
+    max_angle_from_vertical:             float = 3.14159265358979
     repos_target_radius:                 float = 0.075  # m, IK proxy target — pusher just touching box
     # repos_target_radius derivation:
     #   box_half_extent (0.050) + pusher_radius (0.025) = 0.075 m
