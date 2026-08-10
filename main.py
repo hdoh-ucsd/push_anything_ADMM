@@ -104,6 +104,19 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
             meshcat.SetObject(_tag, ad.Box(0.16, 0.04, 0.04),
                               ad.Rgba(0.1, 0.9, 0.1, 0.35))
             meshcat.SetTransform(_tag, _T_goal.multiply(_T_local))
+    elif task_cfg["object_type"] == "hshape":
+        # Three-box ghost matching _hshape_sdf's decomposition.
+        _goal_yaw = float(task_cfg.get("goal_yaw", 0.0))
+        _T_goal = ad.RigidTransform(ad.RotationMatrix.MakeZRotation(_goal_yaw),
+                                    [target_xy[0], target_xy[1], init_z])
+        for _lx, _sz, _tag in (
+            (-0.044, (0.024, 0.128, 0.032), "/goal_marker/lbar"),
+            (+0.044, (0.024, 0.128, 0.032), "/goal_marker/rbar"),
+            ( 0.000, (0.064, 0.024, 0.032), "/goal_marker/cbar"),
+        ):
+            meshcat.SetObject(_tag, ad.Box(*_sz), ad.Rgba(0.1, 0.9, 0.1, 0.35))
+            meshcat.SetTransform(_tag, _T_goal.multiply(
+                ad.RigidTransform(ad.RotationMatrix(), [_lx, 0.0, 0.0])))
     else:
         shape = ad.Sphere(task_cfg["radius"])
         meshcat.SetObject("/goal_marker", shape, ad.Rgba(0.1, 0.9, 0.1, 0.35))
@@ -224,7 +237,7 @@ def main():
     # cube_turning) pruned; their tasks.yaml entries remain as inert data.
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "push_t"],
+        choices=["pushing", "push_t", "push_h"],
         help="Task to run (default: pushing)",
     )
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,

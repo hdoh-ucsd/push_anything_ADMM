@@ -355,6 +355,69 @@ tasks:
       w_torque:         0.01
 
   # -----------------------------------------------------------------------
+  # Task 3b: Push H — low-CoM H, PURE TRANSLATION
+  # -----------------------------------------------------------------------
+  # Object is dimensionally conformant to the reference H_shape_texture
+  # (envelope 0.112 x 0.128 x 0.032 m, mass 1.0 kg, mu_dynamic 0.3, identical
+  # hydroelastic block) but with the CoM deliberately dropped to 25% of height
+  # (8 mm above the base) instead of the reference's geometric centre. See
+  # sim/env_builder.py `_hshape_sdf` for the full rationale.
+  #
+  # goal_yaw 0.0 makes this a PURE-TRANSLATION task by design. push_t showed
+  # rotation converging to the tight band reliably while translation asymptotes
+  # ~0.107-0.115 m; isolating translation removes the rotation term that
+  # dominates the sample-ranking cost and lets the translation behaviour be
+  # measured on its own.
+  #
+  # goal_xy matches push_t's so closure is directly comparable (0.188 m).
+  push_h:
+    object_type: hshape
+    link_name:   h_link
+    mass:        1.0        # reference H_shape_texture.sdf <mass>
+    friction:    0.3        # reference drake:mu_dynamic
+    com_height_frac: 0.25   # LOW CoM (reference = 0.5 = geometric centre)
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 1.0, BOX-GND: 0.4615, EE-GND: 0.4165}
+    # H spans z in [-0.016, +0.016] in link frame -> init z = 0.016 rests it
+    # exactly on the table.
+    init_xyz:  [0.5, 0.0, 0.016]
+    goal_xy:   [0.482, 0.187]
+    goal_yaw:  0.0
+    color_rgba: [0.20, 0.45, 0.85, 1.0]
+    # Pusher sphere r=0.0195 must clear the table, so the EE centre cannot go
+    # below ~0.0205. 0.021 is as low as the push can be applied, which keeps the
+    # tipping moment about the leading bottom edge as small as the geometry
+    # allows (push 13 mm above the 8 mm CoM).
+    sampling_height:     0.021
+    pwl_waypoint_height: 0.075
+    cost:
+      use_reference_q_vector: true
+      w_Q: 50.0
+      q_vector_ee_pos:      [0.01, 0.01, 0.01]
+      q_vector_obj_quat:    [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos:     [200.0, 200.0, 120.0]
+      q_vector_ee_vel:      [5.0, 5.0, 5.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_obj_xy:      12500.0
+      w_obj_z:          10.0
+      w_box_z:       12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose:   5990.0
+      w_box_rp:          5.0
+      w_yaw:             0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal:        1.0
+      z_ee_target:     0.021   # matches sampling_height
+      z_obj_target:    0.016   # H rests at z = half-height
+      d_push:          0.05
+      w_ee_approach: 8000.0
+      w_torque:        0.01
+
+  # -----------------------------------------------------------------------
   # Task 4: Cube Turning (Jin & Posa eq. 40 analog)
   # -----------------------------------------------------------------------
   # Pure-rotation testbed. Translation weight w_obj_xy zeroed so the
