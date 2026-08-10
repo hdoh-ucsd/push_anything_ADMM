@@ -173,6 +173,7 @@ def generate_samples(strategy:    SamplingStrategy,
                      g_hat:       Optional[np.ndarray] = None,
                      obj_quat:    Optional[np.ndarray] = None,
                      yaw_delta:   Optional[float] = None,
+                     obj_z:       Optional[float] = None,
                      ) -> list[np.ndarray]:
     """
     Generate n_samples 3D EE target positions.
@@ -212,6 +213,8 @@ def generate_samples(strategy:    SamplingStrategy,
     elif strategy == SamplingStrategy.kRandomOnPerimeter:
         raw = _random_on_perimeter(
             n_samples, obj_xy, params, rng, g_hat, obj_quat)
+    elif strategy == SamplingStrategy.kRandomOnSphere:
+        raw = _random_on_sphere(n_samples, obj_xy, params, rng, obj_z)
     else:
         raise NotImplementedError(
             f"Sampling strategy {strategy.name} not yet implemented; "
@@ -226,6 +229,58 @@ def generate_samples(strategy:    SamplingStrategy,
 # ---------------------------------------------------------------------------
 # Strategies
 # ---------------------------------------------------------------------------
+
+def _random_on_sphere(n_samples: int,
+                      obj_xy:    np.ndarray,
+                      params:    SamplingParams,
+                      rng:       np.random.Generator,
+                      obj_z:     Optional[float] = None) -> list[np.ndarray]:
+    """kRandomOnSphere — reference generate_samples.cc RandomOnSphereSampling.
+
+    Reference body, verbatim in structure:
+
+        theta           = U(0, 2*pi)
+        elevation_theta = U(min_angle_from_vertical, max_angle_from_vertical)
+        sample.x = obj.x + r * cos(theta) * sin(elevation_theta)
+        sample.y = obj.y + r * sin(theta) * sin(elevation_theta)
+        sample.z = obj.z + r * cos(elevation_theta)
+
+    Note this is NOT a uniform distribution over the spherical cap — the
+    reference draws the elevation angle uniformly, which concentrates samples
+    near the pole. Reproduced as-is rather than "corrected": matching the
+    reference's sample density matters more than statistical uniformity.
+
+    Unlike the planar samplers this needs the object's full 3D position, since
+    the sphere is centred on the object rather than projected to a fixed world
+    height. `obj_z` falls back to the configured sampling_height when the
+    caller has not supplied it.
+
+    Used by the reference `jacktoy` task (sampling_strategy: 2), whose jack is
+    a 3-capsule caltrop that rolls between tripods — it has no flat resting
+    face, so the perimeter/face-table samplers do not apply to it.
+    """
+    r = float(params.sampling_radius)
+    lo = float(getattr(params, "min_angle_from_vertical", 0.0))
+    hi = float(getattr(params, "max_angle_from_vertical", math.pi))
+    cz = float(obj_z) if obj_z is not None else float(params.sampling_height)
+    cx, cy = float(obj_xy[0]), float(obj_xy[1])
+
+    out: list[np.ndarray] = []
+    tries = 0
+    max_tries = max(1, n_samples) * 40
+    while len(out) < n_samples and tries < max_tries:
+        tries += 1
+        theta = float(rng.uniform(0.0, 2.0 * math.pi))
+        elev = float(rng.uniform(lo, hi))
+        p = np.array([cx + r * math.cos(theta) * math.sin(elev),
+                      cy + r * math.sin(theta) * math.sin(elev),
+                      cz + r * math.cos(elev)])
+        # Reference wraps the draw in a do/while on SampleIsAcceptable; the
+        # port's equivalent acceptance test is the workspace filter.
+        if is_in_workspace(p, params):
+            out.append(p)
+    return out
+
 
 def _random_on_circle(n_samples:    int,
                       obj_xy:       np.ndarray,
