@@ -27,6 +27,14 @@
 #     perimeter at a fixed height. It has no flat face and no outline to
 #     project onto, so the face-table samplers the box/T/H use do not apply.
 #   lcs_explicit_manipuland_ground_contacts: 3 -- from resolve_contacts_to
+# Cost-LCS contact resolution [EE-ground, EE-object, object-ground].
+# Reference jacktoy/parameters/sampling_c3plus_options.yaml
+# num_contacts_index_for_cost: 5 -> [0, 3, 6].
+# ALL six jack tips + all three capsules. The planner keeps the closest 1
+  # EE-capsule and closest 3 tips; the ranking rollout selects nothing, so
+  # the LCP -- not a pose-dependent guess -- decides which tips carry load.
+  # This is what lets sample ranking see a tip-over coming.
+resolve_contacts_to_for_cost: [0, 3, 6]
 #     [0, 1, 3] (0 EE-ground, 1 EE-object, 3 object-ground). Unlike the T/H,
 #     WHICH three witnesses these are changes every tick: the LCS formulator
 #     enumerates all six capsule tips and keeps the closest three, mirroring

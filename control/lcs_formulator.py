@@ -577,10 +577,8 @@ class LCSFormulator:
             # Downstream tag consumers (_derive_force_command EE-BOX filter,
             # B1-A pair-index scan) match on "EE-BOX" prefix only, so these
             # synthesized rows are correctly excluded from EE-force intent.
-            _tag_prefix = ("T-VERT" if self._object_shape == "tshape"
-                           else "H-VERT" if self._object_shape == "hshape"
-                           else "J-TIP" if self._object_shape == "jack"
-                           else "BOX-VERT")
+            _tag_prefix = self._SYNTH_GND_TAG_PREFIX_BY_SHAPE.get(
+                self._object_shape, "BOX-VERT")
             ci_s.append({
                 "body_A":       self._obj_body.name(),
                 "body_B":       "ground (world_body)",
@@ -596,20 +594,44 @@ class LCSFormulator:
         return phis_s, J_n_rows_s, J_t_rows_s, ci_s
 
     # ------------------------------------------------------------------
+    # Tag prefix used for each shape's SYNTHESIZED manipuland-ground rows.
+    # Single source of truth: _synthesize_manipuland_ground_contacts stamps
+    # the tag from here, and _mu_for_tag collapses anything in here onto
+    # "BOX-GND" for the mu_per_pair_type lookup. Keeping both sides on one
+    # table is what stops a new shape from silently getting scalar-fallback
+    # friction (which is exactly what happened to the H).
+    _SYNTH_GND_TAG_PREFIX_BY_SHAPE = {
+        "tshape": "T-VERT",
+        "hshape": "H-VERT",
+        "jack":   "J-TIP",
+        "box":    "BOX-VERT",
+    }
+    _SYNTH_GND_TAG_PREFIXES = tuple(
+        set(_SYNTH_GND_TAG_PREFIX_BY_SHAPE.values()))
+
     def _mu_for_tag(self, tag: str) -> float:
         """Return per-pair-type μ using self._mu_per_pair_type override
         if present, otherwise fall back to the scalar self.mu.
 
-        Tag normalization: synthesized manipuland-ground rows use the
-        shape-prefixed tags "BOX-VERT-{i}" / "T-VERT-{i}" (see
-        _synthesize_manipuland_ground_contacts). These are collapsed
-        onto "BOX-GND" for lookup so the yaml `mu_per_pair_type`
+        Tag normalization: synthesized manipuland-ground rows use
+        shape-prefixed tags (see _synthesize_manipuland_ground_contacts):
+        "BOX-VERT-{i}", "T-VERT-{i}", "H-VERT-{i}", "J-TIP-{i}". All are
+        collapsed onto "BOX-GND" for lookup so the yaml `mu_per_pair_type`
         map only needs the three canonical keys
         (EE-BOX / BOX-GND / EE-GND).
+
+        2026-08-10: this list was BOX-VERT/T-VERT only, so the H's twelve
+        synthesized ground rows (added later, tagged H-VERT) silently fell
+        through to the scalar `self.mu` -- 0.3 for push_h instead of the
+        configured BOX-GND 0.4615, a 35% under-estimate of ground friction
+        in every H run to date. The jack's J-TIP rows would have inherited
+        the same hole. Driven off the shared prefix set below so a new
+        shape cannot reintroduce it by adding a tag and forgetting this
+        function.
         """
         if self._mu_per_pair_type is not None:
             _lookup = tag
-            if tag.startswith("BOX-VERT") or tag.startswith("T-VERT"):
+            if any(tag.startswith(pfx) for pfx in self._SYNTH_GND_TAG_PREFIXES):
                 _lookup = "BOX-GND"
             v = self._mu_per_pair_type.get(_lookup)
             if v is not None:

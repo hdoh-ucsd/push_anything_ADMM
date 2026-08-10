@@ -154,6 +154,16 @@ u_vertical_limit: 50.0
 # resistance to yaw (v5 root cause: single ground contact → 0 torsional
 # resistance → planner predicts free yaw → tiny commanded λ_n → no push).
 lcs_explicit_manipuland_ground_contacts: 12   # anything resolve_contacts_to_lists [0,1,12,...] (push_t: 3)
+# Cost-LCS contact resolution [EE-ground, EE-object, object-ground].
+# Reference anything/parameters/sampling_c3plus_options.yaml
+# num_contacts_index_for_cost: 0 -> [0, 1, 12].
+# anything uses num_contacts_index_for_cost = 0, i.e. the cost resolution IS
+  # the planner's. The port was using 2 EE-object pairs here (push_t's
+  # hardcode), one more than the reference.
+  # NOTE: the reference `anything` list has 13 groups for a multi-object
+  # scene with optional walls; only the first three apply to the port's
+  # single-letter H.
+resolve_contacts_to_for_cost: [0, 1, 12]
 
 # d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
 # PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses

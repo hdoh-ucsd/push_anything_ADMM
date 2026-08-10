@@ -816,6 +816,20 @@ class SamplingC3Params:
     # LCS_EXPLICIT_BOX_GND also honored).
     lcs_explicit_manipuland_ground_contacts: int = 0
 
+    # Reference `resolve_contacts_to_for_cost` — the contact resolution used
+    # for the COST LCS, which is NOT the planner's. Reference keeps two
+    # resolutions (sampling_c3_options.h:228-230 indexes
+    # resolve_contacts_to_lists twice, by num_contacts_index and
+    # num_contacts_index_for_cost) and they genuinely differ per task:
+    #     push_t    plan [0,1,3]   cost [0,2,3]
+    #     jacktoy   plan [0,1,3]   cost [0,3,6]   <-- ALL six jack tips
+    #     anything  plan  = cost, index 0 for both
+    # Format matches the reference: [n_EE_ground, n_EE_object, n_object_ground].
+    # None keeps the historical port behaviour (2 EE-object pairs, and the
+    # planner's ground count reused), which is exactly push_t's [0,2,3] — the
+    # value the hardcode was written for and never generalised past.
+    resolve_contacts_to_for_cost: Optional[list] = None
+
     # ---- §9 Option B (Stage 2) — cost-LCS forward-sim ranking ------------
     # When use_cost_lcs_ranking=True, InnerSolver.evaluate_sample computes the
     # sample cost by (a) forward-simulating the planner's u_seq under
@@ -1198,6 +1212,8 @@ class SamplingC3Params:
                 raw.get("num_outer_threads", 1))),  # ref name alias
             lcs_explicit_manipuland_ground_contacts = int(raw.get(
                 "lcs_explicit_manipuland_ground_contacts", 0)),
+            resolve_contacts_to_for_cost = raw.get(
+                "resolve_contacts_to_for_cost", None),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
             Kp_for_ee_pd_rollout     = float(raw.get("Kp_for_ee_pd_rollout", 100.0)),
             Kd_for_ee_pd_rollout     = float(raw.get("Kd_for_ee_pd_rollout", 0.5)),

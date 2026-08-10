@@ -333,6 +333,30 @@ class InnerSolver:
         # §9 Option B (Stage 2) — cost-LCS forward-sim ranking
         self._use_cost_lcs_ranking = bool(getattr(
             params, "use_cost_lcs_ranking", False))
+        # Cost-LCS contact resolution (reference resolve_contacts_to_for_cost,
+        # [n_EE_ground, n_EE_object, n_object_ground]). The reference builds
+        # the cost LCS with a DIFFERENT and generally RICHER contact set than
+        # the planner's -- for jacktoy, plan [0,1,3] vs cost [0,3,6], i.e. the
+        # ranking rollout carries all six jack tips and all three capsules
+        # while the planner keeps only the closest of each. That is how the
+        # reference tolerates a planner that cannot see which tripod is
+        # active: the model that RANKS samples does not select at all.
+        #
+        # None => historical port behaviour (2 EE-object, planner's ground
+        # count), which is exactly push_t's [0,2,3].
+        _rc = getattr(params, "resolve_contacts_to_for_cost", None)
+        if _rc is not None and len(_rc) >= 3:
+            self._cost_n_ee  = max(1, int(_rc[1]))
+            self._cost_n_gnd = int(_rc[2])
+            if int(_rc[0]) != 0:
+                print(f"[COST-LCS] WARNING resolve_contacts_to_for_cost[0]="
+                      f"{int(_rc[0])} (EE-ground) is not modelled by the port; "
+                      f"ignored.", flush=True)
+        else:
+            self._cost_n_ee, self._cost_n_gnd = 2, None
+        print(f"[COST-LCS] contact resolution: {self._cost_n_ee} EE-object + "
+              f"{self._cost_n_gnd if self._cost_n_gnd is not None else 'planner'}"
+              f" object-ground", flush=True)
         self._Kp_ee_pd_rollout = float(getattr(
             params, "Kp_for_ee_pd_rollout", 100.0))
         self._Kd_ee_pd_rollout = float(getattr(
@@ -732,14 +756,26 @@ class InnerSolver:
                                 plant_ctx, _q_saved_for_cost_lcs)
                             self.plant.SetVelocities(
                                 plant_ctx, _v_saved_for_cost_lcs)
+                    # The cost LCS may use a different ground-contact count
+                    # than the planner (reference resolve_contacts_to_for_cost).
+                    # The formulator holds that count as state, so swap it for
+                    # the build and restore in the finally below -- leaking the
+                    # cost value into the planner would silently change the
+                    # planning LCS dimension.
+                    _gnd_saved = self.formulator\
+                        .lcs_explicit_manipuland_ground_contacts
                     try:
+                        if self._cost_n_gnd is not None:
+                            self.formulator\
+                                .lcs_explicit_manipuland_ground_contacts = \
+                                self._cost_n_gnd
                         (A_c, B_c, D_c, d_c,
                          E_c, F_c, H_c, c_lcs_c,
                          J_n_c, J_t_c, phi_c, mu_c) = \
                             self.formulator.linearize_discrete_ee_space(
                                 plant_ctx,
                                 _dt_effective / self._lcs_dt_resolution,
-                                n_ee_top_k=2,
+                                n_ee_top_k=self._cost_n_ee,
                                 force_top_k_ee_box=True)
                         # Cost-LCS admission audit for the crux instrumentation
                         # (task 2): number of EE-manipuland rows in the actual
@@ -764,6 +800,9 @@ class InnerSolver:
                         _n_ee_t_cost = -1        # signals cost-LCS build failed
                         _ee_t_phi_cost = []
                         _cost_lcs_rate = 1
+                    finally:
+                        self.formulator\
+                            .lcs_explicit_manipuland_ground_contacts = _gnd_saved
                     # Restore plant to the state expected by downstream
                     # callers (matches the pre-existing R^7 path's convention
                     # of leaving plant_ctx at current_q/current_v).
