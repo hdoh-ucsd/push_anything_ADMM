@@ -894,6 +894,33 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
 # Prepositioned-pose IK (push-direction-aware)
 # ---------------------------------------------------------------------------
 
+def init_rotation(task_cfg: dict):
+    """Initial object orientation from tasks.yaml `init_quat` [w, x, y, z].
+
+    Flat-resting objects (box, T, H) spawn upright and omit the key, so this
+    returns identity and they are unaffected. The jack has no flat face -- it
+    balances on a tripod of tip spheres -- so it MUST be spawned at a specific
+    orientation or it starts on a single tip and immediately falls over.
+
+    Single source of truth for both stagers: main.py's initial pose AND
+    compute_safe_init_arm_q, which re-stages the object before running IK.
+    That second site used to hardcode `RotationMatrix()`, silently resetting a
+    configured init_quat to identity while preserving the position -- invisible
+    for every task whose init orientation IS identity, fatal for the jack.
+    """
+    q = task_cfg.get("init_quat", None)
+    if q is None:
+        return ad.RotationMatrix()
+    q = np.asarray(q, dtype=float).flatten()
+    if q.shape[0] != 4:
+        raise ValueError(f"init_quat must have 4 entries [w,x,y,z]; got {q.shape[0]}")
+    n = float(np.linalg.norm(q))
+    if n < 1e-12:
+        raise ValueError("init_quat has zero norm")
+    q = q / n
+    return ad.RotationMatrix(ad.Quaternion(q[0], q[1], q[2], q[3]))
+
+
 def compute_safe_init_arm_q(plant,
                             plant_ctx,
                             panda_model,
@@ -976,7 +1003,9 @@ def compute_safe_init_arm_q(plant,
     plant.SetPositions(plant_ctx, panda_model, seed)
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
-        ad.RigidTransform(ad.RotationMatrix(), init_xyz.tolist()),
+        # Honour the task's init_quat. Hardcoding identity here reset any
+        # configured initial orientation (see init_rotation).
+        ad.RigidTransform(init_rotation(task_cfg), init_xyz.tolist()),
     )
 
     n_arm_dofs = plant.num_actuators()

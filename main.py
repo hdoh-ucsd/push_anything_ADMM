@@ -40,6 +40,7 @@ from sim.env_builder import (
     _INITIAL_ARM_Q_SEED,
     EE_BODY_NAME,
     compute_safe_init_arm_q,
+    init_rotation,
 )
 from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
@@ -490,16 +491,9 @@ def main():
     # and omit `init_quat`. The jack has no flat face -- it must be spawned
     # already balanced on a tripod, so tasks.yaml gives the full quaternion
     # (reference jacktoy/parameters/sim_params.yaml q_init_object[0:4]).
-    _init_quat = task_cfg.get("init_quat", None)
-    if _init_quat is None:
-        _R_init = ad.RotationMatrix()
-    else:
-        _qi = np.asarray(_init_quat, dtype=float)
-        _qi = _qi / float(np.linalg.norm(_qi))
-        _R_init = ad.RotationMatrix(ad.Quaternion(_qi[0], _qi[1], _qi[2], _qi[3]))
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
-        ad.RigidTransform(_R_init, task_cfg["init_xyz"])
+        ad.RigidTransform(init_rotation(task_cfg), task_cfg["init_xyz"])
     )
     init_q = compute_safe_init_arm_q(
         plant, plant_ctx, panda_model,
