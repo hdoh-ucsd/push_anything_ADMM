@@ -4535,8 +4535,48 @@ class SamplingC3Controller:
                     # the re-lift trap that keeps `p_start = ee_pos_now`
                     # stuck at z ≈ z_safe.
                     _nominal_ee_accel = float(getattr(
-                        self.base_mpc, "nominal_ee_accel", 2.0))
+                        self.params, "nominal_ee_accel",
+                        getattr(self.base_mpc, "nominal_ee_accel", 2.0)))
+                    # ---- Reference reset mechanism (ResolvePredictedEEState,
+                    # sampling_based_c3_controller.cc:1425-1442). Discard the
+                    # prediction when it is more than x_pred_reset_threshold
+                    # from the MEASURED end-effector. Without this the
+                    # trajectory is rebuilt from a predicted start each tick, so
+                    # a bad prediction becomes a receding start point and
+                    # compounds -- p167 diverged 0.024 -> 0.360 m from a
+                    # STATIONARY reposition target in 3 ticks and flew out
+                    # through the workspace ceiling at z=0.421.
+                    #
+                    # The reference's first term, (curr_ee-last_ee).norm() <
+                    # (curr_ee-pred_ee).norm(), is vacuous: it assigns
+                    # x_from_last_control_loop_ = x_lcs_curr at the top of the
+                    # same function, so last_ee IS curr_ee and the term reads
+                    # 0 < ... . The effective reference rule is the threshold
+                    # test alone, which is what is implemented.
+                    _pred_reset = False
                     if (self._x_pred_repos_plan is not None
+                            and bool(getattr(self.params,
+                                             "use_predicted_x0_reset_mechanism",
+                                             True))):
+                        _pred_err = float(np.linalg.norm(
+                            np.asarray(self._x_pred_repos_plan, dtype=float)
+                            - np.asarray(ee_pos_now, dtype=float)))
+                        _thr = float(getattr(self.params,
+                                             "x_pred_reset_threshold", 0.01))
+                        if _pred_err > _thr:
+                            _pred_reset = True
+                            self._x_pred_reset_count = getattr(
+                                self, "_x_pred_reset_count", 0) + 1
+                            if self.log_diag and self._x_pred_reset_count <= 40:
+                                print(f"[XPRED-RESET] step={self._step} "
+                                      f"pred_err={_pred_err*1000:.1f}mm "
+                                      f"> thr={_thr*1000:.1f}mm — discarding "
+                                      f"predicted EE, using measured",
+                                      flush=True)
+                    if (self._x_pred_repos_plan is not None
+                            and not _pred_reset
+                            and bool(getattr(self.params,
+                                             "use_predicted_x0_repos", True))
                             and _nominal_ee_accel > 0.0):
                         _dt_c = min(0.1, float(self._dt_ctrl))
                         _delta_pos = _nominal_ee_accel * _dt_c * _dt_c
