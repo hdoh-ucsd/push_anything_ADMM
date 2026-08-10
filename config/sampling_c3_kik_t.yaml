@@ -290,21 +290,7 @@ progress_params:
   # (fresh must beat prev_repos by 70% — much easier). Fix-1 diagnosis
   # (2026-07-18) showed 88% of steps pursued stale prev_repos while fresh
   # face-3 samples existed in the buffer — the dispatcher wouldn't switch.
-  # *** OFF-REFERENCE (user-authorized 2026-08-09) *** reference push_t
-  # progress_params_c3plus.yaml:47 = 0.4. Lowered to 0.25 as an experiment.
-  #
-  # Why: the c3->repos switch needs `best_other < (1-frac)*curr_cost`. Measured
-  # on p163 (clean, complete 1200 s), late-run: best_other/curr median 0.895,
-  # p10 0.672, min 0.600 -- so 0/2655 c3 ticks ever cleared the 0.60 bar that
-  # frac=0.4 imposes, even though the ranking was selecting a genuinely better
-  # face (alignment +0.652 vs the EE's actual -0.143). The EE stays pinned to a
-  # poor face until the 180-loop progress timeout, and net translation is zero.
-  # frac=0.25 moves the bar to 0.75, which the p10-and-better alternatives clear.
-  #
-  # This is an amplifier, NOT the root cause -- that remains the force path
-  # (planner lambda is a cost demand, ~1.7 N delivered vs 4.53 N stiction).
-  # Revert to 0.4 to restore reference conformance.
-  hyst_c3_to_repos_frac:                  0.25
+  hyst_c3_to_repos_frac:                  0.4
   hyst_c3_to_repos_frac_position:         0.6
   hyst_repos_to_c3_frac:                  0.9
   hyst_repos_to_c3_frac_position:         0.5
