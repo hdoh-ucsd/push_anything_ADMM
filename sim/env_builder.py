@@ -950,10 +950,19 @@ def compute_safe_init_arm_q(plant,
         # (see _hshape_sdf). Envelope is symmetric, unlike the T's.
         half_extent = abs(g_hat[0]) * 0.056 + abs(g_hat[1]) * 0.064
         obj_top_z   = init_xyz[2] + 0.016
+    elif obj_type == "jack":
+        # The jack has no axis-aligned envelope: its extent depends on the
+        # current tripod. Every tip is 0.0875 from the centre, so that radius
+        # bounds the footprint in ANY direction and is orientation-independent
+        # -- the right conservative choice for a body that rolls.
+        half_extent = 0.0875
+        # Highest point of a resting jack: the three UP tips sit one tripod
+        # height above the CoM, symmetric with the three resting ones.
+        obj_top_z   = init_xyz[2] + 0.061084
     else:
         raise ValueError(
             f"compute_safe_init_arm_q: unknown object_type '{obj_type}' "
-            "(expected 'box', 'sphere', 'tshape', or 'hshape')."
+            "(expected 'box', 'sphere', 'tshape', 'hshape', or 'jack')."
         )
 
     # SAFE-OFFSET target: xy offset opposite goal direction by
