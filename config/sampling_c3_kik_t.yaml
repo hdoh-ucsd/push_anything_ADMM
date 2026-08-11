@@ -243,21 +243,24 @@ progress_params:
   # Iter1 (results/push_t_iter1_20260718_133821) log showed
   # kToReposUnproductive firing every ~17 c3 steps — window fills too
   # quickly, dispatcher exits c3 before contact accumulates useful push.
-  progress_enforced_cost_drop:        0.01
-  # 2026-08-09: reference unit is loops — push_t/progress_params_c3plus.yaml:45
-  # = 180. The previous 13.5 s came from 180 x 0.075 (`anything`'s planning_dt,
-  # not push_t's) and then resolved to 13.5 / dt_ctrl 0.1 = 135 loops — 25%
-  # short of the reference's 180. Loop form removes both conversion errors.
-  progress_enforced_over_n_loops_ref: 180
+  # 2026-08-11 L1 (anything-N1 lineage): the push_t demo params are BIT-ROT
+  # (never runnable as shipped; anti-tuned on exactly these knobs — see
+  # docs/anything-n1-config-delta-audit.md + memory
+  # project_anything_T_tight_pass_2026-08-11). Authentic single-object
+  # values: anything/progress_params_c3plus.yaml cost_drop 0.5 +
+  # multiyaml_rewrite.py PROGRESS_ENFORCED_OVER_N_LOOPS_CONFIGS {1: 35}.
+  progress_enforced_cost_drop:        0.5
+  progress_enforced_over_n_loops_ref: 35
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
   # placement is more sensitive than gross translation).
-  # Reference push_t/progress_params_c3plus.yaml:33 = 0.50 (10× the
-  # reference anything value of 0.05). Port previously had 0.05 (anything
-  # default) → T at 0.188 m never crossed → dispatcher used _position
-  # variants throughout. Fixed 2026-07-17.
-  cost_switching_threshold_distance: 0.50    # m
+  # 2026-08-11 L1: back to the anything-N1 value 0.05 (multiyaml
+  # COST_SWITCHING_THRESHOLD_DISTANCE_CONFIGS is 0.05 for ALL N; push_t's
+  # 0.50 is stale bit-rot). The 2026-07-17 flip to 0.50 trusted the wrong
+  # lineage. Consumers: mode_switch regime AND the wrapper's sticky
+  # crossed_switching_threshold latch (sampling_based_c3_controller.py:1854).
+  cost_switching_threshold_distance: 0.05    # m
 
   # Reference-aligned arrival penalty (dairlib
   # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
@@ -296,16 +299,18 @@ progress_params:
   # (fresh must beat prev_repos by 70% — much easier). Fix-1 diagnosis
   # (2026-07-18) showed 88% of steps pursued stale prev_repos while fresh
   # face-3 samples existed in the buffer — the dispatcher wouldn't switch.
-  hyst_c3_to_repos_frac:                  0.4
-  hyst_c3_to_repos_frac_position:         0.6
+  # 2026-08-11 L1: restored to the anything-N1 lineage (the maintained
+  # config that reaches tight in <60 s on the reference stack). The
+  # 2026-07-18/19 flips to push_t's 0.4/0.6/0.3/0.1 trusted the bit-rotted
+  # demo. repos_to_repos 0.7 = fresh sample must beat prev_repos by 70%
+  # (strong churn protection — the push_t-demo run showed 214 aborted
+  # lift-cycles/9 min under 0.3).
+  hyst_c3_to_repos_frac:                  0.6
+  hyst_c3_to_repos_frac_position:         0.7
   hyst_repos_to_c3_frac:                  0.9
   hyst_repos_to_c3_frac_position:         0.5
-  # 2026-07-19: revert 0.6 → 0.3 to match reference push_t exactly.
-  # The 0.6 override was compensating for noisy per-tick sample costs; keep
-  # tests clean under the reference-conformant sampler port (Option B —
-  # kRandomOnPerimeter) so any remaining instability shows up as-is.
-  hyst_repos_to_repos_frac:               0.3
-  hyst_repos_to_repos_frac_position:      0.1
+  hyst_repos_to_repos_frac:               0.7
+  hyst_repos_to_repos_frac_position:      0.7
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
