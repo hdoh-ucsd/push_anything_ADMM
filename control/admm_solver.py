@@ -1624,7 +1624,8 @@ class C3Solver:
                 # DIAG_ZVEE=1 (2026-08-11 crawl probe): per-iter QP-optimum
                 # content — does the iter-0 QP already crawl, or do the
                 # projection/G iters kill an initially-moving plan?
-                if os.environ.get("DIAG_ZVEE", ""):
+                import os as _os_zv
+                if _os_zv.environ.get("DIAG_ZVEE", ""):
                     _vmax = max(float(np.linalg.norm(
                         z_sol[i * TOT + 16 : i * TOT + 19]))
                         for i in range(N))
