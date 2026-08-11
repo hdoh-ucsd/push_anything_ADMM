@@ -32,6 +32,8 @@ Speed notes
  - Only the linear cost term q is refreshed each ADMM iteration via
    UpdateCoefficients — avoids repeated program allocation.
 """
+import os
+
 import numpy as np
 import pydrake.all as ad
 
@@ -1619,6 +1621,18 @@ class C3Solver:
 
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
+                # DIAG_ZVEE=1 (2026-08-11 crawl probe): per-iter QP-optimum
+                # content — does the iter-0 QP already crawl, or do the
+                # projection/G iters kill an initially-moving plan?
+                if os.environ.get("DIAG_ZVEE", ""):
+                    _vmax = max(float(np.linalg.norm(
+                        z_sol[i * TOT + 16 : i * TOT + 19]))
+                        for i in range(N))
+                    _dee = float(np.linalg.norm(
+                        z_sol[N * TOT + 7 : N * TOT + 9]
+                        - z_sol[0 * TOT + 7 : 0 * TOT + 9]))
+                    print(f"[ZVEE] it={it} vmax={_vmax:.4f}m/s "
+                          f"dEE_xy={_dee*1000:.1f}mm", flush=True)
             else:
                 self.qp_failures += 1
                 if self.qp_failures == 1 or self.qp_failures % 100 == 0:
