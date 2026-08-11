@@ -1217,6 +1217,23 @@ class C3Solver:
                       f"C3::ScaleLCS): scale={_lcs_scale:.4f} — λ published "
                       f"in Newtons via ×{_lcs_scale:.4f} un-scale "
                       f"(c3.cc:350-353)", flush=True)
+            # DIAG_DUMP_SOLVE=path.npz (2026-08-11): one-shot serialization
+            # of this solve's SCALED instance for the cross-stack content
+            # diff (counterpart of the reference's [EXPERIMENT-DUMP]).
+            import os as _os_dump
+            _dump_path = _os_dump.environ.get("DIAG_DUMP_SOLVE", "")
+            if _dump_path and not getattr(self, "_solve_dumped", False):
+                self._dump_calls = getattr(self, "_dump_calls", 0) + 1
+                _phi_ok = (phi is not None and np.size(phi) > 0
+                           and 0.02 < float(np.max(phi)) < 0.08)
+                if self._dump_calls >= 50 and _phi_ok:
+                    self._solve_dumped = True
+                    np.savez(_dump_path, A=A, B=B_ctrl, D=D, d=d, E=E, F=F,
+                             H=H, c=c_lcs, x0=x0, xref=x_ref, Q=Q, R=R,
+                             QN=QN, scale=_lcs_scale,
+                             phi=(phi if phi is not None else np.zeros(0)))
+                    print(f"[DUMP-PORT] solve #200 -> {_dump_path}",
+                          flush=True)
             # DIAG_ZVEE row decomposition (2026-08-11): the EE gap row's
             # static content in SCALED units — gap0 = (E·x0 + c)[row] is
             # what η must equal at λ=0, u=0. Reference shows ~6 (scaled
@@ -1660,12 +1677,16 @@ class C3Solver:
                 # projection/G iters kill an initially-moving plan?
                 import os as _os_zv
                 if _os_zv.environ.get("DIAG_ZVEE", ""):
+                    # Slot overrides for replaying foreign-layout instances
+                    # (reference layout: EE pos 0:3, EE vel 10:13).
+                    _pee0 = int(_os_zv.environ.get("DIAG_ZVEE_PEE0", "7"))
+                    _vee0 = int(_os_zv.environ.get("DIAG_ZVEE_VEE0", "16"))
                     _vmax = max(float(np.linalg.norm(
-                        z_sol[i * TOT + 16 : i * TOT + 19]))
+                        z_sol[i * TOT + _vee0 : i * TOT + _vee0 + 3]))
                         for i in range(N))
                     _dee = float(np.linalg.norm(
-                        z_sol[N * TOT + 7 : N * TOT + 9]
-                        - z_sol[0 * TOT + 7 : 0 * TOT + 9]))
+                        z_sol[N * TOT + _pee0 : N * TOT + _pee0 + 2]
+                        - z_sol[0 * TOT + _pee0 : 0 * TOT + _pee0 + 2]))
                     print(f"[ZVEE] it={it} vmax={_vmax:.4f}m/s "
                           f"dEE_xy={_dee*1000:.1f}mm", flush=True)
             else:
