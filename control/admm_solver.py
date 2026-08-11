@@ -1718,6 +1718,23 @@ class C3Solver:
                                        else None)
                 omega = omega + z_sol - delta
 
+                # DIAG_ZVEE paired-trace print (2026-08-11): post-dual-update
+                # consensus-channel content, mirrored by [ZTRACE-REF] in the
+                # reference c3.cc ADMMStep. Sums over ALL knots/slots.
+                import os as _os_zt
+                if _os_zt.environ.get("DIAG_ZVEE", ""):
+                    _zl = _dl = _wl = _ze = _de2 = 0.0
+                    for _i in range(N):
+                        _b = _i * TOT
+                        _zl += float(np.sum(np.abs(z_sol[_b+SL:_b+SU])))
+                        _dl += float(np.sum(np.abs(delta[_b+SL:_b+SU])))
+                        _wl += float(np.sum(np.abs(omega[_b+SL:_b+SU])))
+                        _ze += float(np.sum(np.abs(z_sol[_b+SE:_b+TOT])))
+                        _de2 += float(np.sum(np.abs(delta[_b+SE:_b+TOT])))
+                    print(f"[ZTRACE] it={it} z_lam={_zl:.3f} d_lam={_dl:.3f} "
+                          f"w_lam={_wl:.3f} z_eta={_ze:.3f} d_eta={_de2:.3f}",
+                          flush=True)
+
             # ---- [CONSENSUS] per-iter, per-knot block-decomposed view ------
             # Emits iters 0, 1, and last (actual_iters-1). Substitutes real
             # values into eq (6) agreement and eq (9) dual update, per
