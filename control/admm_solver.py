@@ -1203,6 +1203,26 @@ class C3Solver:
                       f"C3::ScaleLCS): scale={_lcs_scale:.4f} — λ published "
                       f"in Newtons via ×{_lcs_scale:.4f} un-scale "
                       f"(c3.cc:350-353)", flush=True)
+            # DIAG_ZVEE row decomposition (2026-08-11): the EE gap row's
+            # static content in SCALED units — gap0 = (E·x0 + c)[row] is
+            # what η must equal at λ=0, u=0. Reference shows ~6 (scaled
+            # 20 mm); port η sat at ~0 ⇒ find which term is wrong.
+            import os as _os_row
+            if _os_row.environ.get("DIAG_ZVEE", ""):
+                _ee_i = getattr(self, "_ee_box_pair_idx", None)
+                if _ee_i is not None and phi is not None:
+                    _r_ee = num_normals + int(_ee_i)        # λ_n row
+                    _r_g  = num_normals + (1 if int(_ee_i) == 0 else 0)
+                    _Ex = E @ np.asarray(x0, dtype=float)
+                    print(f"[ROWDECOMP] scale={_lcs_scale:.3f} "
+                          f"phi_ee={float(phi[int(_ee_i)]):+.4f}m "
+                          f"| EE row {_r_ee}: c={c_lcs[_r_ee]:+.4f} "
+                          f"Ex0={_Ex[_r_ee]:+.4f} "
+                          f"gap0={c_lcs[_r_ee] + _Ex[_r_ee]:+.4f} "
+                          f"| GND row {_r_g}: c={c_lcs[_r_g]:+.4f} "
+                          f"Ex0={_Ex[_r_g]:+.4f} "
+                          f"gap0={c_lcs[_r_g] + _Ex[_r_g]:+.4f}",
+                          flush=True)
 
         # ---------------------------------------------------------------
         # QP cost: P = 2·diag(Q,_,_,_,_, R block, _,_,...)·etc + ρ·I
