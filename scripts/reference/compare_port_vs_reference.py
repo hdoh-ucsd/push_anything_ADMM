@@ -22,7 +22,11 @@ GOAL_QUAT = (-0.932773, 0.0, 0.0, 0.360464)  # yaw -0.7379 rad
 
 
 def quat_angle(qa, qb):
-    dot = abs(sum(a * b for a, b in zip(qa, qb)))
+    # normalize: logged quats can be slightly off unit norm (print rounding
+    # + sim drift), which inflates the dot past 1 and clamps the angle to 0
+    na = math.sqrt(sum(a * a for a in qa)) or 1.0
+    nb = math.sqrt(sum(b * b for b in qb)) or 1.0
+    dot = abs(sum(a * b for a, b in zip(qa, qb))) / (na * nb)
     return 2.0 * math.acos(min(1.0, dot))
 
 
