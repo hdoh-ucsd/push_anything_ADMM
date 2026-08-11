@@ -1214,10 +1214,12 @@ class C3Solver:
                     _r_ee = num_normals + int(_ee_i)        # λ_n row
                     _r_g  = num_normals + (1 if int(_ee_i) == 0 else 0)
                     _Ex = E @ np.asarray(x0, dtype=float)
-                    _g0 = c_lcs[num_normals:2*num_normals] \
-                        + _Ex[num_normals:2*num_normals]
+                    # Anitescu layout: rows 4i..4i+3 = contact i's folded
+                    # directions (NO gamma block). Print ALL rows.
+                    _g0 = (c_lcs + _Ex)[:n_lambda]
                     print(f"[ROWDECOMP] scale={_lcs_scale:.3f} "
                           f"ee_idx={int(_ee_i)} "
+                          f"x0_pee={np.array2string(np.asarray(x0, dtype=float)[7:10], precision=4)} "
                           f"phi={np.array2string(np.asarray(phi, dtype=float), precision=4)} "
                           f"gap0_all={np.array2string(_g0, precision=3)}",
                           flush=True)
