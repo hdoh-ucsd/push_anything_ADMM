@@ -59,8 +59,18 @@ cd "$REF_ROOT"
 PIDS=()
 cleanup() {
   for pid in "${PIDS[@]}"; do kill -INT "$pid" 2> /dev/null || true; done
-  sleep 2
-  for pid in "${PIDS[@]}"; do kill -KILL "$pid" 2> /dev/null || true; done
+  for _ in {1..10}; do
+    pgrep_alive=0
+    for pid in "${PIDS[@]}"; do
+      kill -0 "$pid" 2> /dev/null && pgrep_alive=1
+    done
+    [[ "$pgrep_alive" == 0 ]] && break
+    sleep 0.5
+  done
+  for pid in "${PIDS[@]}"; do
+    kill -KILL "$pid" 2> /dev/null || true
+    wait "$pid" 2> /dev/null || true  # reap quietly (no "Killed" job noise)
+  done
 }
 trap cleanup EXIT INT TERM
 
@@ -93,6 +103,10 @@ cleanup
 trap - EXIT INT TERM
 
 python3 "$HARNESS_DIR/summarize_reference_log.py" "$OUT_DIR" || true
+
+# The [EXPERIMENT] verbose=true controller build logs ~2 MB/s — compress
+# after summarizing (summarizer reads .gz transparently for re-runs).
+gzip -f "$OUT_DIR/c3controller.log" || true
 
 if [[ "$EARLY_EXIT" == 1 ]]; then
   echo "[run_reference] FAILED (early process exit) — logs in $OUT_DIR"
