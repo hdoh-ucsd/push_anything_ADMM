@@ -236,13 +236,30 @@ tasks:
       # Root cause is structural (port scalar-ρ ADMM vs ref per-slot G).
       # Reverted to p38 config; qvector migration requires G-matrix port.
       use_reference_q_vector:  true
-      w_Q:                    50.0
+      # 2026-08-11 L3 (anything-N1 lineage, docs/anything-n1-config-delta-audit.md):
+      # dual-regime Q exactly as multiyaml_rewrite.py build_q_vector emits —
+      # FAR (position regime): w_Q_position 50 x q_vector_position
+      #   (quat weights ZERO — orientation ignored until 5 cm out);
+      # NEAR (pose regime, crossed_switching_threshold): w_Q 80 x q_vector
+      #   (quat slots overridden by the 1000x quaternion Hessian, which the
+      #   reference does NOT scale by w_Q — cc:1582-1590).
+      # ee_vel [15,15,10] is the reference literal for BOTH regimes; the old
+      # [5,5,5] was a deliberate p108 port deviation, retired here.
+      w_Q:                    80.0
+      w_Q_position:           50.0
       q_vector_ee_pos:        [0.01, 0.01, 0.01]
       q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos:       [200.0, 200.0, 120.0]
-      q_vector_ee_vel:        [5.0, 5.0, 5.0]
+      q_vector_obj_pos:       [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos:  [200.0, 200.0, 120.0]
+      q_vector_ee_vel:        [15.0, 15.0, 10.0]
       q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
       q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
+      # R = w_R x diag(r_vector) (both regimes; anything-N1 literals). The
+      # z-axis EE force is penalized 100x the horizontal — was flat
+      # w_torque*I = 0.01*I (the stale product 1 x [0.01,0.01,0.01]).
+      w_R:                    6.0
+      r_vector:               [0.01, 0.01, 1.0]
       # 2026-07-22 xy bumped to reference parity. Reference push_t
       # sampling_c3plus_options.yaml position regime: q_vector_position[8:10]=250
       # × w_Q=50 = 12500 per axis. Port was 9000 (~72% of ref). p43 diagnosis:

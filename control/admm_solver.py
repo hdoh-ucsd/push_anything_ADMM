@@ -142,7 +142,14 @@ class C3Solver:
         # Reference's 20:1 penalizes λ mismatches 20× more strongly than
         # η — projection prefers case 1 (η wins, λ→0) more often, matching
         # reference C3+ convergence behavior. Fixed 2026-07-18 iter9.
-        self._u_lambda           = 20.0
+        # 2026-08-11 L3: 20 -> 1000 (anything-N1 u_lambda_list EE/obj-gnd
+        # slots). The yaml comment "u_lambda_list is not used; overwritten
+        # by alpha*F" is TRUE ONLY for the c3_qp.cc QP-projection variant —
+        # C3+ SolveSingleProjection (c3_plus.cc:174-218) reads U's lambda/eta
+        # diagonals directly: eta_larger = eta*sqrt(w_eta) > lambda*sqrt(
+        # w_lambda). The scalar w_U cancels in that comparison, so only this
+        # ratio is load-bearing.
+        self._u_lambda           = 1000.0
         self._u_eta              = 1.0
         # 4.j — reference penalize_changes_in_u_across_solves. When True,
         # the R-block cost becomes ‖u_k − u_prev_k‖²_R (matches c3.cc:302-310).
@@ -198,7 +205,9 @@ class C3Solver:
         # G-on the DEFAULT (formerly REFCONF_USE_G_MATRIX=1, canonical
         # since p112).
         self._use_g_matrix = True
-        self._w_G          = 0.01
+        # 2026-08-11 L3: 0.01 -> 0.18 (anything-N1 w_G; the 0.01 was the
+        # bit-rotted push_t demo literal — docs/anything-n1-config-delta-audit.md).
+        self._w_G          = 0.18
         self._g_lambda     = 2.0
         self._g_eta        = 1.0
         self._g_x          = 0.0   # reference has zero state augmentation

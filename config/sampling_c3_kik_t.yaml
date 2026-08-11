@@ -171,7 +171,7 @@ use_reference_pair_admission_planner_lcs: true
 # (kSimImpedanceObjectCostOnly). Reference Kp_for_ee_pd_rollout=100 /
 # Kd_for_ee_pd_rollout=0.5 from push_t/parameters/sampling_c3plus_options.yaml.
 use_cost_lcs_ranking: true
-Kp_for_ee_pd_rollout: 100.0
+Kp_for_ee_pd_rollout: [100.0, 100.0, 50.0]   # 2026-08-11 L3: anything-N1 per-axis (z halved); was scalar 100
 Kd_for_ee_pd_rollout: 0.5
 # Reference push_t/parameters/sampling_c3plus_options.yaml:220. Cost-LCS is
 # built at N*res knots / dt/res and the coarse plan is zero-order-held onto it
