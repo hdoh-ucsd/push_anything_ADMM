@@ -1731,9 +1731,17 @@ class C3Solver:
                         _wl += float(np.sum(np.abs(omega[_b+SL:_b+SU])))
                         _ze += float(np.sum(np.abs(z_sol[_b+SE:_b+TOT])))
                         _de2 += float(np.sum(np.abs(delta[_b+SE:_b+TOT])))
+                    _k0l = np.array2string(
+                        z_sol[SL:SU], precision=2, max_line_width=400,
+                        suppress_small=True)
+                    _k0e = np.array2string(
+                        z_sol[SE:TOT], precision=2, max_line_width=400,
+                        suppress_small=True)
                     print(f"[ZTRACE] it={it} z_lam={_zl:.3f} d_lam={_dl:.3f} "
-                          f"w_lam={_wl:.3f} z_eta={_ze:.3f} d_eta={_de2:.3f}",
-                          flush=True)
+                          f"w_lam={_wl:.3f} z_eta={_ze:.3f} d_eta={_de2:.3f} "
+                          f"k0_lam={_k0l} k0_eta={_k0e} "
+                          f"ee_idx={getattr(self, '_ee_box_pair_idx', None)} "
+                          f"n_c={num_normals}", flush=True)
 
             # ---- [CONSENSUS] per-iter, per-knot block-decomposed view ------
             # Emits iters 0, 1, and last (actual_iters-1). Substitutes real
