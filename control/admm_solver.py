@@ -117,20 +117,34 @@ class C3Solver:
         if self._osqp_refopts:
             _so = ad.SolverOptions()
             _osqp_id = ad.OsqpSolver().solver_id()
-            _so.SetOption(_osqp_id, "polishing", 1)
-            _so.SetOption(_osqp_id, "polish_refine_iter", 3)
+            # 2026-08-11: matched to the AUTHORITATIVE wired file
+            # shared_parameters/sampling_c3_qp_settings.yaml (the previous
+            # values cited solver_options_default.yaml — the wrong file:
+            # polishing 1->0, scaling 10->1, max_iter 1000->2000, plus
+            # sigma/check_termination/eps_prim/dual_inf/rho/alpha/delta).
+            _so.SetOption(_osqp_id, "polishing", 0)
+            _so.SetOption(_osqp_id, "polish_refine_iter", 1)
             _so.SetOption(_osqp_id, "warm_starting", 1)
             _so.SetOption(_osqp_id, "scaled_termination", 1)
-            _so.SetOption(_osqp_id, "scaling", 10)
+            _so.SetOption(_osqp_id, "scaling", 1)
             _so.SetOption(_osqp_id, "adaptive_rho", 1)
             _so.SetOption(_osqp_id, "adaptive_rho_interval", 0)
+            _so.SetOption(_osqp_id, "adaptive_rho_tolerance", 5)
+            _so.SetOption(_osqp_id, "adaptive_rho_fraction", 0.4)
+            _so.SetOption(_osqp_id, "check_termination", 100)
+            _so.SetOption(_osqp_id, "rho", 0.1)
+            _so.SetOption(_osqp_id, "sigma", 1e-5)
+            _so.SetOption(_osqp_id, "alpha", 1.6)
+            _so.SetOption(_osqp_id, "delta", 1e-6)
             _so.SetOption(_osqp_id, "eps_abs", 1e-5)
             _so.SetOption(_osqp_id, "eps_rel", 1e-5)
-            _so.SetOption(_osqp_id, "max_iter", 1000)
+            _so.SetOption(_osqp_id, "eps_prim_inf", 1e-5)
+            _so.SetOption(_osqp_id, "eps_dual_inf", 1e-5)
+            _so.SetOption(_osqp_id, "max_iter", 2000)
             self._osqp_solver_options = _so
-            print("[OSQP-REFOPTS] active: polishing=1 adaptive_rho=1 "
-                  "warm_starting=1 scaling=10 eps=1e-5 max_iter=1000",
-                  flush=True)
+            print("[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): "
+                  "polishing=0 scaling=1 check_term=100 sigma=1e-5 "
+                  "eps=1e-5 max_iter=2000", flush=True)
         self._diag_step = 0
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
