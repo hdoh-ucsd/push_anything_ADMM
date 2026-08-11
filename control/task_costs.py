@@ -272,6 +272,20 @@ class QuadraticManipulationCost:
             "q_vector_obj_pos",     [200.0, 200.0, 120.0]))
         self._q_vec_ee_vel      = list(c.get(
             "q_vector_ee_vel",      [5.0, 5.0, 5.0]))
+        # L3-decomposition falsification hook (diagnostic, default-inert):
+        # PORT_QVEC_EE_VEL="5,5,5" pins the ee_vel q_vector slots for
+        # single-knob attribution runs. Recorded in [RUN-META-ENV].
+        import os as _os_qv
+        _qv_env = _os_qv.environ.get("PORT_QVEC_EE_VEL", "")
+        if _qv_env:
+            try:
+                _qv = [float(x) for x in _qv_env.split(",")]
+                if len(_qv) == 3:
+                    self._q_vec_ee_vel = _qv
+                    print(f"[PORT_QVEC_EE_VEL] FALSIFICATION override: "
+                          f"ee_vel={_qv}", flush=True)
+            except ValueError:
+                pass
         self._q_vec_obj_ang_vel = list(c.get(
             "q_vector_obj_ang_vel", [0.05, 0.05, 0.05]))
         self._q_vec_obj_lin_vel = list(c.get(
