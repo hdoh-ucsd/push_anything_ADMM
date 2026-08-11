@@ -7,6 +7,7 @@ markers. Python line-walk, not grep (long-line logs defeat grep here).
 
 Usage: summarize_reference_log.py RUN_DIR
 """
+import gzip
 import math
 import sys
 from pathlib import Path
@@ -50,9 +51,13 @@ def main():
     for name in ("sim.log", "osc.log", "c3controller.log"):
         path = run_dir / name
         if not path.exists():
-            print(f"[summary] {name}: MISSING")
-            continue
-        with open(path, errors="replace") as f:
+            if (run_dir / (name + ".gz")).exists():
+                path = run_dir / (name + ".gz")
+            else:
+                print(f"[summary] {name}: MISSING")
+                continue
+        opener = gzip.open if path.suffix == ".gz" else open
+        with opener(path, "rt", errors="replace") as f:
             for line in f:
                 if name == "c3controller.log":
                     if "[WSCHK]" in line:
