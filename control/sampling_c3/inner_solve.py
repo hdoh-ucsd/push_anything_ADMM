@@ -844,6 +844,16 @@ class InnerSolver:
                                             XX_sim[:, 13:16], axis=1))),
                         "ik_err":       float(_cost_lcs_ik_err),
                         "ik_iters":     int(_cost_lcs_ik_iters),
+                        # Phantom-split probe (2026-08-11): the PLAN's own
+                        # end-to-end EE and object xy displacement. Plan
+                        # moving the object while the rollout dT_xy=0 =
+                        # phantom-lambda progress exposed by the real LCP.
+                        "plan_dEE_xy":  float(np.linalg.norm(
+                                            np.asarray(x_seq)[-1, 7:9]
+                                            - np.asarray(x_seq)[0, 7:9])),
+                        "plan_dT_xy":   float(np.linalg.norm(
+                                            np.asarray(x_seq)[-1, 4:6]
+                                            - np.asarray(x_seq)[0, 4:6])),
                     }
                 else:
                     c_C3_raw = traj_cost(x_seq, u_seq,
@@ -977,6 +987,8 @@ class InnerSolver:
                   f"dy={_cost_lcs_probe['dT_dy']:+.4f}) "
                   f"box_v_peak={_cost_lcs_probe['box_v_peak']:.4f}m/s "
                   f"dEE_xy={_cost_lcs_probe['dEE_xy']:.4f}m "
+                  f"plan_dEE_xy={_cost_lcs_probe.get('plan_dEE_xy', -1):.4f}m "
+                  f"plan_dT_xy={_cost_lcs_probe.get('plan_dT_xy', -1):.4f}m "
                   f"align={align_score:.4f} "
                   f"ik_err={_cost_lcs_probe['ik_err']:.4f}m "
                   f"ik_iters={_cost_lcs_probe['ik_iters']} "
