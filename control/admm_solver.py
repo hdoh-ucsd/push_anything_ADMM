@@ -224,6 +224,20 @@ class C3Solver:
                 print(f"[PORT_G_X] override: g_x={self._g_x}", flush=True)
             except ValueError:
                 pass
+        # 2026-08-11 L3-decomposition falsification hooks (diagnostic only,
+        # default-inert): temporarily pin w_G / u_lambda to a non-reference
+        # value for single-knob attribution runs. Never set in canonical
+        # launches — the yaml-free defaults above stay the reference values.
+        for _env_key, _attr in (("PORT_W_G", "_w_G"),
+                                ("PORT_U_LAMBDA", "_u_lambda")):
+            _v = _os_g.environ.get(_env_key, "")
+            if _v:
+                try:
+                    setattr(self, _attr, float(_v))
+                    print(f"[{_env_key}] FALSIFICATION override: "
+                          f"{_attr}={getattr(self, _attr)}", flush=True)
+                except ValueError:
+                    pass
         self._g_diag_c3p_cache: np.ndarray | None = None
         self._g_diag_c3p_shape: tuple | None = None
         # First-horizon contact force from the most recent solve. Read by
