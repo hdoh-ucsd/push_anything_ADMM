@@ -446,8 +446,7 @@ def main():
     _rho_init = float(os.environ.get("PORT_RHO", "100.0"))
     print(f"[ENV]  Mass: {task_cfg.get('mass', '?')} kg   "
           f"Friction mu: {task_cfg.get('friction', '?')}")
-    print(f"[MPC]  Horizon: 5   dt: 0.1 s   ADMM max iters: {args.admm_iter}"
-          f"   rho_init: {_rho_init}")
+    print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: {_rho_init}")
     print(f"[MPC]  Force limit: 30.0 Nm")
     print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
     print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
@@ -611,9 +610,14 @@ def main():
         #   planning_dt_pose: 0.05
         # Task-conditional so box path (uses anything defaults) stays put.
         if task_name == "push_t":
-            _c3plus_N  = 5
-            _c3plus_dt = 0.1
-            _c3plus_dt_pose = 0.05
+            # 2026-08-11 L2 (anything-N1 lineage): multiyaml_rewrite.py
+            # PLANNING_HORIZON_CONFIGS {1: 10} + uniform planning_dt 0.075
+            # (anything/sampling_c3plus_options.yaml post-rewrite). The old
+            # 5 / 0.1 / 0.05 came from the bit-rotted push_t demo yaml —
+            # see docs/anything-n1-config-delta-audit.md (L2).
+            _c3plus_N  = 10
+            _c3plus_dt = 0.075
+            _c3plus_dt_pose = 0.075
         elif task_name == "push_h":
             # The H is a LETTER-family object (reference anything/ loads the
             # *_shape_* meshes; letter_settings.yaml lists H_shape_texture).
@@ -638,6 +642,8 @@ def main():
         _c3plus_N  = 5
         _c3plus_dt = 0.1
         _c3plus_dt_pose = 0.1  # C3 baseline path — no regime swap
+    print(f"[MPC]  Horizon: {_c3plus_N}   dt: {_c3plus_dt} s   "
+          f"dt_pose: {_c3plus_dt_pose} s")
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
