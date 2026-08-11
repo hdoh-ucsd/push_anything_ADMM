@@ -2225,6 +2225,20 @@ class LCSFormulator:
             c_const_v_box  = J_n_box @ (box_v + dt * d_box_v_offset)
             c_const_v_ee   = J_n_ee  @ (v_ee  + dt * d_v_ee_offset)
             c_lcs[SLN:SLN + n_c] = phi / dt + c_const_v_box + c_const_v_ee
+            # DIAG_ZVEE build-time row decomposition (2026-08-11): what is
+            # ACTUALLY in each lambda_n row vs the contact metadata.
+            import os as _os_rd
+            if _os_rd.environ.get("DIAG_ZVEE", ""):
+                _tags = [i.get('tag', '?')
+                         for i in self._last_contact_info[:n_c]]
+                print(f"[ROWBUILD] p_ee_star={np.array2string(p_ee, precision=4)} "
+                      f"tags={_tags} "
+                      f"phi/dt={np.array2string(phi/dt, precision=3)} "
+                      f"cv_box={np.array2string(c_const_v_box, precision=3)} "
+                      f"cv_ee={np.array2string(c_const_v_ee, precision=3)} "
+                      f"Jnb_z={np.array2string(J_n_box[:, 5], precision=3)} "
+                      f"vrow={np.array2string(phi/dt + c_const_v_box + c_const_v_ee, precision=3)}",
+                      flush=True)
             # NOTE: c_lcs absorbs the "constant" of η linearized at (x*, u*);
             # E and H carry the gradient parts. We subtract E·x* + H·u* below.
 
