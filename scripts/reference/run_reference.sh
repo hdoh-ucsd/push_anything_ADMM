@@ -5,7 +5,7 @@
 # (sim, osc, wait 50 ms, sampling_c3).
 #
 # Usage:
-#   scripts/reference/run_reference.sh [push_t|jacktoy] [MAX_SEC] [TAG]
+#   scripts/reference/run_reference.sh [push_t|jacktoy|anything] [MAX_SEC] [TAG]
 #
 # Defaults: push_t, 180 s, timestamp tag. Logs + provenance land in
 # results/reference/<demo>_<tag>/ (sim.log, osc.log, c3controller.log,
@@ -27,8 +27,8 @@ HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="/root/push_anything_ADMM/results/reference/${DEMO}_${TAG}"
 
 case "$DEMO" in
-  push_t|jacktoy) ;;
-  *) echo "error: demo must be push_t or jacktoy (got '$DEMO')" >&2; exit 2 ;;
+  push_t|jacktoy|anything) ;;
+  *) echo "error: demo must be push_t, jacktoy, or anything (got '$DEMO')" >&2; exit 2 ;;
 esac
 
 for b in franka_sim franka_osc_controller franka_sampling_c3_controller; do
