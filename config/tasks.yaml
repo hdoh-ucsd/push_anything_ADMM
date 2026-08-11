@@ -161,20 +161,18 @@ tasks:
     mass: 1.0             # kg — matches reference (2 × 0.5 kg links)
     friction: 0.3         # μ_T (reference push_t.sdf drake:mu_dynamic); EE-T μ_eff=0.462
     pusher_friction: 1.0  # μ_EE (reference end_effector_full.urdf drake:mu_dynamic)
-    # Reference sampling_c3plus_options.yaml:44 mu_per_pair_type.
-    # Applied to the LCS friction cone per admitted pair-type tag by
-    # LCSFormulator.extract_lcs_contacts (see commit d53a82d).
-    # Reference literal values:
-    #   EE-manipuland (index 1) : 1.0    — reference literal; higher
-    #                                       than Drake-combined 0.4615;
-    #                                       gives planner more tangential
-    #                                       authority at push contact.
-    #   manipuland-ground (idx 2): 0.4615 — Drake-combined 2·1.0·0.3/1.3.
-    #   EE-ground (index 0)     : 0.4165 — reference literal.
+    # 2026-08-11 L4 (anything-N1 lineage): planner-LCS mu from the authors'
+    # multiyaml_rewrite.py build_mu_per_pair_type constants — hardcoded for
+    # EVERY anything object (not recomputed per material), so verbatim copy
+    # is the authors' practice. Replaces the bit-rotted push_t literals
+    # (EE-BOX 1.0 gave the planner 2.4x the sim's actual tangential grip —
+    # Drake-combined 2*1.0*0.3/1.3 = 0.4615; the new 0.42 slightly
+    # under-promises, the authors' own convention). Sim-side materials
+    # (friction/pusher_friction above) unchanged.
     mu_per_pair_type:
-      EE-BOX:  1.0
-      BOX-GND: 0.4615
-      EE-GND:  0.4165
+      EE-BOX:  0.42
+      BOX-GND: 0.46
+      EE-GND:  0.823
     # Reference sim_params.yaml:15 q_init_object = [1,0,0,0, 0.5, 0, -0.009]
     # → T init at world (0.5, 0, -0.009) with reference ground at z=-0.029.
     # 2026-07-21: adopted reference-frame coordinates directly (was (0,0,0.02)
