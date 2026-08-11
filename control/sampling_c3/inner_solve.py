@@ -357,10 +357,12 @@ class InnerSolver:
         print(f"[COST-LCS] contact resolution: {self._cost_n_ee} EE-object + "
               f"{self._cost_n_gnd if self._cost_n_gnd is not None else 'planner'}"
               f" object-ground", flush=True)
-        self._Kp_ee_pd_rollout = float(getattr(
-            params, "Kp_for_ee_pd_rollout", 100.0))
-        self._Kd_ee_pd_rollout = float(getattr(
-            params, "Kd_for_ee_pd_rollout", 0.5))
+        # Scalar or per-axis [x, y, z]; normalized to a (3,) array so the
+        # PD rollout applies per-axis gains (anything-N1: Kp [100,100,50]).
+        self._Kp_ee_pd_rollout = np.broadcast_to(np.asarray(getattr(
+            params, "Kp_for_ee_pd_rollout", 100.0), dtype=float), (3,)).copy()
+        self._Kd_ee_pd_rollout = np.broadcast_to(np.asarray(getattr(
+            params, "Kd_for_ee_pd_rollout", 0.5), dtype=float), (3,)).copy()
         # Reference builds the cost-LCS at N·res knots and dt/res
         # (sampling_based_c3_controller.cc:1658-1659, push_t
         # sampling_c3plus_options.yaml `lcs_dt_resolution: 4`), then ZOHs the

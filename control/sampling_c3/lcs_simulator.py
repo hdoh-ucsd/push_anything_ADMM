@@ -138,7 +138,7 @@ def simulate_pd_control_with_lcs(
     u_plan: np.ndarray,          # (N,   n_u) planner control sequence
     A: np.ndarray, B: np.ndarray, D: np.ndarray, d: np.ndarray,
     E: np.ndarray, F: np.ndarray, H: np.ndarray, c_lcs: np.ndarray,
-    Kp_ee: float, Kd_ee: float,
+    Kp_ee, Kd_ee,   # float or (3,) per-axis EE PD gains (elementwise ops)
     x0_override: np.ndarray = None,
     lcp_max_iter: int = 50,
     lcp_tol: float = 1e-6,

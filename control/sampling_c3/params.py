@@ -92,6 +92,13 @@ class RepositioningTrajectoryType(IntEnum):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _float_or_vec3(v):
+    """Scalar → float; list/tuple → [float]*3 (per-axis PD gains)."""
+    if isinstance(v, (list, tuple)):
+        return [float(x) for x in v]
+    return float(v)
+
+
 def _coerce_enum(enum_cls, raw):
     """YAML may give an int or a string like 'kRandomOnCircle' / 'kPosOrRotCost'."""
     if isinstance(raw, enum_cls):
@@ -865,12 +872,13 @@ class SamplingC3Params:
     # cost_type=5 (kSimImpedanceObjectCostOnly). Disabled by default →
     # keeps Stage-1 behavior (planner's own x_seq + object-only Q).
     use_cost_lcs_ranking: bool = False
-    # Reference push_t/parameters/sampling_c3plus_options.yaml:
-    #   Kp_for_ee_pd_rollout: 100
-    #   Kd_for_ee_pd_rollout: 0.5
-    # Scalars broadcast to per-axis EE PD gains during cost simulation.
-    Kp_for_ee_pd_rollout: float = 100.0
-    Kd_for_ee_pd_rollout: float = 0.5
+    # Reference anything-N1 sampling_c3plus_options.yaml (2026-08-11 L3):
+    #   Kp_for_ee_pd_rollout: [100, 100, 50]   (z gain halved)
+    #   Kd_for_ee_pd_rollout: [0.5, 0.5, 0.5]
+    # Scalar OR per-axis [x, y, z]; scalars broadcast to all three axes
+    # during cost simulation.
+    Kp_for_ee_pd_rollout: Any = 100.0
+    Kd_for_ee_pd_rollout: Any = 0.5
     # Reference `lcs_dt_resolution` (push_t sampling_c3plus_options.yaml:220).
     # The cost-LCS is built at N·res knots / dt÷res
     # (sampling_based_c3_controller.cc:1658-1659) and the coarse plan is
@@ -1247,8 +1255,8 @@ class SamplingC3Params:
             resolve_contacts_to_for_cost = raw.get(
                 "resolve_contacts_to_for_cost", None),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
-            Kp_for_ee_pd_rollout     = float(raw.get("Kp_for_ee_pd_rollout", 100.0)),
-            Kd_for_ee_pd_rollout     = float(raw.get("Kd_for_ee_pd_rollout", 0.5)),
+            Kp_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kp_for_ee_pd_rollout", 100.0)),
+            Kd_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kd_for_ee_pd_rollout", 0.5)),
             lcs_dt_resolution        = int(raw.get("lcs_dt_resolution", 4)),
             cost_lcs_pgs_max_iter    = int(raw.get("cost_lcs_pgs_max_iter", 50)),
             cost_lcs_pgs_tol         = float(raw.get("cost_lcs_pgs_tol", 1.0e-6)),

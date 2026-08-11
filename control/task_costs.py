@@ -276,6 +276,22 @@ class QuadraticManipulationCost:
             "q_vector_obj_ang_vel", [0.05, 0.05, 0.05]))
         self._q_vec_obj_lin_vel = list(c.get(
             "q_vector_obj_lin_vel", [0.05, 0.05, 0.05]))
+        # 2026-08-11 L3 — position-regime (far) variant, mirroring the
+        # reference's w_Q_position x q_vector_position pair
+        # (sampling_c3_options GetC3Options(crossed) selects the set).
+        # Defaults collapse to the near-regime values so configs without
+        # the _position keys keep single-set behavior.
+        self.w_Q_position = float(c.get("w_Q_position", self.w_Q))
+        self._q_vec_pos_obj_quat = list(c.get(
+            "q_vector_position_obj_quat", self._q_vec_obj_quat))
+        self._q_vec_pos_obj_pos  = list(c.get(
+            "q_vector_position_obj_pos",  self._q_vec_obj_pos))
+        # R = w_R x diag(r_vector) when r_vector is given (reference
+        # c3_options.h: R = w_R * diag(r_vector); anything-N1 r_vector
+        # [0.01, 0.01, 1] penalizes vertical EE force 100x horizontal).
+        # Fallback: legacy isotropic w_torque * I.
+        self.w_R       = float(c.get("w_R", 1.0))
+        self._r_vector = c.get("r_vector", None)
         # Mutable flag set by wrapper per tick. Enables the near-goal
         # quat-dep cost override. Default False → no divergence for
         # existing tasks / pre-crossed-threshold behavior.
@@ -914,18 +930,27 @@ class QuadraticManipulationCost:
             # layout is [ee_pos(3), quat(4), obj_pos(3), ee_vel(3),
             # obj_ang_vel(3), obj_lin_vel(3)]; port layout is [quat(4),
             # obj_pos(3), ee_pos(3), obj_ang_vel(3), obj_lin_vel(3), ee_vel(3)].
+            # 2026-08-11 L3 dual-regime selection (reference
+            # GetC3Options(crossed_cost_switching_threshold_)): far →
+            # w_Q_position x q_vector_position (quat weights typically 0 —
+            # orientation ignored); near → w_Q x q_vector (quat block then
+            # overridden by the quaternion Hessian below).
+            _near = self._crossed_switching_threshold
+            _wQ        = self.w_Q if _near else self.w_Q_position
+            _v_quat    = self._q_vec_obj_quat if _near else self._q_vec_pos_obj_quat
+            _v_obj_pos = self._q_vec_obj_pos  if _near else self._q_vec_pos_obj_pos
             q_diag = np.zeros(n_x)
-            q_diag[self._NEW_OBJ_QW:self._NEW_OBJ_QZ + 1] = self._q_vec_obj_quat
-            q_diag[self._NEW_OBJ_X]  = self._q_vec_obj_pos[0]
-            q_diag[self._NEW_OBJ_Y]  = self._q_vec_obj_pos[1]
-            q_diag[self._NEW_OBJ_Z]  = self._q_vec_obj_pos[2]
+            q_diag[self._NEW_OBJ_QW:self._NEW_OBJ_QZ + 1] = _v_quat
+            q_diag[self._NEW_OBJ_X]  = _v_obj_pos[0]
+            q_diag[self._NEW_OBJ_Y]  = _v_obj_pos[1]
+            q_diag[self._NEW_OBJ_Z]  = _v_obj_pos[2]
             q_diag[self._NEW_PEE_SLOT]   = self._q_vec_ee_pos
             q_diag[self._NEW_VBOX_OMEGA] = self._q_vec_obj_ang_vel
             q_diag[self._NEW_VBOX_LIN_X] = self._q_vec_obj_lin_vel[0]
             q_diag[self._NEW_VBOX_LIN_Y] = self._q_vec_obj_lin_vel[1]
             q_diag[self._NEW_VBOX_LIN_Z] = self._q_vec_obj_lin_vel[2]
             q_diag[self._NEW_VEE_SLOT]   = self._q_vec_ee_vel
-            Q[np.arange(n_x), np.arange(n_x)] = self.w_Q * q_diag
+            Q[np.arange(n_x), np.arange(n_x)] = _wQ * q_diag
         else:
             # Near-goal (pose regime) obj-position weight swap — parity with
             # legacy build() at :336-340. Reference push_t
@@ -1219,23 +1244,22 @@ class QuadraticManipulationCost:
                 Q[ix, iy] += w_perp * g_perp[0] * g_perp[1]
                 Q[iy, ix] += w_perp * g_perp[0] * g_perp[1]
 
-        # --- R: torque cost is now an EE-force cost. Same scalar weight,
-        #     applied to R^3 input. ---
-        # Stage 5 per-axis R override (env-gated, default-inert). When
-        # PORT_R_VECTOR is set as "rx,ry,rz" (e.g., "0.01,0.01,1"),
-        # use np.diag([rx,ry,rz]); else scalar w_torque*I (bit-identical to
-        # pre-Stage-5).
+        # --- R (EE-force cost). Reference form R = w_R * diag(r_vector)
+        #     when the cost config carries r_vector (2026-08-11 L3,
+        #     anything-N1 literals: 6 x [0.01, 0.01, 1]). PORT_R_VECTOR env
+        #     stays as a diagnostic override; legacy isotropic w_torque * I
+        #     when neither is set. ---
         import os as _os
         _r_s = _os.environ.get("PORT_R_VECTOR", "")
         if _r_s and n_u == 3:
             try:
                 _rv = [float(x) for x in _r_s.split(",")]
-                if len(_rv) == 3:
-                    R = np.diag(_rv)
-                else:
-                    R = self.w_torque * np.eye(n_u)
+                R = (np.diag(_rv) if len(_rv) == 3
+                     else self.w_torque * np.eye(n_u))
             except ValueError:
                 R = self.w_torque * np.eye(n_u)
+        elif self._r_vector is not None and len(self._r_vector) == n_u:
+            R = self.w_R * np.diag([float(v) for v in self._r_vector])
         else:
             R = self.w_torque * np.eye(n_u)
 
