@@ -132,8 +132,13 @@ class LCSFormulator:
         self._always_on_ee_box = True
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
+        # 2026-08-15 conformance step 3: the box joins the tshape at the
+        # reference count of 3 ground witnesses (reference resolves the
+        # ground-object group to 3 sphere contacts for EVERY anything
+        # object — resolve_contacts_to_lists [[0,1,3,1]]). Other shapes
+        # (hshape, jack) keep their existing defaults/config overrides.
         self.lcs_explicit_manipuland_ground_contacts = (
-            3 if object_shape == "tshape" else 4)
+            3 if object_shape in ("tshape", "box") else 4)
 
         # Legacy Stewart-Trinkle normal-row patches: all no-ops under
         # Anitescu (no separate normal row). Kept as dead defaults so
@@ -348,12 +353,29 @@ class LCSFormulator:
     def _box_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
         """Return (3, n_synth) array of body-frame contact points to enumerate
         for box-ground synthesis. Choices:
-          4  → 4 bottom corners only       (minimal four-point support)
+          3  → REFERENCE support triangle (2026-08-15 conformance, step 3).
+               Every reference anything object carries exactly 3 ground-
+               contact spheres (r=1 mm, centers on the base plane) in its
+               *controller* model — two near the corners of one base edge
+               plus one at the midpoint of the opposite edge (e.g.
+               expo_box_controller.sdf:283-311: pair at (-0.0637, ±~0.07),
+               single at (+0.0605, ~0)), resolved to all 3 by
+               resolve_contacts_to_lists [[0,1,3,1]]. Port analog for the
+               cube footprint: pair at (-0.048, ±0.048), single at
+               (+0.048, 0), 2 mm inset, base plane. Same surface-point
+               convention as the mesh-T witness table (sphere centers,
+               r_tip=0).
+          4  → 4 bottom corners only       (pre-conformance port default)
           8  → all 8 cube vertices         (corners; top set inactive at rest)
           12 → 8 vertices + 4 bottom-face edge midpoints
         """
         hx, hy, hz = self._box_half_extents
-        if n_synth == 4:
+        if n_synth == 3:
+            _ix, _iy = hx - 0.002, hy - 0.002
+            pts = np.array([[-_ix, +_iy, -hz],
+                            [-_ix, -_iy, -hz],
+                            [+_ix,  0.0, -hz]]).T
+        elif n_synth == 4:
             pts = np.array([[+hx, +hy, -hz],
                             [+hx, -hy, -hz],
                             [-hx, +hy, -hz],
@@ -502,7 +524,7 @@ class LCSFormulator:
     def _synthesize_manipuland_ground_contacts(self, context, query_obj):
         """Synthesize N manipuland-vertex ↔ ground contact rows. Dispatches
         on self._object_shape:
-          - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{4,8,12}].
+          - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{3,4,8,12}].
           - "tshape" → _tshape_vertex_set_body_frame(n_synth) [n=3].
           - "hshape" → _hshape_vertex_set_body_frame(n_synth) [n∈{3,4,12}].
           - "jack"   → _jack_vertex_set_body_frame(n_synth) [6 candidates,
