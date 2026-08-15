@@ -172,6 +172,19 @@ class OperationalSpaceController:
         else:
             self._sig_dump_step = None
             self._sig_dump_done = False
+        # Periodic-capture variant (free-mode park diagnosis, 2026-08-14).
+        # DIAG_QP_SIG_EVERY=N (>0) → dump every Nth compute_torque call,
+        # capped at DIAG_QP_SIG_MAX dumps. Independent of the single-shot
+        # hook above; byte-identical when unset.
+        self._sig_every = int(_os.environ.get("DIAG_QP_SIG_EVERY", "0"))
+        self._sig_max = int(_os.environ.get("DIAG_QP_SIG_MAX", "40"))
+        self._sig_count = 0
+        if self._sig_every > 0:
+            self._sig_dump_dir = _os.environ.get(
+                "DIAG_QP_SIG_DIR", "audit_output/exec_qp_sig")
+            print(f"[QP-SIG] periodic capture: every {self._sig_every} "
+                  f"calls, max {self._sig_max} → {self._sig_dump_dir}/",
+                  flush=True)
 
     # ------------------------------------------------------------------
     def compute_torque(self,
@@ -305,6 +318,11 @@ class OperationalSpaceController:
         _sig_do_dump = (self._sig_dump_step is not None
                         and not self._sig_dump_done
                         and self._n_calls == self._sig_dump_step)
+        _sig_periodic = (self._sig_every > 0
+                         and self._sig_count < self._sig_max
+                         and self._n_calls % self._sig_every == 0)
+        if _sig_periodic:
+            _sig_do_dump = True
         if _sig_do_dump:
             _sig_inputs = dict(
                 n_calls_idx=int(self._n_calls),
@@ -427,7 +445,10 @@ class OperationalSpaceController:
                 solve_ms=float(solve_ms),
             )
             self._write_qp_sig_dump(_sig_inputs, _sig_outputs)
-            self._sig_dump_done = True
+            if _sig_periodic:
+                self._sig_count += 1
+            else:
+                self._sig_dump_done = True
 
         # Saturation = any joint hit its box constraint within tolerance
         saturated = bool(np.any(
