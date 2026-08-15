@@ -50,6 +50,16 @@ W_force: 1.0
 
 # Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
 use_commit_face_gate: false
+# 2026-08-11 box endgame fix (sustained-hold): the port-only contact/surface
+# entry gates were never disabled on the box side (the T retired them as
+# off-reference — reference decide_mode has NO such gate). With the gate on,
+# the box's entire endgame locked in kStayInRepos: [ENTRY-GATE] blocked
+# kToC3ReachedReposTarget on 100% of steps (ee_to_surf 362 mm vs thr 60 mm —
+# the EE parked on a stale sample the box had moved away from) and the 0.7
+# repos-to-repos hysteresis correctly refused a re-target, freezing the run
+# at 0.032 m. Same retirement as sampling_c3_kik_t.yaml:62-69.
+use_contact_entry_gate: false
+use_surface_entry_gate: false
 
 # Rotation-aware sample bonus (L2.6 form):
 #   c_sample[i] -= w_rot * |yaw_err| * max(0, M_z * yaw_sign)
