@@ -638,9 +638,12 @@ def main():
             _c3plus_dt = 0.1
             _c3plus_dt_pose = 0.05
         else:
-            _c3plus_N  = 7
+            # 2026-08-11 box-lineage: multiyaml PLANNING_HORIZON_CONFIGS
+            # {1: 10} + uniform 0.075 (the old 7 / 0.075 / 0.05 mixed the
+            # shipped 4-object N with push_t's pose dt).
+            _c3plus_N  = 10
             _c3plus_dt = 0.075
-            _c3plus_dt_pose = 0.05
+            _c3plus_dt_pose = 0.075
     else:
         _c3plus_N  = 5
         _c3plus_dt = 0.1

@@ -31,7 +31,7 @@
 # behavior relied on this bias to select samples aligned with g_hat. When
 # set to 0 (iter 23), box overshoot dropped from 334mm to 200mm (goal_dist
 # 0.049→0.108, ref_gate=FAIL). Deliberate port-only, keeps behavior stable.
-w_align:  30000.0
+w_align:  0.0   # 2026-08-11 box-lineage: reference has NO align bonus (same retirement the T got in the L-series; was 30000)
 
 # Cartesian travel penalty per metre on sample selection.
 # Reference push_t progress_params_c3plus.yaml:36 travel_cost_per_meter: 0.
@@ -67,6 +67,16 @@ w_rot:    800000.0
 # Cheap-solve ADMM iters for the K-1 hypothetical evaluations.
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
+
+# 2026-08-11 box-lineage: cost-LCS (cost_type-5) sample ranking — the channel
+# the reference ranks with (kSimImpedanceObjectCostOnly rollouts). Was absent
+# on the box side entirely (the F3 gap): ranking ran on planner cost. Same
+# stack the T runs: 2 EE-object + 3 object-ground cost-LCS, fine-dt rollout.
+use_cost_lcs_ranking: true
+resolve_contacts_to_for_cost: [0, 2, 3]
+lcs_dt_resolution: 4
+Kp_for_ee_pd_rollout: [100.0, 100.0, 50.0]   # anything-N1 per-axis (z halved)
+Kd_for_ee_pd_rollout: 0.5
 
 # Planner u-force limits — reference anything/sampling_c3plus_options.yaml
 # :34-35: u_horizontal_limits [-10,10], u_vertical_limits [-3,3]. Before
@@ -118,8 +128,9 @@ progress_params:
   # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
   #   num_control_loops_to_wait:          5  (ticks × 0.075s = 0.375s)
   #   num_control_loops_to_wait_position: 5 → 0.375 s
-  num_control_loops_to_wait_s:          0.375
-  num_control_loops_to_wait_position_s: 0.375
+  # 2026-08-11 box-lineage: loop form (rate-exact, same as the T config).
+  num_control_loops_to_wait_loops:          5
+  num_control_loops_to_wait_position_loops: 5
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
@@ -141,7 +152,9 @@ progress_params:
   # intended. Set duration_s directly to bypass the buggy compat and get
   # the true 1.2 s = 16-tick window.
   progress_enforced_cost_drop:        0.5
-  progress_enforced_over_duration_s:  1.2
+  # 2026-08-11 box-lineage: 1.2 s was the OLD 4-object value (16 loops);
+  # multiyaml_rewrite.py PROGRESS_ENFORCED_OVER_N_LOOPS_CONFIGS {1: 35}.
+  progress_enforced_over_n_loops_ref: 35
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
@@ -225,8 +238,10 @@ sampling_params:
 
   # Number of additional samples beyond (current + previous-repos-target).
   # Reference sampling_params.yaml:22-23 (anything + push_t): c3=4, repos=3.
-  num_additional_samples_c3:    4
-  num_additional_samples_repos: 3
+  # 2026-08-11 box-lineage: multiyaml N=1 tables (c3 5 / repos 4; the old
+  # 4/3 were the shipped 4-object values).
+  num_additional_samples_c3:    5
+  num_additional_samples_repos: 4
 
   # Sample buffer (replay-best-on-c3-exit hysteresis).
   consider_best_buffer_sample_when_leaving_c3: true
