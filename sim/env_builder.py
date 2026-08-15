@@ -689,23 +689,30 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
     # Manipulated object — generated from task config at runtime
     # ------------------------------------------------------------------
     obj_type = task_cfg["object_type"]
-    if obj_type == "box":
-        sdf_str = _box_sdf(task_cfg)
-    elif obj_type == "sphere":
-        sdf_str = _sphere_sdf(task_cfg)
-    elif obj_type == "tshape":
-        sdf_str = _tshape_sdf(task_cfg)
-    elif obj_type == "hshape":
-        sdf_str = _hshape_sdf(task_cfg)
-    elif obj_type == "jack":
-        sdf_str = _jack_sdf(task_cfg)
+    # 2026-08-11 mesh-T migration: a task may carry `object_sdf` (path to a
+    # reference SDF, e.g. sim/models/T_shape_video/T_shape_video.sdf). The
+    # file is loaded verbatim (mesh collision pieces, inertia, friction from
+    # the reference asset); all shape-keyed behavior stays on object_type.
+    _obj_sdf_path = task_cfg.get("object_sdf", None)
+    if _obj_sdf_path:
+        object_model = parser.AddModels(str(_obj_sdf_path))[0]
     else:
-        raise ValueError(
-            f"Unknown object_type '{obj_type}' in task config. "
-            "Use 'box', 'sphere', 'tshape', 'hshape', or 'jack'."
-        )
-
-    object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
+        if obj_type == "box":
+            sdf_str = _box_sdf(task_cfg)
+        elif obj_type == "sphere":
+            sdf_str = _sphere_sdf(task_cfg)
+        elif obj_type == "tshape":
+            sdf_str = _tshape_sdf(task_cfg)
+        elif obj_type == "hshape":
+            sdf_str = _hshape_sdf(task_cfg)
+        elif obj_type == "jack":
+            sdf_str = _jack_sdf(task_cfg)
+        else:
+            raise ValueError(
+                f"Unknown object_type '{obj_type}' in task config. "
+                "Use 'box', 'sphere', 'tshape', 'hshape', or 'jack'."
+            )
+        object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
 
     # Goal ghost (illustration-only translucent box at goal pose).  Anchored
     # to world_body so it shows in the VTK render alongside the opaque box.

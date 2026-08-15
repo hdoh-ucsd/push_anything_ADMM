@@ -254,7 +254,7 @@ def main():
     # cube_turning) pruned; their tasks.yaml entries remain as inert data.
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "push_t", "push_h", "push_jack"],
+        choices=["pushing", "push_t", "push_t_mesh", "push_h", "push_jack"],
         help="Task to run (default: pushing)",
     )
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
@@ -544,6 +544,9 @@ def main():
         # H_shape_texture_controller.sdf 1.0 kg vs 0.05 kg). push_t is the
         # only task where the two coincide. See _controller_inertia_scope.
         controller_object_mass=task_cfg.get("controller_mass", None),
+        # Mesh-T tasks (object_sdf set) use the reference mesh's ground-
+        # witness footprint instead of the box-T vertex table.
+        tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
@@ -609,7 +612,7 @@ def main():
         #   planning_dt_position: 0.1 (anything: 0.075)
         #   planning_dt_pose: 0.05
         # Task-conditional so box path (uses anything defaults) stays put.
-        if task_name == "push_t":
+        if task_name in ("push_t", "push_t_mesh"):
             # 2026-08-11 L2 (anything-N1 lineage): multiyaml_rewrite.py
             # PLANNING_HORIZON_CONFIGS {1: 10} + uniform planning_dt 0.075
             # (anything/sampling_c3plus_options.yaml post-rewrite). The old
