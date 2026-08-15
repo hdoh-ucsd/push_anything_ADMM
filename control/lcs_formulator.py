@@ -57,7 +57,8 @@ class LCSFormulator:
                  plant_ad=None, context_ad=None,
                  object_shape: str = "box",
                  mu_per_pair_type: dict | None = None,
-                 controller_object_mass: float | None = None):
+                 controller_object_mass: float | None = None,
+                 tshape_mesh_witnesses: bool = False):
         """
         mu_per_pair_type : optional dict mapping contact-pair tag
             ("EE-BOX", "BOX-GND", "EE-GND") to a per-pair friction
@@ -67,6 +68,9 @@ class LCSFormulator:
         """
         self.plant = plant
         self.mu    = float(mu)
+        # Mesh-T migration (2026-08-11): ground-witness table comes from the
+        # reference T_shape_video mesh footprint instead of the box-T table.
+        self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
         # Reference ships a SEPARATE, heavier object model for the CONTROLLER
         # than for the sim, and the difference is task-specific:
         #     push_t   push_t.sdf 1.0 kg  == push_t_control.sdf 1.0 kg   (1x)
@@ -400,6 +404,14 @@ class LCSFormulator:
                 f"T-shape vertex-set n_synth must be 3 (matches reference "
                 f"push_t resolve_contacts_to=[0,1,3]); got {n_synth}."
             )
+        if self._tshape_mesh_witnesses:
+            # Reference T_shape_video mesh bottom-face support extremities
+            # (computed from T_shape_video.obj: bottom ring at z=-0.0243).
+            return np.array([
+                [+0.1168, +0.0069, -0.0243],   # crossbar +x tip
+                [-0.0620, +0.0691, -0.0243],   # arm +y tip
+                [-0.0548, -0.0789, -0.0243],   # arm -y tip
+            ]).T   # (3, 3)
         return np.array([
             [+0.13,  0.00, -0.02],   # crossbar +x tip
             [-0.05, +0.08, -0.02],   # stem +y tip
