@@ -629,6 +629,12 @@ tasks:
     friction: 0.3
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    # 2026-08-14 joint2 fix: same universal reference literal as `pushing`
+    # (identical in anything/, push_t/, and jacktoy/ sim_params.yaml).
+    # Required alongside the shared osc_franka.yaml W_joint2=1.0 pin —
+    # without it the T task would pin to 1.1 rad from an IK-preposition
+    # init far from 1.1 (the July "c3-entry arm slam" standing error).
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     init_xyz: [0.5, 0.0, 0.0243]
     goal_xy: [0.482, 0.187]
     goal_yaw: -0.7379
