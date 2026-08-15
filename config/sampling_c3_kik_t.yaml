@@ -605,3 +605,14 @@ reposition_params:
 use_velocity_feedforward:   false
 velocity_feedforward_alpha: 1.0
 velocity_feedforward_v_max: 1.5
+
+# OFF-REFERENCE DEVIATION (authorized for box 2026-08-11; extended to T
+# 2026-08-15 by user directive): release the sticky achieved-goal flag after
+# 20 consecutive off-target loops (~1.5 s) so the dispatcher re-engages and
+# corrects post-latch withdrawal-scrape drift. Under the sticky reference
+# latch (cc:914-916) the T latched at rot 0.0039 then drifted to a final
+# 0.0206/0.0766 with no way back (meshT_j2diag_seed0.log); the box
+# falsification run at 411af85 proved this stranding is exactly what the
+# release repairs (0.0323 stranded vs 0.0196 PASS(final) + 147 s hold).
+# Reference behavior = set 0.
+achieved_goal_release_loops: 20
