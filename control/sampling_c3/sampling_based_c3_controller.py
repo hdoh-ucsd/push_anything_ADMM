@@ -1755,23 +1755,33 @@ class SamplingC3Controller:
         # which does NOT read rot_error at all (progress.py:195-198),
         # so downstream met_progress is bit-identical for box. Only the
         # T config that opts into kPosOrRotCost sees behavior change.
+        # 2026-08-15 conformance fix: BOTH branches now use the geodesic
+        # angle — the reference measures orientation error as
+        # AngleAxis(q_goal * q_now^-1).angle() EVERYWHERE it is consumed
+        # (success gate goal_generator.cc:143-151; controller
+        # current_orientation_error_ cc:788-805; object_on_target latch
+        # cc:891-909). The former planar yaw-only branch was a port
+        # simplification that is exact for flat-resting objects (box:
+        # tilt ~1e-4, yaw ≡ geodesic) but WRONG for the mesh-T, whose
+        # convex base rests tilted ~0.075 rad: geodesic = yaw ⊕ tilt in
+        # quadrature (verified: latch draw √(0.0998²+0.0765²)=0.1257 =
+        # the [RESULT] to 4 decimals). Under yaw-only the port latched
+        # ~0.036 rad of yaw too early — the reference keeps pushing
+        # until the FULL angle clears orientation_success_threshold.
         if self._goal_quat is not None:
-            # SE(3) task (the jack): the goal is a full quaternion and the
-            # object reorients out of plane, so a yaw extraction is not a
-            # rotation error at all -- two different resting tripods can share
-            # a yaw. Use the geodesic angle, which is what the reference
-            # success gate compares against orientation_success_threshold
-            # (AngleAxis(q_goal * q_now^-1).angle(), goal_generator.cc:218-221)
-            # and which reduces to |dyaw| for planar tasks.
-            _qn = np.asarray(obj_quat, dtype=float)
-            _nn = float(np.linalg.norm(_qn))
-            _qn = _qn / _nn if _nn > 1e-12 else np.array([1.0, 0.0, 0.0, 0.0])
-            _dot = float(abs(np.dot(_qn, self._goal_quat)))
-            rot_error_now = float(2.0 * np.arccos(np.clip(_dot, -1.0, 1.0)))
+            # SE(3) task (the jack): the goal is a full quaternion.
+            _q_goal = self._goal_quat
         else:
-            _yaw_now = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
-            _dy = _yaw_now - float(target_yaw)
-            rot_error_now = float(np.abs(np.arctan2(np.sin(_dy), np.cos(_dy))))
+            # Planar-goal task (box, T): goal quat from target_yaw with
+            # identity roll/pitch — the same upright-goal construction
+            # the reference uses for its fixed planar goals.
+            _hy = 0.5 * float(target_yaw)
+            _q_goal = np.array([np.cos(_hy), 0.0, 0.0, np.sin(_hy)])
+        _qn = np.asarray(obj_quat, dtype=float)
+        _nn = float(np.linalg.norm(_qn))
+        _qn = _qn / _nn if _nn > 1e-12 else np.array([1.0, 0.0, 0.0, 0.0])
+        _dot = float(abs(np.dot(_qn, _q_goal)))
+        rot_error_now = float(2.0 * np.arccos(np.clip(_dot, -1.0, 1.0)))
 
         # Include yaw component in config_cost (reference full Q_block covers
         # quat too). Uses the half-angle metric that w_yaw multiplies:
