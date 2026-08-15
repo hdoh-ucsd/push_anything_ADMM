@@ -79,7 +79,8 @@ class SamplingC3Controller:
                  dt_ctrl:    float = 0.01,
                  start_in_c3_mode: bool = False,
                  *,
-                 diagram=None):
+                 diagram=None,
+                 use_geometry_perimeter_sampling: bool = False):
         """Construct the outer sampling-C3 controller.
 
         Parameters
@@ -92,6 +93,14 @@ class SamplingC3Controller:
             does not use the diagram and ignores this kwarg.
         """
         self.base_mpc    = base_mpc
+        # Fig 8 sampler fix (2026-08-15): geometry-generic perimeter
+        # sampling for mesh (object_sdf) tasks — reference PerimeterSampling
+        # mechanism (interior draw + signed-distance projection) instead of
+        # the analytic _POLY_SHAPES face tables. Per-tick projector closure
+        # built in compute_control; None keeps the legacy face-table path.
+        self._use_geometry_perimeter = bool(use_geometry_perimeter_sampling)
+        self._perimeter_projector = None
+        self._obj_z_now = None
         # C3Plus final-solve contact boost (c3_plus.cc:131-145): plumb the
         # per-task yaml optional into the solver. None = no boost (reference
         # push_t); the box yaml mirrors reference anything's 1000.
@@ -496,6 +505,8 @@ class SamplingC3Controller:
             g_hat     = g_hat,
             obj_quat  = obj_quat,
             yaw_delta = yaw_delta,
+            obj_z     = getattr(self, "_obj_z_now", None),
+            projector = getattr(self, "_perimeter_projector", None),
         )
         # Log ALL raw samples emitted by generate_samples before any
         # filtering — deep-log addition for direction-commit debugging.
@@ -1507,6 +1518,39 @@ class SamplingC3Controller:
         goal_dist = float(np.linalg.norm(v_goal))
         g_hat   = v_goal / (goal_dist + 1e-9)
         g_hat_3d = np.array([g_hat[0], g_hat[1], 0.0])
+
+        # Fig 8 sampler fix (2026-08-15): build this tick's signed-distance
+        # projector for the geometry-generic perimeter sampler. Same query
+        # class as _pursued_target_in_collision (ComputeSignedDistanceToPoint
+        # over the manipuland geoms), so the sampler and the pursued-target
+        # collision gate agree by construction — a sample accepted here at
+        # sample_projection_clearance cannot be rejected by the gate at the
+        # same pose.
+        self._obj_z_now = float(current_q[self._obj_z_idx])
+        self._perimeter_projector = None
+        if self._use_geometry_perimeter:
+            _pp_gids = getattr(
+                getattr(self.base_mpc, "formulator", None),
+                "_manipuland_geom_ids", None)
+            if _pp_gids:
+                _pp_qo = self.plant.get_geometry_query_input_port().Eval(
+                    plant_ctx)
+
+                def _pp_projector(p, _qo=_pp_qo, _gids=_pp_gids):
+                    try:
+                        _res = _qo.ComputeSignedDistanceToPoint(
+                            np.asarray(p, dtype=float).reshape(3), 0.5)
+                    except Exception:
+                        return None, None
+                    _bd, _bg = None, None
+                    for _r in _res:
+                        if _r.id_G in _gids and (
+                                _bd is None or float(_r.distance) < _bd):
+                            _bd = float(_r.distance)
+                            _bg = np.asarray(_r.grad_W, dtype=float)
+                    return _bd, _bg
+
+                self._perimeter_projector = _pp_projector
 
         # Reference-conformance: distance to FINAL goal for progress tracking
         # and achieved_fixed_goal check. target_xy here is the LOOKAHEAD

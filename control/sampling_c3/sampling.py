@@ -174,6 +174,7 @@ def generate_samples(strategy:    SamplingStrategy,
                      obj_quat:    Optional[np.ndarray] = None,
                      yaw_delta:   Optional[float] = None,
                      obj_z:       Optional[float] = None,
+                     projector=None,
                      ) -> list[np.ndarray]:
     """
     Generate n_samples 3D EE target positions.
@@ -211,8 +212,25 @@ def generate_samples(strategy:    SamplingStrategy,
     elif strategy == SamplingStrategy.kFixed:
         raw = _fixed_samples(n_samples, params)
     elif strategy == SamplingStrategy.kRandomOnPerimeter:
-        raw = _random_on_perimeter(
-            n_samples, obj_xy, params, rng, g_hat, obj_quat)
+        if projector is not None:
+            # Geometry-generic path (2026-08-15 Fig 8 sampler fix): the
+            # reference PerimeterSampling is face-table-free — it draws
+            # interior points on the object's own footprint and projects
+            # them off the ACTUAL collision geometry via signed-distance
+            # queries (generate_samples.cc:270-360). The analytic
+            # _POLY_SHAPES tables below remain only for the analytic-SDF
+            # legacy tasks (push_t box-T, push_h), whose sim geometry IS
+            # the table. Imported mesh objects sampled on the box-T table
+            # produced targets at/inside their real surfaces → the
+            # pursued-target collision gate dropped them every few ticks
+            # (no_held retarget storm, chicken_broth 64%) → repositions
+            # never completed → c3 never engaged (memory:
+            # fig8-sampler-hardcoded-facetable-bug).
+            raw = _random_on_perimeter_projected(
+                n_samples, obj_xy, params, rng, obj_quat, obj_z, projector)
+        else:
+            raw = _random_on_perimeter(
+                n_samples, obj_xy, params, rng, g_hat, obj_quat)
     elif strategy == SamplingStrategy.kRandomOnSphere:
         raw = _random_on_sphere(n_samples, obj_xy, params, rng, obj_z)
     else:
@@ -229,6 +247,76 @@ def generate_samples(strategy:    SamplingStrategy,
 # ---------------------------------------------------------------------------
 # Strategies
 # ---------------------------------------------------------------------------
+
+def _random_on_perimeter_projected(n_samples: int,
+                                   obj_xy:    np.ndarray,
+                                   params:    SamplingParams,
+                                   rng:       np.random.Generator,
+                                   obj_quat:  Optional[np.ndarray],
+                                   obj_z:     Optional[float],
+                                   projector) -> list[np.ndarray]:
+    """Geometry-generic kRandomOnPerimeter for arbitrary mesh objects.
+
+    Port of the reference mechanism (generate_samples.cc:270-360,
+    PerimeterSampling + ProjectSampleOutsideObject), which needs no
+    per-shape face table:
+
+      1. Draw (x, y) uniformly in the object's BODY frame on its z=0
+         plane; rotate/translate into world; snap world z to
+         sampling_height.
+      2. Keep the draw only if it is interior (signed distance to the
+         object's surface <= 0 at that height) — this makes the draw an
+         interior-point sampler over the true footprint slice.
+      3. Project the point outward past the surface along the
+         signed-distance gradient to sample_projection_clearance.
+      4. Re-query: reject if the achieved clearance fell short (witness
+         changed during projection) or the point drifted more than 1 mm
+         off sampling_height (non-vertical wall). Retry otherwise.
+
+    `projector` is a callable p(3,) -> (min_signed_distance, grad_W) over
+    the manipuland's collision geometries in the CURRENT plant context
+    (built per tick by the dispatcher; same query the pursued-target
+    collision gate uses, so sampler and gate agree by construction).
+
+    The reference draws from per-task grid_x/y_limits; the port draws
+    from a generous fixed body-frame box (covers every imported object;
+    exterior draws are rejected by step 2, so the grid affects only
+    draw efficiency, not the distribution over the footprint slice).
+    Bounded retries replace the reference's unbounded loop so a
+    degenerate tick cannot hang the controller.
+    """
+    half = 0.20
+    clearance = float(getattr(params, "sample_projection_clearance", 0.02))
+    h = float(params.sampling_height)
+    q = (np.asarray(obj_quat, dtype=float)
+         if obj_quat is not None else np.array([1.0, 0.0, 0.0, 0.0]))
+    R = _quat_to_rot(q)
+    z_obj = float(obj_z) if obj_z is not None else h
+    p_obj = np.array([float(obj_xy[0]), float(obj_xy[1]), z_obj])
+
+    out: list[np.ndarray] = []
+    attempts = 0
+    max_attempts = 400 * max(int(n_samples), 1)
+    while len(out) < n_samples and attempts < max_attempts:
+        attempts += 1
+        xb, yb = rng.uniform(-half, half, size=2)
+        p = R @ np.array([xb, yb, 0.0]) + p_obj
+        p[2] = h
+        d, grad = projector(p)
+        if d is None or d > 0.0:
+            continue                      # not interior at the slice
+        gn = float(np.linalg.norm(grad))
+        if gn < 1e-9:
+            continue
+        p_proj = p + (clearance - d) * (grad / gn)
+        d2, _ = projector(p_proj)
+        if d2 is None or d2 < clearance - 1e-6:
+            continue                      # projection under-cleared
+        if abs(float(p_proj[2]) - h) > 0.001:
+            continue                      # wall not vertical here
+        out.append(np.asarray(p_proj, dtype=float))
+    return out
+
 
 def _random_on_sphere(n_samples: int,
                       obj_xy:    np.ndarray,
