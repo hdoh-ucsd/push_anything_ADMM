@@ -601,7 +601,18 @@ reposition_params:
 #
 # alpha=1.0 is the LITERAL reference (osc_tracking_data.cc applies no scaling).
 # alpha<1 and v_max are port-only bounds with no reference analogue.
-# T: left OFF (externally set). Flip to true for the conformant value.
+#
+# 2026-08-15 STALE-COMMENT FIX: the former line here ("Flip to true for
+# the conformant value") predated the 2026-08-05 CORRECTION in
+# sampling_based_c3_controller._compute_velocity_feedforward and was
+# BACKWARDS. `false` IS the conformant value: with the flag off, the
+# executor's compute_torque_from_trajectory derives v_ee_desired =
+# traj.EvalDerivative(t, 1) — exactly the reference ydot_des
+# (osc_tracking_data.cc:91-99, position-track derivative). `true`
+# REPLACES that with the planner state's raw velocity slots — an
+# off-reference extra kept only as a falsification lever, with a
+# documented z-target conflict against the frozen c3 z-track
+# ([VFF-Z-CONFLICT]). Do not flip.
 use_velocity_feedforward:   false
 velocity_feedforward_alpha: 1.0
 velocity_feedforward_v_max: 1.5
