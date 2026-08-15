@@ -17,45 +17,31 @@ osc:
   Kd_null: [3.0,  3.0,  3.0,  3.0,  3.0,  3.0,  3.0]
 
   # Reference w_elbow=1, elbow_kp=200, elbow_kd=10, target=1.1 rad
-  # (osc_params.yaml:42-44 / franka_osc_controller.cc:159-165).
+  # (osc_params.yaml:42-44 / franka_osc_controller.cc:159-190: "the Franka
+  # has 7 joints to control a 6 DOF EE command" — the const joint2 task is
+  # the reference's redundancy anchor, and its Kd=10 is the ONLY damping
+  # of the arm's 1-dim null space).
   #
-  # Reference sends `panda_joint2_target = q_init_franka[1] = 1.1 rad`
-  # continuously via LCM. In reference, arm INIT joint2 is 1.1 → zero
-  # posture error and joint2 is pinned at that raised-shoulder pose,
-  # matching reference's Franka mount (arm reaches down from a raised
-  # platform onto the box/T). Port's Franka is welded at world origin
-  # (not raised), so a raised-shoulder pose can't reach the low-z targets.
-  # Port's INITIAL_ARM_Q[1]=0.675 is a different pose calibrated for the
-  # port frame; setting target=1.1 pulled arm UP, setting target=0.675
-  # PINNED arm at start pose (both prevent Cartesian z-descent to box).
+  # 2026-08-14 RESTORED (W_joint2 0.0 → 1.0). The 2026-07-19 disable
+  # rationale below cited the "raised mount / port frame" story, which the
+  # 2026-07-28 mount close-out FALSIFIED (EE weld chain byte-identical →
+  # the reference joint vector ports verbatim). The July harm ("c3-entry
+  # arm slam", a_j2 = 200×0.775 rad/s²) was the 0.775-rad STANDING error
+  # of pinning to 1.1 from the port's IK-preposition init (joint2≈0.33) —
+  # the init mismatch, not the pin. Paired fix: tasks.yaml q_init_franka
+  # starts the arm AT joint2=1.1 (reference sim_params.yaml:13), so the
+  # pin is transient-free.
   #
-  # The joint2 posture cost is a REFERENCE FRAME-SPECIFIC compensation
-  # that doesn't apply to the port's frame. Setting W_joint2=0 removes
-  # it entirely — port relies on task tracking (Kp_cart=200) plus
-  # nullspace posture (Kp_null=10) for arm posture, which is sufficient
-  # without an over-strong elbow pin.
-  # Re-enabled 2026-07-17: reference values w_elbow=1, elbow_kp=200,
-  # elbow_kd=10, target=1.1 rad. Prior port ran W=0 per lock-in Option A
-  # (memory: project_reproduce_dairlib_restored_main_joint2_flag) after
-  # W=1/target=1.1 raised EE dramatically at commit ec7fc4a-era. Testing
-  # under today's conformance stack (EE-chain, u_limits, z-freeze,
-  # sampling_height=0.020) to see whether reference joint-2 target lifts
-  # mid-arm links above box top and eliminates the arm-link-brushing
-  # box-push observed on box_z020_063025 (81 n_pairs=2 events, 28mm
-  # translation via arm links not pusher tip).
+  # Root-cause context (memory
+  # project_box_park_rootcause_nullspace_orbit_2026-08-14): with
+  # W_joint2=0 AND W_posture=0 the null space is unanchored and undamped;
+  # QP dumps showed a persistent |v_arm|≈0.7 rad/s self-motion orbit
+  # (joint2 sweeping 0.22→1.76 rad) that wanders the arm into real
+  # arm-environment jams — the box endgame dead-park.
   Kp_joint2:         200.0
   Kd_joint2:          10.0
-  # 2026-07-19: disable joint-2 posture cost. Reference frame's Franka
-  # mount is at a raised platform where joint2 sits at ~1.1 rad in the
-  # reach pose; port's Franka is welded at world origin, so IK-derived
-  # runtime poses land joint2 near ~0.325 rad. With W_joint2=1.0 and
-  # target=1.1 the posture cost injects `a_j2 = 200 × 0.775 = 155 rad/s²`
-  # of upward acceleration on joint 2 at every c3-mode tick — the direct
-  # cause of the c3-entry arm slam (arm swings up to z≈0.80 m before
-  # descending). Documented in memory
-  # project_reproduce_dairlib_restored_main_joint2_flag as "Option A".
-  W_joint2:            0.0    # was 1.0 (ref w_elbow), OFF for port frame
-  joint2_target_rad:   1.1    # (unused when W_joint2=0)
+  W_joint2:            1.0    # reference w_elbow (restored 2026-08-14)
+  joint2_target_rad:   1.1
   joint2_idx:            1
 
   # Reference EndEffectorW = diag(1,1,1).

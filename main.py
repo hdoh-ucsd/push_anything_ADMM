@@ -455,7 +455,10 @@ def main():
     print(f"[COST] w_terminal:    {_cost.get('w_terminal', '?')}  (QN = w_terminal * Q)")
     print(f"[COST] w_ee_approach: {_cost.get('w_ee_approach', '?')}")
     print(f"[COST] w_torque:      {_cost.get('w_torque', '?')}")
-    print(f"[ENV]  init arm q: SAFE-OFFSET (IK-derived, opposite goal direction)")
+    if task_cfg.get("q_init_franka") is not None:
+        print(f"[ENV]  init arm q: reference q_init_franka (tasks.yaml)")
+    else:
+        print(f"[ENV]  init arm q: SAFE-OFFSET (IK-derived, opposite goal direction)")
 
     # ------------------------------------------------------------------
     # Build Drake environment

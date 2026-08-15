@@ -18,6 +18,16 @@ tasks:
     # Reference convention: ~1 kg CONTROLLER object model regardless of sim
     # mass (letters 0.05->1.0; the port's cube sims 0.2 kg).
     controller_mass: 1.0
+    # 2026-08-14 joint2 fix: reference initial arm configuration
+    # (anything/parameters/sim_params.yaml:13 q_init_franka, verbatim —
+    # weld chain byte-identical per the 2026-07-28 mount close-out, so the
+    # joint vector ports directly). joint2 starts AT the 1.1 rad pin target
+    # so the restored w_elbow task (osc_franka.yaml W_joint2) is
+    # transient-free. FK puts the EE at (0.327, 0.401, 0.102) ≈ the
+    # retreat_ee_position (0.3, 0.4, 0.1), pointing down, 0.42 m clear of
+    # the box spawn (verified collision-free 2026-08-14). Overrides the
+    # port-only IK safe-offset preposition in compute_safe_init_arm_q.
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     # 2026-07-28 frame migration: box spawns +x of the arm base
     # (reference layout, sampling_c3_utils.cc — object at (0.5,0)).
     # The old (0,0) init predated ed16080's base-at-origin move and
