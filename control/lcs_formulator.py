@@ -58,7 +58,8 @@ class LCSFormulator:
                  object_shape: str = "box",
                  mu_per_pair_type: dict | None = None,
                  controller_object_mass: float | None = None,
-                 tshape_mesh_witnesses: bool = False):
+                 tshape_mesh_witnesses: bool = False,
+                 mesh_ground_witnesses_body=None):
         """
         mu_per_pair_type : optional dict mapping contact-pair tag
             ("EE-BOX", "BOX-GND", "EE-GND") to a per-pair friction
@@ -71,6 +72,15 @@ class LCSFormulator:
         # Mesh-T migration (2026-08-11): ground-witness table comes from the
         # reference T_shape_video mesh footprint instead of the box-T table.
         self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
+        # Fig 8 campaign (2026-08-15): per-task ground-witness table for
+        # generic imported anything objects — the 3 sphere positions from
+        # the object's reference *_controller.sdf, passed via the task's
+        # `ground_witness_points_body`. Takes precedence over the two
+        # hardcoded T tables when set; the push_t/push_t_mesh tasks don't
+        # set it, so their behavior is unchanged.
+        self._mesh_ground_witnesses_body = (
+            None if mesh_ground_witnesses_body is None
+            else np.asarray(mesh_ground_witnesses_body, dtype=float).reshape(3, 3).T)
         # Reference ships a SEPARATE, heavier object model for the CONTROLLER
         # than for the sim, and the difference is task-specific:
         #     push_t   push_t.sdf 1.0 kg  == push_t_control.sdf 1.0 kg   (1x)
@@ -433,6 +443,10 @@ class LCSFormulator:
                 f"T-shape vertex-set n_synth must be 3 (matches reference "
                 f"push_t resolve_contacts_to=[0,1,3]); got {n_synth}."
             )
+        if self._mesh_ground_witnesses_body is not None:
+            # Per-task table (imported anything object): the 3 sphere
+            # positions from the object's reference *_controller.sdf.
+            return self._mesh_ground_witnesses_body
         if self._tshape_mesh_witnesses:
             # Reference T_shape_video mesh bottom-face support extremities
             # (computed from T_shape_video.obj: bottom ring at z=-0.0243).
