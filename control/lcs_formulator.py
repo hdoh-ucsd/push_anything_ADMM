@@ -132,13 +132,20 @@ class LCSFormulator:
         self._always_on_ee_box = True
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
-        # 2026-08-15 conformance step 3: the box joins the tshape at the
-        # reference count of 3 ground witnesses (reference resolves the
-        # ground-object group to 3 sphere contacts for EVERY anything
-        # object — resolve_contacts_to_lists [[0,1,3,1]]). Other shapes
-        # (hshape, jack) keep their existing defaults/config overrides.
+        # 2026-08-15 step-3 verdict (memory
+        # project_box_3witness_falsified_2026-08-15): the box tried the
+        # reference 3-sphere ground triangle (n=3, commit 4a7b816) and
+        # it FALSIFIED — the asymmetric triangle vs the ideal cube's
+        # symmetric flat rest injected a first-push yaw spin
+        # (0.045→0.43 rad; canonical eval rot FAIL 0.1727). The
+        # reference's triangle presumes controller spheres ≈ TRUE
+        # support, which holds for its real meshes but not an ideal
+        # cube. Box default RESTORED to its true support set (4
+        # corners) = the faithful instantiation of reference intent;
+        # the n=3 branch stays available (falsification lever only).
+        # tshape keeps its mesh-derived reference triangle.
         self.lcs_explicit_manipuland_ground_contacts = (
-            3 if object_shape in ("tshape", "box") else 4)
+            3 if object_shape == "tshape" else 4)
 
         # Legacy Stewart-Trinkle normal-row patches: all no-ops under
         # Anitescu (no separate normal row). Kept as dead defaults so
