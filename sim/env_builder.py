@@ -979,7 +979,22 @@ def compute_safe_init_arm_q(plant,
     straight-down descent passed through box top since pwl_waypoint_height
     < box_top). By starting OFFSET in xy on the goal-opposite side and
     ABOVE box top, the first PWL lift/descend has clear space.
+
+    Reference override (2026-08-14 joint2 fix): when the task provides
+    `q_init_franka`, return it verbatim — the reference sets the initial
+    arm joints directly (sim_params.yaml q_init_franka) with NO IK
+    preposition, and the joint2 pin (osc_franka.yaml W_joint2) needs the
+    arm to START on the reference branch (joint2 = 1.1 rad) to be
+    transient-free. Tasks without the key keep the legacy IK path.
     """
+    _q_ref = task_cfg.get("q_init_franka")
+    if _q_ref is not None:
+        _q_ref = np.asarray(_q_ref, dtype=float)
+        if verbose:
+            print(f"[ENV]  init arm q: reference q_init_franka "
+                  f"{np.round(_q_ref, 4).tolist()} (IK preposition skipped)")
+        return _q_ref
+
     from control.sampling_c3.ik import solve_ik_to_ee_pos
 
     init_xyz = np.asarray(task_cfg["init_xyz"], dtype=float)
