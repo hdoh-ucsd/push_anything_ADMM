@@ -962,6 +962,17 @@ class SamplingC3Params:
     # canonical c3 sessions failed this way before the fix.)
     # Port-only gate — reference has no contact-proximity entry gate.
     # Reference dispatcher relies on cost hysteresis + progress tracker.
+    # ------------------------------------------------------------------
+    # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
+    # release. The reference's achieved_fixed_goal_ is STICKY (cc:914-916)
+    # — after any tight touch the arm retires forever, accepting whatever
+    # the object drifts to (the box flyby parked at 0.0266 m). When > 0,
+    # the flag RELEASES after this many consecutive off-target control
+    # loops, so dispatch re-engages and corrects the drift, then
+    # re-latches. 0 (default) = sticky = reference-identical.
+    # ------------------------------------------------------------------
+    achieved_goal_release_loops: int = 0
+
     use_contact_entry_gate: bool = False
     # Threshold on ‖ee_now − box_center‖ in meters. Default 0.090 m
     # (loosened from 0.080 after the both_fixes_20260521_193033 run
@@ -1272,6 +1283,8 @@ class SamplingC3Params:
             min_push_force       = float(raw.get("min_push_force", 2.0)),
             use_reposition_pwl_trajectory = bool(raw.get(
                 "use_reposition_pwl_trajectory", True)),
+            achieved_goal_release_loops = int(raw.get(
+                "achieved_goal_release_loops", 0)),
             use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),

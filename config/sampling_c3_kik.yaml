@@ -61,6 +61,13 @@ use_commit_face_gate: false
 use_contact_entry_gate: false
 use_surface_entry_gate: false
 
+# OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): release the sticky
+# achieved-goal flag after 20 consecutive off-target loops (~1.5 s) so the
+# dispatcher re-engages and corrects post-latch flyby drift (box parked at
+# 0.0266 m after latching at 0.0199). Reference behavior (sticky forever,
+# cc:914-916) = set 0.
+achieved_goal_release_loops: 20
+
 # Rotation-aware sample bonus (L2.6 form):
 #   c_sample[i] -= w_rot * |yaw_err| * max(0, M_z * yaw_sign)
 # where M_z = (r x n_hat).z is the predicted contact moment about box CoM

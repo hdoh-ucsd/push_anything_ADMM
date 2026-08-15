@@ -1822,8 +1822,33 @@ class SamplingC3Controller:
         # When set, force mode=free (arm won't push more).
         if not hasattr(self, "_achieved_fixed_goal"):
             self._achieved_fixed_goal = False
+            self._off_target_streak = 0
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
+        # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
+        # release. Reference keeps the flag sticky forever (cc:914-916);
+        # with achieved_goal_release_loops > 0, N consecutive off-target
+        # loops release it so dispatch re-engages and corrects post-latch
+        # drift (the box flyby class). 0 = sticky = reference-identical.
+        _rel_loops = int(getattr(self.params,
+                                 "achieved_goal_release_loops", 0) or 0)
+        if self._achieved_fixed_goal and _rel_loops > 0:
+            _on_target_now = (_final_goal_dist < _pos_thr
+                              and (not self._crossed_switching_threshold
+                                   or rot_error_now < _rot_thr))
+            if _on_target_now:
+                self._off_target_streak = 0
+            else:
+                self._off_target_streak += 1
+                if self._off_target_streak >= _rel_loops:
+                    self._achieved_fixed_goal = False
+                    self._off_target_streak = 0
+                    if self.log_diag:
+                        print(f"[ACHIEVED-GOAL-RELEASE] step={self._step} "
+                              f"off-target {_rel_loops} loops "
+                              f"(dist={_final_goal_dist:.4f}m "
+                              f"rot={rot_error_now:.4f}rad) — re-engaging "
+                              f"(OFF-REFERENCE deviation)", flush=True)
         if not self._achieved_fixed_goal:
             # Reference cc:876-881 object_on_target:
             #   crossed_ mode:   pos < pos_thr AND rot < rot_thr
