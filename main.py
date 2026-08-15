@@ -252,9 +252,21 @@ def main():
     # --ee-space (no-op; the ee_space ATTRIBUTE is still derived from
     # --r7 below). Dead task choices (hard_pushing/shepherding/
     # cube_turning) pruned; their tasks.yaml entries remain as inert data.
+    # Task choices come from config/tasks.yaml so imported anything objects
+    # (Fig 8 campaign 2026-08-15) are runnable without touching argparse.
+    # Dead tasks (hard_pushing/...) remain excluded via the legacy allowlist
+    # union.
+    try:
+        import yaml as _yaml_choices
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "config", "tasks.yaml")) as _f:
+            _task_choices = sorted(_yaml_choices.safe_load(_f)["tasks"].keys())
+    except Exception:
+        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_h",
+                         "push_jack"]
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "push_t", "push_t_mesh", "push_h", "push_jack"],
+        choices=_task_choices,
         help="Task to run (default: pushing)",
     )
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
@@ -550,6 +562,10 @@ def main():
         # Mesh-T tasks (object_sdf set) use the reference mesh's ground-
         # witness footprint instead of the box-T vertex table.
         tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
+        # Imported anything objects (Fig 8 campaign): per-task witness
+        # triangle from the object's reference *_controller.sdf spheres.
+        mesh_ground_witnesses_body=task_cfg.get(
+            "ground_witness_points_body", None),
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
@@ -615,12 +631,15 @@ def main():
         #   planning_dt_position: 0.1 (anything: 0.075)
         #   planning_dt_pose: 0.05
         # Task-conditional so box path (uses anything defaults) stays put.
-        if task_name in ("push_t", "push_t_mesh"):
+        if (task_name in ("push_t", "push_t_mesh")
+                or task_cfg.get("object_sdf")):
             # 2026-08-11 L2 (anything-N1 lineage): multiyaml_rewrite.py
             # PLANNING_HORIZON_CONFIGS {1: 10} + uniform planning_dt 0.075
             # (anything/sampling_c3plus_options.yaml post-rewrite). The old
             # 5 / 0.1 / 0.05 came from the bit-rotted push_t demo yaml —
             # see docs/anything-n1-config-delta-audit.md (L2).
+            # Fig 8 campaign: every imported anything object (object_sdf
+            # set) is anything-N1 lineage and takes this branch.
             _c3plus_N  = 10
             _c3plus_dt = 0.075
             _c3plus_dt_pose = 0.075
