@@ -32,7 +32,7 @@ run_one() {
 for task in I_shape_texture C_shape_texture R_shape_texture A_shape_video \
             Y_shape_video G_shape_video B_shape_video 3_shape_video \
             H_shape_texture E_shape_video expo_box lotion wood_block tape \
-            eraser egg_carton book baby_toy gallon_milk xbox; do
+            eraser egg_carton book baby_toy gallon_milk xbox chicken_broth; do
   run_one "$task"
 done
 echo "[FIG8-RERUN] ALL DONE"

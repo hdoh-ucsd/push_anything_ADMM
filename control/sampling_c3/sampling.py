@@ -286,7 +286,21 @@ def _random_on_perimeter_projected(n_samples: int,
     degenerate tick cannot hang the controller.
     """
     half = 0.20
-    clearance = float(getattr(params, "sample_projection_clearance", 0.02))
+    # Pusher-radius compensation (2026-08-15, second iteration of this fix).
+    # The reference's sample_projection_clearance=0.02 is an EE-CENTER
+    # clearance sized for the reference sphere (r=0.0195): surface clears by
+    # 0.5 mm. The port's pusher is larger (PUSHER_RADIUS, 0.025 default), so
+    # the raw 0.02 buries the sphere ~5 mm into the object at every sample —
+    # descents clip the object. First eval of the uncompensated projection
+    # sampler spun the mesh-T to rot 1.86 rad (meshT_projfix_seed0.log,
+    # no-regress FAIL). Identical issue + identical remedy as the
+    # face-table path's BUG-2 fix below (2026-07-13): effective clearance =
+    # max(yaml clearance, PUSHER_RADIUS + 5 mm floor) — adapt to the port's
+    # radius, don't edit the reference yaml value.
+    from sim.env_builder import PUSHER_RADIUS as _PUSHER_R
+    clearance = max(
+        float(getattr(params, "sample_projection_clearance", 0.02)),
+        float(_PUSHER_R) + 0.005)
     h = float(params.sampling_height)
     q = (np.asarray(obj_quat, dtype=float)
          if obj_quat is not None else np.array([1.0, 0.0, 0.0, 0.0]))
