@@ -9,6 +9,15 @@ tasks:
     friction: 0.3            # reference push_t.sdf mu_dynamic
     pusher_friction: 1.0     # reference end_effector_full.urdf mu
     size: [0.1, 0.1, 0.1]
+    # 2026-08-11 box-lineage: planner-LCS mu from the authors' multiyaml
+    # constants (hardcoded for EVERY anything object — same set the T runs).
+    mu_per_pair_type:
+      EE-BOX:  0.42
+      BOX-GND: 0.46
+      EE-GND:  0.823
+    # Reference convention: ~1 kg CONTROLLER object model regardless of sim
+    # mass (letters 0.05->1.0; the port's cube sims 0.2 kg).
+    controller_mass: 1.0
     # 2026-07-28 frame migration: box spawns +x of the arm base
     # (reference layout, sampling_c3_utils.cc — object at (0.5,0)).
     # The old (0,0) init predated ed16080's base-at-origin move and
@@ -46,12 +55,31 @@ tasks:
     # cross-over) so a stricter clearance is fine here.
     pwl_waypoint_height: 0.135   # box top 0.10 + pusher r 0.025 + 10 mm margin
     cost:
+      # 2026-08-11 box-lineage: the anything-N1 dual-regime reference cost
+      # (same set the T runs — see push_t block for rationale). The legacy
+      # w_obj_* keys below stay for the non-reference build() path only.
+      use_reference_q_vector:  true
+      w_Q:                    80.0
+      w_Q_position:           50.0
+      q_vector_ee_pos:        [0.01, 0.01, 0.01]
+      q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos:       [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos:  [200.0, 200.0, 120.0]
+      q_vector_ee_vel:        [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
+      w_R:                    6.0
+      r_vector:               [0.01, 0.01, 1.0]
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      ee_target_z_offset_above_object: 0.06
       w_obj_xy:    100000.0
       w_obj_z:         10.0
       w_box_z:        100.0
       w_box_rp:        50.0
       w_yaw:            0.0
-      w_terminal:       5.0
+      w_terminal:       1.0   # box-lineage: QN = Q (reference gamma=1; was 5.0)
       # z_ee_target: planner-cost proxy z (task_costs.py:349 proxy_3d.z
       # = self.z_ref). Must match sampling_height above so the planner
       # drives arm to the SAME z the reposition tracker + IK place it at.
