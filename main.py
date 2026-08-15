@@ -845,6 +845,15 @@ def main():
             start_in_c3_mode=False,
             rng=_rng,
             diagram=diagram,
+            # Fig 8 sampler fix (2026-08-15): mesh (object_sdf) tasks use the
+            # reference geometry-generic perimeter sampler (interior draw +
+            # signed-distance projection off the real collision geometry)
+            # instead of the analytic box-T/H face tables, which mis-place
+            # approach targets for every non-T footprint. Legacy analytic
+            # tasks (push_t, push_h) keep their tables — their sim geometry
+            # IS the analytic shape.
+            use_geometry_perimeter_sampling=bool(
+                task_cfg.get("object_sdf", None)),
         )
         # SE(3) tasks: hand the controller the full goal orientation so its
         # rotation error is the geodesic angle rather than a yaw difference.
