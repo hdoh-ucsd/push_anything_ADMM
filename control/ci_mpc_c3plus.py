@@ -601,8 +601,8 @@ class C3PlusMPC:
         # under-measures by the sample-evaluation cost and parked the
         # consumption depth exactly on the final-QP-pinned first knot).
         # Standalone base-MPC use (no wrapper) keeps the local update.
+        _alpha = self._solve_time_filter_alpha
         if not getattr(self, "_fst_source_full_tick", False):
-            _alpha = self._solve_time_filter_alpha
             self._filtered_solve_time = (
                 (1.0 - _alpha) * _solve_wall_s
                 + _alpha * self._filtered_solve_time
