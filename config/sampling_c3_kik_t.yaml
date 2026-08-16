@@ -358,10 +358,16 @@ sampling_params:
                                           # _random_on_perimeter.
 
   # Number of additional samples beyond (current + previous-repos-target).
-  # 2026-07-18 iter7: c3 3 → 2 to match push_t/parameters/sampling_params.yaml:19
-  # (reference push_t override; anything's shared default is different).
-  num_additional_samples_c3:    2
-  num_additional_samples_repos: 1
+  # 2026-08-15 leg 6 (hover root-cause): anything-N1 literals — reference
+  # anything/sampling_params.yaml:22-23 (c3 5, repos 4). The prior 2/1 was
+  # the push_t-lineage override (2026-07-18), the rejected lineage: with
+  # ONE strategy sample per tick ([EE-SAMPLES] n=2) the ranking is
+  # degenerate — a single seed-dependent draw decides the approach side
+  # for the whole run (Letter I parked goal-side, push-impossible). The
+  # box yaml has carried 5/4 all along (and engages/explores) — same
+  # box-has-it/T-lacks-it pattern as the final-QP boost.
+  num_additional_samples_c3:    5
+  num_additional_samples_repos: 4
 
   # Sample buffer (replay-best-on-c3-exit hysteresis).
   consider_best_buffer_sample_when_leaving_c3: true
