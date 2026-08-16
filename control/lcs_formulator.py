@@ -2246,14 +2246,23 @@ class LCSFormulator:
         # 4f. d_vec — affine offset (constant term in x_{k+1} after linearization).
         # d_box_v_offset = f_box(box_q*, box_v*) − df_box_dboxq · box_q*
         #                  − df_box_dboxv · box_v*
-        # d_v_ee_offset  = f_ee(u*) − (∂f_ee/∂u) · u*  = u*/m_ee − u*/m_ee = 0
+        # d_v_ee_offset: 2026-08-15 leg-4 fix — the reference's planner EE is
+        # a 0.057 kg body on PASSIVE prismatic joints, so GRAVITY acts on it:
+        # f_ee = u/m_ee − g·ẑ, hence a constant offset −g·ẑ. The prior
+        # derivation ("u*/m_ee − u*/m_ee = 0") forgot the −g term. Verified
+        # against the reference Letter-I instance dump: d[v_ee_z] = −0.7358
+        # (= −9.81·dt), d[p_ee_z] = −0.0552 (= −9.81·dt²); the port had
+        # exact zeros there. Plans must spend u_z ≈ +m·g/… to hold height —
+        # part of the reference's approach economics (R_z=6 prices it) and
+        # the source of the reference's EE-row folded-c asymmetry via
+        # J_c_ee·(−g·dt) (the c assembly below plumbs this automatically).
         d_box_v_offset = f_box - df_box_dboxq @ box_q - df_box_dboxv @ box_v
-        d_v_ee_offset  = np.zeros(3)   # purely linear in u (no constant offset)
+        d_v_ee_offset  = np.array([0.0, 0.0, -9.81])
         d_vec = np.zeros(N_X)
         d_vec[self.BOX_Q_SLOT] = (dt * dt) * (N_box @ d_box_v_offset)
-        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset    # zero
+        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset
         d_vec[self.BOX_V_SLOT] = dt * d_box_v_offset
-        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset           # zero
+        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset
 
         # -----------------------------------------------------------------
         # 5. Stewart-Trinkle LCP slack:
@@ -2400,7 +2409,7 @@ class LCSFormulator:
             c_lcs[SLT:SLT + n_t] = c_const_v_box_t + c_const_v_ee_t
 
             # Subtract E·x* so c carries η's affine offset. The value
-            # expression above is evaluated at u = 0 (d_v_ee_offset = 0 —
+            # expression above is evaluated at u = 0 (d_v_ee_offset = −g·ẑ since the leg-4 fix —
             # "purely linear in u"), so H·u* must NOT be subtracted: doing so
             # shifted every EE-coupled row by −H·u* whenever the full solve
             # linearized at u_lin = _last_u ≠ 0 (p146 walk root cause; ground
@@ -2512,7 +2521,8 @@ class LCSFormulator:
                 H_an = dt * (J_c_ee @ M_ee_op_inv)                # (4n_c, 3)
 
                 # c — linearization-point value of η at u = 0 (d_v_ee_offset
-                # = 0); subtraction converts to the affine offset. H·u* must
+                # = −g·ẑ since the leg-4 fix); subtraction converts to the
+                # affine offset. H·u* must
                 # NOT be subtracted — the value expression excludes u, so
                 # subtracting H·u* shifted the EE-coupled rows by −H·u*
                 # whenever u_lin ≠ 0 (p146 walk root cause; see ST-path note).
