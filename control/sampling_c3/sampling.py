@@ -310,9 +310,12 @@ def _random_on_perimeter_projected(n_samples: int,
     #       is the right target once the port's contact-establishment
     #       range is brought to parity.
     from sim.env_builder import PUSHER_RADIUS as _PUSHER_R
-    clearance = max(
-        float(getattr(params, "sample_projection_clearance", 0.02)),
-        float(_PUSHER_R) + 0.005)
+    #   v5  (this) = v3 restored by user directive ("fixes must be
+    #       reference conformant"): the ADDITIVE reference formula stands;
+    #       the port's engagement-range shortfall is the divergence to
+    #       fix, not a reason to move the sampler off-reference.
+    clearance = (float(_PUSHER_R)
+                 + float(getattr(params, "sample_projection_clearance", 0.02)))
     h = float(params.sampling_height)
     q = (np.asarray(obj_quat, dtype=float)
          if obj_quat is not None else np.array([1.0, 0.0, 0.0, 0.0]))
