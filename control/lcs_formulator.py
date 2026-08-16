@@ -58,6 +58,7 @@ class LCSFormulator:
                  object_shape: str = "box",
                  mu_per_pair_type: dict | None = None,
                  controller_object_mass: float | None = None,
+                 controller_inertia: dict | None = None,
                  tshape_mesh_witnesses: bool = False,
                  mesh_ground_witnesses_body=None):
         """
@@ -98,6 +99,27 @@ class LCSFormulator:
         self._controller_object_mass = (
             None if controller_object_mass is None
             else float(controller_object_mass))
+        # 2026-08-15 planner-inertia conformance (letter hover root-cause,
+        # leg 2): the reference plans with the *_controller.sdf's DECLARED
+        # spatial inertia (e.g. I_shape: mass 1.0, I=diag(.003,.003,.006)
+        # about the com), NOT a mass-scaled copy of the sim model's tensor.
+        # The two are not proportional (sim I ixx 1.45e-5 @0.05 kg -> x20
+        # scale gives 2.9e-4 vs the declared 3e-3: 10x off; raw D obj_w
+        # rows 4.7x the reference's for the same letter). When set, this
+        # dict {mass, com:[3], moments:[ixx,iyy,izz], products:[ixy,ixz,
+        # iyz]} takes precedence over the mass-scaling path inside
+        # _controller_inertia_scope. None => legacy scaling (box et al.).
+        self._controller_inertia = None
+        if controller_inertia is not None:
+            self._controller_inertia = dict(
+                mass=float(controller_inertia["mass"]),
+                com=np.asarray(controller_inertia.get("com", (0.0,) * 3),
+                               dtype=float),
+                moments=np.asarray(controller_inertia["moments"], dtype=float),
+                products=np.asarray(
+                    controller_inertia.get("products", (0.0,) * 3),
+                    dtype=float),
+            )
         self._obj_body = obj_body
         self._object_shape = str(object_shape)
         self._mu_per_pair_type = (
@@ -1746,9 +1768,26 @@ class LCSFormulator:
         plants, since the LCS reads M/Cv/tau_g from one and the linearization
         Jacobian from the other. Restores on exit even if the build throws.
         """
-        if self._controller_object_mass is None or self._obj_body is None:
+        if ((self._controller_object_mass is None
+             and self._controller_inertia is None)
+                or self._obj_body is None):
             yield
             return
+        # Declared-tensor path: precompute the unit inertia about the BODY
+        # ORIGIN from the controller-SDF values (inertia declared about the
+        # com; parallel-axis shift to the origin), scalar-type-agnostic.
+        _decl = self._controller_inertia
+        if _decl is not None:
+            _m = _decl["mass"]
+            _c = _decl["com"]
+            _I = np.diag(_decl["moments"]).astype(float)
+            _ixy, _ixz, _iyz = _decl["products"]
+            _I[0, 1] = _I[1, 0] = _ixy
+            _I[0, 2] = _I[2, 0] = _ixz
+            _I[1, 2] = _I[2, 1] = _iyz
+            _I_origin = _I + _m * (float(_c @ _c) * np.eye(3)
+                                   - np.outer(_c, _c))
+            _U = _I_origin / _m       # unit inertia about the body origin
         pairs = []
         try:
             for pl, cx in ((self.plant, context),
@@ -1757,6 +1796,15 @@ class LCSFormulator:
                     continue
                 body = pl.GetBodyByName(self._obj_body.name())
                 M0 = body.CalcSpatialInertiaInBodyFrame(cx)
+                if _decl is not None:
+                    _UnitInertia = type(M0.get_unit_inertia())
+                    Mnew = M0.__class__(
+                        _m, _decl["com"].copy(),
+                        _UnitInertia(_U[0, 0], _U[1, 1], _U[2, 2],
+                                     _U[0, 1], _U[0, 2], _U[1, 2]))
+                    body.SetSpatialInertiaInBodyFrame(cx, Mnew)
+                    pairs.append((body, cx, M0))
+                    continue
                 m0 = float(ad.ExtractValue(np.array([[M0.get_mass()]]))[0, 0]
                            if hasattr(M0.get_mass(), "value") else M0.get_mass())
                 if m0 <= 0.0:

@@ -559,6 +559,11 @@ def main():
         # H_shape_texture_controller.sdf 1.0 kg vs 0.05 kg). push_t is the
         # only task where the two coincide. See _controller_inertia_scope.
         controller_object_mass=task_cfg.get("controller_mass", None),
+        # 2026-08-15 leg 2: reference plans with the controller SDF's
+        # DECLARED inertia tensor (not a mass-scaled sim tensor). Emitted
+        # into tasks.yaml by scripts/emit_controller_inertia.py from each
+        # object's *_controller.sdf <inertial> block.
+        controller_inertia=task_cfg.get("controller_inertia", None),
         # Mesh-T tasks (object_sdf set) use the reference mesh's ground-
         # witness footprint instead of the box-T vertex table.
         tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
