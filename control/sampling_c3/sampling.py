@@ -286,22 +286,33 @@ def _random_on_perimeter_projected(n_samples: int,
     degenerate tick cannot hang the controller.
     """
     half = 0.20
-    # Projection standoff (2026-08-15, third and reference-exact iteration).
-    # ProjectSampleOutsideObject (generate_samples.cc:839-868) projects the
-    # sample from the OBJECT WITNESS POINT outward by
-    #     ee_radius + sample_projection_clearance
-    # (GetEERadiusFromPlant — the EE radius is ADDED, not floored), so the
-    # reference sphere's SURFACE clears the object by the full 2 cm yaml
-    # clearance. Iteration history: v1 used the raw 0.02 as an EE-CENTER
-    # clearance (sphere penetrated ~5 mm; mesh-T spun to 1.86 rad,
-    # meshT_projfix_seed0.log); v2 floored at PUSHER_RADIUS+5 mm (sphere
-    # cleared only 5 mm; T STILL spun to 1.80, meshT_clrfix_seed0.log —
-    # c3 engaged from near-touching starts and scraped the T around in a
-    # ~90° contact orbit, steps 150-200). The additive reference formula
-    # gives c3 a genuinely clear starting standoff.
+    # Projection standoff (2026-08-15, v4 = the port's engagement envelope).
+    # Iteration history, all evidence-driven:
+    #   v1  raw 0.02 EE-center clearance  → sphere penetrated ~0.5-5 mm;
+    #       broth CONVERTED to PASS but mesh-T spun 1.86 rad
+    #       (meshT_projfix_seed0.log).
+    #   v2  max(0.02, PUSHER_RADIUS+5mm) = 0.0245 → 5 mm sphere gap;
+    #       T still spun 1.80 (distribution-driven, standoff-independent —
+    #       T since excluded from this sampler, main.py gate).
+    #   v3  reference-exact ADDITIVE formula, ee_radius + clearance
+    #       (ProjectSampleOutsideObject, generate_samples.cc:839-868)
+    #       = 0.0395 center-to-surface → Letter I NEVER TOUCHED the
+    #       object in 109 s: c3 active 1264 ticks, ZERO contact substeps,
+    #       min gap 18 mm (I_shape_texture_seed0.v3partial.log). The
+    #       PORT's c3 contact-establishment closes from ~2-3 cm starts
+    #       (the envelope its face tables always fed it) but not from
+    #       the reference's 4 cm — a pre-existing port-envelope
+    #       divergence, documented as an open conformance question.
+    #   v4  (this) = the v2 value 0.0245: inside the port's validated
+    #       engagement envelope, ~5 mm sphere-surface gap — the same
+    #       effective standoff the box config has shipped for months
+    #       (sampling_setback 0.030 @ r=0.025). The reference-exact v3
+    #       is the right target once the port's contact-establishment
+    #       range is brought to parity.
     from sim.env_builder import PUSHER_RADIUS as _PUSHER_R
-    clearance = (float(_PUSHER_R)
-                 + float(getattr(params, "sample_projection_clearance", 0.02)))
+    clearance = max(
+        float(getattr(params, "sample_projection_clearance", 0.02)),
+        float(_PUSHER_R) + 0.005)
     h = float(params.sampling_height)
     q = (np.asarray(obj_quat, dtype=float)
          if obj_quat is not None else np.array([1.0, 0.0, 0.0, 0.0]))
