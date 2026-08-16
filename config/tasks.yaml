@@ -674,6 +674,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/T_shape_video/T_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
   I_shape_texture:
@@ -729,6 +736,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/I_shape_texture/I_shape_texture.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   C_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -783,6 +797,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/C_shape_texture/C_shape_texture.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   R_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -837,6 +858,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/R_shape_texture/R_shape_texture.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   A_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -891,6 +919,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/A_shape_video/A_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   Y_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -945,6 +980,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/Y_shape_video/Y_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   G_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -999,6 +1041,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/G_shape_video/G_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   B_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1053,6 +1102,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/B_shape_video/B_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   3_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1107,6 +1163,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/3_shape_video/3_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   H_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1161,6 +1224,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/H_shape_texture/H_shape_texture.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   E_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1215,6 +1285,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/E_shape_video/E_shape_video.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   expo_box:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1269,6 +1346,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/expo_box/expo_box.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   lotion:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1323,6 +1407,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/lotion/lotion.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   wood_block:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1377,6 +1468,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/wood_block/wood_block.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   tape:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1431,6 +1529,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/tape/tape.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   eraser:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1485,6 +1590,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/eraser/eraser.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   milk:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1539,6 +1651,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/milk/milk.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   clamp:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1593,6 +1712,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/clamp/clamp.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   chicken_broth:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1647,6 +1773,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/chicken_broth/chicken_broth.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   egg_carton:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1701,6 +1834,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/egg_carton/egg_carton.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   book:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1755,6 +1895,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/book/book.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   baby_toy:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1809,6 +1956,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/baby_toy/baby_toy.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   gallon_milk:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1863,6 +2017,13 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/gallon_milk/gallon_milk.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
 
   xbox:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
@@ -1917,3 +2078,10 @@ tasks:
       w_torque: 0.01
     object_sdf: sim/models/xbox/xbox.sdf
     controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
