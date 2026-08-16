@@ -1224,9 +1224,19 @@ class C3Solver:
             _dump_path = _os_dump.environ.get("DIAG_DUMP_SOLVE", "")
             if _dump_path and not getattr(self, "_solve_dumped", False):
                 self._dump_calls = getattr(self, "_dump_calls", 0) + 1
+                # Optional gate overrides (2026-08-15 hover root-cause):
+                # MIN_CALLS picks the tick, PHI_LO/HI widen or disable the
+                # engagement-distance window (defaults reproduce the
+                # 2026-08-11 cross-stack diff behavior exactly).
+                _min_calls = int(_os_dump.environ.get(
+                    "DIAG_DUMP_SOLVE_MIN_CALLS", "50"))
+                _phi_lo = float(_os_dump.environ.get(
+                    "DIAG_DUMP_SOLVE_PHI_LO", "0.02"))
+                _phi_hi = float(_os_dump.environ.get(
+                    "DIAG_DUMP_SOLVE_PHI_HI", "0.08"))
                 _phi_ok = (phi is not None and np.size(phi) > 0
-                           and 0.02 < float(np.max(phi)) < 0.08)
-                if self._dump_calls >= 50 and _phi_ok:
+                           and _phi_lo < float(np.max(phi)) < _phi_hi)
+                if self._dump_calls >= _min_calls and _phi_ok:
                     self._solve_dumped = True
                     np.savez(_dump_path, A=A, B=B_ctrl, D=D, d=d, E=E, F=F,
                              H=H, c=c_lcs, x0=x0, xref=x_ref, Q=Q, R=R,
