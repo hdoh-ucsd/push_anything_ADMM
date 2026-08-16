@@ -2379,10 +2379,12 @@ class LCSFormulator:
             E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] = dt * (J_t_box @ df_box_dboxq)
             E_lcs[SLT:SLT + n_t, self.BOX_V_SLOT] = J_t_box + dt * (J_t_box @ df_box_dboxv)
             E_lcs[SLT:SLT + n_t, self.V_EE_SLOT]  = J_t_ee
-            # A2 fix: same phi-gradient addition for tangent row block.
-            if self._use_e_block_split:
-                E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] += (J_t_box @ vNqdot_box) / dt
-                E_lcs[SLT:SLT + n_t, self.P_EE_SLOT]  += J_t_ee / dt
+            # 2026-08-15 (leg 3): NO phi-gradient on tangential rows — the
+            # reference ST assembly (lcs_factory.cc kStewartAndTrinkle)
+            # adds Jn·vNqdot on the λ_n rows ONLY; tangential-row z has no
+            # φ term, so it has no position-forcing gradient. The prior A2
+            # addition here was the same folding disease as the Anitescu
+            # J_c-vs-E_tᵀJn bug (non-canonical path; fixed for parity).
             F_lcs[SLT:SLT + n_t, SG:SG + n_c]     = E_t.T
             F_lcs[SLT:SLT + n_t, SLN:SLN + n_c]   = (
                 dt * (J_t_box @ Minv_JnT_box)
@@ -2483,8 +2485,20 @@ class LCSFormulator:
                                             + dt * (J_c_box @ df_box_dboxv))
                 E_an[:, self.V_EE_SLOT]  = J_c_ee
                 if self._use_e_block_split:
-                    E_an[:, self.BOX_Q_SLOT] += (J_c_box @ vNqdot_box) / dt
-                    E_an[:, self.P_EE_SLOT]  += J_c_ee / dt
+                    # 2026-08-15 fix (hover root-cause leg 3): the reference
+                    # position-forcing term is E_tᵀ·Jn·vNqdot/dt
+                    # (lcs_factory.cc:533-534 and the port's own doc block at
+                    # ~1599) — the NORMAL Jacobian replicated per contact,
+                    # since phi varies along the normal only. The prior code
+                    # folded J_c = E_tᵀJn + μJt here, leaking ±μ·|Jt|/dt
+                    # (≈5.6 at μ=.42, dt=.075) sign-alternating garbage into
+                    # E's position columns (and via c = z* − E·x* into c:
+                    # the ±3-asymmetric folded rows at rest vs the
+                    # reference's uniform ones) — phantom gap-manipulation
+                    # via tangential position moves.
+                    E_an[:, self.BOX_Q_SLOT] += (
+                        E_t_an.T @ (J_n_box @ vNqdot_box)) / dt
+                    E_an[:, self.P_EE_SLOT]  += (E_t_an.T @ J_n_ee) / dt
 
                 # F — single PSD block (analog of lcs_factory.cc:259):
                 #   F = dt · J_c · M^{-1} · J_c^T
