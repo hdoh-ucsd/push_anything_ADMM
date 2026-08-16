@@ -3471,7 +3471,20 @@ class SamplingC3Controller:
             # below retains the original FK extraction.
             if _x_seq is not None and len(_x_seq) > 1:
                 if _use_ee_space:
-                    _p_ee_des = _x_tgt[1][7:10].copy()
+                    # 2026-08-15 leg 5: consume the plan at the filtered
+                    # full-loop solve time — the reference OSC's tracked
+                    # point (trajectory timestamps start at t+fst,
+                    # cc:1749-1766; the OSC holds knot 0 = plan(fst) = the
+                    # same interp the x_pred uses). Raw knot 1 sat exactly
+                    # on the final-QP-pinned first knot (k1 median 0.13 mm
+                    # while the stride lives in k2+) — the executor was
+                    # never asked to follow the plan. Fall back to knot 1
+                    # when the prediction is unavailable (first tick).
+                    _xp = getattr(self.base_mpc, "_x_pred_curr_plan", None)
+                    if _xp is not None:
+                        _p_ee_des = np.asarray(_xp, dtype=float)[7:10].copy()
+                    else:
+                        _p_ee_des = _x_tgt[1][7:10].copy()
                     # Bug 3 guard (2026-07-22): if LCS predicted unphysical
                     # one-step EE displacement, clip to a plausible target.
                     # Franka arm max EE Cartesian velocity is ~1 m/s; with
@@ -5218,7 +5231,27 @@ class SamplingC3Controller:
         self.last_mode               = mode
         self.last_switch_reason      = reason
         self.last_winning_sample_idx = k_star
-        self._step_times_ms.append((time.perf_counter() - t_step_start) * 1e3)
+        _full_tick_wall_s = time.perf_counter() - t_step_start
+        self._step_times_ms.append(_full_tick_wall_s * 1e3)
+        # 2026-08-15 leg-5 conformance: the reference's filtered_solve_time_
+        # is the FULL control-loop wall time (cc:1408-1418 — timer spans the
+        # whole callback: sample generation + all sample solves + committed
+        # solve), not just the committed C3::Solve. It feeds the x_pred plan
+        # interpolation (cc:1752-1766) and the OSC-trajectory start
+        # timestamps — i.e. the DEPTH at which the plan is consumed. The
+        # reference letter run operates at ~325 ms ≈ 4.3 knots, well past
+        # the final-QP-pinned first knot; the port's committed-only ~75 ms
+        # landed exactly ON the pinned knot (k1 median 0.13 mm) — the last
+        # leg of the never-engage class. Same EMA (alpha 0.95) as the
+        # reference; ci_mpc skips its committed-only update when this
+        # wrapper-level value is present.
+        _bm = self.base_mpc
+        if hasattr(_bm, "_filtered_solve_time"):
+            _alpha = getattr(_bm, "_solve_time_filter_alpha", 0.95)
+            _bm._filtered_solve_time = (
+                (1.0 - _alpha) * _full_tick_wall_s
+                + _alpha * _bm._filtered_solve_time)
+            _bm._fst_source_full_tick = True
 
         return u_opt
 
