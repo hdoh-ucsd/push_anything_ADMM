@@ -212,11 +212,28 @@ def compose_frame(
     draw.line((panel_x0, y, W_out - 12, y), fill=(60, 60, 60), width=1)
     y += pad
 
-    # Sticky milestone lines
+    # Sticky milestone lines — capped so a long milestone list (e.g. many
+    # [FLIP] events) can never push the rolling section into the verdict
+    # band: keep the first few setup banners + the newest milestones with
+    # an ellipsis row between.
+    verdict_reserve = line_h * 3 if result_line else 0
+    # header + separators/pads for rolling section + minimum 3 rolling rows
+    rolling_reserve = (2 * pad + 1) + pad + line_h + 3 * line_h
     draw.text((panel_x0, y), "── milestones (sticky) ──", font=font_tiny,
               fill=(150, 150, 150))
     y += line_h
-    y = _draw_lines(draw, panel_x0, y, sticky_lines, font_tiny,
+    max_sticky = max(3, (H - y - rolling_reserve - verdict_reserve - pad)
+                     // line_h)
+    if len(sticky_lines) > max_sticky:
+        head_n = min(4, max_sticky - 2)
+        tail_n = max_sticky - head_n - 1
+        sticky_drawn = (sticky_lines[:head_n]
+                        + [f"… {len(sticky_lines) - head_n - tail_n} "
+                           f"older milestones …"]
+                        + sticky_lines[-tail_n:])
+    else:
+        sticky_drawn = sticky_lines
+    y = _draw_lines(draw, panel_x0, y, sticky_drawn, font_tiny,
                     panel_max_chars, line_h)
     y += pad
 
@@ -228,11 +245,12 @@ def compose_frame(
     draw.text((panel_x0, y), "── recent (rolling) ──", font=font_tiny,
               fill=(150, 150, 150))
     y += line_h
-    # Budget: compute how many rolling lines fit
-    remaining_h = H - y - pad - (line_h * 3 if result_line else 0)
-    max_rolling = max(1, remaining_h // line_h)
-    _draw_lines(draw, panel_x0, y, rolling_window[-max_rolling:],
-                font_tiny, panel_max_chars, line_h)
+    # Budget: compute how many rolling lines fit above the verdict band
+    remaining_h = H - y - pad - verdict_reserve
+    max_rolling = max(0, remaining_h // line_h)
+    if max_rolling > 0:
+        _draw_lines(draw, panel_x0, y, rolling_window[-max_rolling:],
+                    font_tiny, panel_max_chars, line_h)
 
     # RESULT section (last 30 frames only)
     if result_line is not None:
@@ -269,6 +287,10 @@ def main():
     ap.add_argument("--panel-width", type=int, default=800)
     ap.add_argument("--rolling-count", type=int, default=30)
     ap.add_argument("--panel-max-chars", type=int, default=95)
+    ap.add_argument("--interp", type=int, default=1,
+                    help="Sub-frames per log step used at render time "
+                         "(render_log_drake_scene.py --interp); frame "
+                         "index // interp recovers the log step.")
     args = ap.parse_args()
 
     print(f"[sidepanel] parsing {args.log_path}")
@@ -303,7 +325,8 @@ def main():
         tmp_dir = Path(tmp)
         prev_step = -1
         step_info_map: Dict[int, dict] = {}
-        for i, (step, path) in enumerate(frames):
+        for i, (fidx, path) in enumerate(frames):
+            step = fidx // max(1, args.interp)
             for s in range(prev_step + 1, step + 1):
                 lines = by_step.get(s, [])
                 for line in lines:
