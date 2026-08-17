@@ -103,3 +103,27 @@ def test_identical_tripods_returns_none():
     q = KNOMINAL_ORIENTATIONS_JACK[5]
     cur = tripod_id(q)
     assert topple_roll_plan(q, cur, cur) is None
+
+
+def test_prefer_direction_picks_goalward_roll():
+    # Goal differs in ALL THREE signs -> three candidate rolls; with a
+    # preference direction the plan must pick the candidate whose push
+    # direction has the largest dot with it (rolls walk the CoM along
+    # d_W, so this reduces the goal-position gap flip by flip).
+    q = KNOMINAL_ORIENTATIONS_JACK[5]
+    cur = tripod_id(q)
+    goal = tuple(-s for s in cur)
+    dirs = {}
+    for k in range(3):
+        g1 = list(cur)
+        g1[k] = -g1[k]
+        _k, _p, d = topple_roll_plan(q, cur, tuple(g1))
+        dirs[k] = d
+    for k_want in range(3):
+        prefer = dirs[k_want]
+        kk, _p, d = topple_roll_plan(q, cur, goal, prefer_direction=prefer)
+        assert kk == k_want
+        assert float(np.dot(d, prefer)) > 0.99
+    # no preference: first differing sign (unchanged default)
+    kk, _p, _d = topple_roll_plan(q, cur, goal)
+    assert kk == 0
