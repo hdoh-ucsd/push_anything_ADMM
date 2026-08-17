@@ -39,6 +39,7 @@ from sim.env_builder import (
     build_environment,
     _INITIAL_ARM_Q_SEED,
     EE_BODY_NAME,
+    JACK_GHOST_CAPS,
     compute_safe_init_arm_q,
     init_rotation,
 )
@@ -81,13 +82,6 @@ class _Tee:
 # Meshcat visualisation helpers
 # ---------------------------------------------------------------------------
 
-_JACK_GHOST_CAPS = (
-    ((0.0, 0.0, 0.0),    "/goal_marker/cap1"),
-    ((0.0, 1.5708, 0.0), "/goal_marker/cap2"),
-    ((1.5708, 0.0, 0.0), "/goal_marker/cap3"),
-)
-
-
 def _update_jack_goal_marker(meshcat, target_xy, goal_quat, z) -> None:
     """Move the jack's three-capsule ghost to a (possibly new) goal pose.
 
@@ -98,9 +92,10 @@ def _update_jack_goal_marker(meshcat, target_xy, goal_quat, z) -> None:
         ad.RotationMatrix(ad.Quaternion(
             goal_quat[0], goal_quat[1], goal_quat[2], goal_quat[3])),
         [target_xy[0], target_xy[1], z])
-    for _rpy, _tag in _JACK_GHOST_CAPS:
-        meshcat.SetTransform(_tag, _T_goal.multiply(ad.RigidTransform(
-            ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])))
+    for _rpy, _rgba, _tag in JACK_GHOST_CAPS:
+        meshcat.SetTransform(
+            f"/goal_marker/{_tag}", _T_goal.multiply(ad.RigidTransform(
+                ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])))
 
 
 def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> None:
@@ -136,12 +131,13 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
         # Three-capsule ghost at the goal POSE (full quaternion, not a yaw).
         _gq = np.asarray(task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0]), float)
         _gq = _gq / float(np.linalg.norm(_gq))
-        for _rpy, _tag in _JACK_GHOST_CAPS:
-            # Golden, not green: the jack itself has a green capsule, and a
-            # green ghost merges with it at goal (matches env_builder's
-            # _jack_ghost_rgba, 2026-08-16 video-legibility fix).
-            meshcat.SetObject(_tag, ad.Capsule(0.025, 0.125),
-                              ad.Rgba(1.0, 0.80, 0.10, 0.35))
+        for _rpy, _rgba, _tag in JACK_GHOST_CAPS:
+            # Pastel per-capsule tints (shared JACK_GHOST_CAPS table): colour
+            # is the only signal for WHICH capsule goes where under the goal
+            # quaternion; whitened + translucent so the ghost never reads as
+            # the saturated real jack (2026-08-16 green-blob legibility fix).
+            meshcat.SetObject(f"/goal_marker/{_tag}", ad.Capsule(0.025, 0.125),
+                              ad.Rgba(*_rgba[:3], 0.35))
         _update_jack_goal_marker(meshcat, target_xy, _gq, init_z)
     elif task_cfg["object_type"] == "hshape":
         # Three-box ghost matching _hshape_sdf's decomposition.

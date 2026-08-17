@@ -368,6 +368,19 @@ def _hshape_sdf(cfg: dict) -> str:
 
 
 
+# Jack goal-ghost capsules: (rpy, pastel rgba, tag). Shared by the Drake-VTK
+# render ghost (below) and main.py's live meshcat ghost. rpy tuples are the
+# reference jack.sdf capsule poses; each tint is the whitened, translucent
+# version of that capsule's colour in _jack_sdf (cap1 +z blue, cap2 +x red,
+# cap3 +y green) so the ghost shows which capsule goes where at the goal
+# quaternion, while staying visually distinct from the saturated real jack.
+JACK_GHOST_CAPS = (
+    ((0.0, 0.0, 0.0),    (0.55, 0.55, 1.00, 0.45), "cap1"),  # +z — pale blue
+    ((0.0, 1.5708, 0.0), (1.00, 0.55, 0.55, 0.45), "cap2"),  # +x — pale red
+    ((1.5708, 0.0, 0.0), (0.55, 1.00, 0.55, 0.45), "cap3"),  # +y — pale green
+)
+
+
 def _jack_sdf(cfg: dict) -> str:
     """Reference jack.sdf ported as a single-body-collapsed rigid.
 
@@ -771,27 +784,25 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
             # Ghost jack: three orthogonal capsules at the goal POSE. The jack's
             # goal is a full quaternion (it rolls onto a different tripod), so
             # unlike every other task the ghost cannot be built from a yaw.
-            # Golden tint, NOT the default green: the jack itself has a green
-            # capsule (per-capsule RGB), and at goal the two overlap into one
-            # unreadable green blob (2026-08-16 video-legibility root cause).
-            _jack_ghost_rgba = (1.0, 0.80, 0.10, 0.45)
+            # Per-capsule PASTEL tints matching _jack_sdf's axis colours: the
+            # bare three-capsule shape is invariant under the jack's rotational
+            # symmetries, so a single-colour ghost cannot show the goal
+            # quaternion — only colour says WHICH capsule goes where. Pastel
+            # (whitened) + translucent keeps the ghost distinct from the
+            # saturated real jack (2026-08-16 green-blob legibility fix).
             _gq = task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0])
             _gq = np.asarray(_gq, dtype=float)
             _gq = _gq / float(np.linalg.norm(_gq))
             _T_goal = ad.RigidTransform(
                 ad.RotationMatrix(ad.Quaternion(_gq[0], _gq[1], _gq[2], _gq[3])),
                 [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
-            for _rpy, _tag in (
-                ((0.0, 0.0, 0.0),    "goal_ghost_cap1"),
-                ((0.0, 1.5708, 0.0), "goal_ghost_cap2"),
-                ((1.5708, 0.0, 0.0), "goal_ghost_cap3"),
-            ):
+            for _rpy, _rgba, _tag in JACK_GHOST_CAPS:
                 _T_local = ad.RigidTransform(
                     ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])
                 plant.RegisterVisualGeometry(
                     plant.world_body(),
                     _T_goal.multiply(_T_local),
-                    ad.Capsule(0.025, 0.125), _tag, list(_jack_ghost_rgba),
+                    ad.Capsule(0.025, 0.125), f"goal_ghost_{_tag}", list(_rgba),
                 )
         elif "radius" in task_cfg:
             _ghost_shape = ad.Sphere(task_cfg["radius"])
