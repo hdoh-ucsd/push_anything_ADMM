@@ -73,7 +73,17 @@ W_force: 1.0
 use_commit_face_gate: false
 use_contact_entry_gate: false
 use_surface_entry_gate: false
-ee_z_close: true
+# PAPER-ERA JACKTOY (2026-08-17 provenance finding): the c3-entry
+# z-ceiling (ee_z_close) and the c3 z-freeze (freeze_c3_ee_z) were BOTH
+# added to the reference AFTER the jacktoy paper (21f4cf50 2025-07-23 /
+# 127b5e96 2025-08-01 / 99a8abaf 2025-08-12, all push-anything-era);
+# the paper's jack controller ran free 3D EE motion — its topples come
+# from c3 entries at kRandomOnSphere samples up to ~16 cm overhead.
+# Our harness patch had invented ee_z_close: true for the stale upstream
+# jacktoy yaml. Opt out of BOTH together (ceiling-off + freeze-on
+# recreates the 2026-08-10 one-tick slam-drop).
+ee_z_close: false
+freeze_c3_ee_z: false
 use_reposition_pwl_trajectory: true
 w_rot: 0.0
 surrogate_admm_iters: 3
