@@ -962,6 +962,11 @@ def main():
         # rotation error is the geodesic angle rather than a yaw difference.
         if _pending_goal_quat is not None:
             mpc.set_goal_quat(_pending_goal_quat)
+        # Flip primitive: re-apply on the WRAPPER — `mpc` was rebound above,
+        # so the earlier set on the base controller object is inert.
+        if (_goal_gen is not None and _goal_gen.success_mode == "flip"
+                and bool(task_cfg.get("flip_primitive", False))):
+            mpc._flip_primitive_enabled = True
         print(f"[GS] SamplingC3Controller enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
               f"num_add_c3={sc3_params.sampling_params.num_additional_samples_c3} "
