@@ -237,8 +237,26 @@ class LCSFormulator:
         self._ground_geom_ids: set = set()
 
         if obj_body is not None:
-            for gid in plant.GetCollisionGeometriesForBody(obj_body):
-                self._manipuland_geom_ids.add(gid)
+            # Collect from EVERY body of the object's model instance, not
+            # just obj_body. Reference-conformance fix (2026-08-17): the
+            # reference push_t plans EE contact against BOTH links —
+            # ee_contact_pairs = {(EE, HORIZONTAL_LINK), (EE,
+            # VERTICAL_LINK)} (franka_sampling_c3_controller.cc:229-232) —
+            # while the old obj_body-only loop dropped the welded stem, so
+            # the planner could never plan stem pushes (root cause of the
+            # block-T rot plateau: 17,721/17,721 sim contacts on the
+            # crossbar, all post-60 s bursts rot-adverse). Identical
+            # behavior for single-body objects (mesh-T, box, jack).
+            _obj_mi = obj_body.model_instance()
+            _obj_bodies = [plant.get_body(bi)
+                           for bi in plant.GetBodyIndices(_obj_mi)]
+            for _b in _obj_bodies:
+                for gid in plant.GetCollisionGeometriesForBody(_b):
+                    self._manipuland_geom_ids.add(gid)
+            print(f"[LCS-OBJ] manipuland model instance: "
+                  f"{len(_obj_bodies)} bodies "
+                  f"({', '.join(b.name() for b in _obj_bodies)}), "
+                  f"{len(self._manipuland_geom_ids)} collision geoms")
 
         # EE contact filter: dedicated spherical pusher only — no fallbacks.
         print("[FILTER INIT] Building EE geometry ID set:")
