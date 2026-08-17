@@ -52,8 +52,10 @@ from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
 from control.sampling_c3.goal_generator import (
     JackRandomGoalGenerator,
     KNOMINAL_NAMES_JACK,
+    TRIPOD_NAMES,
     geodesic_angle,
     orientation_lookahead,
+    tripod_id,
 )
 
 
@@ -473,14 +475,24 @@ def main():
     _initial_goal_drawn = False
     if (str(task_cfg.get("goal_mode", "")) == "kRandom"
             and task_cfg.get("goal_quat") is not None):
+        # goal_success_mode "flip" (USER-DIRECTED DEVIATION 2026-08-17):
+        # success = the jack's resting tripod matches the goal's tripod
+        # (position and yaw ignored; replaces the reference pos<0.02 AND
+        # rot<0.1 gate). Absent/"reference" keeps the reference gate.
+        _goal_success_mode = str(
+            task_cfg.get("goal_success_mode", "reference"))
         _goal_gen = JackRandomGoalGenerator(
             rng=np.random.default_rng(
                 None if args.seed is None else [args.seed, 0x60A1]),
             initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
             initial_quat=np.asarray(task_cfg["goal_quat"], dtype=float),
+            success_mode=_goal_success_mode,
         )
         if bool(task_cfg.get("krandom_draw_initial_goal", False)):
-            _goal_gen.draw_initial_goal()
+            _avoid = (tripod_id(np.asarray(task_cfg.get(
+                          "init_quat", [1.0, 0.0, 0.0, 0.0]), dtype=float))
+                      if _goal_success_mode == "flip" else None)
+            _goal_gen.draw_initial_goal(avoid_tripod=_avoid)
             task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
                                    float(_goal_gen.goal_xy[1])]
             task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
@@ -800,6 +812,12 @@ def main():
               f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
               f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
               f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
+        if _goal_gen.success_mode == "flip":
+            print(f"[GOAL-GEN] success mode = FLIP (user-directed deviation "
+                  f"2026-08-17): goal reached when resting tripod matches "
+                  f"goal tripod {TRIPOD_NAMES[tripod_id(target_quat)]} "
+                  f"(pos/yaw ignored; reference gate pos<0.02 AND rot<0.1 "
+                  f"replaced)")
     # Diagnostic (default-inert): force one re-goal at planner step N to
     # exercise the live re-goal path without a real goal achievement.
     _goal_gen_force_step = int(
@@ -986,6 +1004,8 @@ def main():
     # last_rotation_axis_, zero-initialized) + clamp-transition log latch.
     _last_rot_axis = np.zeros(3)
     _lookahead_was_clamped = False
+    # Tripod-change ([FLIP]) log high-water mark.
+    _flip_events_seen = 0
     # 1 kHz OSC decoupling — mirror dairlib's LcmDrivenLoop where the OSC
     # subscribes to the last-published planner trajectory and ticks at
     # osc_params.yaml:2 `controller_frequency: 1000`. Every outer iteration
@@ -1055,6 +1075,11 @@ def main():
             _obj_quat_now = np.array(
                 [current_q[pos_start + _i] for _i in range(4)])
             _regoaled = _goal_gen.check_and_regoal(_obj_xy_now, _obj_quat_now)
+            if _goal_gen.flip_events > _flip_events_seen:
+                _flip_events_seen = _goal_gen.flip_events
+                print(f"[FLIP] #{_goal_gen.flip_events} at t={sim_time:.3f}s "
+                      f"{_goal_gen.last_flip[0]} -> {_goal_gen.last_flip[1]}",
+                      flush=True)
             if not _regoaled and step == _goal_gen_force_step:
                 _goal_gen.force_regoal()
                 _regoaled = True
@@ -1391,6 +1416,10 @@ def main():
         # kRandom headline: the reference task is continuous re-goaling, so
         # goals_reached is the success count; RESULT below is measured
         # against the LAST active goal only.
+        if _goal_gen.success_mode == "flip":
+            print(f"[GOAL-GEN] flips={_goal_gen.flip_events} "
+                  f"(flip success mode: goals_reached counts goal-tripod "
+                  f"matches; flips counts ALL persisted tripod changes)")
         print(f"[GOAL-GEN] goals_reached={_goal_gen.goals_reached} "
               f"(kRandom re-goaling; RESULT metrics are vs the final goal)")
     print(f"[RESULT] method={_method}  "
