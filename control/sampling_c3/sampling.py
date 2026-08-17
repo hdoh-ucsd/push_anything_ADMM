@@ -278,14 +278,28 @@ def _random_on_perimeter_projected(n_samples: int,
     (built per tick by the dispatcher; same query the pursued-target
     collision gate uses, so sampler and gate agree by construction).
 
-    The reference draws from per-task grid_x/y_limits; the port draws
-    from a generous fixed body-frame box (covers every imported object;
-    exterior draws are rejected by step 2, so the grid affects only
-    draw efficiency, not the distribution over the footprint slice).
-    Bounded retries replace the reference's unbounded loop so a
-    degenerate tick cannot hang the controller.
+    The reference draws from per-task grid_x/y_limits
+    (generate_samples.cc:312-315); the port matches that literal when the
+    yaml provides it, falling back to a generous ±0.20 box. This is NOT
+    just draw efficiency: when the grid clips the footprint (both
+    reference T lineages clip the T's +x crossbar tip — anything
+    [-0.11,0.11] and push_t [-0.12,0.08] vs footprint x_max +0.13), the
+    clipped region generates no perimeter samples, biasing approaches
+    away from the highest yaw-lever faces. The earlier ±0.20-only draw
+    oversampled tip approaches relative to reference (mesh-T spin class,
+    meshT_projsampler_seed0.log). Bounded retries replace the
+    reference's unbounded loop so a degenerate tick cannot hang the
+    controller.
     """
     half = 0.20
+    gx = getattr(params, "grid_x_limits", None)
+    gy = getattr(params, "grid_y_limits", None)
+    if gx is not None and gy is not None:
+        gx = np.asarray(gx, dtype=float).flatten()
+        gy = np.asarray(gy, dtype=float).flatten()
+    else:
+        gx = np.array([-half, half])
+        gy = np.array([-half, half])
     # Projection standoff (2026-08-15, v4 = the port's engagement envelope).
     # Iteration history, all evidence-driven:
     #   v1  raw 0.02 EE-center clearance  → sphere penetrated ~0.5-5 mm;
@@ -328,7 +342,8 @@ def _random_on_perimeter_projected(n_samples: int,
     max_attempts = 400 * max(int(n_samples), 1)
     while len(out) < n_samples and attempts < max_attempts:
         attempts += 1
-        xb, yb = rng.uniform(-half, half, size=2)
+        xb = rng.uniform(gx[0], gx[1])
+        yb = rng.uniform(gy[0], gy[1])
         p = R @ np.array([xb, yb, 0.0]) + p_obj
         p[2] = h
         d, grad = projector(p)
