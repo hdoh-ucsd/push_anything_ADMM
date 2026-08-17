@@ -1241,20 +1241,110 @@ class SamplingC3Controller:
                 return None
             prefer = (np.asarray(final_target_xy, dtype=float) - obj_xy
                       if final_target_xy is not None else None)
-            plan = topple_roll_plan(obj_quat, cur_trip, goal_trip,
-                                    prefer_direction=prefer)
-            if plan is None:
+            _p_hat = None
+            if prefer is not None and float(np.linalg.norm(prefer)) > 0.06:
+                _p_hat = prefer / np.linalg.norm(prefer)
+            _tabu = st.get("tabu", [])
+
+            def _roll_for(_kk):
+                _g1 = list(cur_trip)
+                _g1[_kk] = -_g1[_kk]
+                _kr, _pBr, _dr = topple_roll_plan(
+                    obj_quat, cur_trip, tuple(_g1))
+                return _kr, _pBr, _dr, tuple(_g1)
+
+            def _land_safe(_dr):
+                _land = obj_xy + 0.09 * _dr[:2]
+                return (0.30 <= _land[0] <= 0.62
+                        and -0.02 <= _land[1] <= 0.36)
+
+            # Candidate rolls = every DIFFERING sign, tried goal-ward
+            # first; a roll translates the CoM ~9cm along its direction,
+            # so each must land inside the safe box (table edge y=0.455
+            # minus margin; arm base to the west), must not roll strongly
+            # anti-goal, and must not return to a recently-left tripod
+            # (tabu — breaks 3-cube orbit cycles).
+            _cands = []
+            for _kk in range(3):
+                if cur_trip[_kk] == goal_trip[_kk]:
+                    continue
+                _kr, _pBr, _dr, _res = _roll_for(_kk)
+                _score = (float(np.dot(_dr[:2], _p_hat))
+                          if _p_hat is not None else 0.0)
+                _cands.append((_score, _kr, _pBr, _dr, _res))
+            if not _cands:
                 return None
-            _k, p_B, d_W = plan
+            _cands.sort(key=lambda c: -c[0])
+            _pick = None
+            # Filter = containment + tabu ONLY. Goal-ward preference is the
+            # SORT, not a veto: the flip gate does not score position, and
+            # vetoing anti-goal rolls was observed to orbit the 3-cube
+            # forever instead of finishing the tripod walk.
+            for _score, _kr, _pBr, _dr, _res in _cands:
+                if _land_safe(_dr) and _res not in _tabu:
+                    _pick = (_kr, _pBr, _dr)
+                    break
+            if _pick is None:
+                st["defer_n"] = st.get("defer_n", 0) + 1
+                # Corner escape after repeated deferrals (the MPC's yaw
+                # assist has stalled): RECOVERY roll — any capsule except
+                # the last-flipped one, not landing in tabu, scored by
+                # inward direction + a progress bonus for differing signs.
+                if st["defer_n"] >= 4:
+                    _ctr = np.array([0.46, 0.17])
+                    _inward = _ctr - obj_xy
+                    _inward = _inward / max(np.linalg.norm(_inward), 1e-9)
+                    _last_k = st.get("last_k", None)
+                    _best = None
+                    for _kk in range(3):
+                        if _kk == _last_k:
+                            continue
+                        _kr, _pBr, _dr, _res = _roll_for(_kk)
+                        if _res in _tabu:
+                            continue
+                        _sc = (float(np.dot(_dr[:2], _inward))
+                               + (0.35 if cur_trip[_kk] != goal_trip[_kk]
+                                  else 0.0))
+                        if _best is None or _sc > _best[3]:
+                            _best = (_kr, _pBr, _dr, _sc)
+                    if _best is None:
+                        # everything excluded — take the best differing
+                        # sign regardless of tabu, worst case a re-visit.
+                        _sc0, _kr, _pBr, _dr, _res = _cands[0]
+                        _best = (_kr, _pBr, _dr, _sc0)
+                    _k, p_B, d_W = _best[0], _best[1], _best[2]
+                    st["defer_n"] = 0
+                    print(f"[FLIP-PRIM] RECOVERY roll step={self._step} "
+                          f"capsule={_k} dir=({d_W[0]:+.2f},{d_W[1]:+.2f}) "
+                          f"score={_best[3]:+.2f}", flush=True)
+                else:
+                    st["cooldown_until"] = self._step + int(2.0 / dt)
+                    _s0, _k0, _pB0, _d0, _r0 = _cands[0]
+                    print(f"[FLIP-PRIM] plan DEFERRED step={self._step} "
+                          f"best capsule={_k0} "
+                          f"dir=({_d0[0]:+.2f},{_d0[1]:+.2f}) "
+                          f"score={_s0:+.2f} n_cand={len(_cands)} — "
+                          f"letting the MPC yaw the jack", flush=True)
+                    return None
+            else:
+                st["defer_n"] = 0
+                _k, p_B, d_W = _pick
             X_WO = self.plant.EvalBodyPoseInWorld(plant_ctx, self.obj_body)
             p_tip = np.asarray(X_WO.multiply(np.asarray(p_B, dtype=float)),
                                dtype=float).flatten()
             p_stage = p_tip - 0.075 * d_W
-            p_stage[2] = p_tip[2]
+            # +30mm z compensation: free-mode impedance sags ~30mm, so
+            # command the push plane above the tip cap to keep the ACTUAL
+            # contact at ~97mm (>> the 55.3mm tip-before-slide height —
+            # an uncompensated 67mm contact was observed to SLIDE the
+            # jack 10cm instead of rolling it).
+            p_stage[2] = p_tip[2] + 0.030
             z_hi = max(p_tip[2] + 0.05, 0.14)
             st.update(
-                phase="stage", wp_i=0, d_W=d_W, p_tip=p_tip,
-                p_through=p_tip + st["overshoot"] * d_W,
+                phase="stage", wp_i=0, d_W=d_W, p_tip=p_tip, k=_k,
+                p_through=(p_tip + st["overshoot"] * d_W
+                           + np.array([0.0, 0.0, 0.030])),
+                stage_deadline=self._step + int(8.0 / dt),
                 trip_at_plan=cur_trip, p_des=ee_now.copy(),
                 wp=[np.array([ee_now[0], ee_now[1], z_hi]),
                     np.array([p_stage[0], p_stage[1], z_hi]),
@@ -1275,29 +1365,67 @@ class SamplingC3Controller:
                 adv = min(step_len, dist)
                 st["p_des"] = st["p_des"] + delta / dist * adv
                 v_des = delta / dist * 0.25
+            # Intermediate waypoints gate on the SETPOINT only — free-mode
+            # impedance tracks with a ~30mm steady-state offset (gravity
+            # sag), so a tight physical gate deadlocks. Only the final
+            # stage point requires the physical EE nearby (loose 50mm; the
+            # push overshoot + escalation absorbs the offset).
+            _is_last = st["wp_i"] >= len(st["wp"]) - 1
             if (dist <= step_len
-                    and float(np.linalg.norm(ee_now - wp)) < 0.025):
+                    and (not _is_last
+                         or float(np.linalg.norm(ee_now - wp)) < 0.05)):
                 st["wp_i"] += 1
                 if st["wp_i"] >= len(st["wp"]):
                     st["phase"] = "push"
                     st["push_deadline"] = self._step + int(4.0 / dt)
                     print(f"[FLIP-PRIM] push step={self._step}", flush=True)
+            elif self._step > st.get("stage_deadline", 10**9):
+                st["phase"] = "idle"
+                st["cooldown_until"] = self._step + int(1.5 / dt)
+                print(f"[FLIP-PRIM] stage timeout step={self._step} — "
+                      f"replanning", flush=True)
         elif st["phase"] == "push":
+            _out_of_box = not (0.26 <= obj_xy[0] <= 0.66
+                               and -0.05 <= obj_xy[1] <= 0.40)
             if cur_trip != st["trip_at_plan"]:
                 st["flips"] += 1
+                st["last_k"] = st["k"]
+                st.setdefault("tabu", []).append(st["trip_at_plan"])
+                st["tabu"] = st["tabu"][-2:]
                 st["phase"] = "retreat"
                 st["retreat_to"] = ee_now + np.array([0.0, 0.0, 0.06])
                 st["overshoot"] = 0.030
                 print(f"[FLIP-PRIM] FLIPPED step={self._step} "
                       f"(primitive flip #{st['flips']})", flush=True)
-            elif self._step > st["push_deadline"]:
+            elif self._step > st["push_deadline"] or _out_of_box:
                 st["phase"] = "retreat"
                 st["retreat_to"] = ee_now + np.array([0.0, 0.0, 0.06])
                 st["overshoot"] = min(st["overshoot"] + 0.020, 0.090)
-                print(f"[FLIP-PRIM] push timeout step={self._step} "
+                print(f"[FLIP-PRIM] push "
+                      f"{'ABORT out-of-box' if _out_of_box else 'timeout'} "
+                      f"step={self._step} "
                       f"next_overshoot={st['overshoot']*1000:.0f}mm",
                       flush=True)
             else:
+                # Live tip pursuit: the jack shifts under contact, so a
+                # plan-time frozen through-point misses the tip and slides
+                # the jack instead of rolling it. Recompute the up-tip and
+                # roll direction from the LIVE pose (plan-time tripod
+                # semantics — mid-roll the raw tripod flickers and the exit
+                # branch above handles the actual flip).
+                _goal_1k = list(st["trip_at_plan"])
+                _goal_1k[st["k"]] = -_goal_1k[st["k"]]
+                _plan_live = topple_roll_plan(
+                    obj_quat, st["trip_at_plan"], tuple(_goal_1k))
+                if _plan_live is not None and _plan_live[0] is not None:
+                    _kl, p_Bl, d_l = _plan_live
+                    X_WO = self.plant.EvalBodyPoseInWorld(
+                        plant_ctx, self.obj_body)
+                    _tip_l = np.asarray(
+                        X_WO.multiply(np.asarray(p_Bl, dtype=float)),
+                        dtype=float).flatten()
+                    st["p_through"] = (_tip_l + st["overshoot"] * d_l
+                                       + np.array([0.0, 0.0, 0.030]))
                 delta = st["p_through"] - st["p_des"]
                 dist = float(np.linalg.norm(delta))
                 if dist > 1e-9:
@@ -1313,9 +1441,16 @@ class SamplingC3Controller:
                 st["p_des"] = st["p_des"] + delta / dist * adv
                 v_des = delta / dist * 0.25
             if dist <= 0.25 * dt:
-                st["phase"] = "idle"
+                st["phase"] = "hold"
                 st["cooldown_until"] = self._step + int(1.5 / dt)
+        if st["phase"] == "hold":
+            # Park (zero-velocity position hold) through the cooldown so
+            # the dispatcher takes over from a settled EE, then go idle.
+            if self._step >= st["cooldown_until"]:
+                st["phase"] = "idle"
 
+        self._prev_mode = "free"
+        self._current_repos_target = None
         p_des = st["p_des"]
         u_opt, _ = self.executor.compute_torque(
             current_q, current_v, plant_ctx,
