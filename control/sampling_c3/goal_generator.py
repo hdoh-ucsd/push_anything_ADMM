@@ -133,6 +133,20 @@ class JackRandomGoalGenerator:
         self._draw_orientation()
         return True
 
+    def draw_initial_goal(self) -> None:
+        """Draw goal #1 from the kRandom distribution (port option,
+        user-directed 2026-08-16).
+
+        The reference boots from the yaml's fixed_target (goal_generator.cc
+        ctor :67-69) and only randomizes on success — but its steady-state
+        task IS the random tripod x yaw chase, and the fixed boot goal is a
+        one-time transient. This draws goal #1 from the same distribution
+        the reference uses for every subsequent goal. Not counted as a
+        reached goal.
+        """
+        self._draw_position()
+        self._draw_orientation()
+
     def force_regoal(self) -> None:
         """Diagnostic: draw a new goal regardless of the success gate.
 

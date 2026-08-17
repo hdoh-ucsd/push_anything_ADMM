@@ -183,8 +183,33 @@ def test_force_regoal_draws_without_gate():
     assert g.orientation_index in range(8)
 
 
+# ------------------------------------------------------- initial-goal draw
+def test_draw_initial_goal_samples_krandom_distribution():
+    # User directive 2026-08-16: the reference's steady-state task is the
+    # random quaternion chase; goal #1 is drawn from the same distribution
+    # (position box + tripod x yaw) at startup. Not counted as a success.
+    g = _mk()
+    g.draw_initial_goal()
+    assert g.goals_reached == 0
+    assert 0.42 <= g.goal_xy[0] <= 0.5
+    assert 0.02 <= g.goal_xy[1] <= 0.25
+    assert g.orientation_index in range(8)
+    assert abs(np.linalg.norm(g.goal_quat) - 1.0) < 1e-9
+
+
+def test_draw_initial_goal_is_seed_deterministic():
+    g1 = _mk(np.random.default_rng(42))
+    g2 = _mk(np.random.default_rng(42))
+    g1.draw_initial_goal()
+    g2.draw_initial_goal()
+    np.testing.assert_allclose(g1.goal_xy, g2.goal_xy)
+    np.testing.assert_allclose(g1.goal_quat, g2.goal_quat)
+    assert g1.orientation_index == g2.orientation_index
+
+
 # ---------------------------------------------------------------- config
 def test_push_jack_task_config_enables_krandom():
     import yaml
     cfg = yaml.safe_load(open("config/tasks.yaml"))
     assert cfg["tasks"]["push_jack"].get("goal_mode") == "kRandom"
+    assert cfg["tasks"]["push_jack"].get("krandom_draw_initial_goal") is True

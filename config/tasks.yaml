@@ -579,6 +579,15 @@ tasks:
     # Implemented 2026-08-16 (JackRandomGoalGenerator); absent/kFixedGoal
     # keeps the single fixed goal (the pre-2026-08-16 port behavior).
     goal_mode: kRandom
+    # User directive 2026-08-16: the random-quaternion chase IS the jacktoy
+    # task. The reference boots from the fixed goal above and randomizes
+    # only on success (verified: ctor cc:67-69, no init/radio events, and
+    # the captured 180 s REF_jacktoy run holds ONE goal throughout) — but
+    # its steady-state goal distribution is the random draw. With this key
+    # goal #1 is drawn from that distribution at startup (seeded via
+    # --seed), replacing the one-time fixed boot transient. false =
+    # reference-literal boot.
+    krandom_draw_initial_goal: true
 
     color_rgba: [0.90, 0.45, 0.10, 1.0]
     sampling_height: 0.069   # 0.04 + 0.029; unused by kRandomOnSphere
