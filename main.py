@@ -137,8 +137,11 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
         _gq = np.asarray(task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0]), float)
         _gq = _gq / float(np.linalg.norm(_gq))
         for _rpy, _tag in _JACK_GHOST_CAPS:
+            # Golden, not green: the jack itself has a green capsule, and a
+            # green ghost merges with it at goal (matches env_builder's
+            # _jack_ghost_rgba, 2026-08-16 video-legibility fix).
             meshcat.SetObject(_tag, ad.Capsule(0.025, 0.125),
-                              ad.Rgba(0.1, 0.9, 0.1, 0.35))
+                              ad.Rgba(1.0, 0.80, 0.10, 0.35))
         _update_jack_goal_marker(meshcat, target_xy, _gq, init_z)
     elif task_cfg["object_type"] == "hshape":
         # Three-box ghost matching _hshape_sdf's decomposition.

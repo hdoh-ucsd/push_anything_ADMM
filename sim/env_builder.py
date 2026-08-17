@@ -771,6 +771,10 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
             # Ghost jack: three orthogonal capsules at the goal POSE. The jack's
             # goal is a full quaternion (it rolls onto a different tripod), so
             # unlike every other task the ghost cannot be built from a yaw.
+            # Golden tint, NOT the default green: the jack itself has a green
+            # capsule (per-capsule RGB), and at goal the two overlap into one
+            # unreadable green blob (2026-08-16 video-legibility root cause).
+            _jack_ghost_rgba = (1.0, 0.80, 0.10, 0.45)
             _gq = task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0])
             _gq = np.asarray(_gq, dtype=float)
             _gq = _gq / float(np.linalg.norm(_gq))
@@ -787,7 +791,7 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
                 plant.RegisterVisualGeometry(
                     plant.world_body(),
                     _T_goal.multiply(_T_local),
-                    ad.Capsule(0.025, 0.125), _tag, list(goal_ghost_rgba),
+                    ad.Capsule(0.025, 0.125), _tag, list(_jack_ghost_rgba),
                 )
         elif "radius" in task_cfg:
             _ghost_shape = ad.Sphere(task_cfg["radius"])
