@@ -121,7 +121,11 @@ class SamplingC3Controller:
             # after this push).
             _slv.apply_task_solver_scales(
                 u_lambda=getattr(params, "u_lambda", None),
-                w_G=getattr(params, "w_G", None))
+                w_G=getattr(params, "w_G", None),
+                g_x_vector=getattr(params, "g_x_vector", None),
+                g_lambda=getattr(params, "g_lambda", None),
+                g_u=getattr(params, "g_u", None),
+                g_eta=getattr(params, "g_eta", None))
         # Per-task planner u-force limits (reference u_horizontal/vertical_
         # limits; push_t ±50/±50, anything ±10/±3). Consumed by the EE-space
         # u-box in ci_mpc_c3plus.compute_control; None → legacy scalar

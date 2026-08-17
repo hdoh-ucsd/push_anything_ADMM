@@ -814,6 +814,13 @@ class SamplingC3Params:
     # PORT_U_LAMBDA / PORT_W_G env hooks keep highest precedence.
     u_lambda: Optional[float] = None
     w_G:      Optional[float] = None
+    # Paper-era plain-C3 G structure (user-directed experiment 2026-08-17):
+    # per-slot x binding + lambda/u/eta scalar overrides. None = C3+
+    # class defaults (g_x 0, g_lambda 2, g_u 0, g_eta 1).
+    g_x_vector: Optional[list] = None
+    g_lambda: Optional[float] = None
+    g_u:      Optional[float] = None
+    g_eta:    Optional[float] = None
 
     # ---- Parallel sample evaluation (port-todo #1) -----------------------
     # Port of reference `num_outer_threads`
@@ -1272,6 +1279,18 @@ class SamplingC3Params:
             w_G = (
                 float(raw["w_G"])
                 if raw.get("w_G") is not None else None),
+            g_x_vector = (
+                [float(v) for v in raw["g_x_vector"]]
+                if raw.get("g_x_vector") is not None else None),
+            g_lambda = (
+                float(raw["g_lambda"])
+                if raw.get("g_lambda") is not None else None),
+            g_u = (
+                float(raw["g_u"])
+                if raw.get("g_u") is not None else None),
+            g_eta = (
+                float(raw["g_eta"])
+                if raw.get("g_eta") is not None else None),
             u_horizontal_limit = (
                 float(raw["u_horizontal_limit"])
                 if raw.get("u_horizontal_limit") is not None else None),
