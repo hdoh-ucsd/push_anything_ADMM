@@ -126,6 +126,44 @@ TRIPOD_NAMES = {
 }
 
 
+def topple_roll_plan(obj_quat, obj_tripod, goal_tripod, half_len=0.0625):
+    """Plan one goal-directed roll for the DIAG topple driver.
+
+    Rolling over the support edge formed by two ground tips toggles
+    exactly the third capsule's tripod sign (3-cube adjacency). Pick the
+    FIRST sign where the tripods differ and return
+    (k, p_B, dir_W): capsule index, push point in BODY frame (the UP end
+    cap centre of capsule k — world height CoM_z + h/sqrt(3) = 97 mm,
+    above the 55.3 mm tip-before-slide critical height), and the world
+    horizontal unit push direction (from above tip_k toward the midpoint
+    of the other two support tips, i.e. over the toggling edge).
+    Returns None when the tripods already match. Diagnostic-only helper —
+    never on the reference path.
+    """
+    obj_tripod = tuple(obj_tripod)
+    goal_tripod = tuple(goal_tripod)
+    diff = [i for i in range(3) if obj_tripod[i] != goal_tripod[i]]
+    if not diff:
+        return None
+    k = diff[0]
+    q = np.asarray(obj_quat, dtype=float)
+    q = q / np.linalg.norm(q)
+    w, x, y, z = q
+    R = np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+        [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+        [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+    ])
+    e = np.eye(3)
+    tips = [R @ (-obj_tripod[i] * half_len * e[i]) for i in range(3)]
+    i, j = [m for m in range(3) if m != k]
+    d = 0.5 * (tips[i] + tips[j]) - tips[k]
+    d[2] = 0.0
+    d = d / np.linalg.norm(d)
+    p_B = obj_tripod[k] * half_len * e[k]
+    return k, p_B, d
+
+
 def orientation_lookahead(q_now, q_goal, last_axis,
                           lookahead_angle=2.0,      # goal_params.yaml:18/20
                           angle_hysteresis=0.4):    # goal_params.yaml:24
@@ -210,6 +248,11 @@ class JackRandomGoalGenerator:
         self._cand_streak = 0
         self.flip_events = 0
         self.last_flip = None
+
+    @property
+    def current_tripod(self):
+        """Persisted resting tripod (None until first settled observation)."""
+        return self._current_tripod
 
     def _track_tripod(self, obj_tripod) -> None:
         if obj_tripod == self._current_tripod:
