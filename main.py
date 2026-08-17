@@ -55,6 +55,7 @@ from control.sampling_c3.goal_generator import (
     TRIPOD_NAMES,
     geodesic_angle,
     orientation_lookahead,
+    topple_roll_plan,
     tripod_id,
 )
 
@@ -1006,6 +1007,31 @@ def main():
     _lookahead_was_clamped = False
     # Tripod-change ([FLIP]) log high-water mark.
     _flip_events_seen = 0
+    # ------------------------------------------------------------------
+    # DIAG_JACK_TOPPLE_DRIVER=<n> (diagnostic, default OFF): induce up to
+    # n goal-directed tripod flips by applying an external horizontal
+    # force at the UP end of the toggling capsule (97 mm — above the
+    # 55.3 mm tip-before-slide critical height, so ~1 N tips instead of
+    # sliding; see jack-topple-mechanics analysis 2026-08-17). Exercises
+    # the flip-goal loop the CONTROLLER cannot yet drive: settle -> push
+    # over the toggling support edge -> [FLIP] -> goal reached -> redraw.
+    # Never active on the canonical path.
+    # ------------------------------------------------------------------
+    _topple_n = int(os.environ.get("DIAG_JACK_TOPPLE_DRIVER", "0") or 0)
+    _topple = {"phase": "idle", "cooldown_until": 0.0, "push_until": 0.0,
+               "fmag": 1.5, "tripod_at_push": None}
+    _topple_body = None
+    if _topple_n > 0 and _goal_gen is not None:
+        _topple_body = plant.GetBodyByName(task_cfg["link_name"])
+        print(f"[TOPPLE-DRIVER] ACTIVE (diagnostic): target flips="
+              f"{_topple_n} f0=1.5N push_point=up-tip (97mm)", flush=True)
+
+    def _topple_set_force(fvec_W, p_B):
+        f = ad.ExternallyAppliedSpatialForce()
+        f.body_index = _topple_body.index()
+        f.p_BoBq_B = np.asarray(p_B, dtype=float)
+        f.F_Bq_W = ad.SpatialForce(np.zeros(3), np.asarray(fvec_W, float))
+        plant.get_applied_spatial_force_input_port().FixValue(plant_ctx, [f])
     # 1 kHz OSC decoupling — mirror dairlib's LcmDrivenLoop where the OSC
     # subscribes to the last-published planner trajectory and ticks at
     # osc_params.yaml:2 `controller_frequency: 1000`. Every outer iteration
@@ -1107,6 +1133,46 @@ def main():
                       + ("  [> 2.0 rad lookahead_angle -- SLERP sub-goal "
                          "will clamp]"
                          if _gg_demand > 2.0 else ""),
+                      flush=True)
+            # DIAG topple driver (see init above): settle -> push the
+            # toggling capsule's up end over the support edge -> release
+            # on raw tripod change -> cooldown; escalate force on a
+            # failed window; inert once the target flip count is reached.
+            if _topple_body is not None and _goal_gen.flip_events < _topple_n:
+                _raw_trip = tripod_id(_obj_quat_now)
+                _obj_w = float(np.linalg.norm(current_v[n_u:n_u + 3]))
+                _obj_vl = float(np.linalg.norm(current_v[n_u + 3:n_u + 6]))
+                if _topple["phase"] == "push":
+                    _flipped = _raw_trip != _topple["tripod_at_push"]
+                    if _flipped or sim_time >= _topple["push_until"]:
+                        _topple_set_force(np.zeros(3), np.zeros(3))
+                        _topple["phase"] = "idle"
+                        _topple["cooldown_until"] = sim_time + 1.5
+                        _topple["fmag"] = (1.5 if _flipped else
+                                           min(_topple["fmag"] * 1.5, 8.0))
+                        print(f"[TOPPLE-DRIVER] release t={sim_time:.3f}s "
+                              f"{'FLIPPED' if _flipped else 'no flip'} "
+                              f"next_f={_topple['fmag']:.2f}N", flush=True)
+                elif (sim_time >= _topple["cooldown_until"]
+                      and _obj_w < 0.5 and _obj_vl < 0.05
+                      and _goal_gen.current_tripod == _raw_trip):
+                    _plan = topple_roll_plan(
+                        _obj_quat_now, _raw_trip,
+                        tripod_id(_goal_gen.goal_quat))
+                    if _plan is not None:
+                        _tk, _tp_B, _td_W = _plan
+                        _topple_set_force(_topple["fmag"] * _td_W, _tp_B)
+                        _topple["phase"] = "push"
+                        _topple["push_until"] = sim_time + 0.8
+                        _topple["tripod_at_push"] = _raw_trip
+                        print(f"[TOPPLE-DRIVER] push t={sim_time:.3f}s "
+                              f"capsule={_tk} f={_topple['fmag']:.2f}N "
+                              f"dir=({_td_W[0]:+.2f},{_td_W[1]:+.2f})",
+                              flush=True)
+            elif _topple_body is not None and _topple["phase"] == "push":
+                _topple_set_force(np.zeros(3), np.zeros(3))
+                _topple["phase"] = "done"
+                print(f"[TOPPLE-DRIVER] target reached; driver inert",
                       flush=True)
         _delta_vec  = target_xy - _obj_xy_now
         _dist       = float(np.linalg.norm(_delta_vec))
