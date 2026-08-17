@@ -55,7 +55,7 @@ RE_GATE = re.compile(
     r"ee_p=\(([^)]+)\)"
 )
 RE_STEP_MODE = re.compile(
-    r"^\[STEP\] step=(\d+) mode=(\w+).*?switch=(\w+)"
+    r"^\[STEP\] step=(\d+) mode=(\w+) t=([\d.]+)s.*?switch=(\w+)"
 )
 
 
@@ -89,8 +89,11 @@ def parse_log(path: Path):
                 step = int(m.group(1))
                 frames.setdefault(step, {}).update(
                     mode=m.group(2),
-                    switch=m.group(3),
-                    sim_t=step * 0.01,
+                    switch=m.group(4),
+                    # sim_t from the log's own t= field — the prior
+                    # step*0.01 assumed a 10 ms planner tick and was wrong
+                    # for every other cadence (jack/push_t tick at 0.1 s).
+                    sim_t=float(m.group(3)),
                 )
     return frames
 
@@ -156,6 +159,10 @@ def main():
                          "(per-run ground truth, reference-shaped).")
     ap.add_argument("--max-step", type=int, default=None,
                     help="Optional cap on the last rendered step")
+    ap.add_argument("--min-step", type=int, default=None,
+                    help="Optional floor on the first rendered step "
+                         "(with --max-step: render a window, e.g. a "
+                         "highlight clip of one episode)")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -165,6 +172,8 @@ def main():
                    if "box_p" in v and "ee_p" in v and "mode" in v)
     if args.max_step is not None:
         valid = [k for k in valid if k <= args.max_step]
+    if args.min_step is not None:
+        valid = [k for k in valid if k >= args.min_step]
     print(f"[render-log-drake] {len(valid)} valid steps in log "
           f"(first={valid[0]}, last={valid[-1]})", flush=True)
 
@@ -257,7 +266,7 @@ def main():
         Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
 
         # 5) Timeline row.
-        tl_fp.write(f"{step},{step*0.01:.4f},{rec['mode']},{rec['switch']}\n")
+        tl_fp.write(f"{step},{rec['sim_t']:.4f},{rec['mode']},{rec['switch']}\n")
 
         kept += 1
         if kept % 25 == 0:
