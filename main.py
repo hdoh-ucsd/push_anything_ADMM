@@ -819,6 +819,13 @@ def main():
                   f"goal tripod {TRIPOD_NAMES[tripod_id(target_quat)]} "
                   f"(pos/yaw ignored; reference gate pos<0.02 AND rot<0.1 "
                   f"replaced)")
+            if bool(task_cfg.get("flip_primitive", False)):
+                mpc._flip_primitive_enabled = True
+                print(f"[FLIP-PRIM] ENABLED (task flip_primitive): the "
+                      f"controller stages the EE at the toggling capsule's "
+                      f"up-tip (97mm > 55.3mm tip-before-slide) and pushes "
+                      f"through it — controller-induced flips, no external "
+                      f"forces", flush=True)
     # Diagnostic (default-inert): force one re-goal at planner step N to
     # exercise the live re-goal path without a real goal achievement.
     _goal_gen_force_step = int(

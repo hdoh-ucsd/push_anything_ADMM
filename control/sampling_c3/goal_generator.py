@@ -126,26 +126,31 @@ TRIPOD_NAMES = {
 }
 
 
-def topple_roll_plan(obj_quat, obj_tripod, goal_tripod, half_len=0.0625):
-    """Plan one goal-directed roll for the DIAG topple driver.
+def topple_roll_plan(obj_quat, obj_tripod, goal_tripod, half_len=0.0625,
+                     prefer_direction=None):
+    """Plan one goal-directed roll (topple driver + flip primitive).
 
     Rolling over the support edge formed by two ground tips toggles
-    exactly the third capsule's tripod sign (3-cube adjacency). Pick the
-    FIRST sign where the tripods differ and return
+    exactly the third capsule's tripod sign (3-cube adjacency). Returns
     (k, p_B, dir_W): capsule index, push point in BODY frame (the UP end
     cap centre of capsule k — world height CoM_z + h/sqrt(3) = 97 mm,
     above the 55.3 mm tip-before-slide critical height), and the world
     horizontal unit push direction (from above tip_k toward the midpoint
     of the other two support tips, i.e. over the toggling edge).
-    Returns None when the tripods already match. Diagnostic-only helper —
-    never on the reference path.
+
+    Candidate selection among the differing signs: FIRST differing index
+    by default; with `prefer_direction` (world xy(z ignored) vector, e.g.
+    goal_xy - obj_xy) the candidate whose push direction best aligns with
+    it — each roll translates the CoM along dir_W, so this walks the jack
+    TOWARD the position goal while it flips.
+    Returns None when the tripods already match. Never on the reference
+    path.
     """
     obj_tripod = tuple(obj_tripod)
     goal_tripod = tuple(goal_tripod)
     diff = [i for i in range(3) if obj_tripod[i] != goal_tripod[i]]
     if not diff:
         return None
-    k = diff[0]
     q = np.asarray(obj_quat, dtype=float)
     q = q / np.linalg.norm(q)
     w, x, y, z = q
@@ -156,10 +161,25 @@ def topple_roll_plan(obj_quat, obj_tripod, goal_tripod, half_len=0.0625):
     ])
     e = np.eye(3)
     tips = [R @ (-obj_tripod[i] * half_len * e[i]) for i in range(3)]
-    i, j = [m for m in range(3) if m != k]
-    d = 0.5 * (tips[i] + tips[j]) - tips[k]
-    d[2] = 0.0
-    d = d / np.linalg.norm(d)
+
+    def _dir_for(k):
+        i, j = [m for m in range(3) if m != k]
+        d = 0.5 * (tips[i] + tips[j]) - tips[k]
+        d[2] = 0.0
+        return d / np.linalg.norm(d)
+
+    if prefer_direction is not None and len(diff) > 1:
+        p = np.array([float(prefer_direction[0]),
+                      float(prefer_direction[1]), 0.0])
+        n = np.linalg.norm(p)
+        if n > 1e-9:
+            p = p / n
+            k = max(diff, key=lambda kk: float(np.dot(_dir_for(kk), p)))
+        else:
+            k = diff[0]
+    else:
+        k = diff[0]
+    d = _dir_for(k)
     p_B = obj_tripod[k] * half_len * e[k]
     return k, p_B, d
 

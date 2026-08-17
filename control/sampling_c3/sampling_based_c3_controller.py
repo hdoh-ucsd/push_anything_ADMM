@@ -32,6 +32,10 @@ from control.sampling_c3.inner_solve import (
     InnerSolver, SampleResult, traj_cost_breakdown,
 )
 from control.sampling_c3.mode_switch import SwitchReason, decide_mode
+from control.sampling_c3.goal_generator import (
+    topple_roll_plan,
+    tripod_id,
+)
 from control.sampling_c3.params import (
     SamplingC3Params, SamplingStrategy, RepositioningTrajectoryType,
 )
@@ -1194,6 +1198,157 @@ class SamplingC3Controller:
         q = np.asarray(q, dtype=float).flatten()
         self._goal_quat = q / float(np.linalg.norm(q))
 
+    def _flip_primitive_tick(self, current_q, current_v, plant_ctx,
+                             final_target_xy):
+        """Controller-induced tripod flips (flip success mode, user-directed
+        2026-08-17). When the goal tripod differs from the resting tripod,
+        bypass the sampling-C3 pipeline and run a staged EE push: STAGE the
+        pusher above/behind the toggling capsule's UP-tip cap (97 mm —
+        above the 55.3 mm tip-before-slide critical height), then PUSH the
+        setpoint through the tip along the planned roll direction until the
+        raw tripod changes, RETREAT, cool down. The roll candidate is
+        chosen goal-ward (topple_roll_plan prefer_direction) so successive
+        flips also walk the CoM toward the position goal. The EE applies
+        the force through the OSC's impedance — no external/phantom forces.
+        Returns torques while active, None to run the normal pipeline.
+        Emits renderer-compatible [STEP]/[GATE-CONTACT] lines.
+        """
+        if not getattr(self, "_flip_primitive_enabled", False) \
+                or self._goal_quat is None:
+            return None
+        st = getattr(self, "_flip_prim", None)
+        if st is None:
+            st = self._flip_prim = {
+                "phase": "idle", "cooldown_until": -1, "overshoot": 0.030,
+                "p_des": None, "wp": [], "wp_i": 0, "flips": 0,
+            }
+        ps = self._obj_z_idx - 6
+        obj_quat = np.asarray(current_q[ps:ps + 4], dtype=float)
+        obj_xy = np.asarray(current_q[ps + 4:ps + 6], dtype=float)
+        obj_w = float(np.linalg.norm(current_v[self.n_u:self.n_u + 3]))
+        obj_vl = float(np.linalg.norm(current_v[self.n_u + 3:self.n_u + 6]))
+        cur_trip = tripod_id(obj_quat)
+        goal_trip = tripod_id(self._goal_quat)
+        dt = float(self._dt_ctrl)
+        ee_now = self.plant.CalcPointsPositions(
+            plant_ctx, self.ee_frame, np.zeros(3),
+            self.plant.world_frame()).flatten()
+
+        if st["phase"] == "idle":
+            if (cur_trip == goal_trip
+                    or self._step < st["cooldown_until"]
+                    or obj_w >= 0.5 or obj_vl >= 0.05):
+                return None
+            prefer = (np.asarray(final_target_xy, dtype=float) - obj_xy
+                      if final_target_xy is not None else None)
+            plan = topple_roll_plan(obj_quat, cur_trip, goal_trip,
+                                    prefer_direction=prefer)
+            if plan is None:
+                return None
+            _k, p_B, d_W = plan
+            X_WO = self.plant.EvalBodyPoseInWorld(plant_ctx, self.obj_body)
+            p_tip = np.asarray(X_WO.multiply(np.asarray(p_B, dtype=float)),
+                               dtype=float).flatten()
+            p_stage = p_tip - 0.075 * d_W
+            p_stage[2] = p_tip[2]
+            z_hi = max(p_tip[2] + 0.05, 0.14)
+            st.update(
+                phase="stage", wp_i=0, d_W=d_W, p_tip=p_tip,
+                p_through=p_tip + st["overshoot"] * d_W,
+                trip_at_plan=cur_trip, p_des=ee_now.copy(),
+                wp=[np.array([ee_now[0], ee_now[1], z_hi]),
+                    np.array([p_stage[0], p_stage[1], z_hi]),
+                    p_stage],
+            )
+            print(f"[FLIP-PRIM] plan step={self._step} capsule={_k} "
+                  f"tip=({p_tip[0]:+.3f},{p_tip[1]:+.3f},{p_tip[2]:+.3f}) "
+                  f"dir=({d_W[0]:+.2f},{d_W[1]:+.2f}) "
+                  f"overshoot={st['overshoot']*1000:.0f}mm", flush=True)
+
+        v_des = np.zeros(3)
+        if st["phase"] == "stage":
+            wp = st["wp"][st["wp_i"]]
+            delta = wp - st["p_des"]
+            dist = float(np.linalg.norm(delta))
+            step_len = 0.25 * dt
+            if dist > 1e-9:
+                adv = min(step_len, dist)
+                st["p_des"] = st["p_des"] + delta / dist * adv
+                v_des = delta / dist * 0.25
+            if (dist <= step_len
+                    and float(np.linalg.norm(ee_now - wp)) < 0.025):
+                st["wp_i"] += 1
+                if st["wp_i"] >= len(st["wp"]):
+                    st["phase"] = "push"
+                    st["push_deadline"] = self._step + int(4.0 / dt)
+                    print(f"[FLIP-PRIM] push step={self._step}", flush=True)
+        elif st["phase"] == "push":
+            if cur_trip != st["trip_at_plan"]:
+                st["flips"] += 1
+                st["phase"] = "retreat"
+                st["retreat_to"] = ee_now + np.array([0.0, 0.0, 0.06])
+                st["overshoot"] = 0.030
+                print(f"[FLIP-PRIM] FLIPPED step={self._step} "
+                      f"(primitive flip #{st['flips']})", flush=True)
+            elif self._step > st["push_deadline"]:
+                st["phase"] = "retreat"
+                st["retreat_to"] = ee_now + np.array([0.0, 0.0, 0.06])
+                st["overshoot"] = min(st["overshoot"] + 0.020, 0.090)
+                print(f"[FLIP-PRIM] push timeout step={self._step} "
+                      f"next_overshoot={st['overshoot']*1000:.0f}mm",
+                      flush=True)
+            else:
+                delta = st["p_through"] - st["p_des"]
+                dist = float(np.linalg.norm(delta))
+                if dist > 1e-9:
+                    adv = min(0.10 * dt, dist)
+                    st["p_des"] = st["p_des"] + delta / dist * adv
+                    v_des = delta / dist * 0.10
+        if st["phase"] == "retreat":
+            wp = st["retreat_to"]
+            delta = wp - st["p_des"]
+            dist = float(np.linalg.norm(delta))
+            if dist > 1e-9:
+                adv = min(0.25 * dt, dist)
+                st["p_des"] = st["p_des"] + delta / dist * adv
+                v_des = delta / dist * 0.25
+            if dist <= 0.25 * dt:
+                st["phase"] = "idle"
+                st["cooldown_until"] = self._step + int(1.5 / dt)
+
+        p_des = st["p_des"]
+        u_opt, _ = self.executor.compute_torque(
+            current_q, current_v, plant_ctx,
+            p_ee_desired=p_des, v_ee_desired=v_des,
+            lambda_n=None, lambda_t=None, J_n=None, J_t=None,
+            lambda_des=None, mode="free",
+        )
+        self._last_osc_call = ("osc_direct_free", dict(
+            p_ee_desired=p_des.copy(), v_ee_desired=v_des.copy(),
+            mode="free"))
+        # Renderer/painter-compatible pose + mode lines (the normal
+        # pipeline's [GATE-CONTACT]/[STEP] emitters are bypassed here).
+        _t = (self._step - 1) * dt
+        _obj_z = float(current_q[self._obj_z_idx])
+        _gd = (float(np.linalg.norm(
+            np.asarray(final_target_xy, dtype=float) - obj_xy))
+            if final_target_xy is not None else -1.0)
+        print(f"[GATE-CONTACT] step={self._step} F_W=(+0.0000,+0.0000,+0.0000) "
+              f"F_on_box=(+0.0000,+0.0000,+0.0000) "
+              f"n_face_out=(+0.0000,+0.0000,+0.0000) A_is_ee=0 "
+              f"box_q=({obj_quat[0]:+.5f},{obj_quat[1]:+.5f},"
+              f"{obj_quat[2]:+.5f},{obj_quat[3]:+.5f}) "
+              f"box_p=({obj_xy[0]:+.5f},{obj_xy[1]:+.5f},{_obj_z:+.5f}) "
+              f"ee_p=({ee_now[0]:+.5f},{ee_now[1]:+.5f},{ee_now[2]:+.5f})",
+              flush=True)
+        print(f"[STEP] step={self._step} mode=flip t={_t:.3f}s "
+              f"ee=({ee_now[0]:+.3f},{ee_now[1]:+.3f},{ee_now[2]:+.3f}) "
+              f"obj=({obj_xy[0]:+.3f},{obj_xy[1]:+.3f},{_obj_z:+.3f}) "
+              f"goal_dist={_gd:.3f}m switch=kFlipPrimitive "
+              f"c3_cost=0.00 lam_n=0.000 lam_t=0.000 contact=N "
+              f"productive=N f_cmd=(+0.00,+0.00,+0.00)", flush=True)
+        return u_opt
+
     def compute_control(self,
                         current_q:  np.ndarray,
                         current_v:  np.ndarray,
@@ -1215,6 +1370,13 @@ class SamplingC3Controller:
             self._init_obj_z = float(current_q[self._obj_z_idx])
         # Cache the live plant context for the adaptive press-plane query.
         self._ctx_for_z = plant_ctx
+        # Flip primitive (flip success mode): when the goal demands a
+        # tripod change, it owns the tick — the sampling-C3 pipeline
+        # resumes when tripods match / while settling or cooling down.
+        _u_flip = self._flip_primitive_tick(current_q, current_v, plant_ctx,
+                                            final_target_xy)
+        if _u_flip is not None:
+            return _u_flip
         t_step_start = time.perf_counter()
 
         # Gating: how many OSC ticks per planner solve?
