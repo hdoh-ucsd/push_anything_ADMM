@@ -102,6 +102,50 @@ def geodesic_angle(q_a, q_b) -> float:
     return float(2.0 * np.arctan2(np.linalg.norm(d[1:]), abs(d[0])))
 
 
+def orientation_lookahead(q_now, q_goal, last_axis,
+                          lookahead_angle=2.0,      # goal_params.yaml:18/20
+                          angle_hysteresis=0.4):    # goal_params.yaml:24
+    """Per-tick orientation sub-goal — reference
+    `GenerateLineTrajectoryWithLookahead` orientation branch
+    (goal_generator.cc:408-437).
+
+    Angle-axis of q_goal * q_now^-1 in the Eigen canonical form
+    (angle = 2*atan2(|vec|, |w|) in [0, pi]; axis sign flipped when
+    w < 0), then the near-180-degree hysteresis (if the axis opposes
+    `last_axis` and pi - angle < angle_hysteresis, take the complementary
+    rotation 2*pi - angle about -axis so the committed turn direction is
+    kept across the singularity), then angle clamped to lookahead_angle
+    and applied to the CURRENT orientation (world-frame premultiply).
+
+    Returns (q_subgoal, new_last_axis). The caller threads new_last_axis
+    into the next tick (reference: mutable last_rotation_axis_, h:180,
+    zero-initialized). When the demand is within lookahead_angle the
+    sub-goal IS the final goal, represented in q_now's hemisphere.
+    """
+    q_now = np.asarray(q_now, dtype=float)
+    q_now = q_now / np.linalg.norm(q_now)
+    q_goal = np.asarray(q_goal, dtype=float)
+    q_goal = q_goal / np.linalg.norm(q_goal)
+    d = quat_multiply(q_goal, q_now * np.array([1.0, -1.0, -1.0, -1.0]))
+    n = float(np.linalg.norm(d[1:]))
+    if n < 1e-12:
+        # Eigen AngleAxis(q) fallback for the identity rotation.
+        angle, axis = 0.0, np.array([1.0, 0.0, 0.0])
+    else:
+        angle = float(2.0 * np.arctan2(n, abs(d[0])))
+        axis = d[1:] / n if d[0] >= 0.0 else -d[1:] / n
+    if (float(np.dot(axis, np.asarray(last_axis, dtype=float))) < 0.0
+            and (np.pi - angle) < angle_hysteresis):
+        angle = 2.0 * np.pi - angle
+        axis = -axis
+    new_last_axis = axis.copy()
+    angle = min(angle, lookahead_angle)
+    q_rel = np.concatenate([[np.cos(angle / 2.0)],
+                            np.sin(angle / 2.0) * axis])
+    q_sub = quat_multiply(q_rel, q_now)
+    return q_sub / np.linalg.norm(q_sub), new_last_axis
+
+
 class JackRandomGoalGenerator:
     """Single-object kRandom re-goaler (reference jacktoy goal_params)."""
 

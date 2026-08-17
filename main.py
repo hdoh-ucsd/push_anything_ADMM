@@ -53,6 +53,7 @@ from control.sampling_c3.goal_generator import (
     JackRandomGoalGenerator,
     KNOMINAL_NAMES_JACK,
     geodesic_angle,
+    orientation_lookahead,
 )
 
 
@@ -772,12 +773,10 @@ def main():
         target_quat = target_quat / float(np.linalg.norm(target_quat))
         quad_cost.set_goal_quat(target_quat)
         _pending_goal_quat = target_quat
-        # The per-tick angular lookahead below is yaw-only and is bypassed for
-        # quaternion goals, so the goal handed to the cost is STATIC. That is
-        # only equivalent to the reference when the clip would never fire --
-        # i.e. when the whole reorientation demand is under lookahead_angle
-        # (reference goal_generator.cc:427 `angle = min(angle, lookahead)`).
-        # Check it at startup rather than silently mis-modelling the task.
+        # Quaternion goals get the per-tick SLERP lookahead in the sim loop
+        # (orientation_lookahead, reference goal_generator.cc:408-437), so
+        # demands beyond lookahead_angle run against a moving sub-goal.
+        # The startup demand print below is informational.
         _q0 = np.asarray(task_cfg.get("init_quat", [1.0, 0.0, 0.0, 0.0]), float)
         _q0 = _q0 / float(np.linalg.norm(_q0))
         _R0 = ad.RotationMatrix(ad.Quaternion(_q0[0], _q0[1], _q0[2], _q0[3])).matrix()
@@ -789,20 +788,9 @@ def main():
               f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]  "
               f"reorientation demand = {_demand:.4f} rad ({np.degrees(_demand):.1f} deg)")
         if _demand > 2.0:
-            if _initial_goal_drawn:
-                # A drawn goal is one draw of the reference's continuous
-                # distribution — demands > lookahead_angle run under the
-                # static-goal deviation (same WARN as re-goals).
-                print(f"[GOAL-QUAT] WARN drawn goal demands {_demand:.3f} rad "
-                      f"> 2.0 rad lookahead_angle — static-goal deviation "
-                      f"(SLERP lookahead unported)")
-            else:
-                raise SystemExit(
-                    f"[GOAL-QUAT] task demands {_demand:.3f} rad of reorientation, "
-                    f"which exceeds goal_params lookahead_angle = 2.0 rad. The port's "
-                    f"quaternion goal is static (no per-tick geodesic SLERP), so this "
-                    f"task would be mis-modelled. Implement the SLERP lookahead "
-                    f"(reference goal_generator.cc:410-434) before running it.")
+            print(f"[GOAL-QUAT] demand {_demand:.3f} rad > 2.0 rad "
+                  f"lookahead_angle — per-tick SLERP sub-goal active "
+                  f"(reference goal_generator.cc:408-437)")
     # _goal_gen was constructed just after load_task (initial-draw path
     # mutates task_cfg before build_environment). Banner here, where the
     # normalized target_quat exists.
@@ -994,6 +982,10 @@ def main():
     # |Δyaw| to fall below (lookahead_angle - hysteresis) before un-clipping.
     # Prevents sub-goal orientation flip near the 180° error singularity.
     _yaw_clip_active = False
+    # Quaternion-goal SLERP lookahead state (reference goal_generator.h:180
+    # last_rotation_axis_, zero-initialized) + clamp-transition log latch.
+    _last_rot_axis = np.zeros(3)
+    _lookahead_was_clamped = False
     # 1 kHz OSC decoupling — mirror dairlib's LcmDrivenLoop where the OSC
     # subscribes to the last-published planner trajectory and ticks at
     # osc_params.yaml:2 `controller_frequency: 1000`. Every outer iteration
@@ -1087,8 +1079,8 @@ def main():
                       f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
                       f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}] "
                       f"demand={_gg_demand:.3f} rad"
-                      + ("  [WARN > 2.0 rad lookahead_angle -- static-goal "
-                         "deviation, see GOAL-QUAT note]"
+                      + ("  [> 2.0 rad lookahead_angle -- SLERP sub-goal "
+                         "will clamp]"
                          if _gg_demand > 2.0 else ""),
                       flush=True)
         _delta_vec  = target_xy - _obj_xy_now
@@ -1129,6 +1121,30 @@ def main():
                                           + np.sign(_dyaw) * _lookahead_angle)
         else:
             _effective_target_yaw = float(target_yaw)
+        # Quaternion-goal SLERP lookahead (reference goal_generator.cc:
+        # 408-437): the COST chases a sub-goal at most lookahead_angle
+        # (2 rad) along the geodesic from the CURRENT orientation,
+        # recomputed every tick, with the near-180° axis hysteresis.
+        # Progress metrics, the achievement latch and RESULT stay on the
+        # final goal (reference current_*_error_ vs x_lcs_final_des,
+        # controller cc:780-805; only x_desired uses the lookahead target,
+        # cc:1009). mpc.set_goal_quat therefore keeps the FINAL quat.
+        if target_quat is not None:
+            _q_obj_now = np.array([_qw, _qx, _qy, _qz])
+            _sub_quat, _last_rot_axis = orientation_lookahead(
+                _q_obj_now, target_quat, _last_rot_axis)
+            quad_cost.set_goal_quat(_sub_quat)
+            _full_err = geodesic_angle(target_quat, _q_obj_now)
+            _clamped = _full_err > 2.0
+            _clamp_transition = _clamped != _lookahead_was_clamped
+            _lookahead_was_clamped = _clamped
+            if _clamp_transition or (_clamped and step % 100 == 0):
+                print(f"[LOOKAHEAD] step={step} full_err={_full_err:.4f}rad "
+                      f"clamped={'Y' if _clamped else 'N'} "
+                      f"sub_err={geodesic_angle(_sub_quat, _q_obj_now):.4f}rad "
+                      f"axis=({_last_rot_axis[0]:+.3f},"
+                      f"{_last_rot_axis[1]:+.3f},"
+                      f"{_last_rot_axis[2]:+.3f})", flush=True)
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx,
                                     _effective_target_xy,
                                     target_yaw=_effective_target_yaw,
