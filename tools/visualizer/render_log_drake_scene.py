@@ -205,6 +205,12 @@ def main():
                     help="Optional floor on the first rendered step "
                          "(with --max-step: render a window, e.g. a "
                          "highlight clip of one episode)")
+    ap.add_argument("--interp", type=int, default=1,
+                    help="Sub-frames per log step (poses SLERP/lerp "
+                         "interpolated toward the next step). Frame index "
+                         "= step*interp + j; pass the SAME --interp to "
+                         "paint_log_sidepanel.py so it maps frames back "
+                         "to log steps.")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -267,13 +273,26 @@ def main():
     tl_fp = open(timeline_path, "w", buffering=1)
     tl_fp.write("step,sim_t,mode,switch\n")
 
+    def _slerp(q0, q1, a):
+        q0 = q0 / np.linalg.norm(q0)
+        q1 = q1 / np.linalg.norm(q1)
+        if float(np.dot(q0, q1)) < 0.0:
+            q1 = -q1
+        d = float(np.clip(np.dot(q0, q1), -1.0, 1.0))
+        if d > 0.9995:
+            q = (1.0 - a) * q0 + a * q1
+            return q / np.linalg.norm(q)
+        th = np.arccos(d)
+        return (np.sin((1.0 - a) * th) * q0 + np.sin(a * th) * q1) \
+            / np.sin(th)
+
     prev_arm_q = INITIAL_ARM_Q.copy()
     kept = 0
     ik_failures = 0
     seg_idx = -1
-    for step in valid:
-        if step % args.stride != 0:
-            continue
+    K = max(1, args.interp)
+    rendered = [k for k in valid if k % args.stride == 0]
+    for r_i, step in enumerate(rendered):
         _entered_new_seg = False
         while (seg_idx + 1 < len(seg_starts)
                and step >= seg_starts[seg_idx + 1]):
@@ -285,63 +304,74 @@ def main():
                 _build_scene(seg_cfgs[seg_idx])
             prev_arm_q = INITIAL_ARM_Q.copy()
         rec = frames[step]
+        nxt = frames[rendered[r_i + 1]] if r_i + 1 < len(rendered) else None
 
-        # 1) Set the box floating-body pose from the log.
-        bq = rec["box_q"]  # (w, x, y, z)
-        bp = rec["box_p"]
-        _n = float(np.linalg.norm(bq))
-        if _n < 1e-9:
-            bq_n = np.array([1.0, 0.0, 0.0, 0.0])
-        else:
-            bq_n = bq / _n
-        X_WO = ad.RigidTransform(
-            ad.Quaternion(float(bq_n[0]), float(bq_n[1]),
-                          float(bq_n[2]), float(bq_n[3])),
-            bp.tolist(),
-        )
-        plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
+        # --interp K emits K sub-frames per log step, poses interpolated
+        # toward the next step (SLERP box quat, lerp positions) so a
+        # 0.2-0.4 s tripod roll spans enough frames to read as a roll
+        # instead of a 2-frame snap. Frame index = step*K + j; painters
+        # recover the log step as index // K (pass the same --interp).
+        for j in range(K if nxt is not None else 1):
+            a = j / float(K)
+            if a == 0.0:
+                bq, bp, eep = rec["box_q"], rec["box_p"], rec["ee_p"]
+            else:
+                bq = _slerp(rec["box_q"], nxt["box_q"], a)
+                bp = (1.0 - a) * rec["box_p"] + a * nxt["box_p"]
+                eep = (1.0 - a) * rec["ee_p"] + a * nxt["ee_p"]
+            _n = float(np.linalg.norm(bq))
+            if _n < 1e-9:
+                bq_n = np.array([1.0, 0.0, 0.0, 0.0])
+            else:
+                bq_n = bq / _n
+            X_WO = ad.RigidTransform(
+                ad.Quaternion(float(bq_n[0]), float(bq_n[1]),
+                              float(bq_n[2]), float(bq_n[3])),
+                np.asarray(bp, dtype=float).tolist(),
+            )
+            plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
 
-        # 2) Solve DLS IK so the pusher sphere sits at ee_p from the log.
-        #    Warm-start from previous arm q for fast convergence.
-        plant.SetPositions(plant_ctx, panda_model, prev_arm_q)
-        q_full = plant.GetPositions(plant_ctx).copy()
-        q_sol, err, it = solve_ik_to_ee_pos(
-            plant, ee_frame, rec["ee_p"], q_full, plant_ctx,
-            n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
-            q_lo=q_lo_arm, q_hi=q_hi_arm,
-        )
-        if err > 5e-3:
-            # Retry once from the standard home pose.
-            plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+            # DLS IK so the pusher sphere sits at the (interpolated) ee
+            # position. Warm-start from the previous arm q.
+            plant.SetPositions(plant_ctx, panda_model, prev_arm_q)
             q_full = plant.GetPositions(plant_ctx).copy()
             q_sol, err, it = solve_ik_to_ee_pos(
-                plant, ee_frame, rec["ee_p"], q_full, plant_ctx,
-                n_arm_dofs=n_arm_dofs, max_iter=120, damping=0.02,
+                plant, ee_frame, eep, q_full, plant_ctx,
+                n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
                 q_lo=q_lo_arm, q_hi=q_hi_arm,
             )
             if err > 5e-3:
-                ik_failures += 1
-        prev_arm_q = q_sol[:n_arm_dofs].copy()
+                # Retry once from the standard home pose.
+                plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+                q_full = plant.GetPositions(plant_ctx).copy()
+                q_sol, err, it = solve_ik_to_ee_pos(
+                    plant, ee_frame, eep, q_full, plant_ctx,
+                    n_arm_dofs=n_arm_dofs, max_iter=120, damping=0.02,
+                    q_lo=q_lo_arm, q_hi=q_hi_arm,
+                )
+                if err > 5e-3:
+                    ik_failures += 1
+            prev_arm_q = q_sol[:n_arm_dofs].copy()
 
-        # 3) Re-set the box pose after IK (solve_ik_to_ee_pos may have
-        #    written back a slightly perturbed context).
-        plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
+            # Re-set the box pose after IK (solve_ik_to_ee_pos may have
+            # written back a slightly perturbed context).
+            plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
 
-        # 4) Query the Drake render camera.
-        cam_ctx = drake_cam.GetMyContextFromRoot(context)
-        img = drake_cam.color_image_output_port().Eval(cam_ctx)
-        arr = np.asarray(img.data, dtype=np.uint8)  # (H, W, 4) RGBA
-        out_png = args.out_dir / f"frame_{step:06d}.png"
-        Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
+            cam_ctx = drake_cam.GetMyContextFromRoot(context)
+            img = drake_cam.color_image_output_port().Eval(cam_ctx)
+            arr = np.asarray(img.data, dtype=np.uint8)  # (H, W, 4) RGBA
+            fidx = step * K + j
+            out_png = args.out_dir / f"frame_{fidx:06d}.png"
+            Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
 
-        # 5) Timeline row.
-        tl_fp.write(f"{step},{rec['sim_t']:.4f},{rec['mode']},{rec['switch']}\n")
+            _t = rec["sim_t"] + (0.1 * a if nxt is not None else 0.0)
+            tl_fp.write(f"{fidx},{_t:.4f},{rec['mode']},{rec['switch']}\n")
 
-        kept += 1
-        if kept % 25 == 0:
-            print(f"[render-log-drake] step={step:04d} "
-                  f"ik_err={err*1000:.2f}mm frames={kept} "
-                  f"ik_fail_far={ik_failures}", flush=True)
+            kept += 1
+            if kept % 50 == 0:
+                print(f"[render-log-drake] step={step:04d} "
+                      f"ik_err={err*1000:.2f}mm frames={kept} "
+                      f"ik_fail_far={ik_failures}", flush=True)
 
     tl_fp.close()
     print(f"[render-log-drake] wrote {kept} frames + {timeline_path}",
