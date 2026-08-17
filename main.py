@@ -819,7 +819,8 @@ def main():
                   f"goal tripod {TRIPOD_NAMES[tripod_id(target_quat)]} "
                   f"(pos/yaw ignored; reference gate pos<0.02 AND rot<0.1 "
                   f"replaced)")
-            if bool(task_cfg.get("flip_primitive", False)):
+            if (bool(task_cfg.get("flip_primitive", False))
+                    and os.environ.get("PORT_FLIP_PRIMITIVE", "1") != "0"):
                 mpc._flip_primitive_enabled = True
                 print(f"[FLIP-PRIM] ENABLED (task flip_primitive): the "
                       f"controller stages the EE at the toggling capsule's "
