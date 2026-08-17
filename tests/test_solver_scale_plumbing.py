@@ -75,7 +75,9 @@ def test_params_from_dict_absent_is_none():
 def test_kik_jack_yaml_carries_jacktoy_literals():
     p = SamplingC3Params.from_yaml("config/sampling_c3_kik_jack.yaml")
     assert p.u_lambda == 4.0
-    assert p.w_G == 0.03
+    # w_G was the jacktoy C3+ literal 0.03 until the paper-era G-structure
+    # experiment (2026-08-17, user-directed) set the plain-C3 paper value.
+    assert p.w_G == 0.25
 
 
 def test_anything_lineage_yamls_leave_scales_absent():
@@ -84,3 +86,37 @@ def test_anything_lineage_yamls_leave_scales_absent():
         p = SamplingC3Params.from_yaml(path)
         assert p.u_lambda is None, path
         assert p.w_G is None, path
+
+
+def test_paper_era_g_structure_plumbing():
+    """g_x_vector + g_lambda/g_u/g_eta per-task keys (paper-era plain-C3
+    G structure experiment, 2026-08-17)."""
+    import numpy as np
+    from control.admm_solver import C3Solver
+    s = C3Solver(n_x=19, n_u=3, mode="c3plus")
+    vec = [100.0] * 4 + [10.0] * 3 + [800.0] * 3 + [0.1] * 9
+    s.apply_task_solver_scales(w_G=0.25, g_x_vector=vec,
+                               g_lambda=0.005, g_u=30.0, g_eta=0.12)
+    assert s._w_G == 0.25
+    assert s._g_lambda == 0.005
+    assert s._g_u == 30.0
+    assert s._g_eta == 0.12
+    assert np.allclose(s._g_x_vector, vec)
+
+
+def test_paper_era_keys_absent_keep_defaults():
+    from control.admm_solver import C3Solver
+    s = C3Solver(n_x=19, n_u=3, mode="c3plus")
+    g_lambda0, g_u0, g_eta0 = s._g_lambda, s._g_u, s._g_eta
+    s.apply_task_solver_scales(u_lambda=4.0, w_G=0.03)
+    assert s._g_lambda == g_lambda0 and s._g_u == g_u0 and s._g_eta == g_eta0
+    assert getattr(s, "_g_x_vector", None) is None
+
+
+def test_kik_jack_yaml_parses_g_structure():
+    from control.sampling_c3.params import SamplingC3Params
+    p = SamplingC3Params.from_yaml("config/sampling_c3_kik_jack.yaml")
+    assert p.w_G == 0.25
+    assert len(p.g_x_vector) == 19
+    assert p.g_x_vector[7] == 800.0     # EE pos x (port layout slot 7)
+    assert p.g_lambda == 0.005 and p.g_u == 30.0 and p.g_eta == 0.12

@@ -1108,6 +1108,7 @@ class InnerSolver:
         _solver_attrs_to_sync = (
             "_u_lambda", "_u_eta", "_end_on_qp_step", "_rho_scale",
             "_use_g_matrix", "_w_G", "_g_lambda", "_g_eta", "_g_x", "_g_u",
+            "_g_x_vector",
             "_w_G_ee_contact",
         )
 

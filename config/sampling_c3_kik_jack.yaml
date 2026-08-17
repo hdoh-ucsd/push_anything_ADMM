@@ -96,7 +96,27 @@ surrogate_admm_iters: 3
 # reference key is anything-only, so do NOT add it here). Falsified
 # 2026-08-16: HEAD + these values re-latches contact (jack_headscales).
 u_lambda: 4.0
-w_G: 0.03
+# PAPER-ERA G STRUCTURE (user-directed experiment 2026-08-17): the
+# jacktoy PAPER (arXiv 2505.13350) ran the plain-C3 solver whose
+# consensus G BINDS the state — sampling_c3_options.yaml @ d12eb6d1:
+# w_G 0.25, g_x [800 EE pos, 100 quat, 10 obj pos, 0.1 vels]
+# (REFERENCE layout), g_lambda_list 0.005/slot, g_u 30. Remapped to the
+# PORT x layout [quat(4), obj pos(3), EE pos(3), obj w(3), obj v(3),
+# EE v(3)]. u_lambda stays 4 — the paper's u_lambda_list=10 is a
+# QP-projection U-norm weight, NOT the C3+ tiebreak (raising the
+# tiebreak re-creates lambda-dominance). g_eta 0.12 keeps eta's
+# ABSOLUTE binding at the validated 0.03 (= 1.0 x 0.03) under the new
+# w_G. Revert = w_G 0.03, delete g_* keys.
+w_G: 0.25
+g_x_vector: [100, 100, 100, 100,
+             10, 10, 10,
+             800, 800, 800,
+             0.1, 0.1, 0.1,
+             0.1, 0.1, 0.1,
+             0.1, 0.1, 0.1]
+g_lambda: 0.005
+g_u: 30.0
+g_eta: 0.12
 u_horizontal_limit: 50.0
 u_vertical_limit: 50.0
 lcs_explicit_manipuland_ground_contacts: 3
