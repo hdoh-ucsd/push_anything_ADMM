@@ -109,6 +109,15 @@ class SamplingC3Controller:
         if _slv is not None:
             _slv._final_aug_contact_scaling = (
                 float(_fs_cfg) if _fs_cfg is not None else None)
+            # Per-task ADMM scales (2026-08-16 jacktoy regression fix):
+            # reference sets u_lambda_list / w_G per demo (jacktoy 4 /
+            # 0.03; anything 1000 / 0.18 = the class defaults). None keeps
+            # the defaults; worker-clone solvers inherit via
+            # _solver_attrs_to_sync (inner_solve builds kits lazily,
+            # after this push).
+            _slv.apply_task_solver_scales(
+                u_lambda=getattr(params, "u_lambda", None),
+                w_G=getattr(params, "w_G", None))
         # Per-task planner u-force limits (reference u_horizontal/vertical_
         # limits; push_t ±50/±50, anything ±10/±3). Consumed by the EE-space
         # u-box in ci_mpc_c3plus.compute_control; None → legacy scalar

@@ -165,6 +165,13 @@ class C3Solver:
         # diagonals directly: eta_larger = eta*sqrt(w_eta) > lambda*sqrt(
         # w_lambda). The scalar w_U cancels in that comparison, so only this
         # ratio is load-bearing.
+        # 2026-08-16: these are the ANYTHING-N1 literals; the reference is
+        # per-demo (jacktoy pins u_lambda_list = uniform 4 and w_G = 0.03,
+        # jacktoy/sampling_c3plus_options.yaml:192,:73). Globalizing 1000
+        # broke the jack's contact latch (λ-side projection endorsement
+        # ~90% with no final-QP boost to rescue the published plan). Tasks
+        # override via the sampling-c3 yaml keys `u_lambda` / `w_G` →
+        # apply_task_solver_scales below; absent keys keep these defaults.
         self._u_lambda           = 1000.0
         self._u_eta              = 1.0
         # 4.j — reference penalize_changes_in_u_across_solves. When True,
@@ -244,12 +251,14 @@ class C3Solver:
         # default-inert): temporarily pin w_G / u_lambda to a non-reference
         # value for single-knob attribution runs. Never set in canonical
         # launches — the yaml-free defaults above stay the reference values.
+        self._env_scale_overrides: set = set()
         for _env_key, _attr in (("PORT_W_G", "_w_G"),
                                 ("PORT_U_LAMBDA", "_u_lambda")):
             _v = _os_g.environ.get(_env_key, "")
             if _v:
                 try:
                     setattr(self, _attr, float(_v))
+                    self._env_scale_overrides.add(_attr)
                     print(f"[{_env_key}] FALSIFICATION override: "
                           f"{_attr}={getattr(self, _attr)}", flush=True)
                 except ValueError:
@@ -300,6 +309,28 @@ class C3Solver:
         self._lprobe_max_solves:  int         = 5
         self._lprobe_n_solves:    int         = 0
         self._lprobe_mpc_step:    int         = 0
+
+    # ------------------------------------------------------------------
+    def apply_task_solver_scales(self, u_lambda=None, w_G=None) -> None:
+        """Per-task ADMM scale overrides from the sampling-c3 yaml.
+
+        The class defaults are the anything-N1 literals (u_lambda 1000,
+        w_G 0.18); the reference sets these PER DEMO — jacktoy pins
+        u_lambda_list = uniform 4 and w_G = 0.03 (its
+        sampling_c3plus_options.yaml:192,:73). None leaves the default
+        untouched. An explicit PORT_U_LAMBDA / PORT_W_G falsification env
+        override (recorded in _env_scale_overrides at __init__) keeps
+        highest precedence — a yaml value never silently clobbers it.
+        """
+        for _attr, _val in (("_u_lambda", u_lambda), ("_w_G", w_G)):
+            if _val is None:
+                continue
+            if _attr in self._env_scale_overrides:
+                print(f"[TASK-SCALES] {_attr}: yaml value {float(_val)} "
+                      f"ignored — env falsification override "
+                      f"{getattr(self, _attr)} active", flush=True)
+                continue
+            setattr(self, _attr, float(_val))
 
     # ------------------------------------------------------------------
     def enable_lambda_horizon_probe(self,

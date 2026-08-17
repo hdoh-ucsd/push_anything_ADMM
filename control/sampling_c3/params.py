@@ -800,6 +800,21 @@ class SamplingC3Params:
     # verbatim — wsbounds lesson).
     final_augmented_cost_contact_scaling: Optional[float] = None
 
+    # Per-task ADMM solver scales — 2026-08-16 jacktoy contact-latch
+    # regression fix. The C3Solver class defaults are the anything-N1
+    # literals (u_lambda 1000, w_G 0.18; L3 @3202fbe), but the reference
+    # sets these PER DEMO: jacktoy/parameters/sampling_c3plus_options.yaml
+    # pins u_lambda_list = uniform 4 (:192) and w_G = 0.03 (:73). u_lambda
+    # is the λ-vs-η tiebreak weight in the C3+ componentwise projection
+    # (eta_larger = η·√u_eta > λ·√u_lambda); at 1000 the λ side wins
+    # ~31.6:1 → phantom endorsement dominates, and with no final-QP boost
+    # (jacktoy correctly lacks the key) the published plan parks the EE at
+    # standoff. None → keep the class defaults (T/box/letters unchanged).
+    # Pushed onto the solver via C3Solver.apply_task_solver_scales; the
+    # PORT_U_LAMBDA / PORT_W_G env hooks keep highest precedence.
+    u_lambda: Optional[float] = None
+    w_G:      Optional[float] = None
+
     # ---- Parallel sample evaluation (port-todo #1) -----------------------
     # Port of reference `num_outer_threads`
     # (sampling_c3plus_options.yaml:6, sampling_based_c3_controller.cc:415-422,
@@ -1246,6 +1261,12 @@ class SamplingC3Params:
                 float(raw["final_augmented_cost_contact_scaling"])
                 if raw.get("final_augmented_cost_contact_scaling") is not None
                 else None),
+            u_lambda = (
+                float(raw["u_lambda"])
+                if raw.get("u_lambda") is not None else None),
+            w_G = (
+                float(raw["w_G"])
+                if raw.get("w_G") is not None else None),
             u_horizontal_limit = (
                 float(raw["u_horizontal_limit"])
                 if raw.get("u_horizontal_limit") is not None else None),
