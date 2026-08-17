@@ -52,8 +52,14 @@ _STICKY_TAGS = {
     "[CONSENSUS-BIND]",
     "[CONSENSUS-DEF]",
     "[CONSENSUS]",
+    # jack flip-goal milestones: every persisted tripod change and every
+    # goal reach accumulates in the top panel (the flip tally IS the story
+    # of a topple-driver clip).
+    "[FLIP]",
+    "[GOAL-GEN] goal #",
+    "[GOAL-GEN] success mode",
 }
-_ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]"}
+_ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]", "[TOPPLE-DRIVER]"}
 _RESULT_TAG = "[RESULT]"
 
 _TAG_COLORS = {
@@ -69,6 +75,9 @@ _TAG_COLORS = {
     "[CONSENSUS-BIND]":        (180, 255, 220),
     "[CONSENSUS-DEF]":         (180, 255, 220),
     "[CONSENSUS]":             (255, 255, 180),
+    "[FLIP]":                  (120, 255, 120),
+    "[GOAL-GEN]":              (255, 240, 120),
+    "[TOPPLE-DRIVER]":         (255, 160, 160),
 }
 _DEFAULT_COLOR = (200, 200, 200)
 
@@ -98,12 +107,17 @@ def _tag_color(tag: str) -> Tuple[int, int, int]:
 
 
 def _line_family(line: str) -> str:
-    tag = _tag_of(line) or ""
-    if tag in _TAG_COLORS:
-        return "hi"
+    # Sticky wins over hi: several sticky milestone prefixes ALSO have a
+    # tag colour ([ACHIEVED-FIXED-GOAL], [FLIP], [GOAL-GEN] goal #...);
+    # checking colours first classified them "hi", and the rolling branch
+    # then dropped them (not [STEP]/[GS]/[C3+]) — the documented sticky
+    # panel never saw them.
     for sticky in _STICKY_TAGS:
         if line.startswith(sticky):
             return "sticky"
+    tag = _tag_of(line) or ""
+    if tag in _TAG_COLORS:
+        return "hi"
     if tag in _ROLLING_TAGS:
         return "rolling"
     return "skip"
@@ -300,7 +314,8 @@ def main():
                     elif fam in ("rolling", "hi") and (
                             line.startswith("[STEP]")
                             or line.startswith("[GS]")
-                            or line.startswith("[C3+]")):
+                            or line.startswith("[C3+]")
+                            or line.startswith("[TOPPLE-DRIVER]")):
                         rolling.append(line)
                     m = _STEP_RE.match(line)
                     if m:

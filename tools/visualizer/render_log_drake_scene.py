@@ -133,6 +133,31 @@ def parse_log_goal(log_path: Path):
     return goal_xy, goal_quat
 
 
+RE_REGOAL = re.compile(
+    r"\[GOAL-GEN\] goal #\d+ REACHED at t=([\d.]+)s -> new goal "
+    r"xy=\(([-+\d.]+),([-+\d.]+)\) tripod=\w+ "
+    r"quat=\[([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\]")
+
+
+def parse_log_regoals(log_path: Path):
+    """kRandom re-goal events: [{t, xy, quat}] in log order.
+
+    Each one starts a new goal SEGMENT — the goal ghost is anchored world
+    geometry, so the render env must be rebuilt with the new goal pose.
+    """
+    out = []
+    with open(log_path, errors="replace") as f:
+        for line in f:
+            m = RE_REGOAL.search(line)
+            if m:
+                out.append({
+                    "t": float(m.group(1)),
+                    "xy": [float(m.group(2)), float(m.group(3))],
+                    "quat": [float(m.group(i)) for i in range(4, 8)],
+                })
+    return out
+
+
 def load_task_cfg(task_name: str, task_id, log_goal_pair):
     """main.py's load_task; goal priority: explicit --task-id > log > yaml."""
     log_goal, log_goal_quat = log_goal_pair
@@ -197,28 +222,44 @@ def main():
     print("[render-log-drake] loading task config", flush=True)
     task_cfg = load_task_cfg(args.task, args.task_id, parse_log_goal(args.log))
 
-    print("[render-log-drake] building Drake env (add_camera=True, "
-          f"PORT_CAMERA_PERSPECTIVE={os.environ.get('PORT_CAMERA_PERSPECTIVE')})",
-          flush=True)
-    diagram, plant, panda_model, obj_model, meshcat, _pad, _cad, _vw = \
-        build_environment(task_cfg, add_camera=True)
+    # --- goal segments: the ghost is ANCHORED world geometry, so every
+    # kRandom re-goal needs an env rebuild with that segment's goal pose.
+    # Single-goal logs collapse to one segment (previous behavior).
+    seg_cfgs = [dict(task_cfg)]
+    seg_starts = [valid[0]]
+    for rg in parse_log_regoals(args.log):
+        b = next((k for k in valid
+                  if frames[k].get("sim_t", -1.0) >= rg["t"]), None)
+        if b is None:
+            continue
+        cfg = dict(task_cfg)
+        cfg["goal_xy"] = rg["xy"]
+        cfg["goal_quat"] = rg["quat"]
+        seg_cfgs.append(cfg)
+        seg_starts.append(b)
+    if len(seg_starts) > 1:
+        print(f"[render-log-drake] {len(seg_starts)} goal segments "
+              f"starting at steps {seg_starts}", flush=True)
 
-    simulator = ad.Simulator(diagram)
-    context   = simulator.get_mutable_context()
-    plant_ctx = plant.GetMyContextFromRoot(context)
-    drake_cam = diagram.GetSubsystemByName("drake_render_camera")
-
-    link_name = task_cfg["link_name"]
-    obj_body  = plant.GetBodyByName(link_name)
-    ee_frame  = plant.GetFrameByName(EE_BODY_NAME)
-
-    n_arm_dofs = plant.num_actuators()
-    q_lo_arm = plant.GetPositionLowerLimits()[:n_arm_dofs]
-    q_hi_arm = plant.GetPositionUpperLimits()[:n_arm_dofs]
-
-    # Seed the arm with the standard INITIAL_ARM_Q so the first IK pass
-    # starts from a legal home pose.
-    plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+    def _build_scene(cfg):
+        print("[render-log-drake] building Drake env (add_camera=True, "
+              f"goal_xy={cfg.get('goal_xy')})", flush=True)
+        diagram, plant, panda_model, _obj, _mc, _pad, _cad, _vw = \
+            build_environment(cfg, add_camera=True)
+        simulator = ad.Simulator(diagram)
+        context = simulator.get_mutable_context()
+        plant_ctx = plant.GetMyContextFromRoot(context)
+        drake_cam = diagram.GetSubsystemByName("drake_render_camera")
+        obj_body = plant.GetBodyByName(cfg["link_name"])
+        ee_frame = plant.GetFrameByName(EE_BODY_NAME)
+        n_arm = plant.num_actuators()
+        q_lo = plant.GetPositionLowerLimits()[:n_arm]
+        q_hi = plant.GetPositionUpperLimits()[:n_arm]
+        # Seed the arm with the standard INITIAL_ARM_Q so the first IK
+        # pass starts from a legal home pose.
+        plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+        return (simulator, context, plant, panda_model, plant_ctx,
+                drake_cam, obj_body, ee_frame, n_arm, q_lo, q_hi)
 
     # Timeline CSV — one row per rendered frame; paint_mode_text.py looks up
     # frame_NNNNNN.png's step in this file to pick the banner label.
@@ -229,9 +270,20 @@ def main():
     prev_arm_q = INITIAL_ARM_Q.copy()
     kept = 0
     ik_failures = 0
+    seg_idx = -1
     for step in valid:
         if step % args.stride != 0:
             continue
+        _entered_new_seg = False
+        while (seg_idx + 1 < len(seg_starts)
+               and step >= seg_starts[seg_idx + 1]):
+            seg_idx += 1
+            _entered_new_seg = True
+        if _entered_new_seg:
+            (_sim, context, plant, panda_model, plant_ctx, drake_cam,
+             obj_body, ee_frame, n_arm_dofs, q_lo_arm, q_hi_arm) = \
+                _build_scene(seg_cfgs[seg_idx])
+            prev_arm_q = INITIAL_ARM_Q.copy()
         rec = frames[step]
 
         # 1) Set the box floating-body pose from the log.
