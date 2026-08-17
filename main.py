@@ -619,11 +619,11 @@ def main():
         # into tasks.yaml by scripts/emit_controller_inertia.py from each
         # object's *_controller.sdf <inertial> block.
         controller_inertia=task_cfg.get("controller_inertia", None),
-        # Mesh-T tasks (object_sdf set) use the reference mesh's ground-
-        # witness footprint instead of the box-T vertex table.
+        # Fallback for object_sdf tasks WITHOUT a per-task witness key:
+        # port-computed mesh-footprint table (see _tshape_vertex_set_body_frame).
         tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
-        # Imported anything objects (Fig 8 campaign): per-task witness
-        # triangle from the object's reference *_controller.sdf spheres.
+        # Per-task witness triangle from the object's reference
+        # *_controller.sdf spheres (imported anything objects + push_t_mesh).
         mesh_ground_witnesses_body=task_cfg.get(
             "ground_witness_points_body", None),
     )

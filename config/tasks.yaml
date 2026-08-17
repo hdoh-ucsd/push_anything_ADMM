@@ -699,6 +699,16 @@ tasks:
       com: [0.0, 0.0, 0.0]
       moments: [0.003, 0.003, 0.006]
       products: [0.0, 0.0, 0.0]
+    # Reference ground-witness triangle: the 3 corner-sphere centres from
+    # T_shape_video_controller.sdf:289/300/311 (mesh-AABB bottom corners,
+    # emitted by the reference controller_sdf_generation.py get_obj_corners()).
+    # Replaces the port-computed bottom-slab extremity triangle (7a83bc2) —
+    # a port-only substitute; this is the reference literal, same mechanism
+    # as every auto-imported anything object below.
+    ground_witness_points_body:
+      - [-0.08161602, 0.08064646, -0.02428554]
+      - [-0.08161602, -0.08665214, -0.02428554]
+      - [0.13000116, -0.00300284, -0.02428554]
 
   # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
   I_shape_texture:

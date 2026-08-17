@@ -73,12 +73,12 @@ class LCSFormulator:
         # Mesh-T migration (2026-08-11): ground-witness table comes from the
         # reference T_shape_video mesh footprint instead of the box-T table.
         self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
-        # Fig 8 campaign (2026-08-15): per-task ground-witness table for
-        # generic imported anything objects — the 3 sphere positions from
-        # the object's reference *_controller.sdf, passed via the task's
-        # `ground_witness_points_body`. Takes precedence over the two
-        # hardcoded T tables when set; the push_t/push_t_mesh tasks don't
-        # set it, so their behavior is unchanged.
+        # Fig 8 campaign (2026-08-15): per-task ground-witness table — the
+        # 3 sphere positions from the object's reference *_controller.sdf,
+        # passed via the task's `ground_witness_points_body`. Takes
+        # precedence over the two hardcoded T tables when set. Set for all
+        # imported anything objects and (since 2026-08-17) push_t_mesh;
+        # push_t (box-T) keeps its analytic table.
         self._mesh_ground_witnesses_body = (
             None if mesh_ground_witnesses_body is None
             else np.asarray(mesh_ground_witnesses_body, dtype=float).reshape(3, 3).T)
@@ -470,8 +470,11 @@ class LCSFormulator:
             # positions from the object's reference *_controller.sdf.
             return self._mesh_ground_witnesses_body
         if self._tshape_mesh_witnesses:
-            # Reference T_shape_video mesh bottom-face support extremities
-            # (computed from T_shape_video.obj: bottom ring at z=-0.0243).
+            # FALLBACK ONLY (superseded 2026-08-17 for push_t_mesh by the
+            # per-task `ground_witness_points_body` reference literal above):
+            # port-computed T_shape_video.obj bottom-slab support extremities.
+            # NOT the reference controller-SDF sphere triangle — kept as the
+            # fallback for an object_sdf task that lacks the per-task key.
             return np.array([
                 [+0.1168, +0.0069, -0.0243],   # crossbar +x tip
                 [-0.0620, +0.0691, -0.0243],   # arm +y tip
