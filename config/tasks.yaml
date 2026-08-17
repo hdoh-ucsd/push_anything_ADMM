@@ -570,6 +570,15 @@ tasks:
     goal_quat: [0.8804762392171493, 0.27984814233312133,
                 -0.3647051996310009, -0.11591689595929514]
     goal_yaw: 0.0            # inert — goal_quat takes precedence
+    # Reference jacktoy goal_params.yaml goal_mode: 0 = kRandom — the goal
+    # above is only the INITIAL goal (reference ctor cc:67-69 starts from
+    # fixed_target_*); on success (xy < 0.02 AND geodesic < 0.1 rad,
+    # goal_generator.cc:135-154) a new goal is drawn: x U[0.42,0.5],
+    # y U[0.02,0.25], orientation = one of the 8 tripod rests x random
+    # world yaw (>= 90 deg extra yaw when the tripod index repeats).
+    # Implemented 2026-08-16 (JackRandomGoalGenerator); absent/kFixedGoal
+    # keeps the single fixed goal (the pre-2026-08-16 port behavior).
+    goal_mode: kRandom
 
     color_rgba: [0.90, 0.45, 0.10, 1.0]
     sampling_height: 0.069   # 0.04 + 0.029; unused by kRandomOnSphere
