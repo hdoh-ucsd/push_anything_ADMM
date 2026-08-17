@@ -77,6 +77,16 @@ ee_z_close: true
 use_reposition_pwl_trajectory: true
 w_rot: 0.0
 surrogate_admm_iters: 3
+# Per-task ADMM solver scales — 2026-08-16 contact-latch regression fix.
+# Reference jacktoy/parameters/sampling_c3plus_options.yaml pins
+# u_lambda_list = uniform 4 (:192-199) and w_G = 0.03 (:73); the port's
+# class defaults are the anything-N1 literals (1000 / 0.18, L3 @3202fbe)
+# which flipped the jack's C3+ projection to ~90% λ-endorsement and
+# published standoff plans (no final-QP boost exists for jacktoy — the
+# reference key is anything-only, so do NOT add it here). Falsified
+# 2026-08-16: HEAD + these values re-latches contact (jack_headscales).
+u_lambda: 4.0
+w_G: 0.03
 u_horizontal_limit: 50.0
 u_vertical_limit: 50.0
 lcs_explicit_manipuland_ground_contacts: 3
