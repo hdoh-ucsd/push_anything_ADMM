@@ -75,9 +75,7 @@ def test_params_from_dict_absent_is_none():
 def test_kik_jack_yaml_carries_jacktoy_literals():
     p = SamplingC3Params.from_yaml("config/sampling_c3_kik_jack.yaml")
     assert p.u_lambda == 4.0
-    # w_G was the jacktoy C3+ literal 0.03 until the paper-era G-structure
-    # experiment (2026-08-17, user-directed) set the plain-C3 paper value.
-    assert p.w_G == 0.25
+    assert p.w_G == 0.03   # A2: back to the C3+ literal; A1's 0.25 falsified
 
 
 def test_anything_lineage_yamls_leave_scales_absent():
@@ -113,10 +111,18 @@ def test_paper_era_keys_absent_keep_defaults():
     assert getattr(s, "_g_x_vector", None) is None
 
 
-def test_kik_jack_yaml_parses_g_structure():
+def test_g_structure_keys_parse_from_dict_yaml_reverted():
+    """The kik_jack paper-G experiment values were REVERTED (C3+ command
+    collapse — see the yaml's FALSIFIED note); the per-task plumbing
+    itself stays and is exercised via from_dict here."""
     from control.sampling_c3.params import SamplingC3Params
-    p = SamplingC3Params.from_yaml("config/sampling_c3_kik_jack.yaml")
+    vec = [100.0] * 4 + [10.0] * 3 + [800.0] * 3 + [0.1] * 9
+    p = SamplingC3Params.from_dict({
+        "w_G": 0.25, "g_x_vector": vec,
+        "g_lambda": 0.005, "g_u": 30.0, "g_eta": 0.12})
     assert p.w_G == 0.25
-    assert len(p.g_x_vector) == 19
-    assert p.g_x_vector[7] == 800.0     # EE pos x (port layout slot 7)
+    assert len(p.g_x_vector) == 19 and p.g_x_vector[7] == 800.0
     assert p.g_lambda == 0.005 and p.g_u == 30.0 and p.g_eta == 0.12
+    p2 = SamplingC3Params.from_yaml("config/sampling_c3_kik_jack.yaml")
+    assert p2.g_x_vector is None and p2.w_G == 0.03
+    assert p2.g_lambda is None and p2.g_u is None and p2.g_eta is None
