@@ -1090,6 +1090,11 @@ class SamplingC3Params:
     # Defaults match reference: ee_z_close=True, c3_min_clearance=0.01 m.
     ee_z_close: bool = True
     c3_min_clearance: float = 0.01
+    # Paper-era jacktoy opt-out (see ee_z_close note): when False, c3
+    # execution keeps the planner's raw EE z instead of freezing every
+    # knot to z_height (reference z-freeze added post-paper @ 99a8abaf
+    # 2025-08-12). Default True = current reference 257e3ed behavior.
+    freeze_c3_ee_z: bool = True
 
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
@@ -1316,6 +1321,7 @@ class SamplingC3Params:
             # T1a — EE_z altitude mode-switch gate (reference cc:1290-1293).
             ee_z_close                     = bool(raw.get("ee_z_close", True)),
             c3_min_clearance               = float(raw.get("c3_min_clearance", 0.01)),
+            freeze_c3_ee_z                 = bool(raw.get("freeze_c3_ee_z", True)),
             # 2026-06-25 reconciliation: tick-int → sim-time-float with
             # auto-conversion from old YAMLs. If the OLD int form is present
             # and the new _s float form is not, convert old × 0.01 (the

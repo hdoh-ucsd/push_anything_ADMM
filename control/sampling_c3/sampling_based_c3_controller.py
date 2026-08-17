@@ -4644,7 +4644,15 @@ class SamplingC3Controller:
                     _x_seq_full[i][7:10] for i in range(0, _N_plan)
                 ], dtype=float).T
                 _sh_c3 = self._c3_track_z()   # ref cc:1757-1759 z_height
-                _knots[2, :] = _sh_c3   # z-freeze every knot
+                # freeze_c3_ee_z=false (paper-era jacktoy, pre-99a8abaf):
+                # keep the planner's RAW z-profile — the z-freeze and the
+                # entry z-ceiling were BOTH added post-paper (Jul-Aug 2025)
+                # for the planar push-anything arc; the jack paper stack
+                # ran free 3D EE motion. Opt out only together with
+                # ee_z_close: false — freeze-on + ceiling-off recreates the
+                # 2026-08-10 one-tick slam-drop (123 N spikes).
+                if bool(getattr(self.params, "freeze_c3_ee_z", True)):
+                    _knots[2, :] = _sh_c3   # z-freeze every knot
                 # Consistency guard (2026-08-10). Freezing the track's z makes
                 # its z-derivative zero, which IS the reference's ydot_des
                 # (traj.EvalDerivative(t,1), osc_tracking_data.cc:91-99). But

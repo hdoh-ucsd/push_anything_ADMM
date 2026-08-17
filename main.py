@@ -964,8 +964,11 @@ def main():
             mpc.set_goal_quat(_pending_goal_quat)
         # Flip primitive: re-apply on the WRAPPER — `mpc` was rebound above,
         # so the earlier set on the base controller object is inert.
+        # PORT_FLIP_PRIMITIVE=0 disables it for emergent-toppling
+        # experiments (paper-era MPC alone, no scripted pushes).
         if (_goal_gen is not None and _goal_gen.success_mode == "flip"
-                and bool(task_cfg.get("flip_primitive", False))):
+                and bool(task_cfg.get("flip_primitive", False))
+                and os.environ.get("PORT_FLIP_PRIMITIVE", "1") != "0"):
             mpc._flip_primitive_enabled = True
         print(f"[GS] SamplingC3Controller enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
