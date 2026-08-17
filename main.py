@@ -48,6 +48,11 @@ from control.task_costs import QuadraticManipulationCost
 from control.ci_mpc_c3 import C3MPC
 from control.ci_mpc_c3plus import C3PlusMPC
 from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
+from control.sampling_c3.goal_generator import (
+    JackRandomGoalGenerator,
+    KNOMINAL_NAMES_JACK,
+    geodesic_angle,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +80,28 @@ class _Tee:
 # ---------------------------------------------------------------------------
 # Meshcat visualisation helpers
 # ---------------------------------------------------------------------------
+
+_JACK_GHOST_CAPS = (
+    ((0.0, 0.0, 0.0),    "/goal_marker/cap1"),
+    ((0.0, 1.5708, 0.0), "/goal_marker/cap2"),
+    ((1.5708, 0.0, 0.0), "/goal_marker/cap3"),
+)
+
+
+def _update_jack_goal_marker(meshcat, target_xy, goal_quat, z) -> None:
+    """Move the jack's three-capsule ghost to a (possibly new) goal pose.
+
+    Split out of _setup_meshcat_markers so kRandom re-goaling can relocate
+    the ghost without re-creating the meshcat objects.
+    """
+    _T_goal = ad.RigidTransform(
+        ad.RotationMatrix(ad.Quaternion(
+            goal_quat[0], goal_quat[1], goal_quat[2], goal_quat[3])),
+        [target_xy[0], target_xy[1], z])
+    for _rpy, _tag in _JACK_GHOST_CAPS:
+        meshcat.SetTransform(_tag, _T_goal.multiply(ad.RigidTransform(
+            ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])))
+
 
 def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> None:
     """
@@ -109,18 +136,10 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
         # Three-capsule ghost at the goal POSE (full quaternion, not a yaw).
         _gq = np.asarray(task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0]), float)
         _gq = _gq / float(np.linalg.norm(_gq))
-        _T_goal = ad.RigidTransform(
-            ad.RotationMatrix(ad.Quaternion(_gq[0], _gq[1], _gq[2], _gq[3])),
-            [target_xy[0], target_xy[1], init_z])
-        for _rpy, _tag in (
-            ((0.0, 0.0, 0.0),    "/goal_marker/cap1"),
-            ((0.0, 1.5708, 0.0), "/goal_marker/cap2"),
-            ((1.5708, 0.0, 0.0), "/goal_marker/cap3"),
-        ):
+        for _rpy, _tag in _JACK_GHOST_CAPS:
             meshcat.SetObject(_tag, ad.Capsule(0.025, 0.125),
                               ad.Rgba(0.1, 0.9, 0.1, 0.35))
-            meshcat.SetTransform(_tag, _T_goal.multiply(ad.RigidTransform(
-                ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])))
+        _update_jack_goal_marker(meshcat, target_xy, _gq, init_z)
     elif task_cfg["object_type"] == "hshape":
         # Three-box ghost matching _hshape_sdf's decomposition.
         _goal_yaw = float(task_cfg.get("goal_yaw", 0.0))
@@ -740,6 +759,32 @@ def main():
                 f"quaternion goal is static (no per-tick geodesic SLERP), so this "
                 f"task would be mis-modelled. Implement the SLERP lookahead "
                 f"(reference goal_generator.cc:410-434) before running it.")
+    # ------------------------------------------------------------------
+    # kRandom goal semantics (reference goal_params.yaml goal_mode: 0 —
+    # the SHIPPED mode for every reference demo). The fixed goal above is
+    # the reference's INITIAL goal (goal_generator.cc ctor :67-69); on
+    # success the generator draws the next one. Only wired for quaternion
+    # (SE(3)) tasks; planar tasks keep their locked-in fixed goals.
+    # Reference seeds each draw from std::random_device; the port derives
+    # a dedicated stream from --seed for reproducible goal sequences.
+    # ------------------------------------------------------------------
+    _goal_gen = None
+    if (str(task_cfg.get("goal_mode", "")) == "kRandom"
+            and target_quat is not None):
+        _goal_gen = JackRandomGoalGenerator(
+            rng=np.random.default_rng(
+                None if args.seed is None else [args.seed, 0x60A1]),
+            initial_xy=target_xy,
+            initial_quat=target_quat,
+        )
+        print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
+              f"initial goal xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
+              f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+              f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
+    # Diagnostic (default-inert): force one re-goal at planner step N to
+    # exercise the live re-goal path without a real goal achievement.
+    _goal_gen_force_step = int(
+        os.environ.get("DIAG_GOALGEN_FORCE_REGOAL_AT_STEP", "-1") or -1)
     ee_frame    = plant.GetFrameByName(EE_BODY_NAME)
     world_frame = plant.world_frame()
 
@@ -977,6 +1022,44 @@ def main():
         # sub-goal each tick rather than the distant final goal.
         _lookahead = 0.15
         _obj_xy_now = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
+        # kRandom re-goaling (reference goal_generator.cc:135-154 success
+        # gate + :378-389 OnGoalReached). On success: new goal to the cost
+        # + dispatcher; ghost moves; the achieved latch is reset because the
+        # reference latch is kFixedGoal-only (controller cc:914-916).
+        # target_yaw stays stale — inert for quaternion tasks (goal_quat
+        # takes precedence in the cost and the dispatcher rot error).
+        if _goal_gen is not None:
+            _obj_quat_now = np.array(
+                [current_q[pos_start + _i] for _i in range(4)])
+            _regoaled = _goal_gen.check_and_regoal(_obj_xy_now, _obj_quat_now)
+            if not _regoaled and step == _goal_gen_force_step:
+                _goal_gen.force_regoal()
+                _regoaled = True
+                print(f"[GOAL-GEN] DIAG forced re-goal at step={step}",
+                      flush=True)
+            if _regoaled:
+                target_xy   = _goal_gen.goal_xy.copy()
+                target_quat = _goal_gen.goal_quat.copy()
+                quad_cost.set_goal_quat(target_quat)
+                if hasattr(mpc, "set_goal_quat"):
+                    mpc.set_goal_quat(target_quat)
+                if hasattr(mpc, "_achieved_fixed_goal"):
+                    mpc._achieved_fixed_goal = False
+                    mpc._off_target_streak = 0
+                _update_jack_goal_marker(meshcat, target_xy, target_quat,
+                                         task_cfg["init_xyz"][2])
+                _gg_demand = geodesic_angle(target_quat, _obj_quat_now)
+                print(f"[GOAL-GEN] goal #{_goal_gen.goals_reached} REACHED "
+                      f"at t={sim_time:.3f}s -> new goal "
+                      f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
+                      f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
+                      f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+                      f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}] "
+                      f"demand={_gg_demand:.3f} rad"
+                      + ("  [WARN > 2.0 rad lookahead_angle -- static-goal "
+                         "deviation, see GOAL-QUAT note]"
+                         if _gg_demand > 2.0 else ""),
+                      flush=True)
         _delta_vec  = target_xy - _obj_xy_now
         _dist       = float(np.linalg.norm(_delta_vec))
         if _dist > 1e-9:
@@ -1257,6 +1340,12 @@ def main():
     _tight = _tight_final or _tight_latched
     _tight_reason = ("final" if _tight_final
                      else ("latched" if _tight_latched else "-"))
+    if _goal_gen is not None:
+        # kRandom headline: the reference task is continuous re-goaling, so
+        # goals_reached is the success count; RESULT below is measured
+        # against the LAST active goal only.
+        print(f"[GOAL-GEN] goals_reached={_goal_gen.goals_reached} "
+              f"(kRandom re-goaling; RESULT metrics are vs the final goal)")
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
           f"translational_error={final_dist:.4f}m  "
