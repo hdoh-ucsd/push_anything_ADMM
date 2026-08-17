@@ -110,23 +110,40 @@ def parse_log_goal(log_path: Path):
     (0.30, 0) while the run pushed toward (0.482, 0.187)).
     """
     pat = re.compile(r"\[ENV\]\s+Goal coords:\s*\[([-\d.eE+]+),\s*([-\d.eE+]+)\]")
+    # SE(3) tasks (jack) also log the ACTIVE goal quaternion; with
+    # krandom_draw_initial_goal the drawn quat differs from tasks.yaml's
+    # boot value, so the ghost must take it from the log too.
+    pat_q = re.compile(
+        r"\[GOAL-QUAT\] goal_quat=\[([-+\d.eE]+)\s+([-+\d.eE]+)\s+"
+        r"([-+\d.eE]+)\s+([-+\d.eE]+)\]")
+    goal_xy, goal_quat = None, None
     with open(log_path, errors="replace") as f:
         for _ in range(500):
             line = f.readline()
             if not line:
                 break
             m = pat.search(line)
-            if m:
-                return [float(m.group(1)), float(m.group(2))]
-    return None
+            if m and goal_xy is None:
+                goal_xy = [float(m.group(1)), float(m.group(2))]
+            m = pat_q.search(line)
+            if m and goal_quat is None:
+                goal_quat = [float(m.group(i)) for i in (1, 2, 3, 4)]
+            if goal_xy is not None and goal_quat is not None:
+                break
+    return goal_xy, goal_quat
 
 
-def load_task_cfg(task_name: str, task_id, log_goal):
+def load_task_cfg(task_name: str, task_id, log_goal_pair):
     """main.py's load_task; goal priority: explicit --task-id > log > yaml."""
+    log_goal, log_goal_quat = log_goal_pair
     root = Path(__file__).resolve().parents[2]
     with open(root / "config" / "tasks.yaml") as f:
         all_tasks = yaml.safe_load(f)["tasks"]
     task_cfg = dict(all_tasks[task_name])
+    if log_goal_quat is not None:
+        task_cfg["goal_quat"] = log_goal_quat
+        print(f"[render-log-drake] goal quat from log [GOAL-QUAT] line: "
+              f"{log_goal_quat}")
     if task_id is not None:
         with open(root / "config" / "directional_tasks.json") as f:
             dir_cfg = json.load(f)

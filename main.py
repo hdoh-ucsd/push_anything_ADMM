@@ -460,6 +460,43 @@ def main():
 
     task_cfg = load_task(task_name)
 
+    # ------------------------------------------------------------------
+    # kRandom goal semantics (reference goal_params.yaml goal_mode: 0).
+    # Constructed HERE — before build_environment — so an initial-goal
+    # draw (krandom_draw_initial_goal, user directive 2026-08-16: the
+    # random-quaternion chase IS the jacktoy task) mutates task_cfg and
+    # every downstream consumer (Drake-scene ghost, meshcat markers,
+    # cost, dispatcher, log header) sees the drawn goal with no extra
+    # wiring. Reference boots from the fixed target and randomizes only
+    # on success (ctor cc:67-69; verified against the captured
+    # REF_jacktoy run) — the draw samples the reference's steady-state
+    # goal distribution from t=0 instead of its one-time boot transient.
+    # ------------------------------------------------------------------
+    _goal_gen = None
+    _initial_goal_drawn = False
+    if (str(task_cfg.get("goal_mode", "")) == "kRandom"
+            and task_cfg.get("goal_quat") is not None):
+        _goal_gen = JackRandomGoalGenerator(
+            rng=np.random.default_rng(
+                None if args.seed is None else [args.seed, 0x60A1]),
+            initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
+            initial_quat=np.asarray(task_cfg["goal_quat"], dtype=float),
+        )
+        if bool(task_cfg.get("krandom_draw_initial_goal", False)):
+            _goal_gen.draw_initial_goal()
+            task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
+                                   float(_goal_gen.goal_xy[1])]
+            task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
+            _initial_goal_drawn = True
+            _gq0 = _goal_gen.goal_quat
+            print(f"[GOAL-GEN] initial goal DRAWN "
+                  f"(krandom_draw_initial_goal, seed={args.seed}): "
+                  f"xy=({task_cfg['goal_xy'][0]:+.3f},"
+                  f"{task_cfg['goal_xy'][1]:+.3f}) "
+                  f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
+                  f"quat=[{_gq0[0]:+.4f} {_gq0[1]:+.4f} "
+                  f"{_gq0[2]:+.4f} {_gq0[3]:+.4f}]")
+
     # Directional task override
     if args.task_id is not None:
         import json
@@ -756,32 +793,27 @@ def main():
               f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]  "
               f"reorientation demand = {_demand:.4f} rad ({np.degrees(_demand):.1f} deg)")
         if _demand > 2.0:
-            raise SystemExit(
-                f"[GOAL-QUAT] task demands {_demand:.3f} rad of reorientation, "
-                f"which exceeds goal_params lookahead_angle = 2.0 rad. The port's "
-                f"quaternion goal is static (no per-tick geodesic SLERP), so this "
-                f"task would be mis-modelled. Implement the SLERP lookahead "
-                f"(reference goal_generator.cc:410-434) before running it.")
-    # ------------------------------------------------------------------
-    # kRandom goal semantics (reference goal_params.yaml goal_mode: 0 —
-    # the SHIPPED mode for every reference demo). The fixed goal above is
-    # the reference's INITIAL goal (goal_generator.cc ctor :67-69); on
-    # success the generator draws the next one. Only wired for quaternion
-    # (SE(3)) tasks; planar tasks keep their locked-in fixed goals.
-    # Reference seeds each draw from std::random_device; the port derives
-    # a dedicated stream from --seed for reproducible goal sequences.
-    # ------------------------------------------------------------------
-    _goal_gen = None
-    if (str(task_cfg.get("goal_mode", "")) == "kRandom"
-            and target_quat is not None):
-        _goal_gen = JackRandomGoalGenerator(
-            rng=np.random.default_rng(
-                None if args.seed is None else [args.seed, 0x60A1]),
-            initial_xy=target_xy,
-            initial_quat=target_quat,
-        )
+            if _initial_goal_drawn:
+                # A drawn goal is one draw of the reference's continuous
+                # distribution — demands > lookahead_angle run under the
+                # static-goal deviation (same WARN as re-goals).
+                print(f"[GOAL-QUAT] WARN drawn goal demands {_demand:.3f} rad "
+                      f"> 2.0 rad lookahead_angle — static-goal deviation "
+                      f"(SLERP lookahead unported)")
+            else:
+                raise SystemExit(
+                    f"[GOAL-QUAT] task demands {_demand:.3f} rad of reorientation, "
+                    f"which exceeds goal_params lookahead_angle = 2.0 rad. The port's "
+                    f"quaternion goal is static (no per-tick geodesic SLERP), so this "
+                    f"task would be mis-modelled. Implement the SLERP lookahead "
+                    f"(reference goal_generator.cc:410-434) before running it.")
+    # _goal_gen was constructed just after load_task (initial-draw path
+    # mutates task_cfg before build_environment). Banner here, where the
+    # normalized target_quat exists.
+    if _goal_gen is not None:
         print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
-              f"initial goal xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
+              f"goal #1 {'DRAWN' if _initial_goal_drawn else 'fixed (reference boot value)'} "
+              f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
               f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
               f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
     # Diagnostic (default-inert): force one re-goal at planner step N to
