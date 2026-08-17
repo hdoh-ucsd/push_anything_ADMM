@@ -931,18 +931,16 @@ def main():
             # (interior draw + signed-distance projection off the real
             # collision geometry) — they have no face tables, and the old
             # box-T table mis-placed their approach targets (never-engaged
-            # class). push_t_mesh is EXCLUDED: it keeps the validated
-            # box-T face table (~6 passing draws at this HEAD) after the
-            # projection sampler spun it in 3/3 gate draws across three
-            # standoff variants (1.86/1.80/2.97 rad — standoff falsified
-            # as the mechanism; the interior-projection DISTRIBUTION
-            # interaction is an open question, see memory
-            # fig8-sampler-hardcoded-facetable-bug addendum). Legacy
-            # analytic tasks (push_t, push_h) keep their tables — their
-            # sim geometry IS the analytic shape.
-            use_geometry_perimeter_sampling=(
-                bool(task_cfg.get("object_sdf", None))
-                and args.task != "push_t_mesh"),
+            # class). 2026-08-17: push_t_mesh is now INCLUDED (T-mesh
+            # divergence fix 2) — the box-T face table was a port-only
+            # substitute (reference PerimeterSampling has no face tables).
+            # The earlier 3/3 gate-draw spins that motivated the opt-out
+            # predate the reference witness triangle (089aaf6); re-gated
+            # at the canonical seed with that fix in. Legacy analytic
+            # tasks (push_t, push_h) keep their tables — their sim
+            # geometry IS the analytic shape.
+            use_geometry_perimeter_sampling=bool(
+                task_cfg.get("object_sdf", None)),
         )
         # SE(3) tasks: hand the controller the full goal orientation so its
         # rotation error is the geodesic angle rather than a yaw difference.
