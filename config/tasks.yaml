@@ -710,6 +710,75 @@ tasks:
       - [-0.08161602, -0.08665214, -0.02428554]
       - [0.13000116, -0.00300284, -0.02428554]
 
+  # BLOCK-T (2026-08-17, user directive): the website's "Push T" object —
+  # the reference push_t.sdf two-box T — loaded VERBATIM as reference
+  # assets (byte-identical copies in sim/models/push_t_block/), replacing
+  # the port-analytic _tshape_sdf build. Reference frame (vertical_link
+  # origin at crossbar centre; stem welded at (-0.10,0,0)): the goal
+  # literals below are the reference's own fixed_target for this body, so
+  # no COM-frame shift correction applies. Sim mass == controller mass
+  # (1.0 kg both SDFs) → no controller_mass/controller_inertia override;
+  # the plant's weld composite IS the reference planning model. The
+  # reference planner's EE-object pairs use vertical_link geometry only
+  # (franka_sampling_c3_controller.cc:205-239) — the port's body-based
+  # geom collection on link_name reproduces that exactly.
+  push_t_block:
+    object_type: tshape
+    link_name: vertical_link
+    mass: 1.0
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.02]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    # Reference push_t sampling_params literals in port ground frame
+    # (ref 0.005/0.06 above its z=-0.029 ground — see the push_t task's
+    # frame-shift comments): sampling 0.034, pwl 0.075.
+    sampling_height: 0.034
+    pwl_waypoint_height: 0.075
+    object_sdf: sim/models/push_t_block/push_t.sdf
+    # Reference ground-witness triangle: the 3 sphere centres from
+    # push_t_control.sdf:44-66 (vertical_link frame — top_left/top_right
+    # on the stem's outer corners, bottom at the crossbar tip).
+    ground_witness_points_body:
+      - [-0.12, 0.08, -0.02]
+      - [-0.12, -0.08, -0.02]
+      - [0.08, 0.0, -0.02]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.034
+      z_obj_target: 0.02
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+
   # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
   I_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,

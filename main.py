@@ -280,8 +280,8 @@ def main():
                                "config", "tasks.yaml")) as _f:
             _task_choices = sorted(_yaml_choices.safe_load(_f)["tasks"].keys())
     except Exception:
-        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_h",
-                         "push_jack"]
+        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_t_block",
+                         "push_h", "push_jack"]
     parser.add_argument(
         "task", nargs="?", default="pushing",
         choices=_task_choices,

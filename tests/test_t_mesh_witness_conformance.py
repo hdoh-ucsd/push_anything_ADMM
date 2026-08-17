@@ -34,15 +34,24 @@ def _sphere_collision_poses(sdf_path):
     return np.asarray(poses)
 
 
-def test_push_t_mesh_witnesses_match_controller_sdf():
-    sdf_centres = _sphere_collision_poses(SDF)
-    assert sdf_centres.shape == (3, 3), (
-        "reference controller SDF must carry exactly 3 corner spheres")
+BLOCK_SDF = REPO / "sim/models/push_t_block/push_t_control.sdf"
 
+
+def _check(task_name, sdf_path):
+    sdf_centres = _sphere_collision_poses(sdf_path)
+    assert sdf_centres.shape == (3, 3), (
+        f"{sdf_path.name} must carry exactly 3 corner spheres")
     with open(TASKS) as f:
         tasks = yaml.safe_load(f)
-    task_cfg = tasks["tasks"]["push_t_mesh"]
+    task_cfg = tasks["tasks"][task_name]
     yaml_pts = np.asarray(task_cfg["ground_witness_points_body"], dtype=float)
-
     # Same points, same registration order (top-left, top-right, bottom).
     np.testing.assert_allclose(yaml_pts, sdf_centres, atol=1e-12)
+
+
+def test_push_t_mesh_witnesses_match_controller_sdf():
+    _check("push_t_mesh", SDF)
+
+
+def test_push_t_block_witnesses_match_controller_sdf():
+    _check("push_t_block", BLOCK_SDF)
