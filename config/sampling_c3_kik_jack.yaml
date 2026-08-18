@@ -83,7 +83,14 @@ use_surface_entry_gate: false
 # jacktoy yaml. Opt out of BOTH together (ceiling-off + freeze-on
 # recreates the 2026-08-10 one-tick slam-drop).
 ee_z_close: false
-freeze_c3_ee_z: false
+# 2026-08-17 REF-VALIDATED RECIPE (jacktoy_eezoff1 capture): the
+# reference C3+ @ 257e3ed with ONLY the entry ceiling off (our invented
+# ee_z_close:true removed) runs the FULL jacktoy loop — topple
+# BlueDown->AllUp @ c3-loop 2079, GOAL REACHED (pos<0.02 AND rot<0.1) @
+# loop 2531, redraw, 69 entries/3611 c3 loops/180s — WITH THE Z-FREEZE
+# ON (unconditional at 257e3ed). High entry + z-frozen low target = the
+# reference's pressing mechanism, not a defect. freeze back ON to match.
+freeze_c3_ee_z: true
 use_reposition_pwl_trajectory: true
 w_rot: 0.0
 surrogate_admm_iters: 3
