@@ -728,7 +728,14 @@ tasks:
     mass: 1.0
     friction: 0.3
     pusher_friction: 1.0
-    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    # Reference push_t demo's OWN per-task planner-mu literal
+    # (push_t/parameters/sampling_c3plus_options.yaml:44, order
+    # [ee-ground, ee-T, T-ground] = [0.4165, 1, 0.4615]) — replaces the
+    # generic anything constants (0.823/0.42/0.46) that seeded this task.
+    # BOX-GND 0.4615 is the exact Drake combine 2*0.3*1/1.3 for these sim
+    # materials; EE-BOX 1.0 over-promises sim grip 2.2x but is what the
+    # paper hardware ran on its 28-consecutive-tight-goals push_t video.
+    mu_per_pair_type: {EE-BOX: 1.0, BOX-GND: 0.4615, EE-GND: 0.4165}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     init_xyz: [0.5, 0.0, 0.02]
     goal_xy: [0.482, 0.187]
