@@ -879,6 +879,45 @@ def main():
                         [float(_task_g[0]), float(_task_g[1])])
                 print(f"[OVERRIDE] {_gk}={_task_g} "
                       f"(was {_was_g}, per-task '{task_name}')")
+        # 2026-08-17: per-task sampling strategy + kMeshNormal literals.
+        # The strategy is a per-demo reference literal: push_t runs
+        # kRandomOnPerimeter (kik_t default), the ANYTHING lineage runs
+        # kMeshNormal(MultiObject) — anything sampling_params.yaml:14
+        # sampling_strategy: 7, N=1 ≡ port kMeshNormal.
+        _task_strat = task_cfg.get("sampling_strategy")
+        if _task_strat is not None:
+            from control.sampling_c3.params import SamplingStrategy as _SS
+            _was_s = sc3_params.sampling_params.sampling_strategy
+            sc3_params.sampling_params.sampling_strategy = _SS[_task_strat]
+            print(f"[OVERRIDE] sampling_strategy={_task_strat} "
+                  f"(was {_was_s.name}, per-task '{task_name}')")
+        for _sk, _cast in (("sample_projection_clearance", float),
+                           ("buffer_distance", float),
+                           ("max_attempts", int),
+                           ("barycentric_bias", float)):
+            _task_v = task_cfg.get(_sk)
+            if _task_v is not None:
+                _was_v = getattr(sc3_params.sampling_params, _sk, None)
+                setattr(sc3_params.sampling_params, _sk, _cast(_task_v))
+                print(f"[OVERRIDE] {_sk}={_task_v} "
+                      f"(was {_was_v}, per-task '{task_name}')")
+        # kMeshNormal face preprocessing — AFTER the overrides so the
+        # reference z-filter uses the final buffer/clearance literals.
+        _mesh_faces_for_task = None
+        from control.sampling_c3.params import SamplingStrategy as _SSm
+        if (sc3_params.sampling_params.sampling_strategy
+                == _SSm.kMeshNormal):
+            from control.sampling_c3.sampling import load_mesh_faces
+            from pathlib import Path as _PathM
+            _obj_p = (_PathM(task_cfg["object_sdf"]).parent
+                      / f"{task_cfg['link_name']}.obj")
+            _spm = sc3_params.sampling_params
+            _mesh_faces_for_task = load_mesh_faces(
+                str(_obj_p), _spm.buffer_distance,
+                _spm.sample_projection_clearance)
+            print(f"[MESH-NORMAL] {_obj_p.name}: "
+                  f"{len(_mesh_faces_for_task['areas'])} side-wall faces, "
+                  f"total_area={_mesh_faces_for_task['total_area']:.4f} m^2")
         # 2026-07-19: per-task pwl_waypoint_height override. Object top varies
         # by task (T top 0.04, box top 0.10), so the PWL traverse height must
         # be per-object to keep sphere-bottom above object top. tasks.yaml
@@ -954,6 +993,12 @@ def main():
             # geometry IS the analytic shape.
             use_geometry_perimeter_sampling=bool(
                 task_cfg.get("object_sdf", None)),
+            # kMeshNormal (anything lineage): preprocess the object's
+            # full-resolution OBJ into the reference face set. Path
+            # convention mirrors the reference's
+            # "urdf/<base_name>/<base_name>.obj"
+            # (sampling_based_c3_controller.cc:435-438).
+            mesh_faces=_mesh_faces_for_task,
         )
         # SE(3) tasks: hand the controller the full goal orientation so its
         # rotation error is the geodesic angle rather than a yaw difference.
