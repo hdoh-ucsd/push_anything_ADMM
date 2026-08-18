@@ -380,6 +380,14 @@ class SamplingParams:
     # sample_reject_clearance above.
     sample_projection_clearance:         float = 0.02   # m — reference value
 
+    # kMeshNormal (reference ANYTHING lineage — anything/parameters/
+    # sampling_params.yaml:59-61; algorithm generate_samples.cc:445-551,
+    # face preprocessing sampling_based_c3_controller.cc:430-489).
+    # Defaults = the anything literals.
+    buffer_distance:                     float = 0.035  # m, offset along face normal
+    max_attempts:                        int   = 100    # per-sample retry cap
+    barycentric_bias:                    float = 1.0    # 1 = uniform on face
+
     # kRandomOnPerimeter sampling window (body-frame bounding box).
     # Reference push_t/parameters/sampling_params.yaml:39-40 grid_x/y_limits.
     # When None, sampling.py:709-716 falls back to shape-hardcoded defaults

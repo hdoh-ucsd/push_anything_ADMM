@@ -80,7 +80,8 @@ class SamplingC3Controller:
                  start_in_c3_mode: bool = False,
                  *,
                  diagram=None,
-                 use_geometry_perimeter_sampling: bool = False):
+                 use_geometry_perimeter_sampling: bool = False,
+                 mesh_faces: dict | None = None):
         """Construct the outer sampling-C3 controller.
 
         Parameters
@@ -99,6 +100,10 @@ class SamplingC3Controller:
         # the analytic _POLY_SHAPES face tables. Per-tick projector closure
         # built in compute_control; None keeps the legacy face-table path.
         self._use_geometry_perimeter = bool(use_geometry_perimeter_sampling)
+        # kMeshNormal (anything lineage): preprocessed body-frame face set
+        # from the object's OBJ (sampling.load_mesh_faces); None for tasks
+        # on other strategies.
+        self._mesh_faces = mesh_faces
         self._perimeter_projector = None
         self._obj_z_now = None
         # C3Plus final-solve contact boost (c3_plus.cc:131-145): plumb the
@@ -516,6 +521,7 @@ class SamplingC3Controller:
             yaw_delta = yaw_delta,
             obj_z     = getattr(self, "_obj_z_now", None),
             projector = getattr(self, "_perimeter_projector", None),
+            mesh_faces = self._mesh_faces,
         )
         # Log ALL raw samples emitted by generate_samples before any
         # filtering — deep-log addition for direction-commit debugging.

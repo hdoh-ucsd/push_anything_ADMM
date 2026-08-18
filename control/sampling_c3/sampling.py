@@ -165,6 +165,110 @@ def _surface_clearance(x: float, y: float, rects) -> float:
 # Public dispatch
 # ---------------------------------------------------------------------------
 
+def load_mesh_faces(obj_path, buffer_distance: float, clearance: float) -> dict:
+    """Preprocess an OBJ into the kMeshNormal face set.
+
+    Port of the reference's one-time face enumeration
+    (sampling_based_c3_controller.cc:430-489): parse triangles from the
+    object's full-resolution OBJ, compute per-face normal/area, and apply
+    the reference near-horizontal rejection — keep a face iff
+    ``normal_z^2 < (buffer_distance^2 - clearance^2) + 0.04`` — so only
+    (near-)vertical side walls are sampled. Returns body-frame arrays plus
+    cumulative-area bins for the area-weighted face draw.
+    """
+    verts, tris = [], []
+    with open(obj_path) as f:
+        for line in f:
+            if line.startswith("v "):
+                verts.append([float(x) for x in line.split()[1:4]])
+            elif line.startswith("f "):
+                idx = [int(t.split("/")[0]) - 1 for t in line.split()[1:]]
+                for i in range(1, len(idx) - 1):
+                    tris.append([idx[0], idx[i], idx[i + 1]])
+    V = np.asarray(verts, dtype=float)
+    T = np.asarray(tris, dtype=int)
+    v0, v1, v2 = V[T[:, 0]], V[T[:, 1]], V[T[:, 2]]
+    cr = np.cross(v1 - v0, v2 - v0)
+    nrm = np.linalg.norm(cr, axis=1)
+    ok = nrm > 1e-12
+    normals = np.zeros_like(cr)
+    normals[ok] = cr[ok] / nrm[ok, None]
+    areas = 0.5 * nrm
+    z_accept = buffer_distance ** 2 - clearance ** 2
+    keep = ok & (normals[:, 2] ** 2 < z_accept + 0.04)
+    if not keep.any():
+        raise ValueError(f"No valid kMeshNormal faces in {obj_path}")
+    tri_v = np.stack([v0[keep], v1[keep], v2[keep]], axis=1)  # (F, 3, 3)
+    normals = normals[keep]
+    areas = areas[keep]
+    bins = np.concatenate([[0.0], np.cumsum(areas)])
+    return dict(tri=tri_v, normals=normals, areas=areas,
+                bins=bins, total_area=float(bins[-1]))
+
+
+def _random_on_mesh_normal(n_samples: int,
+                           obj_xy:    np.ndarray,
+                           params:    SamplingParams,
+                           rng:       np.random.Generator,
+                           obj_quat:  Optional[np.ndarray],
+                           obj_z:     Optional[float],
+                           projector,
+                           mesh_faces: dict) -> list[np.ndarray]:
+    """Reference kMeshNormal (generate_samples.cc:445-551, the ANYTHING
+    lineage's sampler — anything sampling_params.yaml sampling_strategy: 7,
+    N=1 ≡ port kMeshNormal):
+
+      1. Transform the preprocessed side-wall faces into world with the
+         object's current pose.
+      2. Draw a face area-weighted (cumulative-area bins), then a
+         barycentric point on it (exponent ``barycentric_bias``; 1 =
+         uniform, reference fold if a+b>1).
+      3. Offset the point ``buffer_distance`` along the face's outward
+         normal; snap world z to sampling_height (gen_planar_samples).
+      4. Reject if signed distance to the object <= clearance (too close /
+         inside); retry up to ``max_attempts`` per sample.
+
+    Deviation (documented): on retry exhaustion the reference THROWS
+    (cc:549-551); the port returns fewer samples — the caller handles a
+    short list, and a degenerate tick must not kill the controller.
+    """
+    buffer_distance = float(getattr(params, "buffer_distance", 0.035))
+    bias = float(getattr(params, "barycentric_bias", 1.0))
+    max_attempts = int(getattr(params, "max_attempts", 100))
+    clearance = float(params.sample_projection_clearance)
+    h = float(params.sampling_height)
+    q = (np.asarray(obj_quat, dtype=float)
+         if obj_quat is not None else np.array([1.0, 0.0, 0.0, 0.0]))
+    R = _quat_to_rot(q)
+    z_obj = float(obj_z) if obj_z is not None else h
+    t = np.array([float(obj_xy[0]), float(obj_xy[1]), z_obj])
+    tri_w = mesh_faces["tri"] @ R.T + t
+    nrm_w = mesh_faces["normals"] @ R.T
+    bins = mesh_faces["bins"]
+    total = mesh_faces["total_area"]
+    out: list[np.ndarray] = []
+    for _ in range(int(n_samples)):
+        for _try in range(max_attempts):
+            f = int(np.searchsorted(bins, rng.uniform(0.0, total),
+                                    side="right") - 1)
+            f = min(max(f, 0), len(nrm_w) - 1)
+            a = rng.uniform() ** bias
+            b = rng.uniform() ** bias
+            if a + b > 1.0:
+                a, b = 1.0 - a, 1.0 - b
+            p = ((1.0 - a - b) * tri_w[f, 0]
+                 + a * tri_w[f, 1] + b * tri_w[f, 2])
+            p = p + buffer_distance * nrm_w[f]
+            p[2] = h
+            if projector is not None:
+                d, _ = projector(p)
+                if d is None or d <= clearance:
+                    continue
+            out.append(np.asarray(p, dtype=float))
+            break
+    return out
+
+
 def generate_samples(strategy:    SamplingStrategy,
                      n_samples:   int,
                      obj_xy:      np.ndarray,
@@ -175,6 +279,7 @@ def generate_samples(strategy:    SamplingStrategy,
                      yaw_delta:   Optional[float] = None,
                      obj_z:       Optional[float] = None,
                      projector=None,
+                     mesh_faces: Optional[dict] = None,
                      ) -> list[np.ndarray]:
     """
     Generate n_samples 3D EE target positions.
@@ -233,6 +338,14 @@ def generate_samples(strategy:    SamplingStrategy,
                 n_samples, obj_xy, params, rng, g_hat, obj_quat)
     elif strategy == SamplingStrategy.kRandomOnSphere:
         raw = _random_on_sphere(n_samples, obj_xy, params, rng, obj_z)
+    elif strategy == SamplingStrategy.kMeshNormal:
+        if mesh_faces is None:
+            raise ValueError(
+                "kMeshNormal requires mesh_faces (load_mesh_faces on the "
+                "object's OBJ) — the task must provide a mesh")
+        raw = _random_on_mesh_normal(
+            n_samples, obj_xy, params, rng, obj_quat, obj_z, projector,
+            mesh_faces)
     else:
         raise NotImplementedError(
             f"Sampling strategy {strategy.name} not yet implemented; "
