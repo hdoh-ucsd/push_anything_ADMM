@@ -866,6 +866,19 @@ def main():
             sc3_params.sampling_params.sampling_height = float(_task_sample_h)
             print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
                   f"(was {_was_sh:.3f}, per-task '{task_name}')")
+        # 2026-08-17: per-task grid_x/y_limits override. The perimeter-sampler
+        # draw grid is a PER-DEMO reference literal (push_t [-0.12,0.08] x
+        # [-0.08,0.08]; anything [-0.11,0.11]^2) and each object belongs to
+        # one lineage: push_t_block to the push_t demo (the shared kik_t yaml
+        # carries those), the mesh letters to anything. Absent -> yaml value.
+        for _gk in ("grid_x_limits", "grid_y_limits"):
+            _task_g = task_cfg.get(_gk)
+            if _task_g is not None:
+                _was_g = getattr(sc3_params.sampling_params, _gk, None)
+                setattr(sc3_params.sampling_params, _gk,
+                        [float(_task_g[0]), float(_task_g[1])])
+                print(f"[OVERRIDE] {_gk}={_task_g} "
+                      f"(was {_was_g}, per-task '{task_name}')")
         # 2026-07-19: per-task pwl_waypoint_height override. Object top varies
         # by task (T top 0.04, box top 0.10), so the PWL traverse height must
         # be per-object to keep sphere-bottom above object top. tasks.yaml
