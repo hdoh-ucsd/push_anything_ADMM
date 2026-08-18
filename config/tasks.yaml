@@ -597,7 +597,15 @@ tasks:
     # this makes the score measure the actual blocker (topple induction).
     # Draws avoid the current tripod so every goal demands a flip. Remove
     # the key (or set "reference") to restore the reference gate.
-    goal_success_mode: flip
+    # 2026-08-17 pt3 (user: "flip and translate/rotate in the same
+    # time"): back to the FULL REFERENCE gate — pos<0.02 AND rot<0.1.
+    # Now reachable: under the ref-validated recipe the emergent MPC
+    # flips AND refines simultaneously (measured t=104s: 0.024m/0.196rad
+    # vs the just-flipped-onto goal — the flip gate's early latch was
+    # cutting off the refinement). flip mode remains available by
+    # setting this back to: flip. flip_primitive below is inert under
+    # reference mode (gated to flip mode in main.py).
+    goal_success_mode: reference
     # User directive 2026-08-17 pt2: the CONTROLLER induces the flips
     # itself (no diagnostic external forces): a staged EE push primitive
     # at the toggling capsule's up-tip, goal-ward roll selection. Only
