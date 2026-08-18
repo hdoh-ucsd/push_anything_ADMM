@@ -3374,10 +3374,27 @@ class SamplingC3Controller:
 
         else:
             # Free mode: pick a repos target and run the PWL tracker.
+            # Reference cc:1236-1247: the pursued repos target changes ONLY
+            # through the kToBetterRepos branch (a fresh sample beating the
+            # current target by the repos-to-repos hysteresis) or a mode
+            # transition. The port's former per-tick pure-argmin re-selection
+            # was a divergence: near the goal the cost landscape is flat, so
+            # the argmin teleported the target to a new random perimeter
+            # point every tick (block-T endgame: median 117 mm/tick drift,
+            # PWL rebuilt at 13 Hz, EE pinned at waypoint height, c3 starved
+            # for 72 s — meshT/blockT tight blocker). When decide_mode says
+            # kStayInRepos and the held prev_repos slot is present and
+            # feasible, keep pursuing it verbatim.
+            _held_ok = (reason == SwitchReason.kStayInRepos
+                        and len(labels) > 1 and labels[1] == "prev_repos"
+                        and results[1] is not None
+                        and bool(results[1].feasible))
+            if _held_ok:
+                target_idx = 1
             # If k_star == 0 (current EE wins on c_sample but we're in
             # free per the mode-switch logic — typically because progress
             # timed out), use the best non-current sample as the target.
-            if k_star == 0 or k_star is None:
+            elif k_star == 0 or k_star is None:
                 target_idx = best_other_idx
             else:
                 target_idx = k_star
