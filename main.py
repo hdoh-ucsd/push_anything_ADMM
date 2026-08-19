@@ -475,17 +475,21 @@ def main():
     _env_goal_mode = os.environ.get("PORT_GOAL_MODE")
     if _env_goal_mode:
         task_cfg["goal_mode"] = _env_goal_mode
-        if task_cfg.get("goal_quat") is None and "goal_yaw" in task_cfg:
-            _hy = 0.5 * float(task_cfg["goal_yaw"])
-            task_cfg["goal_quat"] = [float(np.cos(_hy)), 0.0, 0.0,
-                                     float(np.sin(_hy))]
-            print(f"[GOAL-GEN] PORT_GOAL_MODE={_env_goal_mode}: boot "
-                  f"goal_quat synthesized from goal_yaw "
-                  f"{task_cfg['goal_yaw']}", flush=True)
+    # The generator works in quaternions internally. Planar tasks do NOT
+    # get task_cfg["goal_quat"] set — they stay on the target_yaw path so
+    # the reference yaw lookahead (goal_params lookahead_angle 2 +
+    # angle_hysteresis 0.4; cc:427 min(angle, lookahead)) chunks large
+    # re-goal demands into sub-goals. Installing a goal quat bypasses that
+    # machinery (main.py GOAL-QUAT note) — the first 5-goal attempt stalled
+    # 390 s on a 2.66 rad static demand exactly this way.
+    _gg_boot_quat = task_cfg.get("goal_quat")
+    if _gg_boot_quat is None and "goal_yaw" in task_cfg:
+        _hy = 0.5 * float(task_cfg["goal_yaw"])
+        _gg_boot_quat = [float(np.cos(_hy)), 0.0, 0.0, float(np.sin(_hy))]
     _goal_gen = None
     _initial_goal_drawn = False
     if (str(task_cfg.get("goal_mode", "")) == "kRandom"
-            and task_cfg.get("goal_quat") is not None):
+            and _gg_boot_quat is not None):
         # Planar (tshape) objects have ONE flat-resting nominal orientation
         # (reference GetNominalOrientations) — pass [identity] so every
         # re-draw after the first applies >=90 deg of yaw to the previous
@@ -505,9 +509,10 @@ def main():
             rng=np.random.default_rng(
                 None if args.seed is None else [args.seed, 0x60A1]),
             initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
-            initial_quat=np.asarray(task_cfg["goal_quat"], dtype=float),
+            initial_quat=np.asarray(_gg_boot_quat, dtype=float),
             **_gg_kwargs,
         )
+        _gg_planar = (task_cfg.get("object_type") == "tshape")
         if bool(task_cfg.get("krandom_draw_initial_goal", False)):
             _goal_gen.draw_initial_goal()
             task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
@@ -837,11 +842,13 @@ def main():
     # mutates task_cfg before build_environment). Banner here, where the
     # normalized target_quat exists.
     if _goal_gen is not None:
+        _gg_q_str = ("target_yaw path (planar; reference yaw lookahead active)"
+                     if target_quat is None else
+                     f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+                     f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
         print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
               f"goal #1 {'DRAWN' if _initial_goal_drawn else 'fixed (reference boot value)'} "
-              f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
-              f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
-              f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
+              f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) {_gg_q_str}")
     # Diagnostic (default-inert): force one re-goal at planner step N to
     # exercise the live re-goal path without a real goal achievement.
     _goal_gen_force_step = int(
@@ -1155,11 +1162,24 @@ def main():
                 print(f"[GOAL-GEN] DIAG forced re-goal at step={step}",
                       flush=True)
             if _regoaled:
-                target_xy   = _goal_gen.goal_xy.copy()
-                target_quat = _goal_gen.goal_quat.copy()
-                quad_cost.set_goal_quat(target_quat)
-                if hasattr(mpc, "set_goal_quat"):
-                    mpc.set_goal_quat(target_quat)
+                target_xy = _goal_gen.goal_xy.copy()
+                _gg_new_quat = _goal_gen.goal_quat.copy()
+                if _gg_planar:
+                    # Planar task: stay on the target_yaw path — the
+                    # per-tick yaw lookahead below (reference
+                    # goal_params lookahead_angle 2 / angle_hysteresis
+                    # 0.4, cc:427 min(angle, lookahead)) then chunks the
+                    # new demand into <=2 rad sub-goals. Installing the
+                    # quat would bypass it (static-goal deviation — the
+                    # first 5-goal attempt stalled 390 s on 2.66 rad).
+                    target_yaw = float(np.arctan2(
+                        2.0 * (_gg_new_quat[0] * _gg_new_quat[3]),
+                        1.0 - 2.0 * (_gg_new_quat[3] ** 2)))
+                else:
+                    target_quat = _gg_new_quat
+                    quad_cost.set_goal_quat(target_quat)
+                    if hasattr(mpc, "set_goal_quat"):
+                        mpc.set_goal_quat(target_quat)
                 # Reference goal-change reset (cc:827-845): position regime,
                 # achieved latch, progress, and BOTH sample buffers.
                 if hasattr(mpc, "reset_for_new_goal"):
@@ -1167,19 +1187,19 @@ def main():
                 elif hasattr(mpc, "_achieved_fixed_goal"):
                     mpc._achieved_fixed_goal = False
                     mpc._off_target_streak = 0
-                _update_jack_goal_marker(meshcat, target_xy, target_quat,
+                _update_jack_goal_marker(meshcat, target_xy, _gg_new_quat,
                                          task_cfg["init_xyz"][2])
-                _gg_demand = geodesic_angle(target_quat, _obj_quat_now)
+                _gg_demand = geodesic_angle(_gg_new_quat, _obj_quat_now)
                 print(f"[GOAL-GEN] goal #{_goal_gen.goals_reached} REACHED "
                       f"at t={sim_time:.3f}s -> new goal "
                       f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
                       f"tripod={_goal_gen.nominal_names[_goal_gen.orientation_index]} "
-                      f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
-                      f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}] "
+                      f"quat=[{_gg_new_quat[0]:+.4f} {_gg_new_quat[1]:+.4f} "
+                      f"{_gg_new_quat[2]:+.4f} {_gg_new_quat[3]:+.4f}] "
                       f"demand={_gg_demand:.3f} rad"
                       + ("  [WARN > 2.0 rad lookahead_angle -- static-goal "
                          "deviation, see GOAL-QUAT note]"
-                         if _gg_demand > 2.0 else ""),
+                         if (_gg_demand > 2.0 and not _gg_planar) else ""),
                       flush=True)
                 # PORT_GOALGEN_N: stop the run once N goals have been
                 # achieved (achievements counted by the generator, boot
