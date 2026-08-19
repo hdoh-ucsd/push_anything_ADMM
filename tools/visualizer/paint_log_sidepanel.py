@@ -51,7 +51,8 @@ _STICKY_TAGS = {
     "[C3] PORT_USE_DRAKE_VIDEO_WRITER",
     "[CONSENSUS-BIND]",
     "[CONSENSUS-DEF]",
-    "[CONSENSUS]",
+    # NOT "[CONSENSUS]": the per-iteration i=/k= startup echo is 20+ lines
+    # on jack runs and drowns the milestone block ([FLIP]/goal lines).
     # jack flip-goal milestones: every persisted tripod change and every
     # goal reach accumulates in the top panel (the flip tally IS the story
     # of a topple-driver clip).
