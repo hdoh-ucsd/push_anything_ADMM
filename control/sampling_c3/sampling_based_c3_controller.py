@@ -628,40 +628,6 @@ class SamplingC3Controller:
             - np.asarray(ee_pos_now, dtype=float)))
         return float(buf_entry.cost) + w_travel * dist
 
-    # ----------------------------------------------------------------------
-    def _reconcile_surface_target(self,
-                                  default_p_ee_des: np.ndarray,
-                                  obj_xy: np.ndarray) -> np.ndarray:
-        """§7.31 — Override the EE desired-state to the SAMPLED FACE POINT
-        (~zero buffer, surface). Formerly gated by REF_RECONCILE_APPROACH;
-        now always active.
-
-        Matches the reference's `x_desired = c3_object->GetDesiredState()`
-        (sampling_based_c3_controller.cc:500): the OSC tracks the sampled
-        face point in BOTH modes. The port stores the sample at
-        `sampling_setback` (≈30 mm) OUTSIDE the face; this method projects
-        it back along the outward face normal so the target is at the
-        surface itself (buffer_distance ≈ 0, matching the reference's
-        push_t parameter).
-
-        Returns the original `default_p_ee_des` unchanged when:
-          * the flag is OFF, or
-          * `_current_repos_target` is None (no active sample), or
-          * the sample is at the box centre (degenerate normal).
-        """
-        sample = self._current_repos_target
-        if sample is None or obj_xy is None:
-            return default_p_ee_des
-        sp = self.params.sampling_params
-        setback = float(getattr(sp, "sampling_setback", 0.030))
-        delta_xy = np.asarray(sample[:2], dtype=float) - np.asarray(obj_xy, dtype=float)
-        norm = float(np.linalg.norm(delta_xy))
-        if norm < 1e-6:
-            return default_p_ee_des
-        n_outward_xy = delta_xy / norm
-        surface_xy = np.asarray(sample[:2], dtype=float) - setback * n_outward_xy
-        return np.array([surface_xy[0], surface_xy[1], float(sample[2])])
-
     def _derive_force_command(self,
                               lambda_n: Optional[np.ndarray],
                               g_hat_3d: np.ndarray,

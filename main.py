@@ -213,17 +213,6 @@ def load_task(task_name: str) -> dict:
     return tasks[task_name]
 
 
-def _obj_size_from_cfg(task_cfg: dict) -> float:
-    if task_cfg["object_type"] == "sphere":
-        return float(task_cfg["radius"]) * 2.0
-    if task_cfg["object_type"] == "tshape":
-        # Rough T size: max linear extent (crossbar tip to stem back) = 0.20 m.
-        # Used only for meshcat camera framing / visual-only helpers, not
-        # dynamics — an approximation is fine.
-        return 0.20
-    return float(task_cfg["size"][0])
-
-
 def build_planner_workspace_bounds(sc3_params) -> list:
     """Planner workspace state rows (reference cc:995-1025) for the EE-space
     LCS: [(state_idx, lo, hi), ...] bounding the EE position AND object
