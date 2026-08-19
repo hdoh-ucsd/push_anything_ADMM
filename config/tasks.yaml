@@ -774,6 +774,11 @@ tasks:
       - [-0.12, 0.08, -0.02]
       - [-0.12, -0.08, -0.02]
       - [0.08, 0.0, -0.02]
+    # kRandom re-goaling draw box (reference push_t/goal_params.yaml:33-34
+    # random_goal_x/y_limits). INERT unless goal_mode is kRandom (canonical
+    # runs stay fixed-goal; enable via PORT_GOAL_MODE=kRandom).
+    random_goal_x_limits: [0.44, 0.52]
+    random_goal_y_limits: [0.02, 0.25]
     cost:
       use_reference_q_vector: true
       w_Q: 80.0

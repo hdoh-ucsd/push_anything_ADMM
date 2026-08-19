@@ -468,15 +468,45 @@ def main():
     # REF_jacktoy run) — the draw samples the reference's steady-state
     # goal distribution from t=0 instead of its one-time boot transient.
     # ------------------------------------------------------------------
+    # PORT_GOAL_MODE: env override to run a task under kRandom re-goaling
+    # (the reference's consecutive-goals protocol, goal_params goal_mode: 0)
+    # without touching its canonical yaml. Planar tasks get their boot
+    # quat synthesized from goal_yaw (flat rest: yaw quat ≡ full goal).
+    _env_goal_mode = os.environ.get("PORT_GOAL_MODE")
+    if _env_goal_mode:
+        task_cfg["goal_mode"] = _env_goal_mode
+        if task_cfg.get("goal_quat") is None and "goal_yaw" in task_cfg:
+            _hy = 0.5 * float(task_cfg["goal_yaw"])
+            task_cfg["goal_quat"] = [float(np.cos(_hy)), 0.0, 0.0,
+                                     float(np.sin(_hy))]
+            print(f"[GOAL-GEN] PORT_GOAL_MODE={_env_goal_mode}: boot "
+                  f"goal_quat synthesized from goal_yaw "
+                  f"{task_cfg['goal_yaw']}", flush=True)
     _goal_gen = None
     _initial_goal_drawn = False
     if (str(task_cfg.get("goal_mode", "")) == "kRandom"
             and task_cfg.get("goal_quat") is not None):
+        # Planar (tshape) objects have ONE flat-resting nominal orientation
+        # (reference GetNominalOrientations) — pass [identity] so every
+        # re-draw after the first applies >=90 deg of yaw to the previous
+        # goal quat (cc:330-336). The jack keeps its tripod nominals.
+        _gg_kwargs = {}
+        if task_cfg.get("object_type") == "tshape":
+            _gg_kwargs["nominal_orientations"] = [
+                np.array([1.0, 0.0, 0.0, 0.0])]
+            _gg_kwargs["nominal_names"] = ["planar"]
+        if task_cfg.get("random_goal_x_limits") is not None:
+            _gg_kwargs["x_limits"] = tuple(
+                float(v) for v in task_cfg["random_goal_x_limits"])
+        if task_cfg.get("random_goal_y_limits") is not None:
+            _gg_kwargs["y_limits"] = tuple(
+                float(v) for v in task_cfg["random_goal_y_limits"])
         _goal_gen = JackRandomGoalGenerator(
             rng=np.random.default_rng(
                 None if args.seed is None else [args.seed, 0x60A1]),
             initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
             initial_quat=np.asarray(task_cfg["goal_quat"], dtype=float),
+            **_gg_kwargs,
         )
         if bool(task_cfg.get("krandom_draw_initial_goal", False)):
             _goal_gen.draw_initial_goal()
@@ -1130,7 +1160,11 @@ def main():
                 quad_cost.set_goal_quat(target_quat)
                 if hasattr(mpc, "set_goal_quat"):
                     mpc.set_goal_quat(target_quat)
-                if hasattr(mpc, "_achieved_fixed_goal"):
+                # Reference goal-change reset (cc:827-845): position regime,
+                # achieved latch, progress, and BOTH sample buffers.
+                if hasattr(mpc, "reset_for_new_goal"):
+                    mpc.reset_for_new_goal()
+                elif hasattr(mpc, "_achieved_fixed_goal"):
                     mpc._achieved_fixed_goal = False
                     mpc._off_target_streak = 0
                 _update_jack_goal_marker(meshcat, target_xy, target_quat,
@@ -1139,7 +1173,7 @@ def main():
                 print(f"[GOAL-GEN] goal #{_goal_gen.goals_reached} REACHED "
                       f"at t={sim_time:.3f}s -> new goal "
                       f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
-                      f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
+                      f"tripod={_goal_gen.nominal_names[_goal_gen.orientation_index]} "
                       f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
                       f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}] "
                       f"demand={_gg_demand:.3f} rad"
@@ -1147,6 +1181,16 @@ def main():
                          "deviation, see GOAL-QUAT note]"
                          if _gg_demand > 2.0 else ""),
                       flush=True)
+                # PORT_GOALGEN_N: stop the run once N goals have been
+                # achieved (achievements counted by the generator, boot
+                # goal included). Diagnostic-class env gate for the
+                # consecutive-goals protocol; unset = run to max-time.
+                _gg_n = int(os.environ.get("PORT_GOALGEN_N", "0") or 0)
+                if _gg_n > 0 and _goal_gen.goals_reached >= _gg_n:
+                    print(f"[GOAL-GEN] COMPLETE: {_goal_gen.goals_reached} "
+                          f"goals achieved (PORT_GOALGEN_N={_gg_n}) at "
+                          f"t={sim_time:.3f}s — ending run", flush=True)
+                    break
         _delta_vec  = target_xy - _obj_xy_now
         _dist       = float(np.linalg.norm(_delta_vec))
         if _dist > 1e-9:
