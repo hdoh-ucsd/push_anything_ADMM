@@ -217,7 +217,9 @@ class C3Solver:
         # ref 0) and λ got 50× more (100 vs 2). This ill-conditioned the
         # ADMM. When enabled, replaces `rho * I` with `rho * diag(G_diag)`
         # in the P and q_total updates. Default True for c3+ mode.
-        # Env-gate: REFCONF_USE_G_MATRIX=1 to enable (default OFF).
+        # (Was env-gated REFCONF_USE_G_MATRIX=1, default OFF. That gate is
+        # gone — see the defaults-flip note below and `self._use_g_matrix =
+        # True`. Nothing reads REFCONF_USE_G_MATRIX any more.)
         # 2026-07-22 test (p68/p69): full ref G with g_x=g_u=0 destabilizes
         # port ADMM — T physically tipped in p69, trans regressed in p68.
         # Reference-conformance for G matrix requires additional structural

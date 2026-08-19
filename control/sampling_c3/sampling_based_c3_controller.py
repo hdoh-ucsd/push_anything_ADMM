@@ -1634,7 +1634,8 @@ class SamplingC3Controller:
         # Unify by seeding c_samples from `c_C3_raw` when the env-gate is on.
         # Downstream inflations (finished_reposition_cost, buffer append) then
         # apply UNIFORMLY to both progress and gate signals — no split.
-        # Env: REFCONF_MODE_SWITCH_USE_C3_RAW=1 (default ON = reference-conformant).
+        # (Was env-gated REFCONF_MODE_SWITCH_USE_C3_RAW=1; that gate is retired
+        # and unread — the seeding below is unconditional.)
         # In current push_t config (w_align=w_travel=w_rot=0) c_C3_raw equals
         # r.c_sample so this is a no-op; the change is defensive.
         c_samples = [float(r.c_C3_raw) for r in results]
@@ -3848,12 +3849,15 @@ class SamplingC3Controller:
             # ground), so lam_n.size >= 1 even with no EE-BOX pair.
             _ee_box_pairs = getattr(self.base_mpc.formulator,
                                     "_last_ee_box_contacts", [])
-            # §7.51 — PORT_DISABLE_C3_OVERRIDE (default-OFF) skips the LTD
-            # APPROACH-OVERRIDE block entirely, leaving _p_ee_des at the FK
-            # source (_x_seq[1][7:10] at line 2263). Validated as load-bearing
-            # for the first box closure in §7.51 (with PORT_EE_APPROACH_FACE_TARGET=1
-            # + w_ee_approach=8000 + W_force=1). Default-OFF
-            # byte-identical preserved. One-shot log on first c3 tick.
+            # §7.51 — skipping the LTD APPROACH-OVERRIDE block leaves
+            # _p_ee_des at the FK source (_x_seq[1][7:10] at line 2263).
+            # Validated as load-bearing for the first box closure in §7.51
+            # (with PORT_EE_APPROACH_FACE_TARGET=1 + w_ee_approach=8000 +
+            # W_force=1). One-shot log on first c3 tick.
+            # (Formerly gated by PORT_DISABLE_C3_OVERRIDE; that env var is
+            # retired and unread. The "default-OFF byte-identical preserved"
+            # claim that stood here contradicted the defaults-flip note
+            # immediately below it.)
             # 2026-07-28 defaults flip: the LTD approach-override is a
             # port-only divergence with no reference analog — skipping it
             # is now unconditional (was PORT_DISABLE_C3_OVERRIDE=1,
