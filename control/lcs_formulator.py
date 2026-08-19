@@ -162,6 +162,11 @@ class LCSFormulator:
         # flip). The tshape path supersedes it with exact top-K admission
         # (planner k=1, cost k=2 — matches reference [0,1,3]/[0,2,3]).
         self._always_on_ee_box = True
+        # Hard-wired ON, same as _always_on_ee_box above. The configs used to
+        # carry a `use_reference_pair_admission_planner_lcs: true` key that
+        # read as if it controlled this; nothing ever parsed it, so it was
+        # removed from the yamls rather than left looking live. Scoped to
+        # tshape/hshape at both use sites below, so the box path is unaffected.
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
         # 2026-08-15 step-3 verdict (memory

@@ -242,21 +242,30 @@ class SamplingC3Controller:
         self._reconcile_feedforward_accel = (
             bool(int(_env_ffa)) if _env_ffa else False)
 
-        # §7.55 — PORT_DISABLE_CONTACT_LOSS_GATE (default-OFF) skips the
-        # CONTACT-LOSS-EXIT watchdog at _solve_plan() that forces c3→repos
-        # after `_no_ee_box_streak ≥ contact_loss_threshold_*_s/dt_ctrl`
-        # consecutive no-contact ticks. The reference (dairlib_sampling_c3
-        # @257e3ed, systems/controllers/sampling_based_c3_controller.cc:1150-
-        # 1184) has NO such watchdog — it exits c3 only via cost+hysteresis
-        # or the cost-based progress timeout. With PORT_DISABLE_C3_OVERRIDE=1
-        # (§7.51), the disengage threshold drops to contact_loss_threshold_
-        # default_s = 5 ticks at 100 Hz, which bounces c3 out before contact
-        # admits (§7.54 root-cause). This flag is SEPARATE from
-        # PORT_DISABLE_C3_OVERRIDE so the effect of the watchdog removal is cleanly
-        # attributable. Default-OFF byte-identical preserved.
-        # Default flipped to disable the port-only watchdog by default —
-        # the reference dispatcher has no such gate. Explicit re-enable
-        # via PORT_DISABLE_CONTACT_LOSS_GATE=0 for legacy runs.
+        # §7.55 — PORT_DISABLE_CONTACT_LOSS_GATE, DEFAULT-ON ("1" below), i.e.
+        # the watchdog it names is DISABLED unless you ask for it back.
+        #
+        # It skips the CONTACT-LOSS-EXIT watchdog at _solve_plan() that forces
+        # c3→repos after `_no_ee_box_streak ≥
+        # contact_loss_threshold_*_s/dt_ctrl` consecutive no-contact ticks.
+        # The reference (dairlib_sampling_c3 @257e3ed,
+        # systems/controllers/sampling_based_c3_controller.cc:1150-1184) has NO
+        # such watchdog — it exits c3 only via cost+hysteresis or the
+        # cost-based progress timeout — so skipping it is the conformant
+        # behaviour and that is why the default was flipped to on. Set
+        # PORT_DISABLE_CONTACT_LOSS_GATE=0 to restore the port-only watchdog
+        # for legacy runs.
+        #
+        # Historically the watchdog mattered because with
+        # PORT_DISABLE_C3_OVERRIDE=1 (§7.51) the disengage threshold dropped to
+        # contact_loss_threshold_default_s = 5 ticks at 100 Hz, bouncing c3 out
+        # before contact admitted (§7.54 root-cause). This flag is SEPARATE
+        # from PORT_DISABLE_C3_OVERRIDE so the watchdog removal stays cleanly
+        # attributable.
+        #
+        # (The three "default-OFF / byte-identical preserved" claims that used
+        # to head this comment predated the flip and contradicted the code
+        # directly below them.)
         self._disable_contact_loss_gate = (
             _os_rec.environ.get("PORT_DISABLE_CONTACT_LOSS_GATE", "1") == "1")
 
