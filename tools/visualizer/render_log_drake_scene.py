@@ -47,6 +47,10 @@ from sim.env_builder import (  # noqa: E402
 )
 from control.sampling_c3.ik import solve_ik_to_ee_pos  # noqa: E402
 
+# Vertical-tool rotation target for the per-frame IK — identical to the
+# sim's _R_vert (sim/env_builder.py) that the OSC holds at Kp_rot=800.
+_R_VERT = ad.RotationMatrix()
+
 
 RE_GATE = re.compile(
     r"^\[GATE-CONTACT\] step=(\d+).*?"
@@ -332,13 +336,21 @@ def main():
             plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
 
             # DLS IK so the pusher sphere sits at the (interpolated) ee
-            # position. Warm-start from the previous arm q.
-            plant.SetPositions(plant_ctx, panda_model, prev_arm_q)
+            # position. Warm-start from the previous arm q. 6-DOF with the
+            # tool held vertical (identity R — sim/env_builder.py _R_vert,
+            # the OSC's own Kp_rot=800 hold): position-only IK leaves a
+            # 4-dim null space that drifts across joint branches on long
+            # continuous renders (full-600s render: the wrist flipped
+            # during the t=440-457s flip burst and stayed wrong for the
+            # remaining 140 s). The small home-pull on the seed anchors the
+            # remaining 1-DOF elbow redundancy without visible snapping.
+            seed_q = 0.98 * prev_arm_q + 0.02 * INITIAL_ARM_Q
+            plant.SetPositions(plant_ctx, panda_model, seed_q)
             q_full = plant.GetPositions(plant_ctx).copy()
             q_sol, err, it = solve_ik_to_ee_pos(
                 plant, ee_frame, eep, q_full, plant_ctx,
                 n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
-                q_lo=q_lo_arm, q_hi=q_hi_arm,
+                q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_VERT,
             )
             if err > 5e-3:
                 # Retry once from the standard home pose.
@@ -347,7 +359,7 @@ def main():
                 q_sol, err, it = solve_ik_to_ee_pos(
                     plant, ee_frame, eep, q_full, plant_ctx,
                     n_arm_dofs=n_arm_dofs, max_iter=120, damping=0.02,
-                    q_lo=q_lo_arm, q_hi=q_hi_arm,
+                    q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_VERT,
                 )
                 if err > 5e-3:
                     ik_failures += 1
