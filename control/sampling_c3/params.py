@@ -1168,6 +1168,17 @@ class SamplingC3Params:
         # tests/test_sampling_c3_params.py::test_empty_yaml_uses_all_defaults
         # asserts `from_yaml("") == SamplingC3Params()` and is the regression
         # guard for exactly this; it was failing on those four fields.
+        #
+        # Unknown TOP-LEVEL keys were silently discarded until now: the nested
+        # sections go through _filter_kwargs (which warns), but this method
+        # reads `raw` with explicit .get() calls and never looked at what was
+        # left over. That is how `use_reference_pair_admission_planner_lcs`
+        # sat in three configs looking live while nothing parsed it. Warn, do
+        # not raise — a stale key should not stop a run.
+        _known = {f.name for f in fields(cls)}
+        for _k in sorted(set(raw) - _known):
+            print(f"[sampling_c3.params] warning: unknown SamplingC3Params "
+                  f"field {_k!r} ignored", flush=True)
         return cls(
             progress_params   = ProgressParams.from_dict(raw.get("progress_params", {}) or {}),
             sampling_params   = SamplingParams.from_dict(raw.get("sampling_params", {}) or {}),
