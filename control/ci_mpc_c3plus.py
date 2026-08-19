@@ -592,13 +592,21 @@ class C3PlusMPC:
             ee_velocity_bounds=self.ee_velocity_bounds,
         )
         _solve_wall_s = _time_solve.perf_counter() - _t0_solve
-        # Reference sampling_based_c3_controller.cc:1394-1397 filter.
+        # Reference sampling_based_c3_controller.cc:1408-1418 filter.
         # solve_time_filter_alpha = 0.95 (sampling_c3plus_options.yaml:14).
+        # 2026-08-15 leg 5: the reference filters the FULL control-loop
+        # wall time, not just this committed solve — when the wrapper
+        # (SamplingC3MPC) drives the EMA with its full-tick wall at the
+        # end of each tick, skip the committed-only update here (it
+        # under-measures by the sample-evaluation cost and parked the
+        # consumption depth exactly on the final-QP-pinned first knot).
+        # Standalone base-MPC use (no wrapper) keeps the local update.
         _alpha = self._solve_time_filter_alpha
-        self._filtered_solve_time = (
-            (1.0 - _alpha) * _solve_wall_s
-            + _alpha * self._filtered_solve_time
-        )
+        if not getattr(self, "_fst_source_full_tick", False):
+            self._filtered_solve_time = (
+                (1.0 - _alpha) * _solve_wall_s
+                + _alpha * self._filtered_solve_time
+            )
         # First-few-solves diagnostic so the parameter is visible in logs.
         if not hasattr(self, "_filtered_solve_time_logged"):
             self._filtered_solve_time_logged = 0

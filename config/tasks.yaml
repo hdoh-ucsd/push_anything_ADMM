@@ -9,6 +9,25 @@ tasks:
     friction: 0.3            # reference push_t.sdf mu_dynamic
     pusher_friction: 1.0     # reference end_effector_full.urdf mu
     size: [0.1, 0.1, 0.1]
+    # 2026-08-11 box-lineage: planner-LCS mu from the authors' multiyaml
+    # constants (hardcoded for EVERY anything object — same set the T runs).
+    mu_per_pair_type:
+      EE-BOX:  0.42
+      BOX-GND: 0.46
+      EE-GND:  0.823
+    # Reference convention: ~1 kg CONTROLLER object model regardless of sim
+    # mass (letters 0.05->1.0; the port's cube sims 0.2 kg).
+    controller_mass: 1.0
+    # 2026-08-14 joint2 fix: reference initial arm configuration
+    # (anything/parameters/sim_params.yaml:13 q_init_franka, verbatim —
+    # weld chain byte-identical per the 2026-07-28 mount close-out, so the
+    # joint vector ports directly). joint2 starts AT the 1.1 rad pin target
+    # so the restored w_elbow task (osc_franka.yaml W_joint2) is
+    # transient-free. FK puts the EE at (0.327, 0.401, 0.102) ≈ the
+    # retreat_ee_position (0.3, 0.4, 0.1), pointing down, 0.42 m clear of
+    # the box spawn (verified collision-free 2026-08-14). Overrides the
+    # port-only IK safe-offset preposition in compute_safe_init_arm_q.
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     # 2026-07-28 frame migration: box spawns +x of the arm base
     # (reference layout, sampling_c3_utils.cc — object at (0.5,0)).
     # The old (0,0) init predated ed16080's base-at-origin move and
@@ -46,12 +65,31 @@ tasks:
     # cross-over) so a stricter clearance is fine here.
     pwl_waypoint_height: 0.135   # box top 0.10 + pusher r 0.025 + 10 mm margin
     cost:
+      # 2026-08-11 box-lineage: the anything-N1 dual-regime reference cost
+      # (same set the T runs — see push_t block for rationale). The legacy
+      # w_obj_* keys below stay for the non-reference build() path only.
+      use_reference_q_vector:  true
+      w_Q:                    80.0
+      w_Q_position:           50.0
+      q_vector_ee_pos:        [0.01, 0.01, 0.01]
+      q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos:       [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos:  [200.0, 200.0, 120.0]
+      q_vector_ee_vel:        [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
+      w_R:                    6.0
+      r_vector:               [0.01, 0.01, 1.0]
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      ee_target_z_offset_above_object: 0.06
       w_obj_xy:    100000.0
       w_obj_z:         10.0
       w_box_z:        100.0
       w_box_rp:        50.0
       w_yaw:            0.0
-      w_terminal:       5.0
+      w_terminal:       1.0   # box-lineage: QN = Q (reference gamma=1; was 5.0)
       # z_ee_target: planner-cost proxy z (task_costs.py:349 proxy_3d.z
       # = self.z_ref). Must match sampling_height above so the planner
       # drives arm to the SAME z the reposition tracker + IK place it at.
@@ -161,20 +199,18 @@ tasks:
     mass: 1.0             # kg — matches reference (2 × 0.5 kg links)
     friction: 0.3         # μ_T (reference push_t.sdf drake:mu_dynamic); EE-T μ_eff=0.462
     pusher_friction: 1.0  # μ_EE (reference end_effector_full.urdf drake:mu_dynamic)
-    # Reference sampling_c3plus_options.yaml:44 mu_per_pair_type.
-    # Applied to the LCS friction cone per admitted pair-type tag by
-    # LCSFormulator.extract_lcs_contacts (see commit d53a82d).
-    # Reference literal values:
-    #   EE-manipuland (index 1) : 1.0    — reference literal; higher
-    #                                       than Drake-combined 0.4615;
-    #                                       gives planner more tangential
-    #                                       authority at push contact.
-    #   manipuland-ground (idx 2): 0.4615 — Drake-combined 2·1.0·0.3/1.3.
-    #   EE-ground (index 0)     : 0.4165 — reference literal.
+    # 2026-08-11 L4 (anything-N1 lineage): planner-LCS mu from the authors'
+    # multiyaml_rewrite.py build_mu_per_pair_type constants — hardcoded for
+    # EVERY anything object (not recomputed per material), so verbatim copy
+    # is the authors' practice. Replaces the bit-rotted push_t literals
+    # (EE-BOX 1.0 gave the planner 2.4x the sim's actual tangential grip —
+    # Drake-combined 2*1.0*0.3/1.3 = 0.4615; the new 0.42 slightly
+    # under-promises, the authors' own convention). Sim-side materials
+    # (friction/pusher_friction above) unchanged.
     mu_per_pair_type:
-      EE-BOX:  1.0
-      BOX-GND: 0.4615
-      EE-GND:  0.4165
+      EE-BOX:  0.42
+      BOX-GND: 0.46
+      EE-GND:  0.823
     # Reference sim_params.yaml:15 q_init_object = [1,0,0,0, 0.5, 0, -0.009]
     # → T init at world (0.5, 0, -0.009) with reference ground at z=-0.029.
     # 2026-07-21: adopted reference-frame coordinates directly (was (0,0,0.02)
@@ -236,13 +272,30 @@ tasks:
       # Root cause is structural (port scalar-ρ ADMM vs ref per-slot G).
       # Reverted to p38 config; qvector migration requires G-matrix port.
       use_reference_q_vector:  true
-      w_Q:                    50.0
+      # 2026-08-11 L3 (anything-N1 lineage, docs/anything-n1-config-delta-audit.md):
+      # dual-regime Q exactly as multiyaml_rewrite.py build_q_vector emits —
+      # FAR (position regime): w_Q_position 50 x q_vector_position
+      #   (quat weights ZERO — orientation ignored until 5 cm out);
+      # NEAR (pose regime, crossed_switching_threshold): w_Q 80 x q_vector
+      #   (quat slots overridden by the 1000x quaternion Hessian, which the
+      #   reference does NOT scale by w_Q — cc:1582-1590).
+      # ee_vel [15,15,10] is the reference literal for BOTH regimes; the old
+      # [5,5,5] was a deliberate p108 port deviation, retired here.
+      w_Q:                    80.0
+      w_Q_position:           50.0
       q_vector_ee_pos:        [0.01, 0.01, 0.01]
       q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos:       [200.0, 200.0, 120.0]
-      q_vector_ee_vel:        [5.0, 5.0, 5.0]
+      q_vector_obj_pos:       [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos:  [200.0, 200.0, 120.0]
+      q_vector_ee_vel:        [15.0, 15.0, 10.0]
       q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
       q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
+      # R = w_R x diag(r_vector) (both regimes; anything-N1 literals). The
+      # z-axis EE force is penalized 100x the horizontal — was flat
+      # w_torque*I = 0.01*I (the stale product 1 x [0.01,0.01,0.01]).
+      w_R:                    6.0
+      r_vector:               [0.01, 0.01, 1.0]
       # 2026-07-22 xy bumped to reference parity. Reference push_t
       # sampling_c3plus_options.yaml position regime: q_vector_position[8:10]=250
       # × w_Q=50 = 12500 per axis. Port was 9000 (~72% of ref). p43 diagnosis:
@@ -355,6 +408,82 @@ tasks:
       w_torque:         0.01
 
   # -----------------------------------------------------------------------
+  # Task 3b: Push H — low-CoM H, PURE TRANSLATION
+  # -----------------------------------------------------------------------
+  # Object is dimensionally conformant to the reference H_shape_texture
+  # (envelope 0.112 x 0.128 x 0.032 m, mass 1.0 kg, mu_dynamic 0.3, identical
+  # hydroelastic block) but with the CoM deliberately dropped to 25% of height
+  # (8 mm above the base) instead of the reference's geometric centre. See
+  # sim/env_builder.py `_hshape_sdf` for the full rationale.
+  #
+  # goal_yaw 0.0 makes this a PURE-TRANSLATION task by design. push_t showed
+  # rotation converging to the tight band reliably while translation asymptotes
+  # ~0.107-0.115 m; isolating translation removes the rotation term that
+  # dominates the sample-ranking cost and lets the translation behaviour be
+  # measured on its own.
+  #
+  # goal_xy matches push_t's so closure is directly comparable (0.188 m).
+  push_h:
+    object_type: hshape
+    link_name:   h_link
+    # 0.05 kg is the SIMULATED mass of the reference H
+    # (urdf/H_shape_texture/H_shape_texture.sdf <mass>0.05</mass>).
+    # CORRECTION 2026-08-10: this was 1.0 kg, which I took from
+    # H_shape_texture_CONTROLLER.sdf -- the controller model, not the
+    # simulated object. Every mesh object in the reference library carries
+    # that 20x split (sim 0.05 kg / controller 1.0 kg); push_t.sdf is the sole
+    # object that is 1.0 kg in BOTH, which is why push_t's mass is correct.
+    # Faithful would additionally give the CONTROLLER plant 1.0 kg; the port
+    # has a single mass for both, so this sets the simulated value only.
+    #
+    # Stiction consequence: mu_comb 0.4615 -> mu*m*g = 0.226 N at 0.05 kg,
+    # vs 4.53 N at 1.0 kg. Measured delivered force is ~1.6 N, so a 0.05 kg
+    # object should slide with ~7x margin instead of creeping.
+    mass:        0.05
+    friction:    0.3        # reference drake:mu_dynamic
+    com_height_frac: 0.25   # LOW CoM (reference = 0.5 = geometric centre)
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 1.0, BOX-GND: 0.4615, EE-GND: 0.4165}
+    # H spans z in [-0.016, +0.016] in link frame -> init z = 0.016 rests it
+    # exactly on the table.
+    init_xyz:  [0.5, 0.0, 0.016]
+    goal_xy:   [0.482, 0.187]
+    goal_yaw:  0.0
+    color_rgba: [0.20, 0.45, 0.85, 1.0]
+    # Pusher sphere r=0.0195 must clear the table, so the EE centre cannot go
+    # below ~0.0205. 0.021 is as low as the push can be applied, which keeps the
+    # tipping moment about the leading bottom edge as small as the geometry
+    # allows (push 13 mm above the 8 mm CoM).
+    sampling_height:     0.034   # ref anything 0.005 + 0.029 frame shift
+    pwl_waypoint_height: 0.075
+    cost:
+      use_reference_q_vector: true
+      w_Q: 50.0
+      q_vector_ee_pos:      [0.01, 0.01, 0.01]
+      q_vector_obj_quat:    [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos:     [200.0, 200.0, 120.0]
+      q_vector_ee_vel:      [5.0, 5.0, 5.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_obj_xy:      12500.0
+      w_obj_z:          10.0
+      w_box_z:       12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose:   5990.0
+      w_box_rp:          5.0
+      w_yaw:             0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal:        1.0
+      z_ee_target:     0.034   # matches sampling_height
+      z_obj_target:    0.016   # H rests at z = half-height
+      d_push:          0.05
+      w_ee_approach: 8000.0
+      w_torque:        0.01
+
+  # -----------------------------------------------------------------------
   # Task 4: Cube Turning (Jin & Posa eq. 40 analog)
   # -----------------------------------------------------------------------
   # Pure-rotation testbed. Translation weight w_obj_xy zeroed so the
@@ -384,3 +513,1593 @@ tasks:
       d_push:           0.05
       w_ee_approach: 8000.0
       w_torque:         0.001
+
+  # ---------------------------------------------------------------------
+  # push_jack — reference `jacktoy` family (examples/sampling_c3/jacktoy).
+  #
+  # THE ONLY SE(3) TASK IN THE PORT. Every other task rests on a flat face,
+  # so its reachable pose set is {position} x {yaw} and a scalar goal_yaw
+  # suffices. The jack is a caltrop: three mutually orthogonal capsules that
+  # balance on a tripod of tip spheres and reorient by ROLLING onto a
+  # different tripod. Its goal orientation tilts out of the plane and is not
+  # any yaw, so it uses goal_quat (and main.py's SE(3) branches).
+  #
+  # Geometry/mass from urdf/jack.sdf (the SIM model): 3 capsules, r=0.025,
+  # l=0.125, 0.052 kg each. Note urdf/jack_control.sdf — the model the
+  # reference CONTROLLER plans with — declares 0.33 kg per capsule (0.99 kg
+  # total, 6.35x heavier). The port runs ONE plant for sim and control, so it
+  # cannot hold both; it uses the SIM mass, the same choice made for push_h.
+  #
+  # Frame: reference ground top is z=-0.029, port ground is z=0, so every
+  # reference z here is shifted +0.029.
+  # ---------------------------------------------------------------------
+  push_jack:
+    object_type: jack
+    link_name: jack_link
+    mass: 0.156              # 3 x 0.052, urdf/jack.sdf (SIM)
+    # Reference plans with urdf/jack_control.sdf = 3 x 0.33 = 0.99 kg, 6.35x
+    # the sim mass. Not cosmetic: at the sim mass the LCS predicts a phantom
+    # LAUNCH (u=1 N across a 16 mm gap lifts the object 19.45 mm in the model,
+    # 0.00 mm in reality) that swamps the 5.11 mm the real topple needs, so the
+    # planner never plans the roll. At 0.99 kg the modelled launch is 0.00 mm.
+    controller_mass: 0.99
+    # Reference jacktoy/parameters/sim_params.yaml dt: 0.0001 -- 10x finer than
+    # the port's historical 0.001. Matters here: the jack is 0.156 kg and the
+    # measured contacts are 52 g impulses, which is what a coarse discrete step
+    # produces when the planner drives the EE into a light object.
+    sim_dt: 0.0001
+    friction: 0.3            # jack.sdf drake:mu_dynamic
+    pusher_friction: 1.0
+    mu_per_pair_type:        # sampling_c3plus_options.yaml mu_per_pair_type
+      EE-BOX:  1.0
+      BOX-GND: 0.4615
+      EE-GND:  0.4165
+
+    # Resting CoM height = h/sqrt(3) + r = 0.0625/sqrt(3) + 0.025 = 0.061084,
+    # the tripod rest. Reference goal_params resting_object_height 0.031971466
+    # + 0.029 = 0.060971 -- agreement to 0.1 mm confirms the frame shift.
+    init_xyz: [0.400, 0.300, 0.061084]
+    # sim_params.yaml q_init_object[0:4] — an exact tripod rest (verified: the
+    # three lowest tips agree to 2.7e-07 m; the 4th sits 72 mm clear).
+    init_quat: [-0.3347435, -0.026718954, 0.8878204, 0.31518626]
+
+    goal_xy: [0.450, 0.200]
+    # goal_params.yaml fixed_target_orientation. Also an exact tripod rest,
+    # but a DIFFERENT tripod: 97.0 deg of geodesic rotation from init, i.e.
+    # the task cannot be solved without physically rolling the jack over.
+    goal_quat: [0.8804762392171493, 0.27984814233312133,
+                -0.3647051996310009, -0.11591689595929514]
+    goal_yaw: 0.0            # inert — goal_quat takes precedence
+    # Reference jacktoy goal_params.yaml goal_mode: 0 = kRandom — the goal
+    # above is only the INITIAL goal (reference ctor cc:67-69 starts from
+    # fixed_target_*); on success (xy < 0.02 AND geodesic < 0.1 rad,
+    # goal_generator.cc:135-154) a new goal is drawn: x U[0.42,0.5],
+    # y U[0.02,0.25], orientation = one of the 8 tripod rests x random
+    # world yaw (>= 90 deg extra yaw when the tripod index repeats).
+    # Implemented 2026-08-16 (JackRandomGoalGenerator); absent/kFixedGoal
+    # keeps the single fixed goal (the pre-2026-08-16 port behavior).
+    goal_mode: kRandom
+    # User directive 2026-08-16: the random-quaternion chase IS the jacktoy
+    # task. The reference boots from the fixed goal above and randomizes
+    # only on success (verified: ctor cc:67-69, no init/radio events, and
+    # the captured 180 s REF_jacktoy run holds ONE goal throughout) — but
+    # its steady-state goal distribution is the random draw. With this key
+    # goal #1 is drawn from that distribution at startup (seeded via
+    # --seed), replacing the one-time fixed boot transient. false =
+    # reference-literal boot.
+    krandom_draw_initial_goal: true
+
+    color_rgba: [0.90, 0.45, 0.10, 1.0]
+    sampling_height: 0.069   # 0.04 + 0.029; unused by kRandomOnSphere
+    pwl_waypoint_height: 0.06   # reposition_params.yaml
+
+    cost:
+      # jacktoy/parameters/sampling_c3plus_options.yaml q_vector / w_Q.
+      use_reference_q_vector: true
+      w_Q: 45.0
+      q_vector_ee_pos:      [0.01, 0.01, 0.01]
+      q_vector_obj_quat:    [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos:     [200.0, 200.0, 120.0]
+      q_vector_ee_vel:      [5.0, 5.0, 5.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 2500.0     # jacktoy value (push_t: 1000)
+      q_quaternion_dependent_regularizer_fraction: 0.0
+
+      # --- the two SE(2) assumptions that MUST be disabled ---------------
+      # w_box_rp penalizes roll/pitch away from upright. For a flat-resting
+      # object that is a helpful regularizer; for the jack, roll and pitch
+      # ARE the task -- a nonzero weight would penalize the 97 deg roll the
+      # goal demands. w_yaw is the port-only rank-1 yaw form, meaningless for
+      # an out-of-plane goal and would fight the quaternion Hessian.
+      w_box_rp: 0.0
+      w_yaw: 0.0
+
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 10.0            # NOT push_h's 12490: the jack's CoM height
+                               # legitimately rises while it rolls over.
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 10.0
+      ee_target_z_offset_above_object: 0.06   # goal_params.yaml
+      w_terminal: 1.0
+      z_ee_target: 0.069
+      z_obj_target: 0.061084
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+
+  # -----------------------------------------------------------------------
+  # Task: push_t_mesh — the REFERENCE's maintained mesh-T (T_shape_video)
+  # 2026-08-11 option-(a) migration: same task demand as push_t, but the
+  # object is the anything pipeline's mesh asset (sim 0.05 kg, controller
+  # model 1.0 kg — the reference's own 20x convention). Generated from the
+  # push_t block; see push_t above for key rationale comments.
+  # sampling_height 0.031 / pwl 0.0989 = anything z_height 0.002 /
+  # pwl 0.0699 shifted from ref ground (-0.029) to port ground (0).
+  # -----------------------------------------------------------------------
+  push_t_mesh:
+    object_type: tshape
+    link_name: T_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    # 2026-08-14 joint2 fix: same universal reference literal as `pushing`
+    # (identical in anything/, push_t/, and jacktoy/ sim_params.yaml).
+    # Required alongside the shared osc_franka.yaml W_joint2=1.0 pin —
+    # without it the T task would pin to 1.1 rad from an IK-preposition
+    # init far from 1.1 (the July "c3-entry arm slam" standing error).
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0243]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0989
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.034
+      z_obj_target: 0.02
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/T_shape_video/T_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
+  I_shape_texture:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0258, 0.0262].
+    object_type: tshape
+    link_name: I_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0258]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1020
+    ground_witness_points_body:
+      - [-0.082043, 0.031524, -0.025781]
+      - [-0.082043, -0.029964, -0.025781]
+      - [0.079604, 0.000780, -0.025781]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0258
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/I_shape_texture/I_shape_texture.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  C_shape_texture:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0277, 0.0262].
+    object_type: tshape
+    link_name: C_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0277]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1039
+    ground_witness_points_body:
+      - [-0.080955, 0.064635, -0.027656]
+      - [-0.080955, -0.055968, -0.027656]
+      - [0.079531, 0.004334, -0.027656]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0277
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/C_shape_texture/C_shape_texture.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  R_shape_texture:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0266, 0.0264].
+    object_type: tshape
+    link_name: R_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0266]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1029
+    ground_witness_points_body:
+      - [-0.077854, 0.056634, -0.026556]
+      - [-0.077854, -0.052867, -0.026556]
+      - [0.085599, 0.001884, -0.026556]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0266
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/R_shape_texture/R_shape_texture.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  A_shape_video:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0270, 0.0272].
+    object_type: tshape
+    link_name: A_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0270]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1043
+    ground_witness_points_body:
+      - [-0.068272, 0.077709, -0.027044]
+      - [-0.068272, -0.084372, -0.027044]
+      - [0.067329, -0.003332, -0.027044]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0270
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/A_shape_video/A_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  Y_shape_video:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0241, 0.0259].
+    object_type: tshape
+    link_name: Y_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0241]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1000
+    ground_witness_points_body:
+      - [-0.061691, 0.064074, -0.024119]
+      - [-0.061691, -0.094816, -0.024119]
+      - [0.055935, -0.015371, -0.024119]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0241
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/Y_shape_video/Y_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  G_shape_video:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0263, 0.0259].
+    object_type: tshape
+    link_name: G_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0263]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1022
+    ground_witness_points_body:
+      - [-0.069857, 0.085586, -0.026314]
+      - [-0.069857, -0.073224, -0.026314]
+      - [0.063228, 0.006181, -0.026314]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0263
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/G_shape_video/G_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  B_shape_video:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0261, 0.0268].
+    object_type: tshape
+    link_name: B_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0261]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1029
+    ground_witness_points_body:
+      - [-0.081106, 0.059579, -0.026118]
+      - [-0.081106, -0.051523, -0.026118]
+      - [0.075366, 0.004028, -0.026118]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0261
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/B_shape_video/B_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  3_shape_video:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0245, 0.0287].
+    object_type: tshape
+    link_name: 3_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0245]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1032
+    ground_witness_points_body:
+      - [-0.078869, 0.046289, -0.024539]
+      - [-0.078869, -0.055748, -0.024539]
+      - [0.079597, -0.004730, -0.024539]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0245
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/3_shape_video/3_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  H_shape_texture:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0236, 0.0238].
+    object_type: tshape
+    link_name: H_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0236]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0974
+    ground_witness_points_body:
+      - [-0.059715, 0.076752, -0.023597]
+      - [-0.059715, -0.081456, -0.023597]
+      - [0.064094, -0.002352, -0.023597]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0236
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/H_shape_texture/H_shape_texture.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  E_shape_video:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0309, 0.0264].
+    object_type: tshape
+    link_name: E_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0309]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1073
+    ground_witness_points_body:
+      - [-0.079472, 0.060112, -0.030900]
+      - [-0.079472, -0.044026, -0.030900]
+      - [0.083349, 0.008043, -0.030900]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0309
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/E_shape_video/E_shape_video.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  expo_box:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0629, 0.0589].
+    object_type: tshape
+    link_name: expo_box
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0629]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1718
+    ground_witness_points_body:
+      - [-0.063746, 0.065873, -0.062896]
+      - [-0.063746, -0.071637, -0.062896]
+      - [0.060525, -0.002882, -0.062896]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0629
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/expo_box/expo_box.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  lotion:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0216, 0.0220].
+    object_type: tshape
+    link_name: lotion
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0216]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0936
+    ground_witness_points_body:
+      - [-0.039172, 0.076389, -0.021594]
+      - [-0.039172, -0.101197, -0.021594]
+      - [0.040963, -0.012404, -0.021594]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0216
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/lotion/lotion.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  wood_block:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0682, 0.0673].
+    object_type: tshape
+    link_name: wood_block
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0682]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1854
+    ground_witness_points_body:
+      - [-0.049298, 0.050483, -0.068155]
+      - [-0.049298, -0.053252, -0.068155]
+      - [0.050037, -0.001384, -0.068155]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0682
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/wood_block/wood_block.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  tape:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0419, 0.0367].
+    object_type: tshape
+    link_name: tape
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0419]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1286
+    ground_witness_points_body:
+      - [-0.055459, 0.087707, -0.041906]
+      - [-0.055459, -0.073075, -0.041906]
+      - [0.058693, 0.007316, -0.041906]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0419
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/tape/tape.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  eraser:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0397, 0.0483].
+    object_type: tshape
+    link_name: eraser
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0397]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1380
+    ground_witness_points_body:
+      - [-0.052205, 0.126576, -0.039712]
+      - [-0.052205, -0.125373, -0.039712]
+      - [0.052153, 0.000602, -0.039712]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0397
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/eraser/eraser.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  milk:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0412, 0.0408].
+    object_type: tshape
+    link_name: milk
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0412]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1319
+    ground_witness_points_body:
+      - [-0.039753, 0.124147, -0.041170]
+      - [-0.039753, -0.108533, -0.041170]
+      - [0.040289, 0.007807, -0.041170]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0412
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/milk/milk.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  clamp:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0245, 0.0251].
+    object_type: tshape
+    link_name: clamp
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0245]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0997
+    ground_witness_points_body:
+      - [-0.108825, 0.075751, -0.024540]
+      - [-0.108825, -0.079959, -0.024540]
+      - [0.117827, -0.002104, -0.024540]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0245
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/clamp/clamp.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  chicken_broth:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0343, 0.0340].
+    object_type: tshape
+    link_name: chicken_broth
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0343]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1183
+    ground_witness_points_body:
+      - [-0.050525, 0.107220, -0.034256]
+      - [-0.050525, -0.112505, -0.034256]
+      - [0.051231, -0.002642, -0.034256]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0343
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/chicken_broth/chicken_broth.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  egg_carton:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0432, 0.0355].
+    object_type: tshape
+    link_name: egg_carton
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0432]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1287
+    ground_witness_points_body:
+      - [-0.098883, 0.156753, -0.043249]
+      - [-0.098883, -0.150249, -0.043249]
+      - [0.086056, 0.003252, -0.043249]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0432
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/egg_carton/egg_carton.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  book:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0207, 0.0203].
+    object_type: tshape
+    link_name: book
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0207]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0911
+    ground_witness_points_body:
+      - [-0.072740, 0.095957, -0.020722]
+      - [-0.072740, -0.096789, -0.020722]
+      - [0.074246, -0.000416, -0.020722]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0207
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/book/book.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  baby_toy:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0283, 0.0268].
+    object_type: tshape
+    link_name: baby_toy
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0283]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1051
+    ground_witness_points_body:
+      - [-0.097731, 0.107398, -0.028300]
+      - [-0.097731, -0.108470, -0.028300]
+      - [0.098644, -0.000536, -0.028300]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0283
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/baby_toy/baby_toy.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  gallon_milk:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0772, 0.0790].
+    object_type: tshape
+    link_name: gallon_milk
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0772]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.2061
+    ground_witness_points_body:
+      - [-0.071343, 0.101031, -0.077160]
+      - [-0.071343, -0.153392, -0.077160]
+      - [0.070719, -0.026180, -0.077160]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0772
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/gallon_milk/gallon_milk.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+
+  xbox:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0326, 0.0392].
+    object_type: tshape
+    link_name: xbox
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0326]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1218
+    ground_witness_points_body:
+      - [-0.060143, 0.071554, -0.032591]
+      - [-0.060143, -0.087103, -0.032591]
+      - [0.071018, -0.007774, -0.032591]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0326
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/xbox/xbox.sdf
+    controller_mass: 1.0
+    # Declared planner tensor from the reference *_controller.sdf <inertial>
+    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]

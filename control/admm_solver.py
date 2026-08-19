@@ -32,6 +32,8 @@ Speed notes
  - Only the linear cost term q is refreshed each ADMM iteration via
    UpdateCoefficients — avoids repeated program allocation.
 """
+import os
+
 import numpy as np
 import pydrake.all as ad
 
@@ -115,20 +117,34 @@ class C3Solver:
         if self._osqp_refopts:
             _so = ad.SolverOptions()
             _osqp_id = ad.OsqpSolver().solver_id()
-            _so.SetOption(_osqp_id, "polishing", 1)
-            _so.SetOption(_osqp_id, "polish_refine_iter", 3)
+            # 2026-08-11: matched to the AUTHORITATIVE wired file
+            # shared_parameters/sampling_c3_qp_settings.yaml (the previous
+            # values cited solver_options_default.yaml — the wrong file:
+            # polishing 1->0, scaling 10->1, max_iter 1000->2000, plus
+            # sigma/check_termination/eps_prim/dual_inf/rho/alpha/delta).
+            _so.SetOption(_osqp_id, "polishing", 0)
+            _so.SetOption(_osqp_id, "polish_refine_iter", 1)
             _so.SetOption(_osqp_id, "warm_starting", 1)
             _so.SetOption(_osqp_id, "scaled_termination", 1)
-            _so.SetOption(_osqp_id, "scaling", 10)
+            _so.SetOption(_osqp_id, "scaling", 1)
             _so.SetOption(_osqp_id, "adaptive_rho", 1)
             _so.SetOption(_osqp_id, "adaptive_rho_interval", 0)
+            _so.SetOption(_osqp_id, "adaptive_rho_tolerance", 5)
+            _so.SetOption(_osqp_id, "adaptive_rho_fraction", 0.4)
+            _so.SetOption(_osqp_id, "check_termination", 100)
+            _so.SetOption(_osqp_id, "rho", 0.1)
+            _so.SetOption(_osqp_id, "sigma", 1e-5)
+            _so.SetOption(_osqp_id, "alpha", 1.6)
+            _so.SetOption(_osqp_id, "delta", 1e-6)
             _so.SetOption(_osqp_id, "eps_abs", 1e-5)
             _so.SetOption(_osqp_id, "eps_rel", 1e-5)
-            _so.SetOption(_osqp_id, "max_iter", 1000)
+            _so.SetOption(_osqp_id, "eps_prim_inf", 1e-5)
+            _so.SetOption(_osqp_id, "eps_dual_inf", 1e-5)
+            _so.SetOption(_osqp_id, "max_iter", 2000)
             self._osqp_solver_options = _so
-            print("[OSQP-REFOPTS] active: polishing=1 adaptive_rho=1 "
-                  "warm_starting=1 scaling=10 eps=1e-5 max_iter=1000",
-                  flush=True)
+            print("[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): "
+                  "polishing=0 scaling=1 check_term=100 sigma=1e-5 "
+                  "eps=1e-5 max_iter=2000", flush=True)
         self._diag_step = 0
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
@@ -142,7 +158,21 @@ class C3Solver:
         # Reference's 20:1 penalizes λ mismatches 20× more strongly than
         # η — projection prefers case 1 (η wins, λ→0) more often, matching
         # reference C3+ convergence behavior. Fixed 2026-07-18 iter9.
-        self._u_lambda           = 20.0
+        # 2026-08-11 L3: 20 -> 1000 (anything-N1 u_lambda_list EE/obj-gnd
+        # slots). The yaml comment "u_lambda_list is not used; overwritten
+        # by alpha*F" is TRUE ONLY for the c3_qp.cc QP-projection variant —
+        # C3+ SolveSingleProjection (c3_plus.cc:174-218) reads U's lambda/eta
+        # diagonals directly: eta_larger = eta*sqrt(w_eta) > lambda*sqrt(
+        # w_lambda). The scalar w_U cancels in that comparison, so only this
+        # ratio is load-bearing.
+        # 2026-08-16: these are the ANYTHING-N1 literals; the reference is
+        # per-demo (jacktoy pins u_lambda_list = uniform 4 and w_G = 0.03,
+        # jacktoy/sampling_c3plus_options.yaml:192,:73). Globalizing 1000
+        # broke the jack's contact latch (λ-side projection endorsement
+        # ~90% with no final-QP boost to rescue the published plan). Tasks
+        # override via the sampling-c3 yaml keys `u_lambda` / `w_G` →
+        # apply_task_solver_scales below; absent keys keep these defaults.
+        self._u_lambda           = 1000.0
         self._u_eta              = 1.0
         # 4.j — reference penalize_changes_in_u_across_solves. When True,
         # the R-block cost becomes ‖u_k − u_prev_k‖²_R (matches c3.cc:302-310).
@@ -198,7 +228,9 @@ class C3Solver:
         # G-on the DEFAULT (formerly REFCONF_USE_G_MATRIX=1, canonical
         # since p112).
         self._use_g_matrix = True
-        self._w_G          = 0.01
+        # 2026-08-11 L3: 0.01 -> 0.18 (anything-N1 w_G; the 0.01 was the
+        # bit-rotted push_t demo literal — docs/anything-n1-config-delta-audit.md).
+        self._w_G          = 0.18
         self._g_lambda     = 2.0
         self._g_eta        = 1.0
         self._g_x          = 0.0   # reference has zero state augmentation
@@ -215,6 +247,22 @@ class C3Solver:
                 print(f"[PORT_G_X] override: g_x={self._g_x}", flush=True)
             except ValueError:
                 pass
+        # 2026-08-11 L3-decomposition falsification hooks (diagnostic only,
+        # default-inert): temporarily pin w_G / u_lambda to a non-reference
+        # value for single-knob attribution runs. Never set in canonical
+        # launches — the yaml-free defaults above stay the reference values.
+        self._env_scale_overrides: set = set()
+        for _env_key, _attr in (("PORT_W_G", "_w_G"),
+                                ("PORT_U_LAMBDA", "_u_lambda")):
+            _v = _os_g.environ.get(_env_key, "")
+            if _v:
+                try:
+                    setattr(self, _attr, float(_v))
+                    self._env_scale_overrides.add(_attr)
+                    print(f"[{_env_key}] FALSIFICATION override: "
+                          f"{_attr}={getattr(self, _attr)}", flush=True)
+                except ValueError:
+                    pass
         self._g_diag_c3p_cache: np.ndarray | None = None
         self._g_diag_c3p_shape: tuple | None = None
         # First-horizon contact force from the most recent solve. Read by
@@ -261,6 +309,28 @@ class C3Solver:
         self._lprobe_max_solves:  int         = 5
         self._lprobe_n_solves:    int         = 0
         self._lprobe_mpc_step:    int         = 0
+
+    # ------------------------------------------------------------------
+    def apply_task_solver_scales(self, u_lambda=None, w_G=None) -> None:
+        """Per-task ADMM scale overrides from the sampling-c3 yaml.
+
+        The class defaults are the anything-N1 literals (u_lambda 1000,
+        w_G 0.18); the reference sets these PER DEMO — jacktoy pins
+        u_lambda_list = uniform 4 and w_G = 0.03 (its
+        sampling_c3plus_options.yaml:192,:73). None leaves the default
+        untouched. An explicit PORT_U_LAMBDA / PORT_W_G falsification env
+        override (recorded in _env_scale_overrides at __init__) keeps
+        highest precedence — a yaml value never silently clobbers it.
+        """
+        for _attr, _val in (("_u_lambda", u_lambda), ("_w_G", w_G)):
+            if _val is None:
+                continue
+            if _attr in self._env_scale_overrides:
+                print(f"[TASK-SCALES] {_attr}: yaml value {float(_val)} "
+                      f"ignored — env falsification override "
+                      f"{getattr(self, _attr)} active", flush=True)
+                continue
+            setattr(self, _attr, float(_val))
 
     # ------------------------------------------------------------------
     def enable_lambda_horizon_probe(self,
@@ -1178,6 +1248,53 @@ class C3Solver:
                       f"C3::ScaleLCS): scale={_lcs_scale:.4f} — λ published "
                       f"in Newtons via ×{_lcs_scale:.4f} un-scale "
                       f"(c3.cc:350-353)", flush=True)
+            # DIAG_DUMP_SOLVE=path.npz (2026-08-11): one-shot serialization
+            # of this solve's SCALED instance for the cross-stack content
+            # diff (counterpart of the reference's [EXPERIMENT-DUMP]).
+            import os as _os_dump
+            _dump_path = _os_dump.environ.get("DIAG_DUMP_SOLVE", "")
+            if _dump_path and not getattr(self, "_solve_dumped", False):
+                self._dump_calls = getattr(self, "_dump_calls", 0) + 1
+                # Optional gate overrides (2026-08-15 hover root-cause):
+                # MIN_CALLS picks the tick, PHI_LO/HI widen or disable the
+                # engagement-distance window (defaults reproduce the
+                # 2026-08-11 cross-stack diff behavior exactly).
+                _min_calls = int(_os_dump.environ.get(
+                    "DIAG_DUMP_SOLVE_MIN_CALLS", "50"))
+                _phi_lo = float(_os_dump.environ.get(
+                    "DIAG_DUMP_SOLVE_PHI_LO", "0.02"))
+                _phi_hi = float(_os_dump.environ.get(
+                    "DIAG_DUMP_SOLVE_PHI_HI", "0.08"))
+                _phi_ok = (phi is not None and np.size(phi) > 0
+                           and _phi_lo < float(np.max(phi)) < _phi_hi)
+                if self._dump_calls >= _min_calls and _phi_ok:
+                    self._solve_dumped = True
+                    np.savez(_dump_path, A=A, B=B_ctrl, D=D, d=d, E=E, F=F,
+                             H=H, c=c_lcs, x0=x0, xref=x_ref, Q=Q, R=R,
+                             QN=QN, scale=_lcs_scale,
+                             phi=(phi if phi is not None else np.zeros(0)))
+                    print(f"[DUMP-PORT] solve #200 -> {_dump_path}",
+                          flush=True)
+            # DIAG_ZVEE row decomposition (2026-08-11): the EE gap row's
+            # static content in SCALED units — gap0 = (E·x0 + c)[row] is
+            # what η must equal at λ=0, u=0. Reference shows ~6 (scaled
+            # 20 mm); port η sat at ~0 ⇒ find which term is wrong.
+            import os as _os_row
+            if _os_row.environ.get("DIAG_ZVEE", ""):
+                _ee_i = getattr(self, "_ee_box_pair_idx", None)
+                if _ee_i is not None and phi is not None:
+                    _r_ee = num_normals + int(_ee_i)        # λ_n row
+                    _r_g  = num_normals + (1 if int(_ee_i) == 0 else 0)
+                    _Ex = E @ np.asarray(x0, dtype=float)
+                    # Anitescu layout: rows 4i..4i+3 = contact i's folded
+                    # directions (NO gamma block). Print ALL rows.
+                    _g0 = (c_lcs + _Ex)[:n_lambda]
+                    print(f"[ROWDECOMP] scale={_lcs_scale:.3f} "
+                          f"ee_idx={int(_ee_i)} "
+                          f"x0_pee={np.array2string(np.asarray(x0, dtype=float)[7:10], precision=4)} "
+                          f"phi={np.array2string(np.asarray(phi, dtype=float), precision=4)} "
+                          f"gap0_all={np.array2string(_g0, precision=3)}",
+                          flush=True)
 
         # ---------------------------------------------------------------
         # QP cost: P = 2·diag(Q,_,_,_,_, R block, _,_,...)·etc + ρ·I
@@ -1596,6 +1713,23 @@ class C3Solver:
 
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
+                # DIAG_ZVEE=1 (2026-08-11 crawl probe): per-iter QP-optimum
+                # content — does the iter-0 QP already crawl, or do the
+                # projection/G iters kill an initially-moving plan?
+                import os as _os_zv
+                if _os_zv.environ.get("DIAG_ZVEE", ""):
+                    # Slot overrides for replaying foreign-layout instances
+                    # (reference layout: EE pos 0:3, EE vel 10:13).
+                    _pee0 = int(_os_zv.environ.get("DIAG_ZVEE_PEE0", "7"))
+                    _vee0 = int(_os_zv.environ.get("DIAG_ZVEE_VEE0", "16"))
+                    _vmax = max(float(np.linalg.norm(
+                        z_sol[i * TOT + _vee0 : i * TOT + _vee0 + 3]))
+                        for i in range(N))
+                    _dee = float(np.linalg.norm(
+                        z_sol[N * TOT + _pee0 : N * TOT + _pee0 + 2]
+                        - z_sol[0 * TOT + _pee0 : 0 * TOT + _pee0 + 2]))
+                    print(f"[ZVEE] it={it} vmax={_vmax:.4f}m/s "
+                          f"dEE_xy={_dee*1000:.1f}mm", flush=True)
             else:
                 self.qp_failures += 1
                 if self.qp_failures == 1 or self.qp_failures % 100 == 0:
@@ -1679,6 +1813,31 @@ class C3Solver:
                 _omega_before_dual = (omega.copy() if _emit_consensus_this_solve
                                        else None)
                 omega = omega + z_sol - delta
+
+                # DIAG_ZVEE paired-trace print (2026-08-11): post-dual-update
+                # consensus-channel content, mirrored by [ZTRACE-REF] in the
+                # reference c3.cc ADMMStep. Sums over ALL knots/slots.
+                import os as _os_zt
+                if _os_zt.environ.get("DIAG_ZVEE", ""):
+                    _zl = _dl = _wl = _ze = _de2 = 0.0
+                    for _i in range(N):
+                        _b = _i * TOT
+                        _zl += float(np.sum(np.abs(z_sol[_b+SL:_b+SU])))
+                        _dl += float(np.sum(np.abs(delta[_b+SL:_b+SU])))
+                        _wl += float(np.sum(np.abs(omega[_b+SL:_b+SU])))
+                        _ze += float(np.sum(np.abs(z_sol[_b+SE:_b+TOT])))
+                        _de2 += float(np.sum(np.abs(delta[_b+SE:_b+TOT])))
+                    _k0l = np.array2string(
+                        z_sol[SL:SU], precision=2, max_line_width=400,
+                        suppress_small=True)
+                    _k0e = np.array2string(
+                        z_sol[SE:TOT], precision=2, max_line_width=400,
+                        suppress_small=True)
+                    print(f"[ZTRACE] it={it} z_lam={_zl:.3f} d_lam={_dl:.3f} "
+                          f"w_lam={_wl:.3f} z_eta={_ze:.3f} d_eta={_de2:.3f} "
+                          f"k0_lam={_k0l} k0_eta={_k0e} "
+                          f"ee_idx={getattr(self, '_ee_box_pair_idx', None)} "
+                          f"n_c={num_normals}", flush=True)
 
             # ---- [CONSENSUS] per-iter, per-knot block-decomposed view ------
             # Emits iters 0, 1, and last (actual_iters-1). Substitutes real

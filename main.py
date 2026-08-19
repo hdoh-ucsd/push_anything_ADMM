@@ -28,6 +28,7 @@ MPC parameters (reference-conformant defaults, dairlib push_anything_dev@257e3ed
 """
 import argparse
 import os
+import stat
 import sys
 from pathlib import Path
 import yaml
@@ -38,7 +39,9 @@ from sim.env_builder import (
     build_environment,
     _INITIAL_ARM_Q_SEED,
     EE_BODY_NAME,
+    JACK_GHOST_CAPS,
     compute_safe_init_arm_q,
+    init_rotation,
 )
 from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
@@ -46,6 +49,11 @@ from control.task_costs import QuadraticManipulationCost
 from control.ci_mpc_c3 import C3MPC
 from control.ci_mpc_c3plus import C3PlusMPC
 from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
+from control.sampling_c3.goal_generator import (
+    JackRandomGoalGenerator,
+    KNOMINAL_NAMES_JACK,
+    geodesic_angle,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +81,22 @@ class _Tee:
 # ---------------------------------------------------------------------------
 # Meshcat visualisation helpers
 # ---------------------------------------------------------------------------
+
+def _update_jack_goal_marker(meshcat, target_xy, goal_quat, z) -> None:
+    """Move the jack's three-capsule ghost to a (possibly new) goal pose.
+
+    Split out of _setup_meshcat_markers so kRandom re-goaling can relocate
+    the ghost without re-creating the meshcat objects.
+    """
+    _T_goal = ad.RigidTransform(
+        ad.RotationMatrix(ad.Quaternion(
+            goal_quat[0], goal_quat[1], goal_quat[2], goal_quat[3])),
+        [target_xy[0], target_xy[1], z])
+    for _rpy, _rgba, _tag in JACK_GHOST_CAPS:
+        meshcat.SetTransform(
+            f"/goal_marker/{_tag}", _T_goal.multiply(ad.RigidTransform(
+                ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])))
+
 
 def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> None:
     """
@@ -103,6 +127,31 @@ def _setup_meshcat_markers(meshcat, target_xy: np.ndarray, task_cfg: dict) -> No
             meshcat.SetObject(_tag, ad.Box(0.16, 0.04, 0.04),
                               ad.Rgba(0.1, 0.9, 0.1, 0.35))
             meshcat.SetTransform(_tag, _T_goal.multiply(_T_local))
+    elif task_cfg["object_type"] == "jack":
+        # Three-capsule ghost at the goal POSE (full quaternion, not a yaw).
+        _gq = np.asarray(task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0]), float)
+        _gq = _gq / float(np.linalg.norm(_gq))
+        for _rpy, _rgba, _tag in JACK_GHOST_CAPS:
+            # Pastel per-capsule tints (shared JACK_GHOST_CAPS table): colour
+            # is the only signal for WHICH capsule goes where under the goal
+            # quaternion; whitened + translucent so the ghost never reads as
+            # the saturated real jack (2026-08-16 green-blob legibility fix).
+            meshcat.SetObject(f"/goal_marker/{_tag}", ad.Capsule(0.025, 0.125),
+                              ad.Rgba(*_rgba[:3], 0.35))
+        _update_jack_goal_marker(meshcat, target_xy, _gq, init_z)
+    elif task_cfg["object_type"] == "hshape":
+        # Three-box ghost matching _hshape_sdf's decomposition.
+        _goal_yaw = float(task_cfg.get("goal_yaw", 0.0))
+        _T_goal = ad.RigidTransform(ad.RotationMatrix.MakeZRotation(_goal_yaw),
+                                    [target_xy[0], target_xy[1], init_z])
+        for _lx, _sz, _tag in (
+            (-0.044, (0.024, 0.128, 0.032), "/goal_marker/lbar"),
+            (+0.044, (0.024, 0.128, 0.032), "/goal_marker/rbar"),
+            ( 0.000, (0.064, 0.024, 0.032), "/goal_marker/cbar"),
+        ):
+            meshcat.SetObject(_tag, ad.Box(*_sz), ad.Rgba(0.1, 0.9, 0.1, 0.35))
+            meshcat.SetTransform(_tag, _T_goal.multiply(
+                ad.RigidTransform(ad.RotationMatrix(), [_lx, 0.0, 0.0])))
     else:
         shape = ad.Sphere(task_cfg["radius"])
         meshcat.SetObject("/goal_marker", shape, ad.Rgba(0.1, 0.9, 0.1, 0.35))
@@ -221,9 +270,21 @@ def main():
     # --ee-space (no-op; the ee_space ATTRIBUTE is still derived from
     # --r7 below). Dead task choices (hard_pushing/shepherding/
     # cube_turning) pruned; their tasks.yaml entries remain as inert data.
+    # Task choices come from config/tasks.yaml so imported anything objects
+    # (Fig 8 campaign 2026-08-15) are runnable without touching argparse.
+    # Dead tasks (hard_pushing/...) remain excluded via the legacy allowlist
+    # union.
+    try:
+        import yaml as _yaml_choices
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "config", "tasks.yaml")) as _f:
+            _task_choices = sorted(_yaml_choices.safe_load(_f)["tasks"].keys())
+    except Exception:
+        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_h",
+                         "push_jack"]
     parser.add_argument(
         "task", nargs="?", default="pushing",
-        choices=["pushing", "push_t"],
+        choices=_task_choices,
         help="Task to run (default: pushing)",
     )
     parser.add_argument("--task-id", type=int, choices=[1, 2, 3, 4], default=None,
@@ -360,13 +421,77 @@ def main():
     # path is scripts/make_run_video.sh over the run log.)
 
     _log_path = f"results/{stem}.txt"
-    _log      = open(_log_path, "w", buffering=1)
-    sys.stdout = _Tee(sys.__stdout__, _log)
+    # Guard against the shell ALSO redirecting stdout to this same path
+    # (`main.py --name X > results/X.txt`). That is the natural thing to type,
+    # because --name X is what makes us write results/X.txt -- but it gives two
+    # independent file handles at independent offsets writing one file, which
+    # shreds the log: lines spliced mid-token, whole lines lost, invalid UTF-8
+    # from half-written glyphs, trailing NUL blocks. It cost a day of analysis
+    # on 2026-08-09 (counts undercounted, a banner "missing" that was really
+    # overwritten). If stdout already points at this file, skip the tee so
+    # there is exactly one writer.
+    _tee_stdout = True
+    try:
+        _st_out = os.fstat(sys.__stdout__.fileno())
+        if stat.S_ISREG(_st_out.st_mode):
+            _st_log = os.stat(_log_path) if os.path.exists(_log_path) else None
+            if (_st_log is not None
+                    and (_st_out.st_dev, _st_out.st_ino)
+                    == (_st_log.st_dev, _st_log.st_ino)):
+                _tee_stdout = False
+    except (OSError, ValueError, AttributeError):
+        pass    # non-file stdout (tty/pipe) — tee normally
+
+    if _tee_stdout:
+        _log = open(_log_path, "w", buffering=1)
+        sys.stdout = _Tee(sys.__stdout__, _log)
+    else:
+        print(f"[C3] NOTE: stdout is already redirected to {_log_path}; "
+              f"skipping the internal tee to avoid double-writing it "
+              f"(drop the shell redirect — --name already writes this file).",
+              flush=True)
     print(f"[C3] Log: {_log_path}")
 
     print(f"[C3] Task: {task_name}")
 
     task_cfg = load_task(task_name)
+
+    # ------------------------------------------------------------------
+    # kRandom goal semantics (reference goal_params.yaml goal_mode: 0).
+    # Constructed HERE — before build_environment — so an initial-goal
+    # draw (krandom_draw_initial_goal, user directive 2026-08-16: the
+    # random-quaternion chase IS the jacktoy task) mutates task_cfg and
+    # every downstream consumer (Drake-scene ghost, meshcat markers,
+    # cost, dispatcher, log header) sees the drawn goal with no extra
+    # wiring. Reference boots from the fixed target and randomizes only
+    # on success (ctor cc:67-69; verified against the captured
+    # REF_jacktoy run) — the draw samples the reference's steady-state
+    # goal distribution from t=0 instead of its one-time boot transient.
+    # ------------------------------------------------------------------
+    _goal_gen = None
+    _initial_goal_drawn = False
+    if (str(task_cfg.get("goal_mode", "")) == "kRandom"
+            and task_cfg.get("goal_quat") is not None):
+        _goal_gen = JackRandomGoalGenerator(
+            rng=np.random.default_rng(
+                None if args.seed is None else [args.seed, 0x60A1]),
+            initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
+            initial_quat=np.asarray(task_cfg["goal_quat"], dtype=float),
+        )
+        if bool(task_cfg.get("krandom_draw_initial_goal", False)):
+            _goal_gen.draw_initial_goal()
+            task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
+                                   float(_goal_gen.goal_xy[1])]
+            task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
+            _initial_goal_drawn = True
+            _gq0 = _goal_gen.goal_quat
+            print(f"[GOAL-GEN] initial goal DRAWN "
+                  f"(krandom_draw_initial_goal, seed={args.seed}): "
+                  f"xy=({task_cfg['goal_xy'][0]:+.3f},"
+                  f"{task_cfg['goal_xy'][1]:+.3f}) "
+                  f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
+                  f"quat=[{_gq0[0]:+.4f} {_gq0[1]:+.4f} "
+                  f"{_gq0[2]:+.4f} {_gq0[3]:+.4f}]")
 
     # Directional task override
     if args.task_id is not None:
@@ -388,8 +513,7 @@ def main():
     _rho_init = float(os.environ.get("PORT_RHO", "100.0"))
     print(f"[ENV]  Mass: {task_cfg.get('mass', '?')} kg   "
           f"Friction mu: {task_cfg.get('friction', '?')}")
-    print(f"[MPC]  Horizon: 5   dt: 0.1 s   ADMM max iters: {args.admm_iter}"
-          f"   rho_init: {_rho_init}")
+    print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: {_rho_init}")
     print(f"[MPC]  Force limit: 30.0 Nm")
     print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
     print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
@@ -398,7 +522,10 @@ def main():
     print(f"[COST] w_terminal:    {_cost.get('w_terminal', '?')}  (QN = w_terminal * Q)")
     print(f"[COST] w_ee_approach: {_cost.get('w_ee_approach', '?')}")
     print(f"[COST] w_torque:      {_cost.get('w_torque', '?')}")
-    print(f"[ENV]  init arm q: SAFE-OFFSET (IK-derived, opposite goal direction)")
+    if task_cfg.get("q_init_franka") is not None:
+        print(f"[ENV]  init arm q: reference q_init_franka (tasks.yaml)")
+    else:
+        print(f"[ENV]  init arm q: SAFE-OFFSET (IK-derived, opposite goal direction)")
 
     # ------------------------------------------------------------------
     # Build Drake environment
@@ -429,9 +556,13 @@ def main():
     # Stage object pose first so compute_safe_init_arm_q's IK can see it,
     # then resolve init_q (IK-derived safe-offset pose), then set arm.
     # ------------------------------------------------------------------
+    # Initial object orientation. Flat-resting tasks (box, T, H) spawn upright
+    # and omit `init_quat`. The jack has no flat face -- it must be spawned
+    # already balanced on a tripod, so tasks.yaml gives the full quaternion
+    # (reference jacktoy/parameters/sim_params.yaml q_init_object[0:4]).
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
-        ad.RigidTransform(ad.RotationMatrix(), task_cfg["init_xyz"])
+        ad.RigidTransform(init_rotation(task_cfg), task_cfg["init_xyz"])
     )
     init_q = compute_safe_init_arm_q(
         plant, plant_ctx, panda_model,
@@ -478,6 +609,23 @@ def main():
         plant_ad=plant_ad, context_ad=context_ad,
         object_shape=_obj_shape_for_defaults,
         mu_per_pair_type=_mu_per_pair,
+        # Reference plans with a SEPARATE, heavier object model than it
+        # simulates (jack_control.sdf 0.99 kg vs jack.sdf 0.156 kg;
+        # H_shape_texture_controller.sdf 1.0 kg vs 0.05 kg). push_t is the
+        # only task where the two coincide. See _controller_inertia_scope.
+        controller_object_mass=task_cfg.get("controller_mass", None),
+        # 2026-08-15 leg 2: reference plans with the controller SDF's
+        # DECLARED inertia tensor (not a mass-scaled sim tensor). Emitted
+        # into tasks.yaml by scripts/emit_controller_inertia.py from each
+        # object's *_controller.sdf <inertial> block.
+        controller_inertia=task_cfg.get("controller_inertia", None),
+        # Mesh-T tasks (object_sdf set) use the reference mesh's ground-
+        # witness footprint instead of the box-T vertex table.
+        tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
+        # Imported anything objects (Fig 8 campaign): per-task witness
+        # triangle from the object's reference *_controller.sdf spheres.
+        mesh_ground_witnesses_body=task_cfg.get(
+            "ground_witness_points_body", None),
     )
 
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
@@ -543,18 +691,47 @@ def main():
         #   planning_dt_position: 0.1 (anything: 0.075)
         #   planning_dt_pose: 0.05
         # Task-conditional so box path (uses anything defaults) stays put.
-        if task_name == "push_t":
+        if (task_name in ("push_t", "push_t_mesh")
+                or task_cfg.get("object_sdf")):
+            # 2026-08-11 L2 (anything-N1 lineage): multiyaml_rewrite.py
+            # PLANNING_HORIZON_CONFIGS {1: 10} + uniform planning_dt 0.075
+            # (anything/sampling_c3plus_options.yaml post-rewrite). The old
+            # 5 / 0.1 / 0.05 came from the bit-rotted push_t demo yaml —
+            # see docs/anything-n1-config-delta-audit.md (L2).
+            # Fig 8 campaign: every imported anything object (object_sdf
+            # set) is anything-N1 lineage and takes this branch.
+            _c3plus_N  = 10
+            _c3plus_dt = 0.075
+            _c3plus_dt_pose = 0.075
+        elif task_name == "push_h":
+            # The H is a LETTER-family object (reference anything/ loads the
+            # *_shape_* meshes; letter_settings.yaml lists H_shape_texture).
+            # anything/parameters/sampling_c3plus_options.yaml:20,62-63:
+            #   N: 7, planning_dt_position: 0.075, planning_dt_pose: 0.075
+            # -- NOT push_t's N=5 / 0.1 / 0.05.
+            _c3plus_N  = 7
+            _c3plus_dt = 0.075
+            _c3plus_dt_pose = 0.075
+        elif task_name == "push_jack":
+            # jacktoy/parameters/sampling_c3plus_options.yaml:16,61-62:
+            #   N: 5, planning_dt_position: 0.1, planning_dt_pose: 0.05
+            # -- same cadence as push_t, not the letter family's 7/0.075.
             _c3plus_N  = 5
             _c3plus_dt = 0.1
             _c3plus_dt_pose = 0.05
         else:
-            _c3plus_N  = 7
+            # 2026-08-11 box-lineage: multiyaml PLANNING_HORIZON_CONFIGS
+            # {1: 10} + uniform 0.075 (the old 7 / 0.075 / 0.05 mixed the
+            # shipped 4-object N with push_t's pose dt).
+            _c3plus_N  = 10
             _c3plus_dt = 0.075
-            _c3plus_dt_pose = 0.05
+            _c3plus_dt_pose = 0.075
     else:
         _c3plus_N  = 5
         _c3plus_dt = 0.1
         _c3plus_dt_pose = 0.1  # C3 baseline path — no regime swap
+    print(f"[MPC]  Horizon: {_c3plus_N}   dt: {_c3plus_dt} s   "
+          f"dt_pose: {_c3plus_dt_pose} s")
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
@@ -580,6 +757,65 @@ def main():
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
     target_yaw  = float(task_cfg.get("goal_yaw", 0.0))   # radians; 0 for legacy tasks
+    # ------------------------------------------------------------------
+    # Optional full goal quaternion. Flat-resting tasks (box, T, H) reach
+    # every attainable orientation by yaw alone, so they specify goal_yaw and
+    # goal_quat is None. The jack rests on a tripod of tip spheres and
+    # reorients by ROLLING onto a different tripod -- its goal tilts out of
+    # the plane and is not any yaw, so tasks.yaml gives the quaternion
+    # (reference jacktoy/parameters/goal_params.yaml fixed_target_orientation).
+    # ------------------------------------------------------------------
+    _pending_goal_quat = None
+    target_quat = task_cfg.get("goal_quat", None)
+    if target_quat is not None:
+        target_quat = np.asarray(target_quat, dtype=float)
+        target_quat = target_quat / float(np.linalg.norm(target_quat))
+        quad_cost.set_goal_quat(target_quat)
+        _pending_goal_quat = target_quat
+        # The per-tick angular lookahead below is yaw-only and is bypassed for
+        # quaternion goals, so the goal handed to the cost is STATIC. That is
+        # only equivalent to the reference when the clip would never fire --
+        # i.e. when the whole reorientation demand is under lookahead_angle
+        # (reference goal_generator.cc:427 `angle = min(angle, lookahead)`).
+        # Check it at startup rather than silently mis-modelling the task.
+        _q0 = np.asarray(task_cfg.get("init_quat", [1.0, 0.0, 0.0, 0.0]), float)
+        _q0 = _q0 / float(np.linalg.norm(_q0))
+        _R0 = ad.RotationMatrix(ad.Quaternion(_q0[0], _q0[1], _q0[2], _q0[3])).matrix()
+        _Rg = ad.RotationMatrix(ad.Quaternion(
+            target_quat[0], target_quat[1], target_quat[2], target_quat[3])).matrix()
+        _demand = float(np.arccos(np.clip(
+            (np.trace(_R0.T @ _Rg) - 1.0) * 0.5, -1.0, 1.0)))
+        print(f"[GOAL-QUAT] goal_quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+              f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]  "
+              f"reorientation demand = {_demand:.4f} rad ({np.degrees(_demand):.1f} deg)")
+        if _demand > 2.0:
+            if _initial_goal_drawn:
+                # A drawn goal is one draw of the reference's continuous
+                # distribution — demands > lookahead_angle run under the
+                # static-goal deviation (same WARN as re-goals).
+                print(f"[GOAL-QUAT] WARN drawn goal demands {_demand:.3f} rad "
+                      f"> 2.0 rad lookahead_angle — static-goal deviation "
+                      f"(SLERP lookahead unported)")
+            else:
+                raise SystemExit(
+                    f"[GOAL-QUAT] task demands {_demand:.3f} rad of reorientation, "
+                    f"which exceeds goal_params lookahead_angle = 2.0 rad. The port's "
+                    f"quaternion goal is static (no per-tick geodesic SLERP), so this "
+                    f"task would be mis-modelled. Implement the SLERP lookahead "
+                    f"(reference goal_generator.cc:410-434) before running it.")
+    # _goal_gen was constructed just after load_task (initial-draw path
+    # mutates task_cfg before build_environment). Banner here, where the
+    # normalized target_quat exists.
+    if _goal_gen is not None:
+        print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
+              f"goal #1 {'DRAWN' if _initial_goal_drawn else 'fixed (reference boot value)'} "
+              f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
+              f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+              f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
+    # Diagnostic (default-inert): force one re-goal at planner step N to
+    # exercise the live re-goal path without a real goal achievement.
+    _goal_gen_force_step = int(
+        os.environ.get("DIAG_GOALGEN_FORCE_REGOAL_AT_STEP", "-1") or -1)
     ee_frame    = plant.GetFrameByName(EE_BODY_NAME)
     world_frame = plant.world_frame()
 
@@ -589,6 +825,38 @@ def main():
     if args.sampling_c3 is not None:
         _yaml_path = args.sampling_c3
         sc3_params = SamplingC3Params.from_yaml(_yaml_path)
+        # object_shape is a property of the TASK, not of the controller config,
+        # but the sampler reads it from the sampling-c3 yaml while the LCS and
+        # the cost read task_cfg["object_type"]. Two sources of truth for the
+        # same fact: a mismatch silently hands the sampler the WRONG face table
+        # (e.g. running push_h against sampling_c3_kik_t.yaml would project H
+        # samples off the T's outline) with no error anywhere. tasks.yaml wins,
+        # same precedent as the sampling_height override below.
+        # lcs_explicit_manipuland_ground_contacts is parsed into
+        # SamplingC3Params, but the LCSFormulator is constructed EARLIER (before
+        # the sampling yaml is read) and hardcodes `3 if tshape else 4`. The
+        # yaml key was therefore INERT -- unnoticed because push_t's configured
+        # 3 coincides with the hardcoded value, so the T looked correct while
+        # any other value was silently discarded. Push the configured count
+        # through here.
+        # Guarded on > 0: the dataclass default is 0, and blindly assigning that
+        # would disable ground contacts entirely for configs omitting the key.
+        _n_gnd = int(getattr(sc3_params,
+                             "lcs_explicit_manipuland_ground_contacts", 0) or 0)
+        if (_n_gnd > 0
+                and _n_gnd != formulator.lcs_explicit_manipuland_ground_contacts):
+            print(f"[OVERRIDE] lcs_explicit_manipuland_ground_contacts={_n_gnd} "
+                  f"(was {formulator.lcs_explicit_manipuland_ground_contacts}, "
+                  f"from {_yaml_path})")
+            formulator.lcs_explicit_manipuland_ground_contacts = _n_gnd
+
+        _task_shape = str(task_cfg.get("object_type", "") or "")
+        if _task_shape:
+            _was_shape = str(sc3_params.sampling_params.object_shape)
+            if _was_shape != _task_shape:
+                sc3_params.sampling_params.object_shape = _task_shape
+                print(f"[OVERRIDE] object_shape={_task_shape} "
+                      f"(was '{_was_shape}', per-task '{task_name}')")
         # D6: per-task sampling_height override. pushing/hard_pushing set 0.03
         # (sub-CoM, restoring tip moment); cube_turning/shepherding read the
         # sampler default. tasks.yaml is the source of truth; absent → no override.
@@ -658,7 +926,28 @@ def main():
             start_in_c3_mode=False,
             rng=_rng,
             diagram=diagram,
+            # Fig 8 sampler fix (2026-08-15): imported mesh (object_sdf)
+            # tasks use the reference geometry-generic perimeter sampler
+            # (interior draw + signed-distance projection off the real
+            # collision geometry) — they have no face tables, and the old
+            # box-T table mis-placed their approach targets (never-engaged
+            # class). push_t_mesh is EXCLUDED: it keeps the validated
+            # box-T face table (~6 passing draws at this HEAD) after the
+            # projection sampler spun it in 3/3 gate draws across three
+            # standoff variants (1.86/1.80/2.97 rad — standoff falsified
+            # as the mechanism; the interior-projection DISTRIBUTION
+            # interaction is an open question, see memory
+            # fig8-sampler-hardcoded-facetable-bug addendum). Legacy
+            # analytic tasks (push_t, push_h) keep their tables — their
+            # sim geometry IS the analytic shape.
+            use_geometry_perimeter_sampling=(
+                bool(task_cfg.get("object_sdf", None))
+                and args.task != "push_t_mesh"),
         )
+        # SE(3) tasks: hand the controller the full goal orientation so its
+        # rotation error is the geodesic angle rather than a yaw difference.
+        if _pending_goal_quat is not None:
+            mpc.set_goal_quat(_pending_goal_quat)
         print(f"[GS] SamplingC3Controller enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
               f"num_add_c3={sc3_params.sampling_params.num_additional_samples_c3} "
@@ -764,6 +1053,44 @@ def main():
         # sub-goal each tick rather than the distant final goal.
         _lookahead = 0.15
         _obj_xy_now = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
+        # kRandom re-goaling (reference goal_generator.cc:135-154 success
+        # gate + :378-389 OnGoalReached). On success: new goal to the cost
+        # + dispatcher; ghost moves; the achieved latch is reset because the
+        # reference latch is kFixedGoal-only (controller cc:914-916).
+        # target_yaw stays stale — inert for quaternion tasks (goal_quat
+        # takes precedence in the cost and the dispatcher rot error).
+        if _goal_gen is not None:
+            _obj_quat_now = np.array(
+                [current_q[pos_start + _i] for _i in range(4)])
+            _regoaled = _goal_gen.check_and_regoal(_obj_xy_now, _obj_quat_now)
+            if not _regoaled and step == _goal_gen_force_step:
+                _goal_gen.force_regoal()
+                _regoaled = True
+                print(f"[GOAL-GEN] DIAG forced re-goal at step={step}",
+                      flush=True)
+            if _regoaled:
+                target_xy   = _goal_gen.goal_xy.copy()
+                target_quat = _goal_gen.goal_quat.copy()
+                quad_cost.set_goal_quat(target_quat)
+                if hasattr(mpc, "set_goal_quat"):
+                    mpc.set_goal_quat(target_quat)
+                if hasattr(mpc, "_achieved_fixed_goal"):
+                    mpc._achieved_fixed_goal = False
+                    mpc._off_target_streak = 0
+                _update_jack_goal_marker(meshcat, target_xy, target_quat,
+                                         task_cfg["init_xyz"][2])
+                _gg_demand = geodesic_angle(target_quat, _obj_quat_now)
+                print(f"[GOAL-GEN] goal #{_goal_gen.goals_reached} REACHED "
+                      f"at t={sim_time:.3f}s -> new goal "
+                      f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
+                      f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
+                      f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+                      f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}] "
+                      f"demand={_gg_demand:.3f} rad"
+                      + ("  [WARN > 2.0 rad lookahead_angle -- static-goal "
+                         "deviation, see GOAL-QUAT note]"
+                         if _gg_demand > 2.0 else ""),
+                      flush=True)
         _delta_vec  = target_xy - _obj_xy_now
         _dist       = float(np.linalg.norm(_delta_vec))
         if _dist > 1e-9:
@@ -843,9 +1170,32 @@ def main():
         # mpc.compute_control_osc_only using the cached planner output, and
         # re-applies torque. This mirrors dairlib's decoupled OSC ticking at
         # osc_params.yaml `controller_frequency: 1000`.
+        # [F1K] 1 kHz contact-force aggregation. The physics and OSC run at
+        # 1 kHz but [GATE-CONTACT] samples force once per planner tick
+        # (13 Hz) — a 75x decimation that hides the stick-slip transients
+        # which are the only thing that moves the T (delivered mean 2.5 N <
+        # stiction 4.53 N; motion happens in unseen spikes). Aggregate the
+        # EE-object |F| across every sub-step and report min/mean/max plus
+        # the fraction of sub-steps above the stiction threshold.
+        _f1k_vals = []
         for _osc_i in range(_N_OSC_PER_OUTER):
             sim_time += _DT_OSC
             simulator.AdvanceTo(sim_time)
+            try:
+                _cr1k = plant.get_contact_results_output_port().Eval(plant_ctx)
+                _fm = 0.0
+                for _ci in range(_cr1k.num_point_pair_contacts()):
+                    _in1k = _cr1k.point_pair_contact_info(_ci)
+                    _pa, _pb = _in1k.point_pair().id_A, _in1k.point_pair().id_B
+                    if ((_pa in formulator._ee_geom_ids
+                         and _pb in formulator._manipuland_geom_ids)
+                            or (_pb in formulator._ee_geom_ids
+                                and _pa in formulator._manipuland_geom_ids)):
+                        _fm = float(np.linalg.norm(_in1k.contact_force()))
+                        break
+                _f1k_vals.append(_fm)
+            except Exception:
+                pass
             if _osc_i == _N_OSC_PER_OUTER - 1:
                 break
             _cur_q = plant.GetPositions(plant_ctx)
@@ -855,6 +1205,17 @@ def main():
                 _cur_q, _cur_v, plant_ctx, sim_time)
             _total_i = _tau_g_i[:n_u] + _u_osc
             plant.get_actuation_input_port().FixValue(plant_ctx, _total_i)
+        if _f1k_vals:
+            _fa = np.asarray(_f1k_vals)
+            _n_contact_1k = int((_fa > 1e-6).sum())
+            if _n_contact_1k > 0:
+                _stick_thr = 4.53   # mu_comb(0.3,1.0)*m*g, report-only
+                print(f"[F1K] step={step} sub={len(_fa)} "
+                      f"contact_sub={_n_contact_1k} "
+                      f"F(min/mean/max)=({_fa.min():.2f}/"
+                      f"{_fa[_fa>1e-6].mean():.2f}/{_fa.max():.2f})N "
+                      f"above_stiction={int((_fa > _stick_thr).sum())}",
+                      flush=True)
         step     += 1
 
         # Sink 3 vs Sink 4 diagnostic: Drake-realized contact force on the
@@ -914,6 +1275,38 @@ def main():
                 flush=True,
             )
 
+            # [OSC-DEBUG] face-normal / tangential decomposition — the
+            # port's analog of the reference's osc_debug tracking channels.
+            # Quantifies FACE-SKATING: how much of the delivered force and
+            # of the EE's actual motion is press (along −n_face_out, into
+            # the face) vs slide (tangential). Emitted only when a real
+            # EE-object contact exists this tick.
+            if _gate_F_W is not None and _n_face_out is not None:
+                _n_hat = np.asarray(_n_face_out, dtype=float).reshape(3)
+                _n_nrm = float(np.linalg.norm(_n_hat))
+                if _n_nrm > 1e-9:
+                    _n_hat = _n_hat / _n_nrm
+                    # Force ON THE BOX: press = component along −n (into
+                    # the face); tangential = the rest (friction drag).
+                    _Fb = np.asarray(_F_on_box, dtype=float).reshape(3)
+                    _F_press = float(-np.dot(_Fb, _n_hat))
+                    _F_tan   = float(np.linalg.norm(
+                        _Fb + _F_press * _n_hat))
+                    # EE motion this tick: press-directed vs tangential.
+                    _ee_prev = getattr(mpc, "_oscdbg_prev_ee", None)
+                    _d_ee = (np.asarray(ee_pos) - _ee_prev
+                             if _ee_prev is not None else np.zeros(3))
+                    _d_press = float(-np.dot(_d_ee, _n_hat))
+                    _d_tan   = float(np.linalg.norm(
+                        _d_ee + _d_press * _n_hat))
+                    print(f"[OSC-DEBUG] step={step} "
+                          f"F_press={_F_press:+.3f}N F_tan={_F_tan:.3f}N "
+                          f"dEE_press={_d_press*1000:+.3f}mm "
+                          f"dEE_tan={_d_tan*1000:.3f}mm "
+                          f"n=({_n_hat[0]:+.3f},{_n_hat[1]:+.3f},"
+                          f"{_n_hat[2]:+.3f})", flush=True)
+            mpc._oscdbg_prev_ee = np.asarray(ee_pos, dtype=float).copy()
+
         except Exception as _e:
             print(f"[DRAKE-CONTACT] step={step} ERROR={type(_e).__name__}: {_e}", flush=True)
 
@@ -949,7 +1342,12 @@ def main():
     _R_final = ad.RotationMatrix(ad.Quaternion(
         _final_quat[0], _final_quat[1], _final_quat[2], _final_quat[3]
     )).matrix()
-    _R_goal_mat = ad.RotationMatrix.MakeZRotation(target_yaw).matrix()
+    if target_quat is not None:
+        _R_goal_mat = ad.RotationMatrix(ad.Quaternion(
+            target_quat[0], target_quat[1],
+            target_quat[2], target_quat[3])).matrix()
+    else:
+        _R_goal_mat = ad.RotationMatrix.MakeZRotation(target_yaw).matrix()
     _tr = float(np.trace(_R_goal_mat.T @ _R_final))
     orient_err = float(np.arccos(np.clip((_tr - 1.0) * 0.5, -1.0, 1.0)))
     if args.sampling_c3 is not None:
@@ -973,6 +1371,12 @@ def main():
     _tight = _tight_final or _tight_latched
     _tight_reason = ("final" if _tight_final
                      else ("latched" if _tight_latched else "-"))
+    if _goal_gen is not None:
+        # kRandom headline: the reference task is continuous re-goaling, so
+        # goals_reached is the success count; RESULT below is measured
+        # against the LAST active goal only.
+        print(f"[GOAL-GEN] goals_reached={_goal_gen.goals_reached} "
+              f"(kRandom re-goaling; RESULT metrics are vs the final goal)")
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
           f"translational_error={final_dist:.4f}m  "

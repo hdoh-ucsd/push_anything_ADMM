@@ -22,6 +22,7 @@ Contact geometry:
     mu  : float        uniform friction coefficient from task config
 """
 import os
+import contextlib
 import numpy as np
 import pydrake.all as ad
 from pydrake.autodiffutils import (
@@ -55,7 +56,11 @@ class LCSFormulator:
     def __init__(self, plant, mu: float = 0.5, obj_body=None,
                  plant_ad=None, context_ad=None,
                  object_shape: str = "box",
-                 mu_per_pair_type: dict | None = None):
+                 mu_per_pair_type: dict | None = None,
+                 controller_object_mass: float | None = None,
+                 controller_inertia: dict | None = None,
+                 tshape_mesh_witnesses: bool = False,
+                 mesh_ground_witnesses_body=None):
         """
         mu_per_pair_type : optional dict mapping contact-pair tag
             ("EE-BOX", "BOX-GND", "EE-GND") to a per-pair friction
@@ -65,6 +70,56 @@ class LCSFormulator:
         """
         self.plant = plant
         self.mu    = float(mu)
+        # Mesh-T migration (2026-08-11): ground-witness table comes from the
+        # reference T_shape_video mesh footprint instead of the box-T table.
+        self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
+        # Fig 8 campaign (2026-08-15): per-task ground-witness table for
+        # generic imported anything objects — the 3 sphere positions from
+        # the object's reference *_controller.sdf, passed via the task's
+        # `ground_witness_points_body`. Takes precedence over the two
+        # hardcoded T tables when set; the push_t/push_t_mesh tasks don't
+        # set it, so their behavior is unchanged.
+        self._mesh_ground_witnesses_body = (
+            None if mesh_ground_witnesses_body is None
+            else np.asarray(mesh_ground_witnesses_body, dtype=float).reshape(3, 3).T)
+        # Reference ships a SEPARATE, heavier object model for the CONTROLLER
+        # than for the sim, and the difference is task-specific:
+        #     push_t   push_t.sdf 1.0 kg  == push_t_control.sdf 1.0 kg   (1x)
+        #     jacktoy  jack.sdf 0.156 kg  vs jack_control.sdf 0.99 kg    (6.35x)
+        #     anything H_shape_texture.sdf 0.05 kg vs
+        #              H_shape_texture_controller.sdf 1.0 kg             (20x)
+        # i.e. the planning model is always ~1 kg regardless of the true mass.
+        # The port runs ONE plant for sim and control, so without this it plans
+        # at the SIM mass -- fine for push_t (they coincide), but 6.35x too
+        # light for the jack, where it makes the LCS predict a phantom LAUNCH:
+        # at 0.156 kg, u=1 N across a 16 mm gap lifts the object 19.45 mm in
+        # the model (physics: 0.00 mm) while a real topple needs only 5.11 mm,
+        # so the planner never plans the roll. At 0.99 kg the launch is 0.00 mm.
+        # None => use the plant's own mass (the historical behaviour).
+        self._controller_object_mass = (
+            None if controller_object_mass is None
+            else float(controller_object_mass))
+        # 2026-08-15 planner-inertia conformance (letter hover root-cause,
+        # leg 2): the reference plans with the *_controller.sdf's DECLARED
+        # spatial inertia (e.g. I_shape: mass 1.0, I=diag(.003,.003,.006)
+        # about the com), NOT a mass-scaled copy of the sim model's tensor.
+        # The two are not proportional (sim I ixx 1.45e-5 @0.05 kg -> x20
+        # scale gives 2.9e-4 vs the declared 3e-3: 10x off; raw D obj_w
+        # rows 4.7x the reference's for the same letter). When set, this
+        # dict {mass, com:[3], moments:[ixx,iyy,izz], products:[ixy,ixz,
+        # iyz]} takes precedence over the mass-scaling path inside
+        # _controller_inertia_scope. None => legacy scaling (box et al.).
+        self._controller_inertia = None
+        if controller_inertia is not None:
+            self._controller_inertia = dict(
+                mass=float(controller_inertia["mass"]),
+                com=np.asarray(controller_inertia.get("com", (0.0,) * 3),
+                               dtype=float),
+                moments=np.asarray(controller_inertia["moments"], dtype=float),
+                products=np.asarray(
+                    controller_inertia.get("products", (0.0,) * 3),
+                    dtype=float),
+            )
         self._obj_body = obj_body
         self._object_shape = str(object_shape)
         self._mu_per_pair_type = (
@@ -109,6 +164,18 @@ class LCSFormulator:
         self._always_on_ee_box = True
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
+        # 2026-08-15 step-3 verdict (memory
+        # project_box_3witness_falsified_2026-08-15): the box tried the
+        # reference 3-sphere ground triangle (n=3, commit 4a7b816) and
+        # it FALSIFIED — the asymmetric triangle vs the ideal cube's
+        # symmetric flat rest injected a first-push yaw spin
+        # (0.045→0.43 rad; canonical eval rot FAIL 0.1727). The
+        # reference's triangle presumes controller spheres ≈ TRUE
+        # support, which holds for its real meshes but not an ideal
+        # cube. Box default RESTORED to its true support set (4
+        # corners) = the faithful instantiation of reference intent;
+        # the n=3 branch stays available (falsification lever only).
+        # tshape keeps its mesh-derived reference triangle.
         self.lcs_explicit_manipuland_ground_contacts = (
             3 if object_shape == "tshape" else 4)
 
@@ -325,12 +392,29 @@ class LCSFormulator:
     def _box_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
         """Return (3, n_synth) array of body-frame contact points to enumerate
         for box-ground synthesis. Choices:
-          4  → 4 bottom corners only       (minimal four-point support)
+          3  → REFERENCE support triangle (2026-08-15 conformance, step 3).
+               Every reference anything object carries exactly 3 ground-
+               contact spheres (r=1 mm, centers on the base plane) in its
+               *controller* model — two near the corners of one base edge
+               plus one at the midpoint of the opposite edge (e.g.
+               expo_box_controller.sdf:283-311: pair at (-0.0637, ±~0.07),
+               single at (+0.0605, ~0)), resolved to all 3 by
+               resolve_contacts_to_lists [[0,1,3,1]]. Port analog for the
+               cube footprint: pair at (-0.048, ±0.048), single at
+               (+0.048, 0), 2 mm inset, base plane. Same surface-point
+               convention as the mesh-T witness table (sphere centers,
+               r_tip=0).
+          4  → 4 bottom corners only       (pre-conformance port default)
           8  → all 8 cube vertices         (corners; top set inactive at rest)
           12 → 8 vertices + 4 bottom-face edge midpoints
         """
         hx, hy, hz = self._box_half_extents
-        if n_synth == 4:
+        if n_synth == 3:
+            _ix, _iy = hx - 0.002, hy - 0.002
+            pts = np.array([[-_ix, +_iy, -hz],
+                            [-_ix, -_iy, -hz],
+                            [+_ix,  0.0, -hz]]).T
+        elif n_synth == 4:
             pts = np.array([[+hx, +hy, -hz],
                             [+hx, -hy, -hz],
                             [-hx, +hy, -hz],
@@ -381,17 +465,113 @@ class LCSFormulator:
                 f"T-shape vertex-set n_synth must be 3 (matches reference "
                 f"push_t resolve_contacts_to=[0,1,3]); got {n_synth}."
             )
+        if self._mesh_ground_witnesses_body is not None:
+            # Per-task table (imported anything object): the 3 sphere
+            # positions from the object's reference *_controller.sdf.
+            return self._mesh_ground_witnesses_body
+        if self._tshape_mesh_witnesses:
+            # Reference T_shape_video mesh bottom-face support extremities
+            # (computed from T_shape_video.obj: bottom ring at z=-0.0243).
+            return np.array([
+                [+0.1168, +0.0069, -0.0243],   # crossbar +x tip
+                [-0.0620, +0.0691, -0.0243],   # arm +y tip
+                [-0.0548, -0.0789, -0.0243],   # arm -y tip
+            ]).T   # (3, 3)
         return np.array([
             [+0.13,  0.00, -0.02],   # crossbar +x tip
             [-0.05, +0.08, -0.02],   # stem +y tip
             [-0.05, -0.08, -0.02],   # stem -y tip
         ]).T   # (3, 3)
 
+    # Reference jack_control.sdf gives each tip sphere radius 0.025 with its
+    # CENTRE at +/-0.0625 along the capsule axis. The witness table below holds
+    # centres, so the ground witness sits one radius below -- unlike the box/T/H
+    # tables, whose entries are true corner points already on the surface.
+    _JACK_TIP_RADIUS = 0.025
+
+    def _jack_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
+        """Return the jack's SIX tip-sphere centres in the link frame.
+
+        Reference: examples/sampling_c3/urdf/jack_control.sdf declares
+        capsule_{1,2,3}_sphere_{1,2} at +/-0.0625 along each capsule's axis,
+        and franka_sampling_c3_controller.cc:193-204 pairs all six against
+        GROUND. `resolve_contacts_to = [0, 1, 3]` then keeps the THREE closest
+        (GetNClosestContactPairs) -- i.e. the reference does not hard-code
+        which tips are resting, it enumerates every candidate and lets the
+        signed distance rank them each tick.
+
+        This is why the jack needs no special case beyond the table: unlike the
+        T and H, whose bottom face is fixed in the body frame, the jack rolls
+        between tripods and its resting triple changes with pose. The caller
+        performs the closest-3 selection.
+        """
+        h = 0.0625
+        return np.array([
+            [0.0, 0.0, +h], [0.0, 0.0, -h],   # capsule_1 (body +z)
+            [+h, 0.0, 0.0], [-h, 0.0, 0.0],   # capsule_2 (body +x)
+            [0.0, +h, 0.0], [0.0, -h, 0.0],   # capsule_3 (body +y)
+        ]).T   # (3, 6)
+
+    def _hshape_vertex_set_body_frame(self, n_synth: int) -> np.ndarray:
+        """Return H-shape bottom-face witness points in the link frame.
+
+        Geometry (see sim/env_builder.py:_hshape_sdf) — bottom face at
+        link-z = -0.016:
+          left  bar  x ∈ [-0.056, -0.032], y ∈ [-0.064, +0.064]
+          right bar  x ∈ [+0.032, +0.056], y ∈ [-0.064, +0.064]
+          crossbar   x ∈ [-0.032, +0.032], y ∈ [-0.012, +0.012]
+
+        n_synth = 4 (DEFAULT for the H): one witness per bar end, at the bar
+        centre-lines. A symmetric rectangular support 0.088 × 0.128 whose
+        interior contains the CoM projection with a wide margin — the natural
+        analogue of the box path's 4-vertex set, and the right choice for a
+        shape with two-fold symmetry.
+
+        n_synth = 3 is also accepted (matching the T's triangular support, for
+        A/B against push_t): the two bottom bar tips plus the crossbar's
+        top-centre. Verified to contain the CoM projection with barycentric
+        margin 0.079. Note the "three bar corners" triangle was REJECTED —
+        it puts the CoM exactly on an edge (margin 0.0), a degenerate support
+        that would let the LCS tip the object about that edge for free.
+        """
+        z = -0.016
+        if n_synth == 12:
+            # Reference `anything` resolve_contacts_to_lists starts [0, 1, 12,
+            # ...]: 0 EE-ground, 1 EE-object, 12 object-ground. Twelve maps
+            # exactly onto the H's 3-box decomposition as the 4 bottom corners
+            # of each box, which is also the densest support the geometry
+            # admits without duplicating points.
+            v = []
+            for (x0, x1, y0, y1) in ((-0.056, -0.032, -0.064, +0.064),
+                                     (+0.032, +0.056, -0.064, +0.064),
+                                     (-0.032, +0.032, -0.012, +0.012)):
+                v += [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]]
+            return np.array(v).T   # (3, 12)
+        if n_synth == 4:
+            return np.array([
+                [-0.044, -0.064, z],   # left bar, -y end
+                [+0.044, -0.064, z],   # right bar, -y end
+                [+0.044, +0.064, z],   # right bar, +y end
+                [-0.044, +0.064, z],   # left bar, +y end
+            ]).T   # (3, 4)
+        if n_synth == 3:
+            return np.array([
+                [-0.044, -0.064, z],   # left bar, -y end
+                [+0.044, -0.064, z],   # right bar, -y end
+                [ 0.000, +0.012, z],   # crossbar, +y centre
+            ]).T   # (3, 3)
+        raise ValueError(
+            f"H-shape vertex-set n_synth must be 3, 4 or 12; got {n_synth}."
+        )
+
     def _synthesize_manipuland_ground_contacts(self, context, query_obj):
         """Synthesize N manipuland-vertex ↔ ground contact rows. Dispatches
         on self._object_shape:
-          - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{4,8,12}].
+          - "box"    → _box_vertex_set_body_frame(n_synth) [n∈{3,4,8,12}].
           - "tshape" → _tshape_vertex_set_body_frame(n_synth) [n=3].
+          - "hshape" → _hshape_vertex_set_body_frame(n_synth) [n∈{3,4,12}].
+          - "jack"   → _jack_vertex_set_body_frame(n_synth) [6 candidates,
+            closest n_synth kept per tick — the rolling tripod].
 
         Returns four parallel lists in the same format as Drake-admitted
         contacts:
@@ -405,6 +585,10 @@ class LCSFormulator:
         n_synth = self.lcs_explicit_manipuland_ground_contacts
         if self._object_shape == "tshape":
             verts_body = self._tshape_vertex_set_body_frame(n_synth)
+        elif self._object_shape == "hshape":
+            verts_body = self._hshape_vertex_set_body_frame(n_synth)
+        elif self._object_shape == "jack":
+            verts_body = self._jack_vertex_set_body_frame(n_synth)
         elif self._object_shape == "box":
             half_extents = self._maybe_init_box_half_extents(query_obj)
             if not np.all(half_extents > 0):
@@ -418,13 +602,46 @@ class LCSFormulator:
         W            = self.plant.world_frame()
         nhat_ground  = np.array([0.0, 0.0, 1.0])    # ground normal: force on box +z
 
+        # Witness offset below the tabled point. Zero for the box/T/H, whose
+        # table entries are true surface corners; one sphere radius for the
+        # jack, whose entries are tip-sphere centres.
+        r_tip = self._JACK_TIP_RADIUS if self._object_shape == "jack" else 0.0
+
+        # Reference GetNClosestContactPairs (sampling_based_c3_controller.cc:
+        # 1605-1614): when a contact group offers more candidates than the
+        # group's resolve_contacts_to count, keep the CLOSEST n. The box/T/H
+        # tables are built exactly n_synth long so this is a no-op for them;
+        # the jack supplies 6 tips and keeps the resting 3, re-selected every
+        # tick as the object rolls.
+        if verts_body.shape[1] > n_synth:
+            R_WB = self.plant.CalcRelativeRotationMatrix(
+                context, W, box_frame).matrix()
+            _z = np.array([
+                float(self.plant.CalcPointsPositions(
+                    context, box_frame, verts_body[:, j:j+1], W).flatten()[2])
+                for j in range(verts_body.shape[1])
+            ])
+            keep = np.argsort(_z, kind="stable")[:n_synth]
+            verts_body = verts_body[:, np.sort(keep)]
+
         phis_s:     list = []
         J_n_rows_s: list = []
         J_t_rows_s: list = []
         ci_s:       list = []
 
+        # Body-frame offset that carries a tip-sphere centre down to the
+        # sphere's lowest surface point (world -z). Identity when r_tip == 0.
+        if r_tip > 0.0:
+            R_WB_now = self.plant.CalcRelativeRotationMatrix(
+                context, W, box_frame).matrix()
+            _drop_body = R_WB_now.T @ np.array([0.0, 0.0, -r_tip])
+        else:
+            _drop_body = np.zeros(3)
+
         for i in range(n_synth):
-            pt_body = verts_body[:, i:i+1]   # (3, 1) — Drake API takes column vec
+            # The witness — and the point the Jacobian must be taken at — is
+            # the surface point, not the tabled centre.
+            pt_body = (verts_body[:, i] + _drop_body).reshape(3, 1)
             # World position of this vertex
             pt_world = self.plant.CalcPointsPositions(
                 context, box_frame, pt_body, W,
@@ -456,7 +673,8 @@ class LCSFormulator:
             # Downstream tag consumers (_derive_force_command EE-BOX filter,
             # B1-A pair-index scan) match on "EE-BOX" prefix only, so these
             # synthesized rows are correctly excluded from EE-force intent.
-            _tag_prefix = "T-VERT" if self._object_shape == "tshape" else "BOX-VERT"
+            _tag_prefix = self._SYNTH_GND_TAG_PREFIX_BY_SHAPE.get(
+                self._object_shape, "BOX-VERT")
             ci_s.append({
                 "body_A":       self._obj_body.name(),
                 "body_B":       "ground (world_body)",
@@ -464,7 +682,7 @@ class LCSFormulator:
                 "tag":          f"{_tag_prefix}-{i}",
                 "nhat_BA_W":    nhat_ground.copy(),
                 "nhat_onto_box": nhat_ground.copy(),
-                "p_ACa":        verts_body[:, i].copy(),
+                "p_ACa":        pt_body.flatten().copy(),
                 "p_BCb":        np.array([pt_world[0], pt_world[1], self._ground_z]),
                 "distance":     phi_i,
             })
@@ -472,20 +690,44 @@ class LCSFormulator:
         return phis_s, J_n_rows_s, J_t_rows_s, ci_s
 
     # ------------------------------------------------------------------
+    # Tag prefix used for each shape's SYNTHESIZED manipuland-ground rows.
+    # Single source of truth: _synthesize_manipuland_ground_contacts stamps
+    # the tag from here, and _mu_for_tag collapses anything in here onto
+    # "BOX-GND" for the mu_per_pair_type lookup. Keeping both sides on one
+    # table is what stops a new shape from silently getting scalar-fallback
+    # friction (which is exactly what happened to the H).
+    _SYNTH_GND_TAG_PREFIX_BY_SHAPE = {
+        "tshape": "T-VERT",
+        "hshape": "H-VERT",
+        "jack":   "J-TIP",
+        "box":    "BOX-VERT",
+    }
+    _SYNTH_GND_TAG_PREFIXES = tuple(
+        set(_SYNTH_GND_TAG_PREFIX_BY_SHAPE.values()))
+
     def _mu_for_tag(self, tag: str) -> float:
         """Return per-pair-type μ using self._mu_per_pair_type override
         if present, otherwise fall back to the scalar self.mu.
 
-        Tag normalization: synthesized manipuland-ground rows use the
-        shape-prefixed tags "BOX-VERT-{i}" / "T-VERT-{i}" (see
-        _synthesize_manipuland_ground_contacts). These are collapsed
-        onto "BOX-GND" for lookup so the yaml `mu_per_pair_type`
+        Tag normalization: synthesized manipuland-ground rows use
+        shape-prefixed tags (see _synthesize_manipuland_ground_contacts):
+        "BOX-VERT-{i}", "T-VERT-{i}", "H-VERT-{i}", "J-TIP-{i}". All are
+        collapsed onto "BOX-GND" for lookup so the yaml `mu_per_pair_type`
         map only needs the three canonical keys
         (EE-BOX / BOX-GND / EE-GND).
+
+        2026-08-10: this list was BOX-VERT/T-VERT only, so the H's twelve
+        synthesized ground rows (added later, tagged H-VERT) silently fell
+        through to the scalar `self.mu` -- 0.3 for push_h instead of the
+        configured BOX-GND 0.4615, a 35% under-estimate of ground friction
+        in every H run to date. The jack's J-TIP rows would have inherited
+        the same hole. Driven off the shared prefix set below so a new
+        shape cannot reintroduce it by adding a tag and forgetting this
+        function.
         """
         if self._mu_per_pair_type is not None:
             _lookup = tag
-            if tag.startswith("BOX-VERT") or tag.startswith("T-VERT"):
+            if any(tag.startswith(pfx) for pfx in self._SYNTH_GND_TAG_PREFIXES):
                 _lookup = "BOX-GND"
             v = self._mu_per_pair_type.get(_lookup)
             if v is not None:
@@ -1103,7 +1345,13 @@ class LCSFormulator:
             f.close()
 
     # ------------------------------------------------------------------
-    def linearize_discrete(self, context, dt: float, u_lin=None):
+    def linearize_discrete(self, context, *a, **kw):
+        """Reference-conformant controller mass applied around the build.
+        See _controller_inertia_scope."""
+        with self._controller_inertia_scope(context):
+            return self._linearize_discrete_impl(context, *a, **kw)
+
+    def _linearize_discrete_impl(self, context, dt: float, u_lin=None):
         self._last_planner_dt = float(dt)
         """
         Linearize the Drake plant into a discrete-time LCS at (q*, v*, u*).
@@ -1174,7 +1422,7 @@ class LCSFormulator:
         # line 1405-1409). Bypasses the 2 mm distance threshold so the LCS
         # keeps an EE-T pair even during the arm's lift-traverse-descend,
         # preventing c3-chatter. Box path unchanged (gate requires tshape).
-        if (self._object_shape == "tshape"
+        if (self._object_shape in ("tshape", "hshape")
                 and getattr(self, "_ref_pair_admission_planner_lcs", False)):
             phi, J_n, J_t, mu = self.extract_lcs_contacts(
                 context, force_top_k_ee_box=True, n_ee_top_k=1)
@@ -1510,7 +1758,77 @@ class LCSFormulator:
     # together with the removal of the arm operational-space inertia path.
     _EE_MASS = 0.057   # kg
 
-    def linearize_discrete_ee_space(self, context, dt: float, u_lin=None,
+    @contextlib.contextmanager
+    def _controller_inertia_scope(self, context):
+        """Temporarily give the manipuland its CONTROLLER-model mass.
+
+        Drake carries mass/inertia as context PARAMETERS, so the swap is
+        per-context: the simulator's own context keeps the true sim mass and
+        the physics is untouched. Applied to both the double and autodiff
+        plants, since the LCS reads M/Cv/tau_g from one and the linearization
+        Jacobian from the other. Restores on exit even if the build throws.
+        """
+        if ((self._controller_object_mass is None
+             and self._controller_inertia is None)
+                or self._obj_body is None):
+            yield
+            return
+        # Declared-tensor path: precompute the unit inertia about the BODY
+        # ORIGIN from the controller-SDF values (inertia declared about the
+        # com; parallel-axis shift to the origin), scalar-type-agnostic.
+        _decl = self._controller_inertia
+        if _decl is not None:
+            _m = _decl["mass"]
+            _c = _decl["com"]
+            _I = np.diag(_decl["moments"]).astype(float)
+            _ixy, _ixz, _iyz = _decl["products"]
+            _I[0, 1] = _I[1, 0] = _ixy
+            _I[0, 2] = _I[2, 0] = _ixz
+            _I[1, 2] = _I[2, 1] = _iyz
+            _I_origin = _I + _m * (float(_c @ _c) * np.eye(3)
+                                   - np.outer(_c, _c))
+            _U = _I_origin / _m       # unit inertia about the body origin
+        pairs = []
+        try:
+            for pl, cx in ((self.plant, context),
+                           (self.plant_ad, self.context_ad)):
+                if pl is None or cx is None:
+                    continue
+                body = pl.GetBodyByName(self._obj_body.name())
+                M0 = body.CalcSpatialInertiaInBodyFrame(cx)
+                if _decl is not None:
+                    _UnitInertia = type(M0.get_unit_inertia())
+                    Mnew = M0.__class__(
+                        _m, _decl["com"].copy(),
+                        _UnitInertia(_U[0, 0], _U[1, 1], _U[2, 2],
+                                     _U[0, 1], _U[0, 2], _U[1, 2]))
+                    body.SetSpatialInertiaInBodyFrame(cx, Mnew)
+                    pairs.append((body, cx, M0))
+                    continue
+                m0 = float(ad.ExtractValue(np.array([[M0.get_mass()]]))[0, 0]
+                           if hasattr(M0.get_mass(), "value") else M0.get_mass())
+                if m0 <= 0.0:
+                    continue
+                scale = self._controller_object_mass / m0
+                # Scaling the SpatialInertia's mass while holding com and unit
+                # inertia fixed scales the rotational inertia by the same
+                # factor, which is what a denser copy of the same shape gives.
+                Mnew = M0.__class__(M0.get_mass() * scale, M0.get_com(),
+                                    M0.get_unit_inertia())
+                body.SetSpatialInertiaInBodyFrame(cx, Mnew)
+                pairs.append((body, cx, M0))
+            yield
+        finally:
+            for body, cx, M0 in pairs:
+                body.SetSpatialInertiaInBodyFrame(cx, M0)
+
+    def linearize_discrete_ee_space(self, context, *a, **kw):
+        """Reference-conformant controller mass applied around the build.
+        See _controller_inertia_scope."""
+        with self._controller_inertia_scope(context):
+            return self._linearize_discrete_ee_space_impl(context, *a, **kw)
+
+    def _linearize_discrete_ee_space_impl(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
                                     force_top_k_ee_box: bool = False):
         self._last_planner_dt = float(dt)
@@ -1526,7 +1844,7 @@ class LCSFormulator:
         # Gated to tshape so the box planner path is byte-identical when the
         # class flag is True.
         if (not force_top_k_ee_box
-                and self._object_shape == "tshape"
+                and self._object_shape in ("tshape", "hshape")
                 and getattr(self, "_ref_pair_admission_planner_lcs", False)):
             force_top_k_ee_box = True
             n_ee_top_k = 1
@@ -1928,14 +2246,23 @@ class LCSFormulator:
         # 4f. d_vec — affine offset (constant term in x_{k+1} after linearization).
         # d_box_v_offset = f_box(box_q*, box_v*) − df_box_dboxq · box_q*
         #                  − df_box_dboxv · box_v*
-        # d_v_ee_offset  = f_ee(u*) − (∂f_ee/∂u) · u*  = u*/m_ee − u*/m_ee = 0
+        # d_v_ee_offset: 2026-08-15 leg-4 fix — the reference's planner EE is
+        # a 0.057 kg body on PASSIVE prismatic joints, so GRAVITY acts on it:
+        # f_ee = u/m_ee − g·ẑ, hence a constant offset −g·ẑ. The prior
+        # derivation ("u*/m_ee − u*/m_ee = 0") forgot the −g term. Verified
+        # against the reference Letter-I instance dump: d[v_ee_z] = −0.7358
+        # (= −9.81·dt), d[p_ee_z] = −0.0552 (= −9.81·dt²); the port had
+        # exact zeros there. Plans must spend u_z ≈ +m·g/… to hold height —
+        # part of the reference's approach economics (R_z=6 prices it) and
+        # the source of the reference's EE-row folded-c asymmetry via
+        # J_c_ee·(−g·dt) (the c assembly below plumbs this automatically).
         d_box_v_offset = f_box - df_box_dboxq @ box_q - df_box_dboxv @ box_v
-        d_v_ee_offset  = np.zeros(3)   # purely linear in u (no constant offset)
+        d_v_ee_offset  = np.array([0.0, 0.0, -9.81])
         d_vec = np.zeros(N_X)
         d_vec[self.BOX_Q_SLOT] = (dt * dt) * (N_box @ d_box_v_offset)
-        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset    # zero
+        d_vec[self.P_EE_SLOT]  = (dt * dt) * d_v_ee_offset
         d_vec[self.BOX_V_SLOT] = dt * d_box_v_offset
-        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset           # zero
+        d_vec[self.V_EE_SLOT]  = dt * d_v_ee_offset
 
         # -----------------------------------------------------------------
         # 5. Stewart-Trinkle LCP slack:
@@ -2010,6 +2337,20 @@ class LCSFormulator:
             c_const_v_box  = J_n_box @ (box_v + dt * d_box_v_offset)
             c_const_v_ee   = J_n_ee  @ (v_ee  + dt * d_v_ee_offset)
             c_lcs[SLN:SLN + n_c] = phi / dt + c_const_v_box + c_const_v_ee
+            # DIAG_ZVEE build-time row decomposition (2026-08-11): what is
+            # ACTUALLY in each lambda_n row vs the contact metadata.
+            import os as _os_rd
+            if _os_rd.environ.get("DIAG_ZVEE", ""):
+                _tags = [i.get('tag', '?')
+                         for i in self._last_contact_info[:n_c]]
+                print(f"[ROWBUILD] p_ee_star={np.array2string(p_ee, precision=4)} "
+                      f"tags={_tags} "
+                      f"phi/dt={np.array2string(phi/dt, precision=3)} "
+                      f"cv_box={np.array2string(c_const_v_box, precision=3)} "
+                      f"cv_ee={np.array2string(c_const_v_ee, precision=3)} "
+                      f"Jnb_z={np.array2string(J_n_box[:, 5], precision=3)} "
+                      f"vrow={np.array2string(phi/dt + c_const_v_box + c_const_v_ee, precision=3)}",
+                      flush=True)
             # NOTE: c_lcs absorbs the "constant" of η linearized at (x*, u*);
             # E and H carry the gradient parts. We subtract E·x* + H·u* below.
 
@@ -2047,10 +2388,12 @@ class LCSFormulator:
             E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] = dt * (J_t_box @ df_box_dboxq)
             E_lcs[SLT:SLT + n_t, self.BOX_V_SLOT] = J_t_box + dt * (J_t_box @ df_box_dboxv)
             E_lcs[SLT:SLT + n_t, self.V_EE_SLOT]  = J_t_ee
-            # A2 fix: same phi-gradient addition for tangent row block.
-            if self._use_e_block_split:
-                E_lcs[SLT:SLT + n_t, self.BOX_Q_SLOT] += (J_t_box @ vNqdot_box) / dt
-                E_lcs[SLT:SLT + n_t, self.P_EE_SLOT]  += J_t_ee / dt
+            # 2026-08-15 (leg 3): NO phi-gradient on tangential rows — the
+            # reference ST assembly (lcs_factory.cc kStewartAndTrinkle)
+            # adds Jn·vNqdot on the λ_n rows ONLY; tangential-row z has no
+            # φ term, so it has no position-forcing gradient. The prior A2
+            # addition here was the same folding disease as the Anitescu
+            # J_c-vs-E_tᵀJn bug (non-canonical path; fixed for parity).
             F_lcs[SLT:SLT + n_t, SG:SG + n_c]     = E_t.T
             F_lcs[SLT:SLT + n_t, SLN:SLN + n_c]   = (
                 dt * (J_t_box @ Minv_JnT_box)
@@ -2066,7 +2409,7 @@ class LCSFormulator:
             c_lcs[SLT:SLT + n_t] = c_const_v_box_t + c_const_v_ee_t
 
             # Subtract E·x* so c carries η's affine offset. The value
-            # expression above is evaluated at u = 0 (d_v_ee_offset = 0 —
+            # expression above is evaluated at u = 0 (d_v_ee_offset = −g·ẑ since the leg-4 fix —
             # "purely linear in u"), so H·u* must NOT be subtracted: doing so
             # shifted every EE-coupled row by −H·u* whenever the full solve
             # linearized at u_lin = _last_u ≠ 0 (p146 walk root cause; ground
@@ -2151,8 +2494,20 @@ class LCSFormulator:
                                             + dt * (J_c_box @ df_box_dboxv))
                 E_an[:, self.V_EE_SLOT]  = J_c_ee
                 if self._use_e_block_split:
-                    E_an[:, self.BOX_Q_SLOT] += (J_c_box @ vNqdot_box) / dt
-                    E_an[:, self.P_EE_SLOT]  += J_c_ee / dt
+                    # 2026-08-15 fix (hover root-cause leg 3): the reference
+                    # position-forcing term is E_tᵀ·Jn·vNqdot/dt
+                    # (lcs_factory.cc:533-534 and the port's own doc block at
+                    # ~1599) — the NORMAL Jacobian replicated per contact,
+                    # since phi varies along the normal only. The prior code
+                    # folded J_c = E_tᵀJn + μJt here, leaking ±μ·|Jt|/dt
+                    # (≈5.6 at μ=.42, dt=.075) sign-alternating garbage into
+                    # E's position columns (and via c = z* − E·x* into c:
+                    # the ±3-asymmetric folded rows at rest vs the
+                    # reference's uniform ones) — phantom gap-manipulation
+                    # via tangential position moves.
+                    E_an[:, self.BOX_Q_SLOT] += (
+                        E_t_an.T @ (J_n_box @ vNqdot_box)) / dt
+                    E_an[:, self.P_EE_SLOT]  += (E_t_an.T @ J_n_ee) / dt
 
                 # F — single PSD block (analog of lcs_factory.cc:259):
                 #   F = dt · J_c · M^{-1} · J_c^T
@@ -2166,7 +2521,8 @@ class LCSFormulator:
                 H_an = dt * (J_c_ee @ M_ee_op_inv)                # (4n_c, 3)
 
                 # c — linearization-point value of η at u = 0 (d_v_ee_offset
-                # = 0); subtraction converts to the affine offset. H·u* must
+                # = −g·ẑ since the leg-4 fix); subtraction converts to the
+                # affine offset. H·u* must
                 # NOT be subtracted — the value expression excludes u, so
                 # subtracting H·u* shifted the EE-coupled rows by −H·u*
                 # whenever u_lin ≠ 0 (p146 walk root cause; see ST-path note).

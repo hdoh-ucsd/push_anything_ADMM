@@ -55,7 +55,7 @@ RE_GATE = re.compile(
     r"ee_p=\(([^)]+)\)"
 )
 RE_STEP_MODE = re.compile(
-    r"^\[STEP\] step=(\d+) mode=(\w+).*?switch=(\w+)"
+    r"^\[STEP\] step=(\d+) mode=(\w+) t=([\d.]+)s.*?switch=(\w+)"
 )
 
 
@@ -66,7 +66,11 @@ def _parse_triple(s: str) -> np.ndarray:
 def parse_log(path: Path):
     """Return dict step → {box_p, box_q, ee_p, mode, switch, sim_t}."""
     frames = {}
-    with open(path) as f:
+    # errors="replace" to match the other log readers here and in
+    # paint_log_sidepanel.py: the 1 kHz OSC sub-loop can interleave a write
+    # mid-way through a multi-byte glyph (the logs carry φ/λ/ρ), leaving a
+    # stray continuation byte that would otherwise abort the whole render.
+    with open(path, errors="replace") as f:
         for line in f:
             if line.startswith("[GATE-CONTACT]"):
                 m = RE_GATE.match(line)
@@ -85,8 +89,11 @@ def parse_log(path: Path):
                 step = int(m.group(1))
                 frames.setdefault(step, {}).update(
                     mode=m.group(2),
-                    switch=m.group(3),
-                    sim_t=step * 0.01,
+                    switch=m.group(4),
+                    # sim_t from the log's own t= field — the prior
+                    # step*0.01 assumed a 10 ms planner tick and was wrong
+                    # for every other cadence (jack/push_t tick at 0.1 s).
+                    sim_t=float(m.group(3)),
                 )
     return frames
 
@@ -103,23 +110,40 @@ def parse_log_goal(log_path: Path):
     (0.30, 0) while the run pushed toward (0.482, 0.187)).
     """
     pat = re.compile(r"\[ENV\]\s+Goal coords:\s*\[([-\d.eE+]+),\s*([-\d.eE+]+)\]")
+    # SE(3) tasks (jack) also log the ACTIVE goal quaternion; with
+    # krandom_draw_initial_goal the drawn quat differs from tasks.yaml's
+    # boot value, so the ghost must take it from the log too.
+    pat_q = re.compile(
+        r"\[GOAL-QUAT\] goal_quat=\[([-+\d.eE]+)\s+([-+\d.eE]+)\s+"
+        r"([-+\d.eE]+)\s+([-+\d.eE]+)\]")
+    goal_xy, goal_quat = None, None
     with open(log_path, errors="replace") as f:
         for _ in range(500):
             line = f.readline()
             if not line:
                 break
             m = pat.search(line)
-            if m:
-                return [float(m.group(1)), float(m.group(2))]
-    return None
+            if m and goal_xy is None:
+                goal_xy = [float(m.group(1)), float(m.group(2))]
+            m = pat_q.search(line)
+            if m and goal_quat is None:
+                goal_quat = [float(m.group(i)) for i in (1, 2, 3, 4)]
+            if goal_xy is not None and goal_quat is not None:
+                break
+    return goal_xy, goal_quat
 
 
-def load_task_cfg(task_name: str, task_id, log_goal):
+def load_task_cfg(task_name: str, task_id, log_goal_pair):
     """main.py's load_task; goal priority: explicit --task-id > log > yaml."""
+    log_goal, log_goal_quat = log_goal_pair
     root = Path(__file__).resolve().parents[2]
     with open(root / "config" / "tasks.yaml") as f:
         all_tasks = yaml.safe_load(f)["tasks"]
     task_cfg = dict(all_tasks[task_name])
+    if log_goal_quat is not None:
+        task_cfg["goal_quat"] = log_goal_quat
+        print(f"[render-log-drake] goal quat from log [GOAL-QUAT] line: "
+              f"{log_goal_quat}")
     if task_id is not None:
         with open(root / "config" / "directional_tasks.json") as f:
             dir_cfg = json.load(f)
@@ -152,6 +176,10 @@ def main():
                          "(per-run ground truth, reference-shaped).")
     ap.add_argument("--max-step", type=int, default=None,
                     help="Optional cap on the last rendered step")
+    ap.add_argument("--min-step", type=int, default=None,
+                    help="Optional floor on the first rendered step "
+                         "(with --max-step: render a window, e.g. a "
+                         "highlight clip of one episode)")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -161,6 +189,8 @@ def main():
                    if "box_p" in v and "ee_p" in v and "mode" in v)
     if args.max_step is not None:
         valid = [k for k in valid if k <= args.max_step]
+    if args.min_step is not None:
+        valid = [k for k in valid if k >= args.min_step]
     print(f"[render-log-drake] {len(valid)} valid steps in log "
           f"(first={valid[0]}, last={valid[-1]})", flush=True)
 
@@ -253,7 +283,7 @@ def main():
         Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
 
         # 5) Timeline row.
-        tl_fp.write(f"{step},{step*0.01:.4f},{rec['mode']},{rec['switch']}\n")
+        tl_fp.write(f"{step},{rec['sim_t']:.4f},{rec['mode']},{rec['switch']}\n")
 
         kept += 1
         if kept % 25 == 0:

@@ -19,6 +19,35 @@ Cost terms:
 import numpy as np
 
 
+def _goal_quaternion(target_yaw: float, target_quat=None) -> np.ndarray:
+    """Goal quaternion [w, x, y, z] for the object-orientation cost.
+
+    Legacy/planar tasks specify a scalar `goal_yaw` and the goal is the
+    Z-rotation [cos(a/2), 0, 0, sin(a/2)]. That is sufficient for every task
+    whose object rests on a fixed face (box, T, H) -- the reachable set of
+    resting orientations is a one-parameter yaw family.
+
+    The jack breaks that assumption: it rests on a tripod of tip spheres and
+    reorients by ROLLING onto a different tripod, so its goal
+    (jacktoy/parameters/goal_params.yaml fixed_target_orientation) tilts out
+    of the plane and cannot be written as any yaw. Such tasks pass the full
+    quaternion via `goal_quat` in tasks.yaml.
+
+    With target_quat=None this returns exactly the previous expression, so
+    all yaw-specified tasks are bit-identical.
+    """
+    if target_quat is None:
+        a_half = 0.5 * float(target_yaw)
+        return np.array([np.cos(a_half), 0.0, 0.0, np.sin(a_half)])
+    q = np.asarray(target_quat, dtype=float).flatten()
+    if q.shape[0] != 4:
+        raise ValueError(f"goal_quat must have 4 entries [w,x,y,z]; got {q.shape[0]}")
+    n = float(np.linalg.norm(q))
+    if n < 1e-12:
+        raise ValueError("goal_quat has zero norm")
+    return q / n
+
+
 class ManipulationCost:
     """
     Callable cost function shared by all three manipulation tasks.
@@ -192,6 +221,17 @@ class QuadraticManipulationCost:
         # invalid for a unit quaternion.
         self.w_yaw         = float(c.get("w_yaw",            0.0))
         self._target_yaw   = 0.0   # updated each build() call via target_yaw kwarg
+        # Optional full goal quaternion (tasks.yaml `goal_quat`). None => the
+        # goal is the yaw-only rotation built from target_yaw, which is what
+        # every flat-resting task (box, T, H) wants. Set for the jack, whose
+        # goal tilts out of the plane. See _goal_quaternion.
+        #
+        # This is STATIC: unlike target_yaw it is not re-clipped per tick by
+        # the angular lookahead. main.py asserts at startup that the task's
+        # total reorientation demand is under goal_params lookahead_angle, so
+        # the clip would never fire anyway; a task exceeding that needs the
+        # per-tick geodesic SLERP (reference goal_generator.cc:410-434).
+        self._goal_quat    = None
 
         # Near-goal quaternion-dependent Q_block (reference
         # sampling_based_c3_controller.cc:1517-1570). When enabled AND the
@@ -232,10 +272,40 @@ class QuadraticManipulationCost:
             "q_vector_obj_pos",     [200.0, 200.0, 120.0]))
         self._q_vec_ee_vel      = list(c.get(
             "q_vector_ee_vel",      [5.0, 5.0, 5.0]))
+        # L3-decomposition falsification hook (diagnostic, default-inert):
+        # PORT_QVEC_EE_VEL="5,5,5" pins the ee_vel q_vector slots for
+        # single-knob attribution runs. Recorded in [RUN-META-ENV].
+        import os as _os_qv
+        _qv_env = _os_qv.environ.get("PORT_QVEC_EE_VEL", "")
+        if _qv_env:
+            try:
+                _qv = [float(x) for x in _qv_env.split(",")]
+                if len(_qv) == 3:
+                    self._q_vec_ee_vel = _qv
+                    print(f"[PORT_QVEC_EE_VEL] FALSIFICATION override: "
+                          f"ee_vel={_qv}", flush=True)
+            except ValueError:
+                pass
         self._q_vec_obj_ang_vel = list(c.get(
             "q_vector_obj_ang_vel", [0.05, 0.05, 0.05]))
         self._q_vec_obj_lin_vel = list(c.get(
             "q_vector_obj_lin_vel", [0.05, 0.05, 0.05]))
+        # 2026-08-11 L3 — position-regime (far) variant, mirroring the
+        # reference's w_Q_position x q_vector_position pair
+        # (sampling_c3_options GetC3Options(crossed) selects the set).
+        # Defaults collapse to the near-regime values so configs without
+        # the _position keys keep single-set behavior.
+        self.w_Q_position = float(c.get("w_Q_position", self.w_Q))
+        self._q_vec_pos_obj_quat = list(c.get(
+            "q_vector_position_obj_quat", self._q_vec_obj_quat))
+        self._q_vec_pos_obj_pos  = list(c.get(
+            "q_vector_position_obj_pos",  self._q_vec_obj_pos))
+        # R = w_R x diag(r_vector) when r_vector is given (reference
+        # c3_options.h: R = w_R * diag(r_vector); anything-N1 r_vector
+        # [0.01, 0.01, 1] penalizes vertical EE force 100x horizontal).
+        # Fallback: legacy isotropic w_torque * I.
+        self.w_R       = float(c.get("w_R", 1.0))
+        self._r_vector = c.get("r_vector", None)
         # Mutable flag set by wrapper per tick. Enables the near-goal
         # quat-dep cost override. Default False → no divergence for
         # existing tasks / pre-crossed-threshold behavior.
@@ -312,10 +382,20 @@ class QuadraticManipulationCost:
         Q[self._obj_ps + 2, self._obj_ps + 2] = self.w_box_rp   # qy (pitch)
         return Q
 
+    def set_goal_quat(self, q):
+        """Install a full goal quaternion [w, x, y, z] (or None to clear).
+
+        Called once at startup from main.py when tasks.yaml supplies
+        `goal_quat`. Every build() thereafter uses it in place of the
+        yaw-derived goal.
+        """
+        self._goal_quat = None if q is None else _goal_quaternion(0.0, q)
+
     def build(self, target_xy: np.ndarray,
               plant_ctx=None, current_q: np.ndarray = None,
               rich_mode: bool = False,
-              target_yaw: float = 0.0):
+              target_yaw: float = 0.0,
+              target_quat=None):
         """
         Return (Q, R, QN, x_ref) for one MPC step.
 
@@ -427,6 +507,8 @@ class QuadraticManipulationCost:
         # The xy components of c_yaw are zero, so this is orthogonal to the
         # existing w_box_rp roll/pitch regularization.
         self._target_yaw = float(target_yaw)
+        _q_goal = _goal_quaternion(
+            target_yaw, target_quat if target_quat is not None else self._goal_quat)
         a_half = 0.5 * self._target_yaw
         ps = self._obj_ps
         # Always seed the goal quaternion reference on qw/qz (parity with
@@ -829,7 +911,8 @@ class QuadraticManipulationCost:
 
     def build_ee_space(self, target_xy: np.ndarray,
                        plant_ctx=None, current_q: np.ndarray = None,
-                       target_yaw: float = 0.0):
+                       target_yaw: float = 0.0,
+                       target_quat=None):
         """
         Return (Q, R, QN, x_ref) for the EE-space LCS.
 
@@ -861,18 +944,27 @@ class QuadraticManipulationCost:
             # layout is [ee_pos(3), quat(4), obj_pos(3), ee_vel(3),
             # obj_ang_vel(3), obj_lin_vel(3)]; port layout is [quat(4),
             # obj_pos(3), ee_pos(3), obj_ang_vel(3), obj_lin_vel(3), ee_vel(3)].
+            # 2026-08-11 L3 dual-regime selection (reference
+            # GetC3Options(crossed_cost_switching_threshold_)): far →
+            # w_Q_position x q_vector_position (quat weights typically 0 —
+            # orientation ignored); near → w_Q x q_vector (quat block then
+            # overridden by the quaternion Hessian below).
+            _near = self._crossed_switching_threshold
+            _wQ        = self.w_Q if _near else self.w_Q_position
+            _v_quat    = self._q_vec_obj_quat if _near else self._q_vec_pos_obj_quat
+            _v_obj_pos = self._q_vec_obj_pos  if _near else self._q_vec_pos_obj_pos
             q_diag = np.zeros(n_x)
-            q_diag[self._NEW_OBJ_QW:self._NEW_OBJ_QZ + 1] = self._q_vec_obj_quat
-            q_diag[self._NEW_OBJ_X]  = self._q_vec_obj_pos[0]
-            q_diag[self._NEW_OBJ_Y]  = self._q_vec_obj_pos[1]
-            q_diag[self._NEW_OBJ_Z]  = self._q_vec_obj_pos[2]
+            q_diag[self._NEW_OBJ_QW:self._NEW_OBJ_QZ + 1] = _v_quat
+            q_diag[self._NEW_OBJ_X]  = _v_obj_pos[0]
+            q_diag[self._NEW_OBJ_Y]  = _v_obj_pos[1]
+            q_diag[self._NEW_OBJ_Z]  = _v_obj_pos[2]
             q_diag[self._NEW_PEE_SLOT]   = self._q_vec_ee_pos
             q_diag[self._NEW_VBOX_OMEGA] = self._q_vec_obj_ang_vel
             q_diag[self._NEW_VBOX_LIN_X] = self._q_vec_obj_lin_vel[0]
             q_diag[self._NEW_VBOX_LIN_Y] = self._q_vec_obj_lin_vel[1]
             q_diag[self._NEW_VBOX_LIN_Z] = self._q_vec_obj_lin_vel[2]
             q_diag[self._NEW_VEE_SLOT]   = self._q_vec_ee_vel
-            Q[np.arange(n_x), np.arange(n_x)] = self.w_Q * q_diag
+            Q[np.arange(n_x), np.arange(n_x)] = _wQ * q_diag
         else:
             # Near-goal (pose regime) obj-position weight swap — parity with
             # legacy build() at :336-340. Reference push_t
@@ -940,8 +1032,12 @@ class QuadraticManipulationCost:
         # only drives x toward q_goal if x_ref = q_goal.
         self._target_yaw = float(target_yaw)
         a_half = 0.5 * self._target_yaw
-        x_ref[self._NEW_OBJ_QW] = np.cos(a_half)
-        x_ref[self._NEW_OBJ_QZ] = np.sin(a_half)
+        # Full goal quaternion: seeds ALL FOUR slots, not just qw/qz. A tilted
+        # goal (the jack) has nonzero qx/qy; leaving those at 0 would make the
+        # quaternion Hessian pull toward a non-unit, non-reachable reference.
+        _q_goal = _goal_quaternion(
+            target_yaw, target_quat if target_quat is not None else self._goal_quat)
+        x_ref[self._NEW_OBJ_QW:self._NEW_OBJ_QW + 4] = _q_goal
         # Optional linear rank-1 form — port-only far-goal add-on. Set
         # w_yaw:0 in tasks.yaml to match reference (Hessian-only) behavior.
         if self.w_yaw > 0.0 and not self.use_reference_q_vector:
@@ -971,9 +1067,11 @@ class QuadraticManipulationCost:
                 current_q[ps], current_q[ps + 1],
                 current_q[ps + 2], current_q[ps + 3],
             ])
-            # Goal quaternion from target_yaw (yaw-only rotation about z).
-            a_half = 0.5 * float(target_yaw)
-            q_goal = np.array([np.cos(a_half), 0.0, 0.0, np.sin(a_half)])
+            # Goal quaternion: yaw-only for planar tasks, full quaternion
+            # when the task supplies goal_quat (see _goal_quaternion).
+            q_goal = _goal_quaternion(
+                target_yaw,
+                target_quat if target_quat is not None else self._goal_quat)
             Q_quat = build_regularized_quaternion_cost(
                 q_now, q_goal,
                 weight=self.q_quaternion_dependent_weight,
@@ -1160,23 +1258,22 @@ class QuadraticManipulationCost:
                 Q[ix, iy] += w_perp * g_perp[0] * g_perp[1]
                 Q[iy, ix] += w_perp * g_perp[0] * g_perp[1]
 
-        # --- R: torque cost is now an EE-force cost. Same scalar weight,
-        #     applied to R^3 input. ---
-        # Stage 5 per-axis R override (env-gated, default-inert). When
-        # PORT_R_VECTOR is set as "rx,ry,rz" (e.g., "0.01,0.01,1"),
-        # use np.diag([rx,ry,rz]); else scalar w_torque*I (bit-identical to
-        # pre-Stage-5).
+        # --- R (EE-force cost). Reference form R = w_R * diag(r_vector)
+        #     when the cost config carries r_vector (2026-08-11 L3,
+        #     anything-N1 literals: 6 x [0.01, 0.01, 1]). PORT_R_VECTOR env
+        #     stays as a diagnostic override; legacy isotropic w_torque * I
+        #     when neither is set. ---
         import os as _os
         _r_s = _os.environ.get("PORT_R_VECTOR", "")
         if _r_s and n_u == 3:
             try:
                 _rv = [float(x) for x in _r_s.split(",")]
-                if len(_rv) == 3:
-                    R = np.diag(_rv)
-                else:
-                    R = self.w_torque * np.eye(n_u)
+                R = (np.diag(_rv) if len(_rv) == 3
+                     else self.w_torque * np.eye(n_u))
             except ValueError:
                 R = self.w_torque * np.eye(n_u)
+        elif self._r_vector is not None and len(self._r_vector) == n_u:
+            R = self.w_R * np.diag([float(v) for v in self._r_vector])
         else:
             R = self.w_torque * np.eye(n_u)
 
