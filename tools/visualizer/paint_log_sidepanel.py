@@ -53,7 +53,7 @@ _STICKY_TAGS = {
     "[CONSENSUS-DEF]",
     "[CONSENSUS]",
 }
-_ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]"}
+_ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]", "[CONTACT-RUN]", "[ENTRY-GATE]"}
 _RESULT_TAG = "[RESULT]"
 
 _TAG_COLORS = {
@@ -69,6 +69,8 @@ _TAG_COLORS = {
     "[CONSENSUS-BIND]":        (180, 255, 220),
     "[CONSENSUS-DEF]":         (180, 255, 220),
     "[CONSENSUS]":             (255, 255, 180),
+    "[CONTACT-RUN]":           (180, 220, 255),
+    "[ENTRY-GATE]":            (255, 140, 140),
 }
 _DEFAULT_COLOR = (200, 200, 200)
 
@@ -143,13 +145,31 @@ def _shorten(line: str, max_chars: int) -> str:
     return line[:max_chars - 1] + "…"
 
 
+def _shorten_keep_tail(line: str, max_chars: int, head_chars: int = 34) -> str:
+    """Middle-ellipsis truncation for rolling log lines.
+
+    The controller's per-step lines put identity first (tag, step, mode,
+    ee/obj coordinates — redundant with the scene panel) and the decision
+    numbers last (costs, switch reason, λ, f_cmd). Head-only truncation
+    therefore amputated exactly the fields a viewer needs; keep the head
+    (tag+step+mode) AND the tail instead.
+    """
+    if len(line) <= max_chars:
+        return line
+    head = line[:head_chars]
+    tail_budget = max_chars - head_chars - 1
+    if tail_budget <= 0:
+        return line[:max_chars - 1] + "…"
+    return head + "…" + line[-tail_budget:]
+
+
 def _draw_lines(draw, x0, y0, lines, font, max_chars, line_h,
-                pad=6):
+                pad=6, shorten=_shorten):
     """Draw a list of lines starting at (x0, y0). Returns new y."""
     for line in lines:
         tag = _tag_of(line) or ""
         color = _tag_color(tag)
-        draw.text((x0, y0), _shorten(line, max_chars),
+        draw.text((x0, y0), shorten(line, max_chars),
                   font=font, fill=color)
         y0 += line_h
     return y0
@@ -234,7 +254,8 @@ def compose_frame(
     remaining_h = H - y - pad - (line_h * 3 if result_line else 0)
     max_rolling = max(1, remaining_h // line_h)
     _draw_lines(draw, panel_x0, y, rolling_window[-max_rolling:],
-                font_tiny, panel_max_chars, line_h)
+                font_tiny, panel_max_chars, line_h,
+                shorten=_shorten_keep_tail)
 
     # RESULT section (last 30 frames only)
     if result_line is not None:
@@ -270,7 +291,10 @@ def main():
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--panel-width", type=int, default=800)
     ap.add_argument("--rolling-count", type=int, default=30)
-    ap.add_argument("--panel-max-chars", type=int, default=95)
+    ap.add_argument("--panel-max-chars", type=int, default=None,
+                    help="Chars per panel line (default: computed from "
+                         "--panel-width and the mono font's advance; the "
+                         "old hardcoded 95 wasted ~150px of an 800px panel)")
     args = ap.parse_args()
 
     print(f"[sidepanel] parsing {args.log_path}")
@@ -285,6 +309,14 @@ def main():
 
     font_tiny = _load_mono_font(11)
     font_small = _load_mono_font(14)
+
+    if args.panel_max_chars is None:
+        # Panel text spans panel_x0 (= scene_W + 12) to composite_W - 12,
+        # i.e. panel_width - 24 px; divide by the mono advance.
+        char_px = font_tiny.getlength("0") or 7.0
+        args.panel_max_chars = max(40, int((args.panel_width - 24) / char_px))
+        print(f"[sidepanel] panel_max_chars={args.panel_max_chars} "
+              f"(panel_width={args.panel_width}, char_px={char_px:.2f})")
 
     # Sticky: seed with header first (fixes the same drop I hit in
     # paint_log_scroll.py — CONSENSUS-BIND fires before the first [STEP]).
@@ -313,10 +345,8 @@ def main():
                     if fam == "sticky":
                         if line not in sticky_lines:
                             sticky_lines.append(line)
-                    elif fam in ("rolling", "hi") and (
-                            line.startswith("[STEP]")
-                            or line.startswith("[GS]")
-                            or line.startswith("[C3+]")):
+                    elif fam in ("rolling", "hi") and \
+                            (_tag_of(line) in _ROLLING_TAGS):
                         rolling.append(line)
                     m = _STEP_RE.match(line)
                     if m:
