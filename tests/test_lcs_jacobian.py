@@ -21,8 +21,18 @@ pytest.importorskip("pydrake", reason="Drake required for J_f autodiff tests")
 
 import pydrake.all as ad
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q
+from sim.env_builder import build_environment, _INITIAL_ARM_Q_SEED
 from control.lcs_formulator import LCSFormulator
+
+# `sim.env_builder.INITIAL_ARM_Q` was removed in 7ff5a21 ("replace
+# INITIAL_ARM_Q + --prepositioned with safe-offset IK init"): there is no
+# longer one fixed start pose, the runtime derives it per task (IK safe-offset,
+# or `q_init_franka` from tasks.yaml for the canonical tasks). These tests only
+# ever needed *a* valid, representative arm configuration to evaluate the
+# LCS/OSC at, so they pin the IK seed. Note it is NOT the production start
+# pose, and its joint 2 moved 0.675 -> 1.1 rad when the arm-fly-up bug was
+# fixed.
+ARM_Q_FIXTURE = _INITIAL_ARM_Q_SEED
 
 
 # ---------------------------------------------------------------------------
@@ -42,11 +52,11 @@ def _build_env():
         "link_name": "box_link",
         "cost": {},
     }
-    diagram, plant, panda_model, _obj_model, _meshcat, plant_ad, context_ad = \
-        build_environment(cfg)
+    diagram, plant, panda_model, _obj_model, _meshcat, plant_ad, context_ad, \
+        _video_writer = build_environment(cfg)
     diag_ctx  = diagram.CreateDefaultContext()
     plant_ctx = plant.GetMyMutableContextFromRoot(diag_ctx)
-    plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+    plant.SetPositions(plant_ctx, panda_model, ARM_Q_FIXTURE)
     obj_body = plant.GetBodyByName("box_link")
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,

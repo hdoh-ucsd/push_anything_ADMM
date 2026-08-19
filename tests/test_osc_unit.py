@@ -25,8 +25,18 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q, EE_BODY_NAME
+from sim.env_builder import build_environment, _INITIAL_ARM_Q_SEED, EE_BODY_NAME
 from control.osc import OperationalSpaceController
+
+# `sim.env_builder.INITIAL_ARM_Q` was removed in 7ff5a21 ("replace
+# INITIAL_ARM_Q + --prepositioned with safe-offset IK init"): there is no
+# longer one fixed start pose, the runtime derives it per task (IK safe-offset,
+# or `q_init_franka` from tasks.yaml for the canonical tasks). These tests only
+# ever needed *a* valid, representative arm configuration to evaluate the
+# LCS/OSC at, so they pin the IK seed. Note it is NOT the production start
+# pose, and its joint 2 moved 0.675 -> 1.1 rad when the arm-fly-up bug was
+# fixed.
+ARM_Q_FIXTURE = _INITIAL_ARM_Q_SEED
 
 
 @pytest.fixture(scope="module")
@@ -34,16 +44,16 @@ def osc_env():
     """Build the Franka + box environment once for the test module."""
     with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
         task = yaml.safe_load(f)["tasks"]["pushing"]
-    diagram, plant, panda_model, _, _, _, _ = build_environment(task)
+    diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
     ee_frame = plant.GetBodyByName(EE_BODY_NAME).body_frame()
     diagram_ctx = diagram.CreateDefaultContext()
     plant_ctx = plant.GetMyMutableContextFromRoot(diagram_ctx)
-    plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+    plant.SetPositions(plant_ctx, panda_model, ARM_Q_FIXTURE)
 
-    # q_nominal = INITIAL_ARM_Q (no posture error → cleanest test).
+    # q_nominal = ARM_Q_FIXTURE (no posture error → cleanest test).
     osc = OperationalSpaceController(
         plant=plant, ee_frame=ee_frame, n_arm_dofs=7,
-        q_nominal=INITIAL_ARM_Q,
+        q_nominal=ARM_Q_FIXTURE,
         gains_yaml=os.path.join(REPO_ROOT, "config/osc_franka.yaml"),
         log_diag=False,
     )
