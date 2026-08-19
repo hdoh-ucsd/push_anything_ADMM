@@ -4729,10 +4729,25 @@ class SamplingC3Controller:
                             _traj_c3.value(_sim_t_c3 + _fst), dtype=float).flatten()[:3]
                     except Exception:
                         _pdes_dbg = np.full(3, np.nan)
+                    _k0_dbg = np.asarray(_x_seq_full[0][7:10], dtype=float)
+                    _k1_dbg = np.asarray(_x_seq_full[1][7:10], dtype=float)
+                    _zc = getattr(self.base_mpc, "last_x_seq", None)
+                    _z1_step = (float(np.linalg.norm(
+                        np.asarray(_zc[1][7:10]) - np.asarray(_zc[0][7:10])))
+                        if _zc is not None and len(_zc) > 1 else float("nan"))
+                    _q1_step = float(np.linalg.norm(_k1_dbg - _k0_dbg))
+                    print(f"[QPSTEP] step={self._step} "
+                          f"qp_k01={1000*_q1_step:.2f}mm "
+                          f"z_k01={1000*_z1_step:.2f}mm", flush=True)
+                    _sx0 = getattr(self.base_mpc, "_last_solve_x0_ee", None)
+                    _sx0_s = ("none" if _sx0 is None else
+                              f"({_sx0[0]:+.4f},{_sx0[1]:+.4f},{_sx0[2]:+.4f})")
                     print(f"[C3-PDES] step={self._step} "
                           f"p_des=({_pdes_dbg[0]:+.4f},{_pdes_dbg[1]:+.4f},{_pdes_dbg[2]:+.4f}) "
                           f"ee_now=({float(ee_pos_now[0]):+.4f},{float(ee_pos_now[1]):+.4f},"
-                          f"{float(ee_pos_now[2]):+.4f})", flush=True)
+                          f"{float(ee_pos_now[2]):+.4f}) "
+                          f"knot0=({_k0_dbg[0]:+.4f},{_k0_dbg[1]:+.4f},{_k0_dbg[2]:+.4f}) "
+                          f"solve_x0={_sx0_s}", flush=True)
                     print(f"[C3-TRAJ] step={self._step} "
                           f"ee_now_z={float(ee_pos_now[2]):+.4f} "
                           f"planned_ee_z=[{_ee_zs_str}] "
