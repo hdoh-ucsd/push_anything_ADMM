@@ -92,6 +92,13 @@ class RepositioningTrajectoryType(IntEnum):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _float_or_vec3(v):
+    """Scalar → float; list/tuple → [float]*3 (per-axis PD gains)."""
+    if isinstance(v, (list, tuple)):
+        return [float(x) for x in v]
+    return float(v)
+
+
 def _coerce_enum(enum_cls, raw):
     """YAML may give an int or a string like 'kRandomOnCircle' / 'kPosOrRotCost'."""
     if isinstance(raw, enum_cls):
@@ -170,6 +177,23 @@ class ProgressParams:
     # an OPEN alignment question, not closed by this reconciliation.
     num_control_loops_to_wait_s:         float = 0.60
     num_control_loops_to_wait_position_s: float = 0.30
+
+    # Reference-unit form. The reference expresses these as CONTROL LOOPS
+    # (push_t/parameters/progress_params_c3plus.yaml: num_control_loops_to_wait
+    # 5, progress_enforced_over_n_loops 180) and ticks its progress tracker
+    # once per controller update. When set, these are used as loop counts
+    # DIRECTLY and take precedence over the `_s` forms.
+    #
+    # Why they exist: the `_s` path round-trips loops → seconds → loops through
+    # a hardcoded 100 Hz shim (`_resolve_legacy_int_to_seconds`, ×0.01) and then
+    # `/ dt_ctrl` in ProgressTracker. At the port's 10 Hz control loop that
+    # silently rescales the reference values — push_t was running 135 loops
+    # where the reference specifies 180, and 4 where it specifies 5. The `_s`
+    # keys stay for the legacy configs whose 60/30 values really were authored
+    # as 100 Hz ticks; do NOT repurpose the bare int keys, the shim owns those.
+    num_control_loops_to_wait_loops:          Optional[int] = None
+    num_control_loops_to_wait_position_loops: Optional[int] = None
+    progress_enforced_over_n_loops_ref:       Optional[int] = None
 
     # Absolute-regression early-exit threshold (metres). When the current
     # pos_error minus the best pos_error since reset() exceeds this, the
@@ -257,6 +281,21 @@ class ProgressParams:
 class SamplingParams:
     sampling_strategy:                   SamplingStrategy = SamplingStrategy.kRandomOnCircle
 
+    # --- Adaptive c3 contact height (spec 2026-08-08) --------------------
+    # The c3-mode press plane is derived from LIVE object geometry rather
+    # than a hardcoded per-task constant:
+    #     z_track = obj_z_center + contact_height_offset_above_mid
+    # The reference's z_height (-0.004 in ITS frame) is frame-bound; the
+    # frame-INVARIANT statement of the same geometry is "pusher-sphere
+    # centre 5 mm above the object mid-plane", which is this default.
+    # For push_t this reproduces the reference's 0.025 in port frame
+    # exactly; three past frame changes silently invalidated the
+    # hand-translated constant, which is what this removes.
+    # Set offset to 0.0 for true mid-face (better physics, a deliberate
+    # 5 mm departure — see the spec's conformance section).
+    use_adaptive_contact_height:         bool  = True
+    contact_height_offset_above_mid:     float = 0.005
+
     # Total samples evaluated each control loop:
     #   1                                (current EE / "k=0")
     # + (1 if previous-repos target valid)
@@ -291,6 +330,13 @@ class SamplingParams:
 
     # Geometry shared across multiple strategies
     sampling_radius:                     float = 0.13   # m, candidate-ring radius for cost eval (samples 1..n-1)
+    # kRandomOnSphere / kRandomOnShell elevation band, measured from the
+    # +z axis. Reference jacktoy/parameters/sampling_params.yaml:
+    #   min_angle_from_vertical 0.2  (11.5 deg -- near straight down)
+    #   max_angle_from_vertical 1.95 (111.7 deg -- just below horizontal)
+    # Defaults span the full sphere so non-sphere strategies are unaffected.
+    min_angle_from_vertical:             float = 0.0
+    max_angle_from_vertical:             float = 3.14159265358979
     repos_target_radius:                 float = 0.075  # m, IK proxy target — pusher just touching box
     # repos_target_radius derivation:
     #   box_half_extent (0.050) + pusher_radius (0.025) = 0.075 m
@@ -754,6 +800,21 @@ class SamplingC3Params:
     # verbatim — wsbounds lesson).
     final_augmented_cost_contact_scaling: Optional[float] = None
 
+    # Per-task ADMM solver scales — 2026-08-16 jacktoy contact-latch
+    # regression fix. The C3Solver class defaults are the anything-N1
+    # literals (u_lambda 1000, w_G 0.18; L3 @3202fbe), but the reference
+    # sets these PER DEMO: jacktoy/parameters/sampling_c3plus_options.yaml
+    # pins u_lambda_list = uniform 4 (:192) and w_G = 0.03 (:73). u_lambda
+    # is the λ-vs-η tiebreak weight in the C3+ componentwise projection
+    # (eta_larger = η·√u_eta > λ·√u_lambda); at 1000 the λ side wins
+    # ~31.6:1 → phantom endorsement dominates, and with no final-QP boost
+    # (jacktoy correctly lacks the key) the published plan parks the EE at
+    # standoff. None → keep the class defaults (T/box/letters unchanged).
+    # Pushed onto the solver via C3Solver.apply_task_solver_scales; the
+    # PORT_U_LAMBDA / PORT_W_G env hooks keep highest precedence.
+    u_lambda: Optional[float] = None
+    w_G:      Optional[float] = None
+
     # ---- Parallel sample evaluation (port-todo #1) -----------------------
     # Port of reference `num_outer_threads`
     # (sampling_c3plus_options.yaml:6, sampling_based_c3_controller.cc:415-422,
@@ -775,7 +836,47 @@ class SamplingC3Params:
     # torsional resistance to yaw. Default 0 preserves prior behavior.
     # Env var LCS_EXPLICIT_MANIPULAND_GND takes precedence (backward compat:
     # LCS_EXPLICIT_BOX_GND also honored).
+    # Predicted-x0 mechanism (reference ResolvePredictedEEState,
+    # sampling_based_c3_controller.cc:1406-1454). The planner/reposition
+    # trajectory may start from a PREDICTED end-effector state rather than the
+    # measured one, to compensate solve latency. jacktoy enables all three.
+    #
+    # The reset is the part the port was missing entirely. Reference predicate:
+    #
+    #   if (((curr_ee - last_ee).norm() < (curr_ee - pred_ee).norm()) &&
+    #       (curr_ee - pred_ee).norm() > 0.01 && !pred.isZero() &&
+    #       use_predicted_x0_reset_mechanism)  -> skip the prediction
+    #   else                                   -> ClampEndEffectorAcceleration
+    #
+    # NOTE `x_from_last_control_loop_` is assigned from `x_lcs_curr` at the TOP
+    # of that function, so `last_ee == curr_ee` and the first term is always
+    # `0 < ...` — vacuous. The EFFECTIVE reference rule is therefore just:
+    # discard any prediction more than 10 mm from the measured EE. That is what
+    # is implemented here, deliberately, because it is what the reference does.
+    use_predicted_x0_c3:                float = True
+    use_predicted_x0_repos:             float = True
+    use_predicted_x0_reset_mechanism:   float = True
+    # Clamp half-width is nominal_ee_accel * dt^2 per axis. Reference push_t and
+    # anything set 2; jacktoy omits the key.
+    nominal_ee_accel:                   float = 2.0
+    # Reference threshold for "the prediction is too far" (metres).
+    x_pred_reset_threshold:             float = 0.01
+
     lcs_explicit_manipuland_ground_contacts: int = 0
+
+    # Reference `resolve_contacts_to_for_cost` — the contact resolution used
+    # for the COST LCS, which is NOT the planner's. Reference keeps two
+    # resolutions (sampling_c3_options.h:228-230 indexes
+    # resolve_contacts_to_lists twice, by num_contacts_index and
+    # num_contacts_index_for_cost) and they genuinely differ per task:
+    #     push_t    plan [0,1,3]   cost [0,2,3]
+    #     jacktoy   plan [0,1,3]   cost [0,3,6]   <-- ALL six jack tips
+    #     anything  plan  = cost, index 0 for both
+    # Format matches the reference: [n_EE_ground, n_EE_object, n_object_ground].
+    # None keeps the historical port behaviour (2 EE-object pairs, and the
+    # planner's ground count reused), which is exactly push_t's [0,2,3] — the
+    # value the hardcode was written for and never generalised past.
+    resolve_contacts_to_for_cost: Optional[list] = None
 
     # ---- §9 Option B (Stage 2) — cost-LCS forward-sim ranking ------------
     # When use_cost_lcs_ranking=True, InnerSolver.evaluate_sample computes the
@@ -786,12 +887,21 @@ class SamplingC3Params:
     # cost_type=5 (kSimImpedanceObjectCostOnly). Disabled by default →
     # keeps Stage-1 behavior (planner's own x_seq + object-only Q).
     use_cost_lcs_ranking: bool = False
-    # Reference push_t/parameters/sampling_c3plus_options.yaml:
-    #   Kp_for_ee_pd_rollout: 100
-    #   Kd_for_ee_pd_rollout: 0.5
-    # Scalars broadcast to per-axis EE PD gains during cost simulation.
-    Kp_for_ee_pd_rollout: float = 100.0
-    Kd_for_ee_pd_rollout: float = 0.5
+    # Reference anything-N1 sampling_c3plus_options.yaml (2026-08-11 L3):
+    #   Kp_for_ee_pd_rollout: [100, 100, 50]   (z gain halved)
+    #   Kd_for_ee_pd_rollout: [0.5, 0.5, 0.5]
+    # Scalar OR per-axis [x, y, z]; scalars broadcast to all three axes
+    # during cost simulation.
+    Kp_for_ee_pd_rollout: Any = 100.0
+    Kd_for_ee_pd_rollout: Any = 0.5
+    # Reference `lcs_dt_resolution` (push_t sampling_c3plus_options.yaml:220).
+    # The cost-LCS is built at N·res knots / dt÷res
+    # (sampling_based_c3_controller.cc:1658-1659) and the coarse plan is
+    # zero-order-held onto it. Load-bearing for stability, not accuracy: the
+    # PD rollout has rho(A_cl)=2.61 (dt=0.05) / 16.41 (dt=0.1) at the coarse
+    # planning dt and diverges; at dt/4 it is 0.94 / 0.88. res=1 reproduces
+    # the pre-fix divergent behaviour.
+    lcs_dt_resolution: int = 4
     # PGS LCP knobs (Tikhonov regularization matches reference
     # simulate_config.regularized=true, min_exp=-8).
     cost_lcs_pgs_max_iter: int = 50
@@ -867,6 +977,17 @@ class SamplingC3Params:
     # canonical c3 sessions failed this way before the fix.)
     # Port-only gate — reference has no contact-proximity entry gate.
     # Reference dispatcher relies on cost hysteresis + progress tracker.
+    # ------------------------------------------------------------------
+    # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
+    # release. The reference's achieved_fixed_goal_ is STICKY (cc:914-916)
+    # — after any tight touch the arm retires forever, accepting whatever
+    # the object drifts to (the box flyby parked at 0.0266 m). When > 0,
+    # the flag RELEASES after this many consecutive off-target control
+    # loops, so dispatch re-engages and corrects the drift, then
+    # re-latches. 0 (default) = sticky = reference-identical.
+    # ------------------------------------------------------------------
+    achieved_goal_release_loops: int = 0
+
     use_contact_entry_gate: bool = False
     # Threshold on ‖ee_now − box_center‖ in meters. Default 0.090 m
     # (loosened from 0.080 after the both_fixes_20260521_193033 run
@@ -1140,6 +1261,12 @@ class SamplingC3Params:
                 float(raw["final_augmented_cost_contact_scaling"])
                 if raw.get("final_augmented_cost_contact_scaling") is not None
                 else None),
+            u_lambda = (
+                float(raw["u_lambda"])
+                if raw.get("u_lambda") is not None else None),
+            w_G = (
+                float(raw["w_G"])
+                if raw.get("w_G") is not None else None),
             u_horizontal_limit = (
                 float(raw["u_horizontal_limit"])
                 if raw.get("u_horizontal_limit") is not None else None),
@@ -1151,9 +1278,18 @@ class SamplingC3Params:
                 raw.get("num_outer_threads", 1))),  # ref name alias
             lcs_explicit_manipuland_ground_contacts = int(raw.get(
                 "lcs_explicit_manipuland_ground_contacts", 0)),
+            use_predicted_x0_c3 = bool(raw.get("use_predicted_x0_c3", True)),
+            use_predicted_x0_repos = bool(raw.get("use_predicted_x0_repos", True)),
+            use_predicted_x0_reset_mechanism = bool(raw.get(
+                "use_predicted_x0_reset_mechanism", True)),
+            nominal_ee_accel = float(raw.get("nominal_ee_accel", 2.0)),
+            x_pred_reset_threshold = float(raw.get("x_pred_reset_threshold", 0.01)),
+            resolve_contacts_to_for_cost = raw.get(
+                "resolve_contacts_to_for_cost", None),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
-            Kp_for_ee_pd_rollout     = float(raw.get("Kp_for_ee_pd_rollout", 100.0)),
-            Kd_for_ee_pd_rollout     = float(raw.get("Kd_for_ee_pd_rollout", 0.5)),
+            Kp_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kp_for_ee_pd_rollout", 100.0)),
+            Kd_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kd_for_ee_pd_rollout", 0.5)),
+            lcs_dt_resolution        = int(raw.get("lcs_dt_resolution", 4)),
             cost_lcs_pgs_max_iter    = int(raw.get("cost_lcs_pgs_max_iter", 50)),
             cost_lcs_pgs_tol         = float(raw.get("cost_lcs_pgs_tol", 1.0e-6)),
             cost_lcs_pgs_reg         = float(raw.get("cost_lcs_pgs_reg", 1.0e-8)),
@@ -1168,6 +1304,8 @@ class SamplingC3Params:
             min_push_force       = float(raw.get("min_push_force", 2.0)),
             use_reposition_pwl_trajectory = bool(raw.get(
                 "use_reposition_pwl_trajectory", True)),
+            achieved_goal_release_loops = int(raw.get(
+                "achieved_goal_release_loops", 0)),
             use_contact_entry_gate    = bool(raw.get("use_contact_entry_gate", True)),
             contact_entry_threshold   = float(raw.get("contact_entry_threshold", 0.090)),
             use_surface_entry_gate         = bool(raw.get("use_surface_entry_gate", True)),

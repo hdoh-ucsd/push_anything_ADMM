@@ -258,11 +258,233 @@ def _tshape_sdf(cfg: dict) -> str:
 </sdf>"""
 
 
+def _hshape_sdf(cfg: dict) -> str:
+    """Low-CoM H, dimensionally conformant to the reference H_shape_texture.
+
+    Reference (examples/sampling_c3/urdf/H_shape_texture/) ships the H as four
+    convex MESH pieces. Their combined bounding box is 0.111 x 0.128 x 0.032 m,
+    with mass 1.0 kg and drake:mu_dynamic 0.3. The port has no mesh pipeline for
+    the manipuland (the sampler face tables and the LCS ground witnesses are
+    both analytic), so this reproduces the same envelope as three boxes, exactly
+    the way _tshape_sdf collapses the reference's two-link T into one body:
+
+        left  bar  x[-0.056,-0.032]  y[-0.064,+0.064]   0.024 x 0.128 x 0.032
+        right bar  x[+0.032,+0.056]  y[-0.064,+0.064]   0.024 x 0.128 x 0.032
+        crossbar   x[-0.032,+0.032]  y[-0.012,+0.012]   0.064 x 0.024 x 0.032
+
+    Conformant to the reference H: total mass 1.0 kg, mu_dynamic 0.3, overall
+    envelope, and the identical hydroelastic block used by both push_t.sdf and
+    H_shape_texture.sdf (modulus 3.0e7, resolution hint 0.18, dissipation 10).
+
+    DELIBERATE DEVIATION -- the low centre of mass. The reference H puts its CoM
+    at the geometric centre (<inertial><pose>0 0 0</pose>, i.e. 16 mm above the
+    base). `com_height_frac` (default 0.25) places it at 8 mm instead. Rationale:
+    the EE presses at sampling_height, which for a 32 mm object sits at or above
+    mid-height, so a centred CoM gives the push a tipping moment about the
+    leading bottom edge. Dropping the CoM increases the gravitational restoring
+    moment and biases the contact into sliding rather than rocking.
+
+    Inertia is computed for the actual 3-box geometry at uniform density about
+    the geometric centre, then parallel-axis reduced to the lowered CoM. That
+    reduction models "same envelope, mass biased toward the base" (a weighted
+    base plate); it is an approximation, since a genuinely redistributed body
+    would also change the in-plane terms slightly. izz is unaffected by a
+    z-shift and is therefore exact.
+    """
+    m  = cfg["mass"]
+    mu = cfg["friction"]
+    r, g, b, a = cfg["color_rgba"]
+    # Fraction of the object's height at which the CoM sits (0.5 = geometric
+    # centre = reference behaviour; lower = bottom-weighted).
+    com_frac = float(cfg.get("com_height_frac", 0.25))
+
+    HX, HY, HZ = 0.112, 0.128, 0.032          # overall envelope
+    ax, ay, az = 0.024, HY,    HZ             # side bar
+    cx, cy, cz = 0.064, 0.024, HZ             # crossbar
+    d_bar      = 0.044                        # side-bar |x| offset
+
+    scale = m / 1.0
+    # Uniform-density masses for the 3-box decomposition (0.4/0.4/0.2 at 1 kg).
+    Vb, Vc = ax * ay * az, cx * cy * cz
+    mb = m * Vb / (2.0 * Vb + Vc)
+    mc = m * Vc / (2.0 * Vb + Vc)
+
+    def _box_I(mm, u, v, w):
+        return (mm / 12.0 * (v * v + w * w),
+                mm / 12.0 * (u * u + w * w),
+                mm / 12.0 * (u * u + v * v))
+
+    bx, by, bz = _box_I(mb, ax, ay, az)
+    Cx, Cy, Cz = _box_I(mc, cx, cy, cz)
+    ixx_gc = 2.0 * bx + Cx
+    iyy_gc = 2.0 * (by + mb * d_bar ** 2) + Cy
+    izz_gc = 2.0 * (bz + mb * d_bar ** 2) + Cz
+
+    # CoM offset below the geometric centre (negative z in link frame).
+    z_com = (com_frac - 0.5) * HZ
+    ixx = ixx_gc - m * z_com ** 2
+    iyy = iyy_gc - m * z_com ** 2
+    izz = izz_gc
+
+    def _collision(name, pose, size):
+        return f"""      <collision name="{name}">
+        <pose>{pose}</pose>
+        <geometry><box><size>{size}</size></box></geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>3.0e7</drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint>0.18</drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="{name}_vis">
+        <pose>{pose}</pose>
+        <geometry><box><size>{size}</size></box></geometry>
+        <material><diffuse>{r} {g} {b} {a}</diffuse></material>
+      </visual>"""
+
+    parts = "\n".join([
+        _collision("left_bar",  f"{-d_bar} 0 0 0 0 0", f"{ax} {ay} {az}"),
+        _collision("right_bar", f"{+d_bar} 0 0 0 0 0", f"{ax} {ay} {az}"),
+        _collision("crossbar",  "0 0 0 0 0 0",         f"{cx} {cy} {cz}"),
+    ])
+    return f"""<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="manipulated_object">
+    <link name="h_link">
+      <inertial>
+        <pose>0 0 {z_com:.6f} 0 0 0</pose>
+        <mass>{m}</mass>
+        <inertia>
+          <ixx>{ixx:.6e}</ixx><iyy>{iyy:.6e}</iyy><izz>{izz:.6e}</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+{parts}
+    </link>
+  </model>
+</sdf>"""
+
+
+
+# Jack goal-ghost capsules: (rpy, pastel rgba, tag). Shared by the Drake-VTK
+# render ghost (below) and main.py's live meshcat ghost. rpy tuples are the
+# reference jack.sdf capsule poses; each tint is the whitened, translucent
+# version of that capsule's colour in _jack_sdf (cap1 +z blue, cap2 +x red,
+# cap3 +y green) so the ghost shows which capsule goes where at the goal
+# quaternion, while staying visually distinct from the saturated real jack.
+JACK_GHOST_CAPS = (
+    ((0.0, 0.0, 0.0),    (0.55, 0.55, 1.00, 0.45), "cap1"),  # +z — pale blue
+    ((0.0, 1.5708, 0.0), (1.00, 0.55, 0.55, 0.45), "cap2"),  # +x — pale red
+    ((1.5708, 0.0, 0.0), (0.55, 1.00, 0.55, 0.45), "cap3"),  # +y — pale green
+)
+
+
+def _jack_sdf(cfg: dict) -> str:
+    """Reference jack.sdf ported as a single-body-collapsed rigid.
+
+    Reference (examples/sampling_c3/urdf/jack.sdf) is three capsule LINKS welded
+    by two fixed joints. A fixed joint is a rigid connection, so one link with
+    three collision elements is dynamically equivalent -- the same collapse
+    _tshape_sdf applies to the reference's two-link T.
+
+    Geometry, verbatim from the reference: three capsules, radius 0.025,
+    length 0.125, mass 0.052 each (0.156 kg total), mutually orthogonal --
+
+        capsule_1  pose 0 0 0  0      0      0   -> axis +z
+        capsule_2  pose 0 0 0  0      1.5708 0   -> axis +x
+        capsule_3  pose 0 0 0  1.5708 0      0   -> axis +y
+
+    A caltrop: six tips at +/-(0.0625 + 0.025) = +/-0.0875 along each body axis.
+
+    This object is qualitatively unlike the T and H. It has no flat resting
+    face -- it balances on three tips and ROLLS between tripods, so its ground
+    contact set changes discontinuously with pose. That is why jacktoy uses
+    sampling_strategy 2 (kRandomOnSphere) rather than the perimeter sampler.
+
+    Inertia: each capsule is modelled about its own axis and the three are
+    summed about the shared origin. Because the capsules are orthogonal and
+    concentric the result is isotropic, which the reference's own per-link
+    values (ixx 7.072e-5, izz 5.72e-6 each) reproduce once summed.
+    """
+    m_total = float(cfg.get("mass", 0.156))
+    mu = float(cfg["friction"])
+    r, g, b, a = cfg["color_rgba"]
+    m_cap = m_total / 3.0
+    RAD, LEN = 0.025, 0.125
+
+    # Reference per-capsule inertia at 0.052 kg, scaled linearly with mass.
+    scale = m_cap / 0.052
+    i_perp = 7.072e-05 * scale    # about the two axes perpendicular to the capsule
+    i_axis = 5.72e-06 * scale     # about the capsule's own axis
+    # Three orthogonal, concentric capsules -> isotropic sum.
+    I = 2.0 * i_perp + i_axis
+
+    # Per-capsule colours matching reference urdf/jack.sdf exactly:
+    #   capsule_1 (body +z) blue, capsule_2 (body +x) red, capsule_3 (body +y) green.
+    # These are not decoration -- the reference's eight nominal goal orientations
+    # are NAMED by them (kQuatRedUp, kQuatGreenDown, ...), each name being the
+    # sign triple of the (red, green, blue) axes, so the colour tells you at a
+    # glance which of the 8 tripods the jack is resting on. A single-colour jack
+    # makes a render unreadable: you cannot see which way it rolled.
+    _CAP_RGBA = {
+        "capsule_1": (0.0, 0.0, 1.0, 1.0),   # blue  — body +z
+        "capsule_2": (1.0, 0.0, 0.0, 1.0),   # red   — body +x
+        "capsule_3": (0.0, 1.0, 0.0, 1.0),   # green — body +y
+    }
+
+    def _cap(name, pose):
+        r, g, b, a = _CAP_RGBA[name]
+        return f"""      <collision name="{name}">
+        <pose>{pose}</pose>
+        <geometry><capsule><radius>{RAD}</radius><length>{LEN}</length></capsule></geometry>
+        <!-- Reference urdf/jack.sdf declares ONLY mu_dynamic here: no
+             compliant_hydroelastic, no modulus, no dissipation. Unlike
+             push_t.sdf and H_shape_texture.sdf, which do declare hydroelastic
+             3.0e7, the jack is deliberately left as point contact. Copying the
+             box/T/H block here would be non-conformant (it is also inert,
+             since the port's pusher and table are registered with plain
+             CoulombFriction and Drake's kHydroelasticWithFallback needs BOTH
+             sides hydroelastic -- but inert-and-wrong still misleads). -->
+        <drake:proximity_properties>
+          <drake:mu_dynamic>{mu}</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="{name}_vis">
+        <pose>{pose}</pose>
+        <geometry><capsule><radius>{RAD}</radius><length>{LEN}</length></capsule></geometry>
+        <material><diffuse>{r} {g} {b} {a}</diffuse></material>
+      </visual>"""
+
+    parts = "\n".join([
+        _cap("capsule_1", "0 0 0 0 0 0"),            # +z
+        _cap("capsule_2", "0 0 0 0 1.5708 0"),       # +x
+        _cap("capsule_3", "0 0 0 1.5708 0 0"),       # +y
+    ])
+    return f"""<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="manipulated_object">
+    <link name="jack_link">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>{m_total}</mass>
+        <inertia>
+          <ixx>{I:.6e}</ixx><iyy>{I:.6e}</iyy><izz>{I:.6e}</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+{parts}
+    </link>
+  </model>
+</sdf>"""
+
+
 # ---------------------------------------------------------------------------
 # Main builder
 # ---------------------------------------------------------------------------
 
-def build_environment(task_cfg: dict, time_step: float = 0.001,
+def build_environment(task_cfg: dict, time_step: float | None = None,
                       *, add_camera: bool = False,
                       camera_xyz=(-0.10, -0.05, 1.05),
                       camera_width: int = 1280,
@@ -293,7 +515,17 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
                    calls (positions/velocities reset per call).
     """
     builder = ad.DiagramBuilder()
+    # Sim timestep. Reference sets it PER TASK in sim_params.yaml:
+    #   push_t 0.0001, jacktoy 0.0001, anything 0.001
+    # The port historically hardcoded 0.001 for everything, i.e. 10x coarser
+    # than the reference for push_t and the jack. With Drake's discrete contact
+    # solver the penetration accumulated before the solver responds scales with
+    # the step, so a coarse step turns a light object's contacts into impacts.
+    # An explicit `time_step` argument still wins (callers that pass one).
+    if time_step is None:
+        time_step = float(task_cfg.get("sim_dt", 0.001))
     plant, scene_graph = ad.AddMultibodyPlantSceneGraph(builder, time_step=time_step)
+    print(f"[ENV]  sim time_step = {time_step:g} s", flush=True)
 
     parser = ad.Parser(plant)
 
@@ -470,19 +702,30 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
     # Manipulated object — generated from task config at runtime
     # ------------------------------------------------------------------
     obj_type = task_cfg["object_type"]
-    if obj_type == "box":
-        sdf_str = _box_sdf(task_cfg)
-    elif obj_type == "sphere":
-        sdf_str = _sphere_sdf(task_cfg)
-    elif obj_type == "tshape":
-        sdf_str = _tshape_sdf(task_cfg)
+    # 2026-08-11 mesh-T migration: a task may carry `object_sdf` (path to a
+    # reference SDF, e.g. sim/models/T_shape_video/T_shape_video.sdf). The
+    # file is loaded verbatim (mesh collision pieces, inertia, friction from
+    # the reference asset); all shape-keyed behavior stays on object_type.
+    _obj_sdf_path = task_cfg.get("object_sdf", None)
+    if _obj_sdf_path:
+        object_model = parser.AddModels(str(_obj_sdf_path))[0]
     else:
-        raise ValueError(
-            f"Unknown object_type '{obj_type}' in task config. "
-            "Use 'box', 'sphere', or 'tshape'."
-        )
-
-    object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
+        if obj_type == "box":
+            sdf_str = _box_sdf(task_cfg)
+        elif obj_type == "sphere":
+            sdf_str = _sphere_sdf(task_cfg)
+        elif obj_type == "tshape":
+            sdf_str = _tshape_sdf(task_cfg)
+        elif obj_type == "hshape":
+            sdf_str = _hshape_sdf(task_cfg)
+        elif obj_type == "jack":
+            sdf_str = _jack_sdf(task_cfg)
+        else:
+            raise ValueError(
+                f"Unknown object_type '{obj_type}' in task config. "
+                "Use 'box', 'sphere', 'tshape', 'hshape', or 'jack'."
+            )
+        object_model = parser.AddModelsFromString(sdf_str, "sdf")[0]
 
     # Goal ghost (illustration-only translucent box at goal pose).  Anchored
     # to world_body so it shows in the VTK render alongside the opaque box.
@@ -521,7 +764,47 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
                     _tag,
                     list(goal_ghost_rgba),
                 )
-        else:
+        elif task_cfg["object_type"] == "hshape":
+            # Ghost H: the same three boxes _hshape_sdf builds.
+            _R_goal = ad.RotationMatrix.MakeZRotation(
+                float(task_cfg.get("goal_yaw", 0.0)))
+            _T_goal = ad.RigidTransform(_R_goal,
+                [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
+            for _lx, _sz, _tag in (
+                (-0.044, (0.024, 0.128, 0.032), "goal_ghost_lbar"),
+                (+0.044, (0.024, 0.128, 0.032), "goal_ghost_rbar"),
+                ( 0.000, (0.064, 0.024, 0.032), "goal_ghost_cbar"),
+            ):
+                plant.RegisterVisualGeometry(
+                    plant.world_body(),
+                    _T_goal.multiply(ad.RigidTransform([_lx, 0.0, 0.0])),
+                    ad.Box(*_sz), _tag, list(goal_ghost_rgba),
+                )
+        elif task_cfg["object_type"] == "jack":
+            # Ghost jack: three orthogonal capsules at the goal POSE. The jack's
+            # goal is a full quaternion (it rolls onto a different tripod), so
+            # unlike every other task the ghost cannot be built from a yaw.
+            # Per-capsule PASTEL tints matching _jack_sdf's axis colours: the
+            # bare three-capsule shape is invariant under the jack's rotational
+            # symmetries, so a single-colour ghost cannot show the goal
+            # quaternion — only colour says WHICH capsule goes where. Pastel
+            # (whitened) + translucent keeps the ghost distinct from the
+            # saturated real jack (2026-08-16 green-blob legibility fix).
+            _gq = task_cfg.get("goal_quat", [1.0, 0.0, 0.0, 0.0])
+            _gq = np.asarray(_gq, dtype=float)
+            _gq = _gq / float(np.linalg.norm(_gq))
+            _T_goal = ad.RigidTransform(
+                ad.RotationMatrix(ad.Quaternion(_gq[0], _gq[1], _gq[2], _gq[3])),
+                [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
+            for _rpy, _rgba, _tag in JACK_GHOST_CAPS:
+                _T_local = ad.RigidTransform(
+                    ad.RotationMatrix(ad.RollPitchYaw(*_rpy)), [0.0, 0.0, 0.0])
+                plant.RegisterVisualGeometry(
+                    plant.world_body(),
+                    _T_goal.multiply(_T_local),
+                    ad.Capsule(0.025, 0.125), f"goal_ghost_{_tag}", list(_rgba),
+                )
+        elif "radius" in task_cfg:
             _ghost_shape = ad.Sphere(task_cfg["radius"])
             plant.RegisterVisualGeometry(
                 plant.world_body(),
@@ -661,6 +944,33 @@ def build_environment(task_cfg: dict, time_step: float = 0.001,
 # Prepositioned-pose IK (push-direction-aware)
 # ---------------------------------------------------------------------------
 
+def init_rotation(task_cfg: dict):
+    """Initial object orientation from tasks.yaml `init_quat` [w, x, y, z].
+
+    Flat-resting objects (box, T, H) spawn upright and omit the key, so this
+    returns identity and they are unaffected. The jack has no flat face -- it
+    balances on a tripod of tip spheres -- so it MUST be spawned at a specific
+    orientation or it starts on a single tip and immediately falls over.
+
+    Single source of truth for both stagers: main.py's initial pose AND
+    compute_safe_init_arm_q, which re-stages the object before running IK.
+    That second site used to hardcode `RotationMatrix()`, silently resetting a
+    configured init_quat to identity while preserving the position -- invisible
+    for every task whose init orientation IS identity, fatal for the jack.
+    """
+    q = task_cfg.get("init_quat", None)
+    if q is None:
+        return ad.RotationMatrix()
+    q = np.asarray(q, dtype=float).flatten()
+    if q.shape[0] != 4:
+        raise ValueError(f"init_quat must have 4 entries [w,x,y,z]; got {q.shape[0]}")
+    n = float(np.linalg.norm(q))
+    if n < 1e-12:
+        raise ValueError("init_quat has zero norm")
+    q = q / n
+    return ad.RotationMatrix(ad.Quaternion(q[0], q[1], q[2], q[3]))
+
+
 def compute_safe_init_arm_q(plant,
                             plant_ctx,
                             panda_model,
@@ -684,7 +994,22 @@ def compute_safe_init_arm_q(plant,
     straight-down descent passed through box top since pwl_waypoint_height
     < box_top). By starting OFFSET in xy on the goal-opposite side and
     ABOVE box top, the first PWL lift/descend has clear space.
+
+    Reference override (2026-08-14 joint2 fix): when the task provides
+    `q_init_franka`, return it verbatim — the reference sets the initial
+    arm joints directly (sim_params.yaml q_init_franka) with NO IK
+    preposition, and the joint2 pin (osc_franka.yaml W_joint2) needs the
+    arm to START on the reference branch (joint2 = 1.1 rad) to be
+    transient-free. Tasks without the key keep the legacy IK path.
     """
+    _q_ref = task_cfg.get("q_init_franka")
+    if _q_ref is not None:
+        _q_ref = np.asarray(_q_ref, dtype=float)
+        if verbose:
+            print(f"[ENV]  init arm q: reference q_init_franka "
+                  f"{np.round(_q_ref, 4).tolist()} (IK preposition skipped)")
+        return _q_ref
+
     from control.sampling_c3.ik import solve_ik_to_ee_pos
 
     init_xyz = np.asarray(task_cfg["init_xyz"], dtype=float)
@@ -712,10 +1037,24 @@ def compute_safe_init_arm_q(plant,
         # T occupies x∈[-0.07,+0.13], y∈[-0.08,+0.08], z half-extent 0.02.
         half_extent = abs(g_hat[0]) * 0.13 + abs(g_hat[1]) * 0.08
         obj_top_z   = init_xyz[2] + 0.02
+    elif obj_type == "hshape":
+        # H occupies x∈[-0.056,+0.056], y∈[-0.064,+0.064], z half-extent 0.016
+        # (see _hshape_sdf). Envelope is symmetric, unlike the T's.
+        half_extent = abs(g_hat[0]) * 0.056 + abs(g_hat[1]) * 0.064
+        obj_top_z   = init_xyz[2] + 0.016
+    elif obj_type == "jack":
+        # The jack has no axis-aligned envelope: its extent depends on the
+        # current tripod. Every tip is 0.0875 from the centre, so that radius
+        # bounds the footprint in ANY direction and is orientation-independent
+        # -- the right conservative choice for a body that rolls.
+        half_extent = 0.0875
+        # Highest point of a resting jack: the three UP tips sit one tripod
+        # height above the CoM, symmetric with the three resting ones.
+        obj_top_z   = init_xyz[2] + 0.061084
     else:
         raise ValueError(
             f"compute_safe_init_arm_q: unknown object_type '{obj_type}' "
-            "(expected 'box', 'sphere', or 'tshape')."
+            "(expected 'box', 'sphere', 'tshape', 'hshape', or 'jack')."
         )
 
     # SAFE-OFFSET target: xy offset opposite goal direction by
@@ -729,7 +1068,9 @@ def compute_safe_init_arm_q(plant,
     plant.SetPositions(plant_ctx, panda_model, seed)
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
-        ad.RigidTransform(ad.RotationMatrix(), init_xyz.tolist()),
+        # Honour the task's init_quat. Hardcoding identity here reset any
+        # configured initial orientation (see init_rotation).
+        ad.RigidTransform(init_rotation(task_cfg), init_xyz.tolist()),
     )
 
     n_arm_dofs = plant.num_actuators()

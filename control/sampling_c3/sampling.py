@@ -16,6 +16,7 @@ re-drawn up to a small budget; failures are logged but not raised).
 """
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import numpy as np
@@ -83,6 +84,83 @@ _TSHAPE_HALF_HEIGHT = 0.020
 _TSHAPE_TOP_SETBACK = 0.020
 
 
+# H-shape side faces, body frame. Geometry from sim/env_builder.py
+# `_hshape_sdf` (envelope 0.112 x 0.128 x 0.032, centred on the link origin):
+#     left  bar  x[-0.056,-0.032]  y[-0.064,+0.064]
+#     right bar  x[+0.032,+0.056]  y[-0.064,+0.064]
+#     crossbar   x[-0.032,+0.032]  y[-0.012,+0.012]
+# Twelve faces trace the outline. Validated: the face half-lengths sum to
+# 0.688 m, exactly the analytic H perimeter, so the decomposition is complete
+# and non-overlapping. The four notch-inner faces are reachable — projecting
+# a sample outward by (pusher_r + clearance) = 39.5 mm leaves 24.5 mm of
+# clearance to the opposing bar, above the 19.5 mm sphere radius.
+_HSHAPE_FACE_TABLE = np.array([
+    # (cx,     cy,     nx,   ny,   half_len)
+    (-0.056,  0.000, -1.0,  0.0,  0.064),   # left bar, outer (-x)
+    (-0.044, -0.064,  0.0, -1.0,  0.012),   # left bar, bottom (-y)
+    (-0.044, +0.064,  0.0, +1.0,  0.012),   # left bar, top (+y)
+    (-0.032, -0.038, +1.0,  0.0,  0.026),   # left bar, inner lower (+x)
+    (-0.032, +0.038, +1.0,  0.0,  0.026),   # left bar, inner upper (+x)
+    ( 0.000, -0.012,  0.0, -1.0,  0.032),   # crossbar, bottom (-y)
+    ( 0.000, +0.012,  0.0, +1.0,  0.032),   # crossbar, top (+y)
+    (+0.032, -0.038, -1.0,  0.0,  0.026),   # right bar, inner lower (-x)
+    (+0.032, +0.038, -1.0,  0.0,  0.026),   # right bar, inner upper (-x)
+    (+0.044, -0.064,  0.0, -1.0,  0.012),   # right bar, bottom (-y)
+    (+0.044, +0.064,  0.0, +1.0,  0.012),   # right bar, top (+y)
+    (+0.056,  0.000, +1.0,  0.0,  0.064),   # right bar, outer (+x)
+], dtype=float)
+
+_HSHAPE_HALF_HEIGHT = 0.016
+
+
+# Registry of non-box ("polygonal") manipuland shapes. Each entry supplies the
+# three things the perimeter sampler needs: the outline face table, the
+# footprint as a union of body-frame AABBs, and the tight bounding box used to
+# seed the uniform draw. Adding a shape here is what makes the reference
+# kRandomOnPerimeter sampler work for it — the alternative is another
+# `shape == "..."` branch at each of the four sites below.
+_POLY_SHAPES = {
+    "tshape": {
+        "face_table": _TSHAPE_FACE_TABLE,
+        # (x_lo, x_hi, y_lo, y_hi) per rectangle
+        "rects": ((-0.03, +0.13, -0.02, +0.02),    # crossbar
+                  (-0.07, -0.03, -0.08, +0.08)),   # stem
+        "bbox":  (-0.07, +0.13, -0.08, +0.08),
+        "half_height": _TSHAPE_HALF_HEIGHT,
+    },
+    "hshape": {
+        "face_table": _HSHAPE_FACE_TABLE,
+        "rects": ((-0.056, -0.032, -0.064, +0.064),   # left bar
+                  (+0.032, +0.056, -0.064, +0.064),   # right bar
+                  (-0.032, +0.032, -0.012, +0.012)),  # crossbar
+        "bbox":  (-0.056, +0.056, -0.064, +0.064),
+        "half_height": _HSHAPE_HALF_HEIGHT,
+    },
+}
+
+
+def _poly_spec(shape: str):
+    """Return the _POLY_SHAPES entry for `shape`, or None for box/sphere."""
+    return _POLY_SHAPES.get(str(shape))
+
+
+def _surface_clearance(x: float, y: float, rects) -> float:
+    """Body-frame distance from (x, y) to the union of AABBs `rects`.
+
+    Zero inside the footprint. Used to re-check projected samples: a sample is
+    the EE SPHERE CENTRE, so anything closer than the pusher radius is a
+    position the sphere cannot occupy.
+    """
+    best = float("inf")
+    for x0, x1, y0, y1 in rects:
+        dx = max(x0 - x, 0.0, x - x1)
+        dy = max(y0 - y, 0.0, y - y1)
+        d = math.hypot(dx, dy)
+        if d < best:
+            best = d
+    return best
+
+
 # ---------------------------------------------------------------------------
 # Public dispatch
 # ---------------------------------------------------------------------------
@@ -95,6 +173,8 @@ def generate_samples(strategy:    SamplingStrategy,
                      g_hat:       Optional[np.ndarray] = None,
                      obj_quat:    Optional[np.ndarray] = None,
                      yaw_delta:   Optional[float] = None,
+                     obj_z:       Optional[float] = None,
+                     projector=None,
                      ) -> list[np.ndarray]:
     """
     Generate n_samples 3D EE target positions.
@@ -132,8 +212,27 @@ def generate_samples(strategy:    SamplingStrategy,
     elif strategy == SamplingStrategy.kFixed:
         raw = _fixed_samples(n_samples, params)
     elif strategy == SamplingStrategy.kRandomOnPerimeter:
-        raw = _random_on_perimeter(
-            n_samples, obj_xy, params, rng, g_hat, obj_quat)
+        if projector is not None:
+            # Geometry-generic path (2026-08-15 Fig 8 sampler fix): the
+            # reference PerimeterSampling is face-table-free — it draws
+            # interior points on the object's own footprint and projects
+            # them off the ACTUAL collision geometry via signed-distance
+            # queries (generate_samples.cc:270-360). The analytic
+            # _POLY_SHAPES tables below remain only for the analytic-SDF
+            # legacy tasks (push_t box-T, push_h), whose sim geometry IS
+            # the table. Imported mesh objects sampled on the box-T table
+            # produced targets at/inside their real surfaces → the
+            # pursued-target collision gate dropped them every few ticks
+            # (no_held retarget storm, chicken_broth 64%) → repositions
+            # never completed → c3 never engaged (memory:
+            # fig8-sampler-hardcoded-facetable-bug).
+            raw = _random_on_perimeter_projected(
+                n_samples, obj_xy, params, rng, obj_quat, obj_z, projector)
+        else:
+            raw = _random_on_perimeter(
+                n_samples, obj_xy, params, rng, g_hat, obj_quat)
+    elif strategy == SamplingStrategy.kRandomOnSphere:
+        raw = _random_on_sphere(n_samples, obj_xy, params, rng, obj_z)
     else:
         raise NotImplementedError(
             f"Sampling strategy {strategy.name} not yet implemented; "
@@ -148,6 +247,157 @@ def generate_samples(strategy:    SamplingStrategy,
 # ---------------------------------------------------------------------------
 # Strategies
 # ---------------------------------------------------------------------------
+
+def _random_on_perimeter_projected(n_samples: int,
+                                   obj_xy:    np.ndarray,
+                                   params:    SamplingParams,
+                                   rng:       np.random.Generator,
+                                   obj_quat:  Optional[np.ndarray],
+                                   obj_z:     Optional[float],
+                                   projector) -> list[np.ndarray]:
+    """Geometry-generic kRandomOnPerimeter for arbitrary mesh objects.
+
+    Port of the reference mechanism (generate_samples.cc:270-360,
+    PerimeterSampling + ProjectSampleOutsideObject), which needs no
+    per-shape face table:
+
+      1. Draw (x, y) uniformly in the object's BODY frame on its z=0
+         plane; rotate/translate into world; snap world z to
+         sampling_height.
+      2. Keep the draw only if it is interior (signed distance to the
+         object's surface <= 0 at that height) — this makes the draw an
+         interior-point sampler over the true footprint slice.
+      3. Project the point outward past the surface along the
+         signed-distance gradient to sample_projection_clearance.
+      4. Re-query: reject if the achieved clearance fell short (witness
+         changed during projection) or the point drifted more than 1 mm
+         off sampling_height (non-vertical wall). Retry otherwise.
+
+    `projector` is a callable p(3,) -> (min_signed_distance, grad_W) over
+    the manipuland's collision geometries in the CURRENT plant context
+    (built per tick by the dispatcher; same query the pursued-target
+    collision gate uses, so sampler and gate agree by construction).
+
+    The reference draws from per-task grid_x/y_limits; the port draws
+    from a generous fixed body-frame box (covers every imported object;
+    exterior draws are rejected by step 2, so the grid affects only
+    draw efficiency, not the distribution over the footprint slice).
+    Bounded retries replace the reference's unbounded loop so a
+    degenerate tick cannot hang the controller.
+    """
+    half = 0.20
+    # Projection standoff (2026-08-15, v4 = the port's engagement envelope).
+    # Iteration history, all evidence-driven:
+    #   v1  raw 0.02 EE-center clearance  → sphere penetrated ~0.5-5 mm;
+    #       broth CONVERTED to PASS but mesh-T spun 1.86 rad
+    #       (meshT_projfix_seed0.log).
+    #   v2  max(0.02, PUSHER_RADIUS+5mm) = 0.0245 → 5 mm sphere gap;
+    #       T still spun 1.80 (distribution-driven, standoff-independent —
+    #       T since excluded from this sampler, main.py gate).
+    #   v3  reference-exact ADDITIVE formula, ee_radius + clearance
+    #       (ProjectSampleOutsideObject, generate_samples.cc:839-868)
+    #       = 0.0395 center-to-surface → Letter I NEVER TOUCHED the
+    #       object in 109 s: c3 active 1264 ticks, ZERO contact substeps,
+    #       min gap 18 mm (I_shape_texture_seed0.v3partial.log). The
+    #       PORT's c3 contact-establishment closes from ~2-3 cm starts
+    #       (the envelope its face tables always fed it) but not from
+    #       the reference's 4 cm — a pre-existing port-envelope
+    #       divergence, documented as an open conformance question.
+    #   v4  (this) = the v2 value 0.0245: inside the port's validated
+    #       engagement envelope, ~5 mm sphere-surface gap — the same
+    #       effective standoff the box config has shipped for months
+    #       (sampling_setback 0.030 @ r=0.025). The reference-exact v3
+    #       is the right target once the port's contact-establishment
+    #       range is brought to parity.
+    from sim.env_builder import PUSHER_RADIUS as _PUSHER_R
+    #   v5  (this) = v3 restored by user directive ("fixes must be
+    #       reference conformant"): the ADDITIVE reference formula stands;
+    #       the port's engagement-range shortfall is the divergence to
+    #       fix, not a reason to move the sampler off-reference.
+    clearance = (float(_PUSHER_R)
+                 + float(getattr(params, "sample_projection_clearance", 0.02)))
+    h = float(params.sampling_height)
+    q = (np.asarray(obj_quat, dtype=float)
+         if obj_quat is not None else np.array([1.0, 0.0, 0.0, 0.0]))
+    R = _quat_to_rot(q)
+    z_obj = float(obj_z) if obj_z is not None else h
+    p_obj = np.array([float(obj_xy[0]), float(obj_xy[1]), z_obj])
+
+    out: list[np.ndarray] = []
+    attempts = 0
+    max_attempts = 400 * max(int(n_samples), 1)
+    while len(out) < n_samples and attempts < max_attempts:
+        attempts += 1
+        xb, yb = rng.uniform(-half, half, size=2)
+        p = R @ np.array([xb, yb, 0.0]) + p_obj
+        p[2] = h
+        d, grad = projector(p)
+        if d is None or d > 0.0:
+            continue                      # not interior at the slice
+        gn = float(np.linalg.norm(grad))
+        if gn < 1e-9:
+            continue
+        p_proj = p + (clearance - d) * (grad / gn)
+        d2, _ = projector(p_proj)
+        if d2 is None or d2 < clearance - 1e-6:
+            continue                      # projection under-cleared
+        if abs(float(p_proj[2]) - h) > 0.001:
+            continue                      # wall not vertical here
+        out.append(np.asarray(p_proj, dtype=float))
+    return out
+
+
+def _random_on_sphere(n_samples: int,
+                      obj_xy:    np.ndarray,
+                      params:    SamplingParams,
+                      rng:       np.random.Generator,
+                      obj_z:     Optional[float] = None) -> list[np.ndarray]:
+    """kRandomOnSphere — reference generate_samples.cc RandomOnSphereSampling.
+
+    Reference body, verbatim in structure:
+
+        theta           = U(0, 2*pi)
+        elevation_theta = U(min_angle_from_vertical, max_angle_from_vertical)
+        sample.x = obj.x + r * cos(theta) * sin(elevation_theta)
+        sample.y = obj.y + r * sin(theta) * sin(elevation_theta)
+        sample.z = obj.z + r * cos(elevation_theta)
+
+    Note this is NOT a uniform distribution over the spherical cap — the
+    reference draws the elevation angle uniformly, which concentrates samples
+    near the pole. Reproduced as-is rather than "corrected": matching the
+    reference's sample density matters more than statistical uniformity.
+
+    Unlike the planar samplers this needs the object's full 3D position, since
+    the sphere is centred on the object rather than projected to a fixed world
+    height. `obj_z` falls back to the configured sampling_height when the
+    caller has not supplied it.
+
+    Used by the reference `jacktoy` task (sampling_strategy: 2), whose jack is
+    a 3-capsule caltrop that rolls between tripods — it has no flat resting
+    face, so the perimeter/face-table samplers do not apply to it.
+    """
+    r = float(params.sampling_radius)
+    lo = float(getattr(params, "min_angle_from_vertical", 0.0))
+    hi = float(getattr(params, "max_angle_from_vertical", math.pi))
+    cz = float(obj_z) if obj_z is not None else float(params.sampling_height)
+    cx, cy = float(obj_xy[0]), float(obj_xy[1])
+
+    out: list[np.ndarray] = []
+    tries = 0
+    max_tries = max(1, n_samples) * 40
+    while len(out) < n_samples and tries < max_tries:
+        tries += 1
+        theta = float(rng.uniform(0.0, 2.0 * math.pi))
+        elev = float(rng.uniform(lo, hi))
+        p = np.array([cx + r * math.cos(theta) * math.sin(elev),
+                      cy + r * math.sin(theta) * math.sin(elev),
+                      cz + r * math.cos(elev)])
+        # Reference wraps the draw in a do/while on SampleIsAcceptable; the
+        # port's equivalent acceptance test is the workspace filter.
+        if is_in_workspace(p, params):
+            out.append(p)
+    return out
+
 
 def _random_on_circle(n_samples:    int,
                       obj_xy:       np.ndarray,
@@ -738,18 +988,18 @@ def _random_on_perimeter(n_samples: int,
         gy = np.asarray(params.grid_y_limits, dtype=float).flatten()
         x_lo, x_hi = float(gx[0]), float(gx[1])
         y_lo, y_hi = float(gy[0]), float(gy[1])
-    elif shape == "tshape":
-        # Tight bounding box for T (from _TSHAPE_FACE_TABLE extents).
-        x_lo, x_hi = -0.07, +0.13
-        y_lo, y_hi = -0.08, +0.08
+    elif _poly_spec(shape) is not None:
+        # Tight bounding box from the shape's face-table extents.
+        x_lo, x_hi, y_lo, y_hi = _poly_spec(shape)["bbox"]
     else:
         h = float(params.box_half_extent)
         x_lo, x_hi = -h, +h
         y_lo, y_hi = -h, +h
 
     # Face table (body-frame).  Each row: (cx, cy, nx, ny, half_len).
-    if shape == "tshape":
-        face_table = _TSHAPE_FACE_TABLE
+    _spec = _poly_spec(shape)
+    if _spec is not None:
+        face_table = _spec["face_table"]
     else:
         h = float(params.box_half_extent)
         face_table = np.array([
@@ -760,12 +1010,13 @@ def _random_on_perimeter(n_samples: int,
         ], dtype=float)
 
     def _inside_footprint(x: float, y: float) -> bool:
-        if shape == "tshape":
-            # T = union of crossbar and stem rectangles (from face-table
-            # extents; see _TSHAPE_FACE_TABLE header comment).
-            in_crossbar = (-0.03 <= x <= +0.13) and (-0.02 <= y <= +0.02)
-            in_stem     = (-0.07 <= x <= -0.03) and (-0.08 <= y <= +0.08)
-            return in_crossbar or in_stem
+        # Polygonal shapes are a union of body-frame AABBs (T = crossbar +
+        # stem; H = left bar + right bar + crossbar).
+        if _spec is not None:
+            for x0, x1, y0, y1 in _spec["rects"]:
+                if (x0 <= x <= x1) and (y0 <= y <= y1):
+                    return True
+            return False
         h = float(params.box_half_extent)
         return (abs(x) <= h) and (abs(y) <= h)
 
@@ -807,6 +1058,20 @@ def _random_on_perimeter(n_samples: int,
             continue
         # Step 4: project outward to nearest face + clearance.
         proj_body = _project_to_nearest_face(x_body, y_body)
+        # Step 4b: RE-CHECK that the projected point is actually clear of the
+        # whole object, not just of the face it was projected from. Reference
+        # ProjectSampleOutsideObject re-checks and retries until strictly clear
+        # (generate_samples.cc:340-348); the port previously projected once and
+        # accepted. On a CONCAVE outline the nearest-face projection can land
+        # beside a different part of the body: measured 21% of T samples and
+        # 32% of H samples closer than the pusher radius, i.e. positions the EE
+        # sphere cannot physically occupy. Retry (the caller's while-loop draws
+        # a fresh point) rather than accept an unreachable target.
+        if _spec is not None:
+            if _surface_clearance(proj_body[0], proj_body[1],
+                                  _spec["rects"]) < _PUSHER_R:
+                tries += 1
+                continue
         # Step 2/5: rotate to world, snap z, filter workspace.
         p_body_3d = np.array([proj_body[0], proj_body[1], 0.0])
         p_world = R @ p_body_3d + np.array([obj_xy_2[0], obj_xy_2[1], 0.0])

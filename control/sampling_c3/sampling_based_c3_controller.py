@@ -79,7 +79,8 @@ class SamplingC3Controller:
                  dt_ctrl:    float = 0.01,
                  start_in_c3_mode: bool = False,
                  *,
-                 diagram=None):
+                 diagram=None,
+                 use_geometry_perimeter_sampling: bool = False):
         """Construct the outer sampling-C3 controller.
 
         Parameters
@@ -92,6 +93,14 @@ class SamplingC3Controller:
             does not use the diagram and ignores this kwarg.
         """
         self.base_mpc    = base_mpc
+        # Fig 8 sampler fix (2026-08-15): geometry-generic perimeter
+        # sampling for mesh (object_sdf) tasks — reference PerimeterSampling
+        # mechanism (interior draw + signed-distance projection) instead of
+        # the analytic _POLY_SHAPES face tables. Per-tick projector closure
+        # built in compute_control; None keeps the legacy face-table path.
+        self._use_geometry_perimeter = bool(use_geometry_perimeter_sampling)
+        self._perimeter_projector = None
+        self._obj_z_now = None
         # C3Plus final-solve contact boost (c3_plus.cc:131-145): plumb the
         # per-task yaml optional into the solver. None = no boost (reference
         # push_t); the box yaml mirrors reference anything's 1000.
@@ -100,6 +109,15 @@ class SamplingC3Controller:
         if _slv is not None:
             _slv._final_aug_contact_scaling = (
                 float(_fs_cfg) if _fs_cfg is not None else None)
+            # Per-task ADMM scales (2026-08-16 jacktoy regression fix):
+            # reference sets u_lambda_list / w_G per demo (jacktoy 4 /
+            # 0.03; anything 1000 / 0.18 = the class defaults). None keeps
+            # the defaults; worker-clone solvers inherit via
+            # _solver_attrs_to_sync (inner_solve builds kits lazily,
+            # after this push).
+            _slv.apply_task_solver_scales(
+                u_lambda=getattr(params, "u_lambda", None),
+                w_G=getattr(params, "w_G", None))
         # Per-task planner u-force limits (reference u_horizontal/vertical_
         # limits; push_t ±50/±50, anything ±10/±3). Consumed by the EE-space
         # u-box in ci_mpc_c3plus.compute_control; None → legacy scalar
@@ -163,6 +181,9 @@ class SamplingC3Controller:
             base_admm_iter=self._admm_iter,
             params=params,
         )
+        # SE(3) goal orientation [w,x,y,z]; None => planar yaw-only task.
+        # See set_goal_quat -- switches rot_error onto the geodesic angle.
+        self._goal_quat = None
         self.progress = ProgressTracker(params.progress_params,
                                         dt_ctrl=self._dt_ctrl)
         self.buffer   = SampleBuffer(
@@ -493,6 +514,8 @@ class SamplingC3Controller:
             g_hat     = g_hat,
             obj_quat  = obj_quat,
             yaw_delta = yaw_delta,
+            obj_z     = getattr(self, "_obj_z_now", None),
+            projector = getattr(self, "_perimeter_projector", None),
         )
         # Log ALL raw samples emitted by generate_samples before any
         # filtering — deep-log addition for direction-commit debugging.
@@ -1157,6 +1180,20 @@ class SamplingC3Controller:
     # Main control entry
     # ------------------------------------------------------------------
 
+    def set_goal_quat(self, q):
+        """Install a full SE(3) goal orientation [w, x, y, z], or None.
+
+        Planar tasks leave this None and the rotation error stays the yaw
+        difference against target_yaw. The jack sets it, which switches
+        rot_error -- and therefore the ProgressTracker's rotation branch and
+        the goal-achievement latch -- onto the geodesic angle.
+        """
+        if q is None:
+            self._goal_quat = None
+            return
+        q = np.asarray(q, dtype=float).flatten()
+        self._goal_quat = q / float(np.linalg.norm(q))
+
     def compute_control(self,
                         current_q:  np.ndarray,
                         current_v:  np.ndarray,
@@ -1171,6 +1208,13 @@ class SamplingC3Controller:
         fires every tick with elapsed=0, and the system behaves like
         pre-Stage-2b within the sim's noise floor."""
         self._step += 1
+        # Capture the object's REST height once on the first tick — the
+        # adaptive c3 press plane uses it as the object half-height (a body
+        # resting on the z=0 ground has its origin one half-height up).
+        if getattr(self, "_init_obj_z", None) is None:
+            self._init_obj_z = float(current_q[self._obj_z_idx])
+        # Cache the live plant context for the adaptive press-plane query.
+        self._ctx_for_z = plant_ctx
         t_step_start = time.perf_counter()
 
         # Gating: how many OSC ticks per planner solve?
@@ -1484,6 +1528,39 @@ class SamplingC3Controller:
         g_hat   = v_goal / (goal_dist + 1e-9)
         g_hat_3d = np.array([g_hat[0], g_hat[1], 0.0])
 
+        # Fig 8 sampler fix (2026-08-15): build this tick's signed-distance
+        # projector for the geometry-generic perimeter sampler. Same query
+        # class as _pursued_target_in_collision (ComputeSignedDistanceToPoint
+        # over the manipuland geoms), so the sampler and the pursued-target
+        # collision gate agree by construction — a sample accepted here at
+        # sample_projection_clearance cannot be rejected by the gate at the
+        # same pose.
+        self._obj_z_now = float(current_q[self._obj_z_idx])
+        self._perimeter_projector = None
+        if self._use_geometry_perimeter:
+            _pp_gids = getattr(
+                getattr(self.base_mpc, "formulator", None),
+                "_manipuland_geom_ids", None)
+            if _pp_gids:
+                _pp_qo = self.plant.get_geometry_query_input_port().Eval(
+                    plant_ctx)
+
+                def _pp_projector(p, _qo=_pp_qo, _gids=_pp_gids):
+                    try:
+                        _res = _qo.ComputeSignedDistanceToPoint(
+                            np.asarray(p, dtype=float).reshape(3), 0.5)
+                    except Exception:
+                        return None, None
+                    _bd, _bg = None, None
+                    for _r in _res:
+                        if _r.id_G in _gids and (
+                                _bd is None or float(_r.distance) < _bd):
+                            _bd = float(_r.distance)
+                            _bg = np.asarray(_r.grad_W, dtype=float)
+                    return _bd, _bg
+
+                self._perimeter_projector = _pp_projector
+
         # Reference-conformance: distance to FINAL goal for progress tracking
         # and achieved_fixed_goal check. target_xy here is the LOOKAHEAD
         # sub-goal (main.py:746), which spikes back to 0.15 m each time box
@@ -1665,6 +1742,14 @@ class SamplingC3Controller:
         # slot to `target_idx`, at which point `_best_sample_index` is
         # overwritten to match (see :2343-nearby edit).
         self._all_sample_costs  = c_samples
+        # Reference cc:1128 semantics: best_sample_index_ is the ARGMIN and
+        # stays the argmin even while c3 executes from the current EE — it
+        # identifies the BEST sample (feeding the reference's separate
+        # best-plan output ports, cc:1323 c3_best_plan_ / cc:1848
+        # all_sample_locations_[best_sample_index_]), NOT the executed one.
+        # Do NOT "correct" it to 0 in c3 mode: that would diverge. It is
+        # currently write-only here only because the port does not yet
+        # publish the best-plan ports.
         self._best_sample_index = k_star
 
         # === B3c-prime selection audit (env-gated, hot-path-cheap) ===========
@@ -1723,9 +1808,33 @@ class SamplingC3Controller:
         # which does NOT read rot_error at all (progress.py:195-198),
         # so downstream met_progress is bit-identical for box. Only the
         # T config that opts into kPosOrRotCost sees behavior change.
-        _yaw_now = 2.0 * float(np.arctan2(obj_quat[3], obj_quat[0]))
-        _dy = _yaw_now - float(target_yaw)
-        rot_error_now = float(np.abs(np.arctan2(np.sin(_dy), np.cos(_dy))))
+        # 2026-08-15 conformance fix: BOTH branches now use the geodesic
+        # angle — the reference measures orientation error as
+        # AngleAxis(q_goal * q_now^-1).angle() EVERYWHERE it is consumed
+        # (success gate goal_generator.cc:143-151; controller
+        # current_orientation_error_ cc:788-805; object_on_target latch
+        # cc:891-909). The former planar yaw-only branch was a port
+        # simplification that is exact for flat-resting objects (box:
+        # tilt ~1e-4, yaw ≡ geodesic) but WRONG for the mesh-T, whose
+        # convex base rests tilted ~0.075 rad: geodesic = yaw ⊕ tilt in
+        # quadrature (verified: latch draw √(0.0998²+0.0765²)=0.1257 =
+        # the [RESULT] to 4 decimals). Under yaw-only the port latched
+        # ~0.036 rad of yaw too early — the reference keeps pushing
+        # until the FULL angle clears orientation_success_threshold.
+        if self._goal_quat is not None:
+            # SE(3) task (the jack): the goal is a full quaternion.
+            _q_goal = self._goal_quat
+        else:
+            # Planar-goal task (box, T): goal quat from target_yaw with
+            # identity roll/pitch — the same upright-goal construction
+            # the reference uses for its fixed planar goals.
+            _hy = 0.5 * float(target_yaw)
+            _q_goal = np.array([np.cos(_hy), 0.0, 0.0, np.sin(_hy)])
+        _qn = np.asarray(obj_quat, dtype=float)
+        _nn = float(np.linalg.norm(_qn))
+        _qn = _qn / _nn if _nn > 1e-12 else np.array([1.0, 0.0, 0.0, 0.0])
+        _dot = float(abs(np.dot(_qn, _q_goal)))
+        rot_error_now = float(2.0 * np.arccos(np.clip(_dot, -1.0, 1.0)))
 
         # Include yaw component in config_cost (reference full Q_block covers
         # quat too). Uses the half-angle metric that w_yaw multiplies:
@@ -1776,8 +1885,33 @@ class SamplingC3Controller:
         # When set, force mode=free (arm won't push more).
         if not hasattr(self, "_achieved_fixed_goal"):
             self._achieved_fixed_goal = False
+            self._off_target_streak = 0
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
+        # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
+        # release. Reference keeps the flag sticky forever (cc:914-916);
+        # with achieved_goal_release_loops > 0, N consecutive off-target
+        # loops release it so dispatch re-engages and corrects post-latch
+        # drift (the box flyby class). 0 = sticky = reference-identical.
+        _rel_loops = int(getattr(self.params,
+                                 "achieved_goal_release_loops", 0) or 0)
+        if self._achieved_fixed_goal and _rel_loops > 0:
+            _on_target_now = (_final_goal_dist < _pos_thr
+                              and (not self._crossed_switching_threshold
+                                   or rot_error_now < _rot_thr))
+            if _on_target_now:
+                self._off_target_streak = 0
+            else:
+                self._off_target_streak += 1
+                if self._off_target_streak >= _rel_loops:
+                    self._achieved_fixed_goal = False
+                    self._off_target_streak = 0
+                    if self.log_diag:
+                        print(f"[ACHIEVED-GOAL-RELEASE] step={self._step} "
+                              f"off-target {_rel_loops} loops "
+                              f"(dist={_final_goal_dist:.4f}m "
+                              f"rot={rot_error_now:.4f}rad) — re-engaging "
+                              f"(OFF-REFERENCE deviation)", flush=True)
         if not self._achieved_fixed_goal:
             # Reference cc:876-881 object_on_target:
             #   crossed_ mode:   pos < pos_thr AND rot < rot_thr
@@ -2081,9 +2215,18 @@ class SamplingC3Controller:
         # W_posture + a_ee_cap fixes) — box still regresses when gate is
         # enabled (goal_dist 0.109→0.374 → 0.602 m, orient 92°→180° tumble).
         # Kept tshape-only. Port divergence documented.
+        # 2026-08-10: extended to the jack. The reference applies this to all
+        # objects; the port had it tshape-only because the BOX regressed with
+        # it on. The jack needs it and is not the box: measured at its c3
+        # entries, the EE sits 132 mm above its own c3 tracking height when
+        # kToC3ReachedReposTarget fires (ee_z 0.1562 vs z_height 0.0244,
+        # ceiling 0.0344), and the z-freeze then commands that entire drop in
+        # one tick -- straight through the jack, whose top is at 0.122 m. Those
+        # ticks are 100% of the run's contact events and carry 123 N peaks on a
+        # 1.53 N object. Box and T behaviour is untouched.
         if (self._prev_mode == "free"
                 and getattr(self.params, "ee_z_close", True)
-                and _obj_shape == "tshape"):
+                and _obj_shape in ("tshape", "jack")):
             _sampling_z = self._c3_track_z()   # ref cc:1290 uses z_height
             _c3_min_clearance = float(getattr(
                 self.params, "c3_min_clearance", 0.01))
@@ -3337,7 +3480,20 @@ class SamplingC3Controller:
             # below retains the original FK extraction.
             if _x_seq is not None and len(_x_seq) > 1:
                 if _use_ee_space:
-                    _p_ee_des = _x_tgt[1][7:10].copy()
+                    # 2026-08-15 leg 5: consume the plan at the filtered
+                    # full-loop solve time — the reference OSC's tracked
+                    # point (trajectory timestamps start at t+fst,
+                    # cc:1749-1766; the OSC holds knot 0 = plan(fst) = the
+                    # same interp the x_pred uses). Raw knot 1 sat exactly
+                    # on the final-QP-pinned first knot (k1 median 0.13 mm
+                    # while the stride lives in k2+) — the executor was
+                    # never asked to follow the plan. Fall back to knot 1
+                    # when the prediction is unavailable (first tick).
+                    _xp = getattr(self.base_mpc, "_x_pred_curr_plan", None)
+                    if _xp is not None:
+                        _p_ee_des = np.asarray(_xp, dtype=float)[7:10].copy()
+                    else:
+                        _p_ee_des = _x_tgt[1][7:10].copy()
                     # Bug 3 guard (2026-07-22): if LCS predicted unphysical
                     # one-step EE displacement, clip to a plausible target.
                     # Franka arm max EE Cartesian velocity is ~1 m/s; with
@@ -4192,6 +4348,32 @@ class SamplingC3Controller:
                 ], dtype=float).T
                 _sh_c3 = self._c3_track_z()   # ref cc:1757-1759 z_height
                 _knots[2, :] = _sh_c3   # z-freeze every knot
+                # Consistency guard (2026-08-10). Freezing the track's z makes
+                # its z-derivative zero, which IS the reference's ydot_des
+                # (traj.EvalDerivative(t,1), osc_tracking_data.cc:91-99). But
+                # _velocity_feedforward_from_xseq feeds the OSC the planner's
+                # EE VELOCITY STATE slot instead, which still carries the
+                # planner's intended descent. The OSC then holds a frozen z
+                # position target against a downward z velocity target and
+                # settles at sag = (Kd_cart/Kp_cart)*|v_des_z| -- measured
+                # 3.21 mm on the jack (predicted 3.27), which ate the entire
+                # 5.4 mm margin between z_height and the workspace floor and
+                # tripped CheckForWorkspaceLimitViolations at t=8.2 s.
+                # One-shot warning only: no behaviour change, so configs that
+                # currently run with the flag on (push_h) keep their baseline.
+                if (bool(getattr(self.params, "use_velocity_feedforward", False))
+                        and not getattr(self, "_warned_vff_z_conflict", False)):
+                    self._warned_vff_z_conflict = True
+                    print("[VFF-Z-CONFLICT] use_velocity_feedforward=True while "
+                          "c3 mode freezes the trajectory z to "
+                          f"{_sh_c3:+.4f}. The frozen track has zero "
+                          "z-derivative but the planner's velocity slot does "
+                          "not, so the OSC receives contradictory z targets "
+                          "and will settle (Kd/Kp)*|v_des_z| BELOW the frozen "
+                          "height. Reference ydot_des is the position-track "
+                          "derivative; set use_velocity_feedforward: false to "
+                          "match it (push_t and push_jack already do).",
+                          flush=True)
                 _ts = [_sim_t_c3 + _fst + i * _dt_plan
                        for i in range(_N_plan)]
                 _traj_c3 = PiecewisePolynomial.FirstOrderHold(_ts, _knots)
@@ -4211,6 +4393,20 @@ class SamplingC3Controller:
                     _ee_zs_str  = ",".join(f"{z:+.4f}" for z in _ee_zs)
                     _box_zs_str = ",".join(f"{z:+.4f}" for z in _box_zs)
                     _box_ys_str = ",".join(f"{y:+.4f}" for y in _box_ys)
+                    # Commanded EE target actually handed to the OSC this
+                    # tick (the z-frozen trajectory sampled at the same time
+                    # the executor samples it). Logged so the "does the planner
+                    # drive the EE THROUGH the object" question can be measured
+                    # rather than inferred from |x_err| magnitude alone.
+                    try:
+                        _pdes_dbg = np.asarray(
+                            _traj_c3.value(_sim_t_c3 + _fst), dtype=float).flatten()[:3]
+                    except Exception:
+                        _pdes_dbg = np.full(3, np.nan)
+                    print(f"[C3-PDES] step={self._step} "
+                          f"p_des=({_pdes_dbg[0]:+.4f},{_pdes_dbg[1]:+.4f},{_pdes_dbg[2]:+.4f}) "
+                          f"ee_now=({float(ee_pos_now[0]):+.4f},{float(ee_pos_now[1]):+.4f},"
+                          f"{float(ee_pos_now[2]):+.4f})", flush=True)
                     print(f"[C3-TRAJ] step={self._step} "
                           f"ee_now_z={float(ee_pos_now[2]):+.4f} "
                           f"planned_ee_z=[{_ee_zs_str}] "
@@ -4440,8 +4636,48 @@ class SamplingC3Controller:
                     # the re-lift trap that keeps `p_start = ee_pos_now`
                     # stuck at z ≈ z_safe.
                     _nominal_ee_accel = float(getattr(
-                        self.base_mpc, "nominal_ee_accel", 2.0))
+                        self.params, "nominal_ee_accel",
+                        getattr(self.base_mpc, "nominal_ee_accel", 2.0)))
+                    # ---- Reference reset mechanism (ResolvePredictedEEState,
+                    # sampling_based_c3_controller.cc:1425-1442). Discard the
+                    # prediction when it is more than x_pred_reset_threshold
+                    # from the MEASURED end-effector. Without this the
+                    # trajectory is rebuilt from a predicted start each tick, so
+                    # a bad prediction becomes a receding start point and
+                    # compounds -- p167 diverged 0.024 -> 0.360 m from a
+                    # STATIONARY reposition target in 3 ticks and flew out
+                    # through the workspace ceiling at z=0.421.
+                    #
+                    # The reference's first term, (curr_ee-last_ee).norm() <
+                    # (curr_ee-pred_ee).norm(), is vacuous: it assigns
+                    # x_from_last_control_loop_ = x_lcs_curr at the top of the
+                    # same function, so last_ee IS curr_ee and the term reads
+                    # 0 < ... . The effective reference rule is the threshold
+                    # test alone, which is what is implemented.
+                    _pred_reset = False
                     if (self._x_pred_repos_plan is not None
+                            and bool(getattr(self.params,
+                                             "use_predicted_x0_reset_mechanism",
+                                             True))):
+                        _pred_err = float(np.linalg.norm(
+                            np.asarray(self._x_pred_repos_plan, dtype=float)
+                            - np.asarray(ee_pos_now, dtype=float)))
+                        _thr = float(getattr(self.params,
+                                             "x_pred_reset_threshold", 0.01))
+                        if _pred_err > _thr:
+                            _pred_reset = True
+                            self._x_pred_reset_count = getattr(
+                                self, "_x_pred_reset_count", 0) + 1
+                            if self.log_diag and self._x_pred_reset_count <= 40:
+                                print(f"[XPRED-RESET] step={self._step} "
+                                      f"pred_err={_pred_err*1000:.1f}mm "
+                                      f"> thr={_thr*1000:.1f}mm — discarding "
+                                      f"predicted EE, using measured",
+                                      flush=True)
+                    if (self._x_pred_repos_plan is not None
+                            and not _pred_reset
+                            and bool(getattr(self.params,
+                                             "use_predicted_x0_repos", True))
                             and _nominal_ee_accel > 0.0):
                         _dt_c = min(0.1, float(self._dt_ctrl))
                         _delta_pos = _nominal_ee_accel * _dt_c * _dt_c
@@ -4465,6 +4701,26 @@ class SamplingC3Controller:
                         # dt_plan feeds RepositionTrajectory's ref-conformant
                         # finished_reposition_flag (t_end-t_start ≤ dt_plan).
                         dt_plan=float(self._dt_ctrl),
+                        # kSpherical (reference reposition.cc:63-67). The arc
+                        # is centred on the OBJECT, so the trajectory needs the
+                        # object's live position; for every other traj_type
+                        # these are ignored. The jack needs this: a PWL
+                        # traverse at pwl_waypoint_height=0.06 passes within
+                        # 3 mm of the jack's centre (it is 0.122 m tall), i.e.
+                        # straight THROUGH it, whereas the arc never enters the
+                        # sphere of radius sphere_radius.
+                        traj_type=self.params.reposition_params.traj_type,
+                        obj_xyz=np.array([
+                            float(current_q[self._obj_x_idx]),
+                            float(current_q[self._obj_y_idx]),
+                            float(current_q[self._obj_z_idx])]),
+                        sphere_radius=float(
+                            self.params.reposition_params.sphere_radius),
+                        straight_line_within_angle=float(
+                            self.params.reposition_params
+                            .use_straight_line_traj_within_angle),
+                        z_min=float(
+                            self.params.sampling_params.workspace_z_min),
                     )
                     # Update the predicted state for NEXT tick's clamp.
                     # Reference cc:1858-1863: sample the just-built trajectory
@@ -4984,7 +5240,27 @@ class SamplingC3Controller:
         self.last_mode               = mode
         self.last_switch_reason      = reason
         self.last_winning_sample_idx = k_star
-        self._step_times_ms.append((time.perf_counter() - t_step_start) * 1e3)
+        _full_tick_wall_s = time.perf_counter() - t_step_start
+        self._step_times_ms.append(_full_tick_wall_s * 1e3)
+        # 2026-08-15 leg-5 conformance: the reference's filtered_solve_time_
+        # is the FULL control-loop wall time (cc:1408-1418 — timer spans the
+        # whole callback: sample generation + all sample solves + committed
+        # solve), not just the committed C3::Solve. It feeds the x_pred plan
+        # interpolation (cc:1752-1766) and the OSC-trajectory start
+        # timestamps — i.e. the DEPTH at which the plan is consumed. The
+        # reference letter run operates at ~325 ms ≈ 4.3 knots, well past
+        # the final-QP-pinned first knot; the port's committed-only ~75 ms
+        # landed exactly ON the pinned knot (k1 median 0.13 mm) — the last
+        # leg of the never-engage class. Same EMA (alpha 0.95) as the
+        # reference; ci_mpc skips its committed-only update when this
+        # wrapper-level value is present.
+        _bm = self.base_mpc
+        if hasattr(_bm, "_filtered_solve_time"):
+            _alpha = getattr(_bm, "_solve_time_filter_alpha", 0.95)
+            _bm._filtered_solve_time = (
+                (1.0 - _alpha) * _full_tick_wall_s
+                + _alpha * _bm._filtered_solve_time)
+            _bm._fst_source_full_tick = True
 
         return u_opt
 
@@ -5253,7 +5529,18 @@ class SamplingC3Controller:
         else:
             _cmp = "transition"
         print(f"[GS] step={step} mode={mode} switch={switch_reason.name} "
-              f"best_k={best_k} best_src={best_src} "
+              # NOTE: these two answer DIFFERENT questions and were
+              # previously easy to misread as contradictory.
+              #   argmin_k  = index of the LOWEST-COST sample this tick
+              #               (reference best_sample_index_, cc:1128 — it
+              #               stays the argmin even in c3 mode, feeding the
+              #               reference's separate best-plan output ports at
+              #               cc:1323/1848; it is NOT the executed sample).
+              #   exec_src  = where the EXECUTED motion comes from. In c3
+              #               mode this is always "current" by construction
+              #               (c3 pushes from where the EE already is); in
+              #               free mode it is the pursued sample's label.
+              f"argmin_k={best_k} exec_src={best_src} "
               f"pursued={self._pursued_target_source.name} "
               f"curr_cost={c_samples[0]:.2f} repos_cost={repos_cost_str} "
               f"best_other={best_other_str} "
@@ -5279,13 +5566,86 @@ class SamplingC3Controller:
 
 
     def _c3_track_z(self) -> float:
-        """Reference z_height (cc:1290 entry ceiling, cc:1759 c3 z-freeze).
-        Falls back to sampling_height when the yaml doesn't set z_height
-        (legacy port behavior; the reference keeps them separate)."""
-        _zh = getattr(self.params.sampling_params, "z_height", None)
-        if _zh is not None:
-            return float(_zh)
-        return float(self.params.sampling_params.sampling_height)
+        """c3-mode press plane (cc:1290 entry ceiling, cc:1759 z-freeze).
+
+        ADAPTIVE (spec docs/superpowers/specs/2026-08-08-adaptive-contact-
+        height-design.md): derived from LIVE object geometry instead of a
+        hardcoded per-task constant —
+
+            z_track = obj_z_center + contact_height_offset_above_mid
+
+        The reference's `z_height = -0.004` is frame-BOUND; the same geometry
+        stated frame-invariantly is "pusher-sphere centre 5 mm above the
+        object mid-plane", which is the default offset. For push_t this
+        reproduces the reference's 0.025 in port frame EXACTLY, and it stays
+        correct across frame changes — three of which silently invalidated
+        the hand-translated constant.
+
+        Clamps (corrected vs the spec draft, which had the upper bound
+        wrong): the sphere CENTRE must stay at/below the object's top face
+        so contact lands on the SIDE face — the sphere legitimately pokes
+        above the top (reference: 4.5 mm at z=0.025), so `obj_top -
+        r_pusher` would have been over-tight and would have broken the
+        exact-reference match. Lower bound keeps the sphere off the table.
+
+        Falls back to explicit yaml z_height, then sampling_height, and
+        never raises — a geometry query failure must not kill a run.
+        """
+        sp = self.params.sampling_params
+        _explicit = getattr(sp, "z_height", None)
+        if not bool(getattr(sp, "use_adaptive_contact_height", False)):
+            return float(_explicit if _explicit is not None
+                         else sp.sampling_height)
+        try:
+            _off = float(getattr(sp, "contact_height_offset_above_mid", 0.005))
+            _ctx = getattr(self, "_ctx_for_z", None)
+            if _ctx is None:
+                raise ValueError("no cached plant context yet")
+            _z_c = float(self.plant.EvalBodyPoseInWorld(
+                _ctx, self.obj_body).translation()[2])
+            _half = self._object_half_height()
+            _r = float(PUSHER_RADIUS)
+            _z = _z_c + _off
+            _lo = _r + 1.0e-3                 # sphere clears the table
+            _hi = _z_c + _half                # centre stays on the side face
+            _z_cl = min(max(_z, _lo), _hi) if _hi > _lo else max(_z, _lo)
+            if not getattr(self, "_c3_z_banner", False):
+                self._c3_z_banner = True
+                print(f"[C3-Z] adaptive press plane: obj_z_center="
+                      f"{_z_c:.4f} + offset {_off:+.4f} -> z_track="
+                      f"{_z_cl:.4f} m (clamp [{_lo:.4f},{_hi:.4f}], "
+                      f"r_pusher={_r:.4f}, half_h={_half:.4f})", flush=True)
+            return float(_z_cl)
+        except Exception as _e:
+            _fb = float(_explicit if _explicit is not None
+                        else sp.sampling_height)
+            if not getattr(self, "_c3_z_fallback_warned", False):
+                self._c3_z_fallback_warned = True
+                print(f"[C3-Z] adaptive height unavailable "
+                      f"({type(_e).__name__}: {_e}) — falling back to "
+                      f"{_fb:.4f} m", flush=True)
+            return _fb
+
+    def _object_half_height(self) -> float:
+        """Half-height of the manipuland along world z.
+
+        Taken as the object's centre height at REST on the ground plane:
+        a body resting on z=0 has its origin exactly one half-height up.
+        Both tasks satisfy this (T init z=0.020 for 0.040-tall bars; box
+        init z=0.050 for a 0.100 cube), and it is shape-agnostic with no
+        geometry-API dependency and no per-task constant. Captured once on
+        the first call — do that before the object is disturbed, which
+        holds because `_c3_track_z` is first reached at c3 entry.
+        """
+        _cached = getattr(self, "_obj_half_h_cache", None)
+        if _cached is not None:
+            return _cached
+        _z0 = float(self._init_obj_z) if getattr(
+            self, "_init_obj_z", None) is not None else None
+        if _z0 is None or _z0 <= 1.0e-6:
+            raise ValueError("object rest height unavailable")
+        self._obj_half_h_cache = _z0
+        return _z0
 
     def print_perf_summary(self) -> None:
         avg_ms = (sum(self._step_times_ms) / len(self._step_times_ms)

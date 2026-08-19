@@ -333,10 +333,45 @@ class InnerSolver:
         # §9 Option B (Stage 2) — cost-LCS forward-sim ranking
         self._use_cost_lcs_ranking = bool(getattr(
             params, "use_cost_lcs_ranking", False))
-        self._Kp_ee_pd_rollout = float(getattr(
-            params, "Kp_for_ee_pd_rollout", 100.0))
-        self._Kd_ee_pd_rollout = float(getattr(
-            params, "Kd_for_ee_pd_rollout", 0.5))
+        # Cost-LCS contact resolution (reference resolve_contacts_to_for_cost,
+        # [n_EE_ground, n_EE_object, n_object_ground]). The reference builds
+        # the cost LCS with a DIFFERENT and generally RICHER contact set than
+        # the planner's -- for jacktoy, plan [0,1,3] vs cost [0,3,6], i.e. the
+        # ranking rollout carries all six jack tips and all three capsules
+        # while the planner keeps only the closest of each. That is how the
+        # reference tolerates a planner that cannot see which tripod is
+        # active: the model that RANKS samples does not select at all.
+        #
+        # None => historical port behaviour (2 EE-object, planner's ground
+        # count), which is exactly push_t's [0,2,3].
+        _rc = getattr(params, "resolve_contacts_to_for_cost", None)
+        if _rc is not None and len(_rc) >= 3:
+            self._cost_n_ee  = max(1, int(_rc[1]))
+            self._cost_n_gnd = int(_rc[2])
+            if int(_rc[0]) != 0:
+                print(f"[COST-LCS] WARNING resolve_contacts_to_for_cost[0]="
+                      f"{int(_rc[0])} (EE-ground) is not modelled by the port; "
+                      f"ignored.", flush=True)
+        else:
+            self._cost_n_ee, self._cost_n_gnd = 2, None
+        print(f"[COST-LCS] contact resolution: {self._cost_n_ee} EE-object + "
+              f"{self._cost_n_gnd if self._cost_n_gnd is not None else 'planner'}"
+              f" object-ground", flush=True)
+        # Scalar or per-axis [x, y, z]; normalized to a (3,) array so the
+        # PD rollout applies per-axis gains (anything-N1: Kp [100,100,50]).
+        self._Kp_ee_pd_rollout = np.broadcast_to(np.asarray(getattr(
+            params, "Kp_for_ee_pd_rollout", 100.0), dtype=float), (3,)).copy()
+        self._Kd_ee_pd_rollout = np.broadcast_to(np.asarray(getattr(
+            params, "Kd_for_ee_pd_rollout", 0.5), dtype=float), (3,)).copy()
+        # Reference builds the cost-LCS at N·res knots and dt/res
+        # (sampling_based_c3_controller.cc:1658-1659, push_t
+        # sampling_c3plus_options.yaml `lcs_dt_resolution: 4`), then ZOHs the
+        # coarse plan onto that fine grid, rolls out, and downsamples. The
+        # refinement is load-bearing: at the coarse planning dt the PD rollout
+        # has rho(A_cl) = 2.61 (dt=0.05) / 16.41 (dt=0.1) and diverges; at
+        # dt/4 it is 0.94 / 0.88 and is stable.
+        self._lcs_dt_resolution = max(1, int(getattr(
+            params, "lcs_dt_resolution", 4)))
         self._pgs_max_iter = int(getattr(params, "cost_lcs_pgs_max_iter", 50))
         self._pgs_tol      = float(getattr(params, "cost_lcs_pgs_tol", 1.0e-6))
         self._pgs_reg      = float(getattr(params, "cost_lcs_pgs_reg", 1.0e-8))
@@ -594,7 +629,10 @@ class InnerSolver:
                 # (sampling_based_c3_controller.cc:1040-1053); do the same
                 # for all EE-space surrogates.
                 _ee_space = (self.solver.n_u == 3)
-                _tshape_gate = _ee_space and self._object_shape == "tshape"
+                # Polygonal (non-box) manipulands share the cost-LCS ranking
+                # path: both T and H are concave outlines whose ranking needs
+                # the object-only forward-sim, unlike the convex box.
+                _tshape_gate = _ee_space and self._object_shape in ("tshape", "hshape")
                 _u_lo = self._u_lo if _ee_space else None
                 _u_hi = self._u_hi if _ee_space else None
                 if not _ee_space:
@@ -645,7 +683,7 @@ class InnerSolver:
             # variant) rather than SimulatePDControlWithLCS(...) on a
             # separate 5-pair cost-LCS. The full forward-sim (Stage 2) is
             # left for a follow-up if Stage 1 doesn't unblock c3 dispatch.
-            if _ee_space and self._object_shape == "tshape":
+            if _ee_space and self._object_shape in ("tshape", "hshape"):
                 Q_obj, QN_obj, R_obj = _object_only_cost_matrices_ee_space(
                     Q, QN, R)
                 # §9 Option B (Stage 2): forward-simulate the plan on the LCS
@@ -720,12 +758,26 @@ class InnerSolver:
                                 plant_ctx, _q_saved_for_cost_lcs)
                             self.plant.SetVelocities(
                                 plant_ctx, _v_saved_for_cost_lcs)
+                    # The cost LCS may use a different ground-contact count
+                    # than the planner (reference resolve_contacts_to_for_cost).
+                    # The formulator holds that count as state, so swap it for
+                    # the build and restore in the finally below -- leaking the
+                    # cost value into the planner would silently change the
+                    # planning LCS dimension.
+                    _gnd_saved = self.formulator\
+                        .lcs_explicit_manipuland_ground_contacts
                     try:
+                        if self._cost_n_gnd is not None:
+                            self.formulator\
+                                .lcs_explicit_manipuland_ground_contacts = \
+                                self._cost_n_gnd
                         (A_c, B_c, D_c, d_c,
                          E_c, F_c, H_c, c_lcs_c,
                          J_n_c, J_t_c, phi_c, mu_c) = \
                             self.formulator.linearize_discrete_ee_space(
-                                plant_ctx, _dt_effective, n_ee_top_k=2,
+                                plant_ctx,
+                                _dt_effective / self._lcs_dt_resolution,
+                                n_ee_top_k=self._cost_n_ee,
                                 force_top_k_ee_box=True)
                         # Cost-LCS admission audit for the crux instrumentation
                         # (task 2): number of EE-manipuland rows in the actual
@@ -739,12 +791,20 @@ class InnerSolver:
                             float(phi_c[i])
                             for i, info in enumerate(_cost_cinfo)
                             if info.get("tag", "") == "EE-BOX"]
+                        # Fine cost-LCS built at dt/res → ZOH the coarse plan
+                        # onto it and downsample the rollout.
+                        _cost_lcs_rate = self._lcs_dt_resolution
                     except Exception:
                         # Fall back to planner LCS if the top-2 build fails.
+                        # That LCS is at the COARSE dt, so no upsampling.
                         A_c, B_c, D_c, d_c = A, B, D, d
                         E_c, F_c, H_c, c_lcs_c = E_lcs, F_lcs, H_lcs, c_lcs
                         _n_ee_t_cost = -1        # signals cost-LCS build failed
                         _ee_t_phi_cost = []
+                        _cost_lcs_rate = 1
+                    finally:
+                        self.formulator\
+                            .lcs_explicit_manipuland_ground_contacts = _gnd_saved
                     # Restore plant to the state expected by downstream
                     # callers (matches the pre-existing R^7 path's convention
                     # of leaving plant_ctx at current_q/current_v).
@@ -762,6 +822,7 @@ class InnerSolver:
                         lcp_max_iter=self._pgs_max_iter,
                         lcp_tol=self._pgs_tol,
                         lcp_reg=self._pgs_reg,
+                        upsample_rate=_cost_lcs_rate,
                     )
                     c_C3_raw = traj_cost(XX_sim, UU_sim,
                                          Q_obj, R_obj, QN_obj, x_ref)
@@ -783,6 +844,16 @@ class InnerSolver:
                                             XX_sim[:, 13:16], axis=1))),
                         "ik_err":       float(_cost_lcs_ik_err),
                         "ik_iters":     int(_cost_lcs_ik_iters),
+                        # Phantom-split probe (2026-08-11): the PLAN's own
+                        # end-to-end EE and object xy displacement. Plan
+                        # moving the object while the rollout dT_xy=0 =
+                        # phantom-lambda progress exposed by the real LCP.
+                        "plan_dEE_xy":  float(np.linalg.norm(
+                                            np.asarray(x_seq)[-1, 7:9]
+                                            - np.asarray(x_seq)[0, 7:9])),
+                        "plan_dT_xy":   float(np.linalg.norm(
+                                            np.asarray(x_seq)[-1, 4:6]
+                                            - np.asarray(x_seq)[0, 4:6])),
                     }
                 else:
                     c_C3_raw = traj_cost(x_seq, u_seq,
@@ -916,6 +987,8 @@ class InnerSolver:
                   f"dy={_cost_lcs_probe['dT_dy']:+.4f}) "
                   f"box_v_peak={_cost_lcs_probe['box_v_peak']:.4f}m/s "
                   f"dEE_xy={_cost_lcs_probe['dEE_xy']:.4f}m "
+                  f"plan_dEE_xy={_cost_lcs_probe.get('plan_dEE_xy', -1):.4f}m "
+                  f"plan_dT_xy={_cost_lcs_probe.get('plan_dT_xy', -1):.4f}m "
                   f"align={align_score:.4f} "
                   f"ik_err={_cost_lcs_probe['ik_err']:.4f}m "
                   f"ik_iters={_cost_lcs_probe['ik_iters']} "

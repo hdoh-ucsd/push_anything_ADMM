@@ -112,13 +112,29 @@ w_rot:    0.0    # §9 Option B: reference has NO rot_bonus. Removed for referen
 # k=0 (current) always uses base_mpc.admm_iter (3 in production).
 surrogate_admm_iters: 3
 
-# Planner u-force limits — reference push_t/sampling_c3plus_options.yaml
-# :34-35: u_horizontal_limits [-50,50], u_vertical_limits [-50,50]. Before
-# 2026-08-04 flagless runs fell through to the scalar torque_limit
-# (±87 N/axis); observed T commands maxed ~23 N so this bound was not
-# operationally binding for T, but ±50 is the reference literal.
-u_horizontal_limit: 50.0
-u_vertical_limit: 50.0
+# Planner u-force limits — 2026-08-11 endgame-anatomy fix (missed
+# anything-N1 audit row): anything/sampling_c3plus_options.yaml:34-35
+# u_horizontal_limits [-10,10], u_vertical_limits [-3,3]. The old 50/50
+# was the bit-rotted push_t literal. ±10/±3 bounds pushes to the gentle
+# precision scale (endgame micro-pushes) and kills z-force waste —
+# consistent with L3's R_z=6 pricing.
+u_horizontal_limit: 10.0
+u_vertical_limit: 3.0
+
+# C3Plus final-solve contact boost — 2026-08-15 hover root-cause (missed
+# anything-N1 audit row, same class as the u-limits above): reference
+# anything/sampling_c3plus_options.yaml:180-181 sets
+# final_augmented_cost_contact_scaling: 1000 on indices [0,1,2,3] (the
+# EE-object pair's Anitescu slots); c3_plus.cc:131-145 applies it in the
+# FINAL solve only, pinning per component the λ slot when δ_λ == 0, else
+# the η slot. Under case-2 phantom endorsement (δ_η = 0) this forces the
+# PUBLISHED plan's EE gap-row toward closure — the approach command.
+# Without it the published plan keeps the phantom compromise: replay of a
+# captured standoff instance shows first-knot EE approach +3 mm (off) vs
+# +38 mm (on); live differential: box yaml (has key) engages, letter/T
+# runs (no key) hover at sampler standoff. The box yaml carries the same
+# literal; push_t's own yaml leaves the optional absent (bit-rot lineage).
+final_augmented_cost_contact_scaling: 1000
 
 # §9 Option A — match reference push_t's 3 T-ground contact pairs
 # (resolve_contacts_to_lists=[[0,1,3],[0,2,3]], num_contacts_index=0).
@@ -130,6 +146,12 @@ u_vertical_limit: 50.0
 # resistance to yaw (v5 root cause: single ground contact → 0 torsional
 # resistance → planner predicts free yaw → tiny commanded λ_n → no push).
 lcs_explicit_manipuland_ground_contacts: 3
+# Cost-LCS contact resolution [EE-ground, EE-object, object-ground].
+# Reference push_t/parameters/sampling_c3plus_options.yaml
+# num_contacts_index_for_cost: 1 -> [0, 2, 3].
+# Identical to the value the port hardcoded, so this is a NO-OP for push_t
+  # and is written out only so the resolution is visible rather than implied.
+resolve_contacts_to_for_cost: [0, 2, 3]
 
 # d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
 # PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses
@@ -165,8 +187,13 @@ use_reference_pair_admission_planner_lcs: true
 # (kSimImpedanceObjectCostOnly). Reference Kp_for_ee_pd_rollout=100 /
 # Kd_for_ee_pd_rollout=0.5 from push_t/parameters/sampling_c3plus_options.yaml.
 use_cost_lcs_ranking: true
-Kp_for_ee_pd_rollout: 100.0
+Kp_for_ee_pd_rollout: [100.0, 100.0, 50.0]   # 2026-08-11 L3: anything-N1 per-axis (z halved); was scalar 100
 Kd_for_ee_pd_rollout: 0.5
+# Reference push_t/parameters/sampling_c3plus_options.yaml:220. Cost-LCS is
+# built at N*res knots / dt/res and the coarse plan is zero-order-held onto it
+# (sampling_based_c3_controller.cc:1658-1659). Required for the PD rollout to
+# be stable: rho(A_cl)=16.41 at dt=0.1 vs 0.88 at dt=0.1/4.
+lcs_dt_resolution: 4
 
 # T-architecture rate decoupling (Stage 2b adds the machinery; Stage 2c
 # flips values). At defaults dt_osc == dt_mpc so N_plan = 1 and the
@@ -200,8 +227,14 @@ progress_params:
   #   num_control_loops_to_wait_position: 5 → 0.375 s
   # Use _s form to bypass params.py:239 100Hz compat shim (which turns
   # `_n_loops: 5` into 0.05 s, ≈0.67 ticks at port planner 13.3 Hz).
-  num_control_loops_to_wait_s:          0.375
-  num_control_loops_to_wait_position_s: 0.375
+  # 2026-08-09: switched to the reference's own unit (control loops).
+  # push_t/parameters/progress_params_c3plus.yaml:41-42 = 5 / 5. The previous
+  # `_s: 0.375` was derived as 5 x 0.075 s, but 0.075 is the `anything` task's
+  # planning_dt — push_t's is 0.05 (pose) / 0.1 (position). Worse, the seconds
+  # value is divided by dt_ctrl (0.1) downstream, so it resolved to 4 loops
+  # where the reference specifies 5. Loop form is exact and rate-independent.
+  num_control_loops_to_wait_loops:          5
+  num_control_loops_to_wait_position_loops: 5
 
   # Absolute-regression early-exit threshold (metres). When current pos_error
   # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
@@ -226,17 +259,24 @@ progress_params:
   # Iter1 (results/push_t_iter1_20260718_133821) log showed
   # kToReposUnproductive firing every ~17 c3 steps — window fills too
   # quickly, dispatcher exits c3 before contact accumulates useful push.
-  progress_enforced_cost_drop:        0.01
-  progress_enforced_over_duration_s:  13.5
+  # 2026-08-11 L1 (anything-N1 lineage): the push_t demo params are BIT-ROT
+  # (never runnable as shipped; anti-tuned on exactly these knobs — see
+  # docs/anything-n1-config-delta-audit.md + memory
+  # project_anything_T_tight_pass_2026-08-11). Authentic single-object
+  # values: anything/progress_params_c3plus.yaml cost_drop 0.5 +
+  # multiyaml_rewrite.py PROGRESS_ENFORCED_OVER_N_LOOPS_CONFIGS {1: 35}.
+  progress_enforced_cost_drop:        0.5
+  progress_enforced_over_n_loops_ref: 35
 
   # When the box-to-goal distance falls below this, switch to the
   # _position hysteresis variants (typically tighter, since fine
   # placement is more sensitive than gross translation).
-  # Reference push_t/progress_params_c3plus.yaml:33 = 0.50 (10× the
-  # reference anything value of 0.05). Port previously had 0.05 (anything
-  # default) → T at 0.188 m never crossed → dispatcher used _position
-  # variants throughout. Fixed 2026-07-17.
-  cost_switching_threshold_distance: 0.50    # m
+  # 2026-08-11 L1: back to the anything-N1 value 0.05 (multiyaml
+  # COST_SWITCHING_THRESHOLD_DISTANCE_CONFIGS is 0.05 for ALL N; push_t's
+  # 0.50 is stale bit-rot). The 2026-07-17 flip to 0.50 trusted the wrong
+  # lineage. Consumers: mode_switch regime AND the wrapper's sticky
+  # crossed_switching_threshold latch (sampling_based_c3_controller.py:1854).
+  cost_switching_threshold_distance: 0.05    # m
 
   # Reference-aligned arrival penalty (dairlib
   # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
@@ -275,16 +315,18 @@ progress_params:
   # (fresh must beat prev_repos by 70% — much easier). Fix-1 diagnosis
   # (2026-07-18) showed 88% of steps pursued stale prev_repos while fresh
   # face-3 samples existed in the buffer — the dispatcher wouldn't switch.
-  hyst_c3_to_repos_frac:                  0.4
-  hyst_c3_to_repos_frac_position:         0.6
+  # 2026-08-11 L1: restored to the anything-N1 lineage (the maintained
+  # config that reaches tight in <60 s on the reference stack). The
+  # 2026-07-18/19 flips to push_t's 0.4/0.6/0.3/0.1 trusted the bit-rotted
+  # demo. repos_to_repos 0.7 = fresh sample must beat prev_repos by 70%
+  # (strong churn protection — the push_t-demo run showed 214 aborted
+  # lift-cycles/9 min under 0.3).
+  hyst_c3_to_repos_frac:                  0.6
+  hyst_c3_to_repos_frac_position:         0.7
   hyst_repos_to_c3_frac:                  0.9
   hyst_repos_to_c3_frac_position:         0.5
-  # 2026-07-19: revert 0.6 → 0.3 to match reference push_t exactly.
-  # The 0.6 override was compensating for noisy per-tick sample costs; keep
-  # tests clean under the reference-conformant sampler port (Option B —
-  # kRandomOnPerimeter) so any remaining instability shows up as-is.
-  hyst_repos_to_repos_frac:               0.3
-  hyst_repos_to_repos_frac_position:      0.1
+  hyst_repos_to_repos_frac:               0.7
+  hyst_repos_to_repos_frac_position:      0.7
 
   # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
   # default; set to a positive integer to enable). When > 0, the wrapper
@@ -316,10 +358,16 @@ sampling_params:
                                           # _random_on_perimeter.
 
   # Number of additional samples beyond (current + previous-repos-target).
-  # 2026-07-18 iter7: c3 3 → 2 to match push_t/parameters/sampling_params.yaml:19
-  # (reference push_t override; anything's shared default is different).
-  num_additional_samples_c3:    2
-  num_additional_samples_repos: 1
+  # 2026-08-15 leg 6 (hover root-cause): anything-N1 literals — reference
+  # anything/sampling_params.yaml:22-23 (c3 5, repos 4). The prior 2/1 was
+  # the push_t-lineage override (2026-07-18), the rejected lineage: with
+  # ONE strategy sample per tick ([EE-SAMPLES] n=2) the ranking is
+  # degenerate — a single seed-dependent draw decides the approach side
+  # for the whole run (Letter I parked goal-side, push-impossible). The
+  # box yaml has carried 5/4 all along (and engages/explores) — same
+  # box-has-it/T-lacks-it pattern as the final-QP boost.
+  num_additional_samples_c3:    5
+  num_additional_samples_repos: 4
 
   # Sample buffer (replay-best-on-c3-exit hysteresis).
   consider_best_buffer_sample_when_leaving_c3: true
@@ -547,3 +595,56 @@ reposition_params:
                        # return and slightly worsened landing. Residual is
                        # target-dynamics-bound, not cap-bound. Restored.
   torque_limit:  87.0
+
+# --- EE velocity feedforward (ydot_des tracking) ------------------------------
+# CONFORMANCE GAP, MEASURED INCONCLUSIVE -- read before changing.
+#
+# The reference OSC tracks a commanded EE velocity: osc_tracking_data.cc:94-99
+# takes ydot_des = traj.EvalDerivative(t,1), and the trajectory the controller
+# publishes carries EE velocity explicitly (OutputC3SolutionCurrPlanActor:
+# knots.topRows(3) = EE position, knots.bottomRows(3) = EE velocity from x_sol).
+# With this flag OFF the port passes v_ee_desired=None, so the OSC sets
+# v_err = -v_ee_now and the Kd term becomes PURE DAMPING -- the arm resists its
+# own commanded motion. So OFF is a genuine divergence from the reference.
+#
+# BUT the measured effect on the metric that matters is inconclusive. Matched
+# 60 s push_t runs, identical config except this flag:
+#
+#     .                       OFF     alpha=0.5   alpha=1.0
+#     F_press median (N)     1.08          3.52        1.97
+#     ticks above stiction   64.0%          7.1%      79.1%
+#     closed distance (mm)   29.6           8.2        16.8
+#
+# Closure goes 29.6 -> 8.2 -> 16.8: not a trend, scatter. The spread is the same
+# magnitude as run-to-run variation measured at IDENTICAL config earlier
+# (p163/p165/p166), so 60 s cannot resolve it. Do not quote any of these as a
+# win or a regression without a long matched pair.
+#
+# alpha=1.0 is the LITERAL reference (osc_tracking_data.cc applies no scaling).
+# alpha<1 and v_max are port-only bounds with no reference analogue.
+#
+# 2026-08-15 STALE-COMMENT FIX: the former line here ("Flip to true for
+# the conformant value") predated the 2026-08-05 CORRECTION in
+# sampling_based_c3_controller._compute_velocity_feedforward and was
+# BACKWARDS. `false` IS the conformant value: with the flag off, the
+# executor's compute_torque_from_trajectory derives v_ee_desired =
+# traj.EvalDerivative(t, 1) — exactly the reference ydot_des
+# (osc_tracking_data.cc:91-99, position-track derivative). `true`
+# REPLACES that with the planner state's raw velocity slots — an
+# off-reference extra kept only as a falsification lever, with a
+# documented z-target conflict against the frozen c3 z-track
+# ([VFF-Z-CONFLICT]). Do not flip.
+use_velocity_feedforward:   false
+velocity_feedforward_alpha: 1.0
+velocity_feedforward_v_max: 1.5
+
+# OFF-REFERENCE DEVIATION (authorized for box 2026-08-11; extended to T
+# 2026-08-15 by user directive): release the sticky achieved-goal flag after
+# 20 consecutive off-target loops (~1.5 s) so the dispatcher re-engages and
+# corrects post-latch withdrawal-scrape drift. Under the sticky reference
+# latch (cc:914-916) the T latched at rot 0.0039 then drifted to a final
+# 0.0206/0.0766 with no way back (meshT_j2diag_seed0.log); the box
+# falsification run at 411af85 proved this stranding is exactly what the
+# release repairs (0.0323 stranded vs 0.0196 PASS(final) + 147 s hold).
+# Reference behavior = set 0.
+achieved_goal_release_loops: 20

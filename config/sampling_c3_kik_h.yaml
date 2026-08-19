@@ -1,0 +1,655 @@
+# CONFIG FAMILY NOTE (2026-08-10)
+# The H is a LETTER-family object: reference examples/sampling_c3/anything/
+# loads the *_shape_texture / *_shape_video meshes via object_models, and
+# anything/parameters/letter_settings.yaml lists H_shape_texture explicitly.
+# push_t is a SEPARATE family with its own purpose-built box-primitive object
+# (urdf/push_t.sdf) and its own tuning -- the two are not interchangeable.
+#
+# This file was originally derived from sampling_c3_kik_t.yaml, i.e. push_t's
+# parameters, which was wrong. The governing values below are now taken from
+# anything/parameters/ and each carries the push_t value it replaced.
+#
+# Sampling-C3 config for push_h (low-CoM H manipuland).
+#
+# Derived from sampling_c3_kik_t.yaml -- every progress/hysteresis/ADMM value is
+# the reference push_t value and is UNCHANGED here. Only the object-geometry
+# knobs differ, because the H's envelope differs from the T's:
+#   object_shape        tshape -> hshape   (selects _HSHAPE_FACE_TABLE)
+#   sampling_height     0.034  -> 0.021    (H is 32 mm tall, not 40 mm; also
+#                                           set per-task in tasks.yaml, which
+#                                           overrides this at load time)
+#   pwl_waypoint_height 0.075  unchanged   (clears the 32 mm H comfortably)
+# object_shape is ALSO overridden from tasks.yaml["object_type"] at load time
+# (main.py), so this file and the task can never silently disagree.
+#
+# Configuration for sampling-C3 outer controller (Venkatesh et al. RA-L 2025).
+#
+# Field names mirror dairlib upstream
+# (examples/sampling_c3/parameter_headers/{progress,sampling,reposition}_params.h
+#  on branch hien/push_anything_with_nextgen_c3) verbatim.
+#
+# Default values are tuned for the push_anything_ADMM Python wrapper
+# (Franka pushing a 0.2 kg box, dt_ctrl=0.01s, K=4 samples). Where they
+# differ from upstream jacktoy defaults, the divergence is intentional
+# and is noted inline.
+#
+# Pass to main.py as:  python main.py pushing --sampling-c3
+# Or override path:    python main.py pushing --sampling-c3 path/to/file.yaml
+
+# ----------------------------------------------------------------------------
+# Project-specific weights (no upstream equivalent)
+# ----------------------------------------------------------------------------
+
+# Sample-cost alignment bonus: c_sample[i] -= w_align * max(0, n_hat_i · g_hat).
+# PARTIAL-REVERT (w_align A/B verdict): w_align is FREE in the executor's
+# early window (seeds 0/1) — the original ablation that called it "free"
+# was measuring only that — but LOAD-BEARING at the dispatcher's LATE
+# window on seeds 1/2: removing it produced a 2/3 catastrophic 24-26cm
+# north-misdirection (wa0 obj_y=+0.239/+0.256 → wa30k obj_y=+0.006/+0.004).
+# Mechanism is late-window dispatcher RANKING toward goal-aligned contacts
+# (NOT early face-pick — early p_repos picks are byte-identical between
+# w_align=0 and w_align=30000 across all 3 seeds).  Restored at 30000;
+# seed-0 takes a 0.147→0.264 soft trade-off but the 2/3 catastrophic
+# outcome avoidance dominates.
+w_align:  0.0   # §9 Option B: reference has NO align_bonus. Removed for reference-faithful ranking. Was 30000.
+
+# Cartesian travel penalty per metre on sample selection.
+# 50 cm reposition costs +100 cost units, comparable to a few percent
+# of typical c_C3 ~ 60000.
+w_travel: 0.0   # §9 Option B: reference travel_cost_per_meter=0 for push_t+jack. Removed. Was 200.
+
+# Planner workspace state constraints — reference cc:995-1025 applied to
+# every per-sample C3 object; values from reference push_t
+# sampling_c3_options.yaml:26-30 (workspace_limits + workspace_margins).
+# x/y are arm-base-centered (port arm at origin, matching reference).
+# z frame-shifted +0.029 (reference ground top at z=-0.029, port at 0):
+# reference [-0.01, 0.3] → port [0.019, 0.329].
+planner_workspace_x: [0.15, 0.9]
+planner_workspace_y: [-0.6, 0.6]
+planner_workspace_z: [0.019, 0.329]
+planner_workspace_margin: 0.02
+
+# Reference alignment (§7.51 bank): matches ref LambdaEndEffectorW=diag(1,1,1).
+# This is a default-changing edit: dataclass default is 100, ref-faithful is 1.
+# Validated as load-bearing for the first box closure in §7.51 (with face-target
+# and PORT_DISABLE_C3_OVERRIDE).
+W_force: 1.0
+
+# Component 1 conformance (push_anything_dev @ 257e3ed has no commit-face gate).
+use_commit_face_gate: false
+
+# Reference sampling_based_c3_controller.cc:1284-1309 has NO distance-to-box
+# entry gate; only the height ceiling (x_lcs_curr[2] < z_height +
+# c3_min_clearance + wall_offset) governs free→c3 hand-off. Port's
+# contact_entry_surface_threshold=60mm was blocking every IK arrival (65-68mm
+# reads) → kToC3ReachedReposTarget never fired → T stalled. Disable to match.
+use_contact_entry_gate: false
+
+# Explicit off for the inner surface-distance metric variant. Reference has
+# no such gate (params.py:841 "Port-only surface-distance entry gate").
+# INERT while `use_contact_entry_gate: false` because it lives inside the
+# outer gate's branch (sampling_based_c3_controller.py:1724), but making it
+# explicit avoids future confusion if the outer gate is ever re-enabled.
+use_surface_entry_gate: false
+
+# Reference push_t/parameters/sampling_params.yaml does NOT set ee_z_close (only
+# anything/sampling_params.yaml sets it true for box). Drake default-inits
+# `bool ee_z_close` to false, so reference push_t runs with EE-Z gate bypassed.
+# Port default is True (params.py:844); explicit false here matches reference.
+# Without this, PWL rebuilds on dispatcher retargets keep lifting EE to
+# z_safe=77mm while the 44mm ceiling blocks c3 entry — arm never lands, never
+# pushes. Box path unaffected (its yaml stays silent, port default True holds).
+# 2026-08-02 (user-directed): false → true, adopting the reference `anything`
+# matched-plane mechanism wholesale (gen_planar_samples analog + ee_z_close
+# gate + z-freeze, all on ONE plane = task sampling_height 0.034; see
+# z_height: null below). Ceiling = 0.034 + c3_min_clearance 0.01 = 0.044.
+# The historical never-lands deadlock (comment above) predates the unified
+# plane and the 6a9a241+b9218ab retarget-churn fixes; samples now sit ON the
+# plane so arrival passes the gate by construction. Revert to false for the
+# push_t-literal (gate-bypassed) behavior.
+ee_z_close: true
+
+# T1b — reference 3-leg high-waypoint reposition (reposition.cc:394,
+# RepositionPiecewiseLinear). Activates the Stage A `RepositionTrajectory`
+# eval-based path (lift → traverse → descend at z_safe), replacing the
+# legacy per-tick march. Matched pair with T1a's EE_z altitude gate:
+# T1a says "don't dispatch c3 above the ceiling"; T1b makes the arm
+# actually descend to below the ceiling so gated c3 dispatch can fire.
+# pwl_waypoint_height set to reference push_t value (0.0774 m) in the
+# reposition_params section below.
+use_reposition_pwl_trajectory: true
+
+# Rotation-aware sample bonus (L2.6 form):
+#   c_sample[i] -= w_rot * |yaw_err| * max(0, M_z * yaw_sign)
+# where M_z = (r x n_hat).z is the predicted contact moment about box CoM
+# (n_hat = inward push, p_contact from sample geometry — L2.5), and
+# yaw_sign = sign(goal_yaw - psi_now). The |yaw_err| factor makes the
+# bonus track rotational urgency and self-attenuate near the goal.
+# Magnitude derived from L2.5 measured data (current c_C3~12k vs strategy
+# ~26k → gap ~14k; at |yaw_err|=π/4, m_z~0.025, w_rot=8e5 → bonus ~16k,
+# enough to flip selection to the torque-producing off-center sample so
+# kToC3ReachedReposTarget engages c3 on arrival).
+# Gated on quad_cost.w_yaw > 0, so translation-only tasks see no effect.
+w_rot:    0.0    # §9 Option B: reference has NO rot_bonus. Removed for reference-faithful ranking. Was 800000.
+
+# Cheap-solve ADMM iters for the K-1 hypothetical evaluations.
+# k=0 (current) always uses base_mpc.admm_iter (3 in production).
+surrogate_admm_iters: 3
+
+# Planner u-force limits — reference push_t/sampling_c3plus_options.yaml
+# :34-35: u_horizontal_limits [-50,50], u_vertical_limits [-50,50]. Before
+# 2026-08-04 flagless runs fell through to the scalar torque_limit
+# (±87 N/axis); observed T commands maxed ~23 N so this bound was not
+# operationally binding for T, but ±50 is the reference literal.
+u_horizontal_limit: 50.0
+u_vertical_limit: 50.0
+
+# §9 Option A — match reference push_t's 3 T-ground contact pairs
+# (resolve_contacts_to_lists=[[0,1,3],[0,2,3]], num_contacts_index=0).
+# When > 0, LCSFormulator synthesizes N manipuland-vertex ↔ ground contact
+# rows (T-shape: 3 witnesses on the bottom face — crossbar tip + stem ±y
+# tips) in addition to Drake's EE-manipuland admits. Drake's auto-admitted
+# single BOX-GND pair is de-duplicated. This captures the T's distributed
+# bottom-face friction so the planner's LCS models real torsional
+# resistance to yaw (v5 root cause: single ground contact → 0 torsional
+# resistance → planner predicts free yaw → tiny commanded λ_n → no push).
+lcs_explicit_manipuland_ground_contacts: 12   # anything resolve_contacts_to_lists [0,1,12,...] (push_t: 3)
+# Cost-LCS contact resolution [EE-ground, EE-object, object-ground].
+# Reference anything/parameters/sampling_c3plus_options.yaml
+# num_contacts_index_for_cost: 0 -> [0, 1, 12].
+# anything uses num_contacts_index_for_cost = 0, i.e. the cost resolution IS
+  # the planner's. The port was using 2 EE-object pairs here (push_t's
+  # hardcode), one more than the reference.
+  # NOTE: the reference `anything` list has 13 groups for a multi-object
+  # scene with optional walls; only the first three apply to the port's
+  # single-letter H.
+resolve_contacts_to_for_cost: [0, 1, 12]
+
+# d.1 (2026-07-10) — reference-conforming EE-manipuland admission for the
+# PLANNER LCS. Reference (dairlib_sampling_c3 @ 257e3ed) uses
+# `resolve_contacts_to_lists` (yaml) to pre-specify EE-manipuland pair IDs;
+# every listed pair is IN the planner LCS every tick, no threshold, no
+# auto-discovery. Reference planner uses 1 EE-manipuland pair
+# (`num_contacts_index=0` → first entry `[0, 1, 3]`).
+#
+# The port's default path uses a 2 mm auto-discovery
+# (`ComputeSignedDistancePairwiseClosestPoints`) that DROPS pairs at φ > 2 mm.
+# The T's c3-chatter root cause (diagnosed in T1c c3-event re-diagnosis):
+#   c3 fires (φ<2mm) → planner plans push → arm rises off face following
+#   LCS-predicted plan → φ > 2 mm → port DROPS the pair → planner has
+#   "no viable contact" → cost jumps → c3 exits after 20-180 ms.
+# The reference's pair-always-in-LCS mechanism gives the planner a
+# continuous "distance-to-close" view across the rise; the port's already
+# has this ported as `force_top_k_ee_box=True, n_ee_top_k=1` (see
+# `lcs_formulator.py:550-555` — comment says "mirrors reference
+# GetResolvedContactPairs sampling_based_c3_controller.cc:1582-1615"),
+# but currently only wired for the COST-LCS (`inner_solve.py:593`), NOT the
+# planner LCS. This flag extends it to the planner path for the T only
+# (gated by `object_shape=="tshape"` at the use site in
+# `lcs_formulator.py:linearize_discrete_ee_space`); box path is
+# byte-identical when this flag is True.
+use_reference_pair_admission_planner_lcs: true
+
+# §9 Option B (Stage 2) — cost-LCS forward-sim ranking.
+# When True, InnerSolver.evaluate_sample computes each sample's cost by
+# forward-simulating the planner's u_seq under PD-with-feedforward on the
+# LCS (LCP resolved per knot via PGS with Tikhonov reg), then scoring the
+# simulated trajectory with an object-only quadratic cost. Mirrors reference
+# TrajectoryEvaluator::SimulatePDControlWithLCS + CalcCost with cost_type=5
+# (kSimImpedanceObjectCostOnly). Reference Kp_for_ee_pd_rollout=100 /
+# Kd_for_ee_pd_rollout=0.5 from push_t/parameters/sampling_c3plus_options.yaml.
+use_cost_lcs_ranking: true
+Kp_for_ee_pd_rollout: 100.0
+Kd_for_ee_pd_rollout: 0.5
+# Reference push_t/parameters/sampling_c3plus_options.yaml:220. Cost-LCS is
+# built at N*res knots / dt/res and the coarse plan is zero-order-held onto it
+# (sampling_based_c3_controller.cc:1658-1659). Required for the PD rollout to
+# be stable: rho(A_cl)=16.41 at dt=0.1 vs 0.88 at dt=0.1/4.
+lcs_dt_resolution: 4
+
+# T-architecture rate decoupling (Stage 2b adds the machinery; Stage 2c
+# flips values). At defaults dt_osc == dt_mpc so N_plan = 1 and the
+# planner solves every OSC tick — pre-Stage-2b behavior preserved.
+# Paper target: dt_osc ≈ 0.001 (1 kHz OSC), dt_mpc ≈ 0.025-0.143 (7-40 Hz MPC).
+dt_osc: 0.01
+dt_mpc: 0.01
+
+# Stage 2 L1: goal-aligned contact-normal requirement at admission gate.
+# Conformance landing (early_window verdict): entry-align gate is STRUCTURALLY
+# BYPASSED at c3-admission (LCS has no EE-BOX pair at the admission tick, so
+# wrapper.py:1084 is a no-op). Land 0.0 (uniform-conformance, no-op confirmed).
+entry_align_threshold: 0.0
+
+
+# ----------------------------------------------------------------------------
+# Progress + mode-switch hysteresis
+# ----------------------------------------------------------------------------
+
+progress_params:
+  # Which progress metric drives the timeout decision.
+  # Valid: kC3Cost | kConfigCost | kPosOrRotCost | kPosOnly | kConfigCostDrop
+  #
+  # Reference push_t progress_params_c3plus.yaml:30 track_c3_progress_via: 3
+  # (kConfigCostDrop = require config cost to drop by ≥ enforced_cost_drop
+  # over enforced_over_n_loops). Aligned to reference — same value box uses.
+  track_c3_progress_via: kConfigCostDrop
+
+  # Reference anything/progress_params_c3plus.yaml (c3+ solver variant):
+  #   num_control_loops_to_wait:          5  (ticks × 0.075s = 0.375s at ref)
+  #   num_control_loops_to_wait_position: 5 → 0.375 s
+  # Use _s form to bypass params.py:239 100Hz compat shim (which turns
+  # `_n_loops: 5` into 0.05 s, ≈0.67 ticks at port planner 13.3 Hz).
+  # 2026-08-09: switched to the reference's own unit (control loops).
+  # push_t/parameters/progress_params_c3plus.yaml:41-42 = 5 / 5. The previous
+  # `_s: 0.375` was derived as 5 x 0.075 s, but 0.075 is the `anything` task's
+  # planning_dt — push_t's is 0.05 (pose) / 0.1 (position). Worse, the seconds
+  # value is divided by dt_ctrl (0.1) downstream, so it resolved to 4 loops
+  # where the reference specifies 5. Loop form is exact and rate-independent.
+  num_control_loops_to_wait_loops:          5
+  num_control_loops_to_wait_position_loops: 5
+
+  # Absolute-regression early-exit threshold (metres). When current pos_error
+  # minus best pos_error exceeds this, dispatcher forces kToReposUnproductive
+  # at wrapper.py:979 — regardless of variant or wait length. Catches
+  # runaways by the box-moves-away signature, not by no-improvement tick
+  # count. Pinned at CP1 of the combined-fix plan: gap analysis on
+  # q5_head_default_noregress + q5_seed4_goal_reach gives [11mm wobble-max,
+  # 35mm runaway-catch-max] -> midpoint 25mm. See
+  # q6_combined_fix/CP1_threshold_pin.txt for full derivation.
+  pos_regression_threshold:            0.0    # DISABLED — port-only, reference has no such gate
+
+  # kConfigCostDrop variant: required object-config cost drop over N loops.
+  # 2026-07-18 iter1: fix bad reference value. Port comment previously
+  # cited `anything/progress_params_c3plus.yaml:45` value (16 loops),
+  # but push_t's OWN progress_params_c3plus.yaml:45 overrides with 180
+  # loops. Same class of bug as commit fb07dc7 (hysteresis fractions
+  # copied anything defaults instead of push_t overrides).
+  #   Reference push_t/progress_params_c3plus.yaml:44-45:
+  #     progress_enforced_cost_drop:    0.01
+  #     progress_enforced_over_n_loops: 180  (× dt=0.075s = 13.5s)
+  # At port planner rate 13.3 Hz, 13.5 s ≈ 180 planner ticks.
+  # Iter1 (results/push_t_iter1_20260718_133821) log showed
+  # kToReposUnproductive firing every ~17 c3 steps — window fills too
+  # quickly, dispatcher exits c3 before contact accumulates useful push.
+  progress_enforced_cost_drop:        0.5    # anything (push_t: 0.01)
+  # 2026-08-09: reference unit is loops — push_t/progress_params_c3plus.yaml:45
+  # = 180. The previous 13.5 s came from 180 x 0.075 (`anything`'s planning_dt,
+  # not push_t's) and then resolved to 13.5 / dt_ctrl 0.1 = 135 loops — 25%
+  # short of the reference's 180. Loop form removes both conversion errors.
+  progress_enforced_over_n_loops_ref: 16     # anything (push_t: 180)
+
+  # When the box-to-goal distance falls below this, switch to the
+  # _position hysteresis variants (typically tighter, since fine
+  # placement is more sensitive than gross translation).
+  # Reference push_t/progress_params_c3plus.yaml:33 = 0.50 (10× the
+  # reference anything value of 0.05). Port previously had 0.05 (anything
+  # default) → T at 0.188 m never crossed → dispatcher used _position
+  # variants throughout. Fixed 2026-07-17.
+  cost_switching_threshold_distance: 0.05   # anything (push_t: 0.50)
+
+  # Reference-aligned arrival penalty (dairlib
+  # sampling_based_c3_controller.cc:604-608 and 769-776).  Added to the
+  # pursued repos slot's c_sample when the IK tracker reports the EE has
+  # reached the target.  1e9 is the upstream value: large enough that
+  # `repos_target_cost > finished_reposition_cost` distinguishes
+  # arrival cleanly from raw-cost regimes (~165k–200k here).  Geometric
+  # arrival therefore enters mode_switch as a soft cost penalty, not a
+  # hard trigger — see mode_switch.decide_mode and reposition.py:246.
+  finished_reposition_cost: 1.0e9
+
+  # Absolute hysteresis values (used when use_relative_hysteresis is False).
+  # Required cost gap (J_other - J_current) before a switch fires.
+  # 2026-07-19: match reference push_t/parameters/progress_params_c3plus.yaml
+  # :50-55. Port previously used 1000-5000 (from anything's shared defaults);
+  # reference push_t OVERRIDES these to 200000-6e13. Under relative-hysteresis
+  # mode these are ignored, but keeping in sync for absolute-mode fallback.
+  hyst_c3_to_repos:              300000.0
+  hyst_c3_to_repos_position:     300000.0
+  hyst_repos_to_c3:              200000.0
+  hyst_repos_to_c3_position:     200000.0
+  hyst_repos_to_repos:           60000000000000.0
+  hyst_repos_to_repos_position:  60000000000000.0
+
+  # Relative-hysteresis mode: gap is a fraction of the current cost.
+  # Switched ON (was: false) because the original absolute hyst values
+  # above (1000-5000) are ~150x smaller than typical c_sample magnitudes
+  # in this task (~165k-200k), causing mode chatter every 1-2 loops.
+  use_relative_hysteresis:                true
+  # 2026-07-18: rescaled to push_t's OWN progress_params_c3plus.yaml (lines
+  # 59-64), NOT anything's shared defaults. Reference push_t OVERRIDES the
+  # anything defaults; the port had copied anything's (0.6, 0.7, 0.9, 0.5,
+  # 0.7, 0.7) instead of push_t's (0.4, 0.6, 0.9, 0.5, 0.3, 0.1).
+  # Load-bearing divergence: hyst_repos_to_repos_frac was 0.7 in port (fresh
+  # sample must beat prev_repos by 30% to retarget) vs 0.3 in reference
+  # (fresh must beat prev_repos by 70% — much easier). Fix-1 diagnosis
+  # (2026-07-18) showed 88% of steps pursued stale prev_repos while fresh
+  # face-3 samples existed in the buffer — the dispatcher wouldn't switch.
+  hyst_c3_to_repos_frac:                  0.6   # anything (push_t: 0.4)
+  hyst_c3_to_repos_frac_position:         0.7   # anything (push_t: 0.6)
+  hyst_repos_to_c3_frac:                  0.9
+  hyst_repos_to_c3_frac_position:         0.5
+  # 2026-07-19: revert 0.6 → 0.3 to match reference push_t exactly.
+  # The 0.6 override was compensating for noisy per-tick sample costs; keep
+  # tests clean under the reference-conformant sampler port (Option B —
+  # kRandomOnPerimeter) so any remaining instability shows up as-is.
+  hyst_repos_to_repos_frac:               0.7   # anything (push_t: 0.3)
+  hyst_repos_to_repos_frac_position:      0.7   # anything (push_t: 0.1)
+
+  # 9.4.7 Option A — 1d watchdog re-test under F2 regime (disabled by
+  # default; set to a positive integer to enable). When > 0, the wrapper
+  # forces "c3" mode once steps_since_improve ≥ this threshold, bypassing
+  # cost-comparison hysteresis. Yesterday's 9.4.5-F set this to 100 and
+  # was falsified because forced c3-mode received an empty LCS (Finding
+  # A). F2 closed Finding A; the Option A re-test (threshold=100) showed
+  # forced c3-mode now lands in non-empty LCS but the wrapper exits via
+  # kToReposCost within 1 step on Path D (4 c3 steps / 800), so 1d does
+  # not change verdict-A. See docs/step9_findings.md 9.4.7 Option A.
+  watchdog_steps_since_improve_threshold: 0
+
+
+# ----------------------------------------------------------------------------
+# Sample generation
+# ----------------------------------------------------------------------------
+
+sampling_params:
+  # Valid: kRadiallySymmetric | kRandomOnCircle | kRandomOnSphere | kFixed
+  #        | kRandomOnPerimeter | kRandomOnShell | kMeshNormal | kFaceNormal
+  # kFaceNormal = paper-faithful Push-Anything §IV-B1 sampler: sample on a
+  # box face, project outward along the face normal by sampling_setback,
+  # reject if still too close. Eliminates the ring-sampler's off-axis
+  # interior samples (worst case θ=45° puts pusher 20.7 mm inside box).
+  sampling_strategy: kRandomOnPerimeter   # 2026-07-19: match ref push_t
+                                          # (strategy=4). Uniform body-frame
+                                          # rejection + nearest-face outward
+                                          # projection. See sampling.py
+                                          # _random_on_perimeter.
+
+  # Number of additional samples beyond (current + previous-repos-target).
+  # 2026-07-18 iter7: c3 3 → 2 to match push_t/parameters/sampling_params.yaml:19
+  # (reference push_t override; anything's shared default is different).
+  num_additional_samples_c3:    2
+  num_additional_samples_repos: 1
+
+  # Sample buffer (replay-best-on-c3-exit hysteresis).
+  consider_best_buffer_sample_when_leaving_c3: true
+  # 2026-07-17: rescaled to match reference push_t/parameters/sampling_params.yaml
+  # (N_sample_buffer=100, pos_error_sample_retention=0.003, ang_error=0.0349).
+  # Port previously used 5/0.05/0.30 — 17× coarser on position, 8.6× coarser
+  # on angle. In the T-push wrong-yaw bug (2026-07-17 investigation), stale
+  # face-2 (stem south, wrong-yaw) samples persisted for ~130 control loops
+  # because the T only translates 3.6 cm before the productive-c3 window,
+  # never triggering the 5 cm eviction. Reference's 3 mm threshold would
+  # evict them within ~10 loops. N_sample_buffer bumped to reference's 100
+  # so we don't cap the buffer during a normal 30 s run.
+  N_sample_buffer:           100
+  pos_error_sample_retention:  0.003   # m — reference value
+  ang_error_sample_retention:  0.0349  # rad = 2 deg — reference value
+
+  # DEAD CONFIG (2026-07-28e): sample_buffer_lifetime_s is no longer read
+  # anywhere. The strategy-sample position cache it governed was removed in
+  # the 2026-07-19 fresh-samples refactor (reference GenerateSampleStates
+  # cc:898-938 regenerates every tick, no caching), and the residual no-op
+  # machinery (_refresh_buffer_on_arrival, _sample_buffer* fields) was
+  # deleted 2026-07-28e. Key kept commented for historical context only.
+  # sample_buffer_lifetime_s:    2.25
+
+  # Geometric parameters (interpretation depends on sampling_strategy).
+  # T-shape overrides — see object_shape switch below.
+  sampling_radius: 0.12         # m, candidate-ring radius approximating T's outer envelope
+  repos_target_radius: 0.10     # m, IK proxy target — halfway between crossbar tip and stem back
+  # 2026-07-28c FRAME-SHIFT FIX (same family as the box-init bug): the
+  # reference's sampling_height 0.005 is in ITS world (ground top at
+  # z=-0.029) → 34 mm ABOVE GROUND. The port's ground top is at z=0, so
+  # the verbatim 0.005 put samples 5 mm above ground — the tip sphere
+  # (r=0.0195) would need 14.5 mm of TABLE PENETRATION; the EE-center
+  # floor is 0.0195, so every arrival plateaued at finished_val
+  # 0.0204-0.0207 vs the 0.020 threshold (p133 audit) and the priced
+  # pose was never reached. 0.034 = the reference's own 34 mm, in port
+  # coordinates. Sphere spans z ∈ [0.0145, 0.0535] on the T face —
+  # identical relative geometry to the reference (their sphere pokes the
+  # same 13.5 mm above the T top at z=0.040-equivalent). The old
+  # "riding the T top-corner at 0.034" observation dates from the
+  # r=0.025-pusher pre-conformance stack and was a stale-evidence revert.
+  sampling_height: 0.034        # m — reference 34 mm above ground, port frame
+  # Reference sampling_params.yaml:50 z_height: -0.004 (their world) =
+  # 25 mm above ground → port frame +0.025. Consumed by the c3-mode
+  # z-freeze (cc:1759) and the c3-entry altitude ceiling (cc:1290) —
+  # the reference keeps this SEPARATE from sampling_height.
+  # 2026-08-02 (user-directed, OFF-REFERENCE): null → _c3_track_z() falls
+  # back to the task's sampling_height (tasks.yaml push_t 0.034), so the
+  # c3 z-freeze plane matches the sample plane. The 9 mm descend at every
+  # c3 entry (samples at 0.034, freeze at 0.025) is a phantom-contact
+  # aggravator: the LCS admits the EE-BOX pair during the descend while
+  # Drake reports no force. Reference value was 0.025 — restore the
+  # literal to revert.
+  z_height: 0.031   # ref anything 0.002 + 0.029 frame shift
+  # Adaptive plane OFF for the H: obj_z_center+5mm clamps to 0.021,
+  # 10 mm below the reference's 0.031. Exact for push_t, wrong here.
+  use_adaptive_contact_height: false
+
+  # T-shape face table (Push-Anything §IV-B1 analog for the T).
+  # The 8-patch table is hardcoded in sampling.py:_TSHAPE_FACE_TABLE — this
+  # switch enables it. box_half_extent below is retained but unused when
+  # object_shape=tshape (per-face half-lengths come from _TSHAPE_FACE_TABLE).
+  object_shape:            hshape
+  box_half_extent:         0.05    # m, retained for legacy readers; unused for tshape
+  sampling_setback:        0.020   # m, reference push_t/parameters/sampling_params.yaml:15 (sample_projection_clearance=0.02)
+  sample_reject_clearance: 0.005   # m, applied only for object_shape=box
+  # Per-tick collision clearance for the PURSUED repos target — reference
+  # push_t/parameters/sampling_params.yaml:30 sample_projection_clearance.
+  # cc:908-926/931/1205-1213: a retained target within this distance of the
+  # (possibly rotated) object is excluded from candidates and re-targeted,
+  # instead of the tracker pressing the EE into the face (p138 drift creep).
+  sample_projection_clearance: 0.027  # anything (push_t: 0.02)
+
+  # 2026-07-22 kRandomOnPerimeter sampling window — reference parity.
+  # Reference push_t/parameters/sampling_params.yaml:39-40 bounds. Port
+  # previously fell back to hardcoded tshape defaults ([-0.07, +0.13] × [-0.08,
+  # +0.08]) in sampling.py:711 that sampled the crossbar's far-east tip and
+  # missed the west-of-stem region reference explicitly samples. p48-p52
+  # repro study: 5 runs of same code produced 4× trans_error spread and
+  # only 1/5 tight_goal PASS — divergence traced to sampling window
+  # differences producing inconsistent contact geometries.
+  grid_x_limits: [-0.12, 0.08]   # reference push_t/parameters/sampling_params.yaml:39
+  grid_y_limits: [-0.08, 0.08]   # reference push_t/parameters/sampling_params.yaml:40
+
+  # Face-selection bias toward goal-aligned faces (Stage 2B infrastructure).
+  # NEUTRALIZED 2026-06-01 after the β=2 sweep produced pre-registered
+  # outcome 2: SC-modeB-convert PASSED (seeds 1,2 converted) but
+  # SC-noregress-working FAILED on seeds 0/3/4 AND SC-noregress-lambda
+  # FAILED on seed 3 (lcp_res_max p99=1.75e-5, λ_n max=66.5 — the
+  # off-cardinal-contact regime cracks the projection, amending the
+  # earlier "benign lambda" verdict to regime-dependent).
+  # Infra retained (params.py field + sampling.py hook) for future redesign
+  # once dispatcher distribution-sensitivity is /understood (H1/H2/H3
+  # rescope).
+  face_bias_strength:      0.0
+
+  # T1c — kMeshNormal area-weighted face pick (reference
+  # generate_samples.cc:454, barycentric_bias=1). When True, the face
+  # selection in _face_normal_projection uses a categorical distribution
+  # proportional to face area (large faces + top faces over-represented,
+  # small side faces under-represented) instead of uniform-across-faces.
+  # Uniform-within-face jitter is unchanged. Takes priority over
+  # face_bias_strength (goal-align becomes a no-op when this is True).
+  use_mesh_normal_area_weighting: true
+
+  # D.3 (2026-07-13) — yaw-torque face bias (see params.py docstring).
+  # T-push cost is yaw-dominated (w_yaw=800, goal_yaw=−0.7379). Without
+  # a torque-alignment bias, area-weighting picks the crossbar-bottom
+  # face (large, half_len=0.08) more often than the stem-bottom face
+  # (small, half_len=0.02); the crossbar-bottom lever arm rx=+0.05
+  # produces CCW yaw under a +y push, but the T's goal yaw is CW —
+  # every c3 dispatch drives the T the wrong yaw direction and c3
+  # exits via kToReposUnproductive within ~5 ticks of the pos plateau.
+  #
+  # yaw_face_bias_strength=500 multiplies goal-aligned-torque side
+  # faces by (1 + 500·0.05) = 26× for the T's dominant faces (τ_z
+  # magnitude ~0.05 m per unit force). The 4× area disadvantage of the
+  # stem-bottom face vs the crossbar-bottom face needs to be strongly
+  # overcome — at alpha=100 the observed pick share was only 14 % for
+  # face 4 vs 25 % for face 2, and the sample kept flipping between
+  # faces every tick, resetting the reposition setpoint and blocking
+  # descent. At alpha=500 the expected pick share is ~50 % for face 4,
+  # enough for the reposition tracker to converge on it. Bit-identical
+  # for box (see D.3 block in sampling.py:_face_normal_projection).
+  yaw_face_bias_strength: 500.0
+
+  # Robot workspace bounds; samples failing this are pruned.
+  # 2026-07-21: adopted reference workspace_limits directly from
+  # sampling_c3plus_options.yaml:29-31 after moving Franka base from
+  # (0,-0.6,0.029) to reference-conformant (0,0,0.029). Reference:
+  #   [x, y, z, lb, ub] triples: [x∈0.15..0.75, y∈-0.6..0.6, z∈-0.01..0.3]
+  # Prior port y_max=0.30 was the kinematic overshoot envelope; with
+  # arm at world origin the reference y_max=0.6 is well within reach.
+  workspace_xy_min: [ 0.15, -0.6]
+  workspace_xy_max: [ 0.75,  0.6]
+  # 2026-07-18: workspace_z_min 0.02 → -0.01 to match reference
+  # push_t/sampling_c3plus_options.yaml:32 workspace_limits z ∈ [-0.01, 0.3].
+  # Prior 0.02 rejected 81% of face-normal samples in
+  # results/push_t_eesamples_20260718_174044 because sampling_height=0.005
+  # (push_t/tasks.yaml:158) was below the port's 0.02 floor. Every empty
+  # sample refresh starved the dispatcher of new candidates and left it
+  # replaying prev_repos / buffered samples only.
+  workspace_z_min: -0.01
+  workspace_z_max:  0.30
+
+  # Port of reference sampling_c3plus_options.yaml:32
+  # (dairlib push_t): radius shell on EE sqrt(x²+y²). Reference
+  # CheckForWorkspaceLimitViolations DRAKE_DEMANDs r_min² < x²+y² < r_max².
+  robot_radius_limits: [0.25, 0.75]
+
+  # Port of reference workspace_margins (sampling_c3plus_options.yaml:33,
+  # 0.02 in every reference task). IsSampleInWorkspace
+  # (generate_samples.cc:760-775) insets the x/y bounds and radial shell
+  # by this margin (z has no margin) so samples stay clear of the
+  # no-margin live-EE DRAKE_DEMAND boundary above.
+  workspace_margins: 0.02
+
+  # Port-todo #5 (2026-07-22 arc). When true, workspace or radius exit
+  # raises RuntimeError on first violation, matching reference
+  # DRAKE_DEMAND intent (sampling_based_c3_controller.cc:1476-1494).
+  # push_t canonical opts in — production sim should fail-fast when the
+  # arm starts flying (e.g. ee_z ≫ 0.3), not stream 400+ warning lines.
+  strict_workspace: true
+
+  filter_samples_for_safety: true
+
+
+# ----------------------------------------------------------------------------
+# Reposition trajectory + tracking-PD law
+# ----------------------------------------------------------------------------
+
+reposition_params:
+  # Valid: kStraightLine | kSawtoothLine | kPiecewiseLinear | kIK
+  # Conformance landing: matches push_anything_dev's PiecewiseLinearTracker
+  # (lift→traverse→descend in operational space, no per-knot IPOPT solve).
+  # kIK was the project-specific extension with Ipopt FP-noise floor (52.6mm
+  # same-seed spread per `project_ik_ipopt_nondeterminism_pinned`); kPWL is
+  # the reference's tracker and matches push_anything_dev.
+  traj_type: kPiecewiseLinear
+
+  # Cartesian speed during reposition (translation rate of the EE).
+  speed: 0.40    # m/s
+
+  # Below this end-to-end Cartesian distance, skip the lift+traverse+descend
+  # and run a direct straight-line in joint space. Avoids over-shoot for tiny
+  # corrections.
+  use_straight_line_traj_under_piecewise_linear: 0.008
+
+  # Safe-height for the kPiecewiseLinear lift phase.
+  #
+  # T1b — reference push_t value (0.0774 m). Source:
+  #   dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml
+  #   reposition.cc:394 RepositionPiecewiseLinear pwl_waypoint_height=0.0774.
+  # 2026-07-18 iter2: 0.0774 → 0.06 to match push_t/parameters/
+  # reposition_params.yaml:32 (`pwl_waypoint_height: 0.06`). Port previously
+  # cited "reference push_t value 0.0774" but that's `anything/`'s default;
+  # push_t OVERRIDES it. Same class of bug as commits fb07dc7 (hysteresis)
+  # and a93a6b4 (progress window).
+  # Puts sphere-center at 60 mm above ground = 20 mm above T top
+  # (T half-height 0.02, T sits with base at ground so top at 0.04 m).
+  pwl_waypoint_height: 0.06   # m — reference push_t value
+
+  # Per-leg Cartesian speed for the gated RepositionTrajectory PWL path
+  # (Stage A, REFCONF_REPOSITION_PWL=1). Reference push_t value is 0.18 m/s
+  # (dairlib examples/sampling_c3/push_t/parameters/reposition_params.yaml).
+  # Kept separate from `speed` above: that one is the legacy IK tracker's
+  # planning-lookahead stride; this one is the PWL's per-leg linear velocity.
+  # Aligning to the reference eliminates the free-mode brush observed at
+  # speed=0.40 (vz≈0.44 m/s past phi=6mm → Drake compliant contact yawed box).
+  pwl_speed: 0.18    # m/s
+
+  # (other traj-type knobs left at defaults; ignored when traj_type=kPiecewiseLinear)
+  use_straight_line_traj_under_spline: 0.12
+  use_straight_line_traj_within_angle: 0.30
+  spline_width:    0.17
+  sphere_radius:   0.12
+  circle_radius:   0.20
+  circle_height:   0.00
+
+  # Joint-space PD-with-grav-comp gains for tracking the per-step waypoint.
+  # These come from the legacy free-mode controller; do NOT change without
+  # re-validating EAST.
+  Kp_q:          60.0
+  Kd_q:          8.0
+  Ki_q:          8.0
+  I_max:         4.0   # reverted from 20.0; see results/imax_fix_north.log —
+                       # the 20.0 value caused intermittent J2 saturation to
+                       # return and slightly worsened landing. Residual is
+                       # target-dynamics-bound, not cap-bound. Restored.
+  torque_limit:  87.0
+
+# --- EE velocity feedforward (ydot_des tracking) ------------------------------
+# CONFORMANCE GAP, MEASURED INCONCLUSIVE -- read before changing.
+#
+# The reference OSC tracks a commanded EE velocity: osc_tracking_data.cc:94-99
+# takes ydot_des = traj.EvalDerivative(t,1), and the trajectory the controller
+# publishes carries EE velocity explicitly (OutputC3SolutionCurrPlanActor:
+# knots.topRows(3) = EE position, knots.bottomRows(3) = EE velocity from x_sol).
+# With this flag OFF the port passes v_ee_desired=None, so the OSC sets
+# v_err = -v_ee_now and the Kd term becomes PURE DAMPING -- the arm resists its
+# own commanded motion. So OFF is a genuine divergence from the reference.
+#
+# BUT the measured effect on the metric that matters is inconclusive. Matched
+# 60 s push_t runs, identical config except this flag:
+#
+#     .                       OFF     alpha=0.5   alpha=1.0
+#     F_press median (N)     1.08          3.52        1.97
+#     ticks above stiction   64.0%          7.1%      79.1%
+#     closed distance (mm)   29.6           8.2        16.8
+#
+# Closure goes 29.6 -> 8.2 -> 16.8: not a trend, scatter. The spread is the same
+# magnitude as run-to-run variation measured at IDENTICAL config earlier
+# (p163/p165/p166), so 60 s cannot resolve it. Do not quote any of these as a
+# win or a regression without a long matched pair.
+#
+# alpha=1.0 is the LITERAL reference (osc_tracking_data.cc applies no scaling).
+# alpha<1 and v_max are port-only bounds with no reference analogue.
+# H: ON. The H is the clean read -- no stick-slip creep to confound it.
+use_velocity_feedforward:   true
+velocity_feedforward_alpha: 1.0
+velocity_feedforward_v_max: 1.5
+
+# --- c3 press plane (z-freeze) -----------------------------------------------
+# Reference OVERWRITES the planner's EE z before publishing to the OSC:
+#   sampling_based_c3_controller.cc:1762-1766
+#     knots(2,i)       = z_height + wall_offset;   // keep ee height constant
+#     knots(n_q+2,i)   = 0;                        // keep ee z-velo constant
+# C3 solves in 3D, then every knot's z is replaced by a CONSTANT and the
+# z-velocity zeroed. The same constant gates c3 entry (cc:1290):
+#   x_lcs_curr[2] < z_height + c3_min_clearance + wall_offset.
+#
+# anything/parameters/sampling_params.yaml: z_height 0.002, sampling_height
+# 0.005, both in the REFERENCE frame whose ground top is z=-0.029. The port's
+# ground top is z=0, so both shift by +0.029:
+#     z_height        ref  0.002 -> port 0.031
+#     sampling_height ref  0.005 -> port 0.034
+# H envelope in port frame is [0.000, 0.032], so the reference samples 2 mm
+# ABOVE the H's top face and presses 1 mm below it.
+#
+# use_adaptive_contact_height is turned OFF here. The adaptive rule
+# (obj_z_center + 5 mm, clamped) reproduces the reference EXACTLY for push_t
+# (0.025) but lands 10 mm low for the H (0.021 vs 0.031) because the clamp
+# pins it near mid-height. For a letter-family object the explicit reference
+# constant is correct.
