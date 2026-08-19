@@ -117,6 +117,226 @@ def _line_family(line: str) -> str:
     return "skip"
 
 
+# ── next-move gauges ────────────────────────────────────────────────────
+# Every mode switch in the controller is a countdown against a threshold
+# the log already prints: the [GS] decision arithmetic (cost-hysteresis
+# flip), the free-mode [STEP] finished_val→finished_thresh (repos arrival
+# fires kToC3ReachedReposTarget), the [ENTRY-GATE] block, the
+# [CONTACT-RUN] distance to the 2 mm LCS admission, and the consecutive
+# no-EE-BOX streak (disengage at 5). The raw lines scroll and truncate;
+# the gauge block pins value-vs-threshold pairs at a fixed position so a
+# viewer can watch each margin trend toward its flip point.
+
+_DISENGAGE_STREAK = 5      # wrapper contact-loss disengage threshold
+_GAUGE_RECENCY = 10        # steps a CONTACT-RUN / ENTRY-GATE stays shown
+
+_G_STEP_RE = re.compile(
+    r"^\[STEP\] step=(\d+) mode=(\w+) t=([\d.]+)s")
+_G_FLOAT = r"[-+]?[\d.]+"
+_G_FIELD_RES = {
+    # [STEP] fields (both modes)
+    "goal_dist": re.compile(rf"goal_dist=({_G_FLOAT})m"),
+    "switch":    re.compile(r"switch=(\w+)"),
+    # [STEP] free-mode
+    "fin_val":   re.compile(rf"finished_val=({_G_FLOAT})m"),
+    "fin_thr":   re.compile(rf"finished_thresh=({_G_FLOAT})m"),
+    # [STEP] c3-mode
+    "lam_n":     re.compile(rf"lam_n=({_G_FLOAT})"),
+    "contact":   re.compile(r"contact=(\w)"),
+    "f_cmd":     re.compile(r"f_cmd=\(([^)]+)\)"),
+}
+_G_GS_RES = {
+    "curr_cost":  re.compile(rf"curr_cost=({_G_FLOAT})"),
+    "best_other": re.compile(rf"best_other=({_G_FLOAT})"),
+    "met":        re.compile(r"met_progress=(\w)"),
+    "stall":      re.compile(r"steps_since_improve=(\d+)"),
+    "switches":   re.compile(r"switches=(\d+)"),
+    "hyst":       re.compile(rf"hyst\[(\w+)\]=({_G_FLOAT})"),
+    "decision":   re.compile(r"decision: (.*)$"),
+}
+_G_CONTACT_RE = re.compile(
+    rf"^\[CONTACT-RUN\] step=(\d+) .*distance=({_G_FLOAT}) contact_type=(\S+)")
+_G_ENTRY_RE = re.compile(
+    r"^\[ENTRY-GATE\] step=(\d+) (ee_to_\w+)=([\d.]+)mm >= thr=([\d.]+)mm")
+
+
+def _gfloat(s: str) -> Optional[float]:
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return None if v != v else v  # NaN → None
+
+
+def parse_gauges(log_path: Path) -> Dict[int, dict]:
+    """Per-step gauge fields, keyed by each line's OWN step= number.
+
+    ([GS] step=N prints before [STEP] step=N, so the by_step bucketing
+    used for the rolling window attributes it to N-1; keying on the
+    line's own step field sidesteps that.)
+    """
+    gauges: Dict[int, dict] = {}
+
+    def g(step: int) -> dict:
+        return gauges.setdefault(step, {})
+
+    with open(log_path, errors="replace") as f:
+        for raw in f:
+            line = raw.rstrip("\n")
+            m = _G_STEP_RE.match(line)
+            if m:
+                d = g(int(m.group(1)))
+                d["mode"] = m.group(2)
+                for key, rex in _G_FIELD_RES.items():
+                    fm = rex.search(line)
+                    if fm:
+                        d[key] = fm.group(1)
+                continue
+            if line.startswith("[GS] step="):
+                sm = re.match(r"^\[GS\] step=(\d+)", line)
+                if not sm:
+                    continue
+                d = g(int(sm.group(1)))
+                for key, rex in _G_GS_RES.items():
+                    fm = rex.search(line)
+                    if fm:
+                        d[key] = fm.group(2) if key == "hyst" else fm.group(1)
+                        if key == "hyst":
+                            d["hyst_kind"] = fm.group(1)
+                continue
+            m = _G_CONTACT_RE.match(line)
+            if m:
+                d = g(int(m.group(1)))
+                d["c_dist"], d["c_type"] = m.group(2), m.group(3)
+                continue
+            m = _G_ENTRY_RE.match(line)
+            if m:
+                d = g(int(m.group(1)))
+                d["eg_label"], d["eg_val"], d["eg_thr"] = \
+                    m.group(2), m.group(3), m.group(4)
+    return gauges
+
+
+def _decision_margin(decision: str) -> Optional[float]:
+    """Distance-to-flip from the [GS] decision arithmetic.
+
+    Both shapes compare a total against a comparand across ' vs ':
+      free: best_other(398.86) vs curr(373.17)+gap(119.66)=492.83
+      c3:   best_other(2618.58)+gap(2312.69)=4931.28 vs c3(2720.81)
+    A side's value is the number after '=' if present, else the last
+    parenthesized number. The mode flips when the sides cross, so
+    |lhs - rhs| is the margin regardless of direction.
+    """
+    parts = decision.split(" vs ")
+    if len(parts) != 2:
+        return None
+    vals = []
+    for side in parts:
+        m = re.search(rf"=({_G_FLOAT})\s*$", side.strip())
+        if not m:
+            nums = re.findall(rf"\(({_G_FLOAT})\)", side)
+            if not nums:
+                return None
+            m_val = _gfloat(nums[-1])
+        else:
+            m_val = _gfloat(m.group(1))
+        if m_val is None:
+            return None
+        vals.append(m_val)
+    return abs(vals[0] - vals[1])
+
+
+_GAUGE_OK = (160, 230, 160)
+_GAUGE_WARN = (255, 200, 80)
+_GAUGE_TRIP = (255, 100, 100)
+_GAUGE_DIM = (150, 150, 150)
+
+
+def _draw_gauges(draw, x0: int, y: int, g: dict, font, line_h: int) -> int:
+    """Fixed-position value-vs-threshold block. Returns new y."""
+    draw.text((x0, y), "── next-move gauges ──", font=font, fill=_GAUGE_DIM)
+    y += line_h
+    if not g:
+        return y
+    mode = g.get("mode", "?")
+
+    # switch reason + progress stall + switch count
+    stall = g.get("stall")
+    met = g.get("met")
+    color = _GAUGE_OK
+    if met == "N":
+        color = _GAUGE_WARN  # unproductive-disengage countdown is running
+    line = (f"switch  {g.get('switch', '?'):<28s} "
+            f"stall {stall or '?'} met={met or '?'} "
+            f"switches {g.get('switches', '?')}")
+    draw.text((x0, y), line, font=font, fill=color)
+    y += line_h
+
+    # cost-hysteresis flip margin (drives kToC3Cost / kToReposCost)
+    decision = g.get("decision")
+    if decision and decision != "transition":
+        margin = _decision_margin(decision)
+        hyst = _gfloat(g.get("hyst", ""))
+        color = _GAUGE_OK
+        if margin is not None and hyst:
+            if margin < 0.05 * hyst:
+                color = _GAUGE_TRIP
+            elif margin < 0.25 * hyst:
+                color = _GAUGE_WARN
+        mtxt = f"Δ {margin:.1f} → 0" if margin is not None else "Δ ?"
+        draw.text((x0, y), f"flip    {mtxt}   {decision}",
+                  font=font, fill=color)
+        y += line_h
+
+    # repos arrival countdown (fires kToC3ReachedReposTarget at thresh)
+    fin_val = _gfloat(g.get("fin_val", ""))
+    fin_thr = _gfloat(g.get("fin_thr", ""))
+    if mode == "free" and fin_val is not None and fin_thr:
+        ratio = fin_val / fin_thr
+        color = (_GAUGE_TRIP if ratio <= 1.0
+                 else _GAUGE_WARN if ratio <= 2.0 else _GAUGE_OK)
+        tag = "  ARRIVED" if ratio <= 1.0 else ""
+        draw.text((x0, y),
+                  f"repos   ee→tgt {fin_val:.3f}m  finish@{fin_thr:.3f}m{tag}",
+                  font=font, fill=color)
+        y += line_h
+
+    # entry gate (blocks the free→c3 arrival transition)
+    if g.get("_eg_age", 999) <= _GAUGE_RECENCY:
+        draw.text((x0, y),
+                  f"gate    {g.get('eg_label')} {g.get('eg_val')}mm "
+                  f"≥ thr {g.get('eg_thr')}mm  BLOCK",
+                  font=font, fill=_GAUGE_TRIP)
+        y += line_h
+
+    # c3 executor commitment
+    if mode == "c3" and "lam_n" in g:
+        draw.text((x0, y),
+                  f"c3      λ_n {g['lam_n']}  contact {g.get('contact', '?')}"
+                  f"  f_cmd ({g.get('f_cmd', '?')})",
+                  font=font, fill=_GAUGE_OK)
+        y += line_h
+
+    # contact distance + no-contact disengage streak
+    if g.get("_c_age", 999) <= _GAUGE_RECENCY:
+        streak = g.get("_streak", 0)
+        color = (_GAUGE_TRIP if streak >= _DISENGAGE_STREAK
+                 else _GAUGE_WARN if streak >= 3 else _GAUGE_OK)
+        draw.text((x0, y),
+                  f"contact d {g.get('c_dist')} {g.get('c_type')}   "
+                  f"no-contact {streak}/{_DISENGAGE_STREAK}",
+                  font=font, fill=color)
+        y += line_h
+
+    # goal distance
+    gd = _gfloat(g.get("goal_dist", ""))
+    if gd is not None:
+        draw.text((x0, y), f"goal    dist {gd:.3f}m", font=font,
+                  fill=_GAUGE_OK)
+        y += line_h
+    return y
+
+
 def parse_log_by_step(log_path: Path) -> Tuple[Dict[int, List[str]], List[str]]:
     by_step: Dict[int, List[str]] = {}
     header_lines: List[str] = []
@@ -186,6 +406,7 @@ def compose_frame(
     panel_width: int,
     panel_max_chars: int,
     result_line: Optional[str],
+    gauge: Optional[dict] = None,
 ) -> Image.Image:
     """Left = scene, Right = log panel. Returns composite RGB image."""
     scene = scene_img.convert("RGB")
@@ -223,6 +444,13 @@ def compose_frame(
     # Separator
     draw.line((panel_x0, y, W_out - 12, y), fill=(60, 60, 60), width=1)
     y += pad
+
+    # Next-move gauges: fixed-position value-vs-threshold countdowns
+    if gauge is not None:
+        y = _draw_gauges(draw, panel_x0, y, gauge, font_tiny, line_h)
+        y += pad
+        draw.line((panel_x0, y, W_out - 12, y), fill=(60, 60, 60), width=1)
+        y += pad
 
     # Sticky milestone lines. Cap the display: with the sticky-vs-hi
     # classification fixed, [CONSENSUS] setup blocks alone can run to ~18
@@ -301,6 +529,8 @@ def main():
     by_step, header_lines = parse_log_by_step(args.log_path)
     print(f"[sidepanel] parsed {len(by_step)} step buckets, "
           f"{len(header_lines)} header lines")
+    gauges_by_step = parse_gauges(args.log_path)
+    print(f"[sidepanel] parsed gauges for {len(gauges_by_step)} steps")
 
     frames = find_frames(args.frames_dir)
     print(f"[sidepanel] found {len(frames)} frames")
@@ -337,6 +567,7 @@ def main():
         tmp_dir = Path(tmp)
         prev_step = -1
         step_info_map: Dict[int, dict] = {}
+        cur_gauge: dict = {}
         for i, (step, path) in enumerate(frames):
             for s in range(prev_step + 1, step + 1):
                 lines = by_step.get(s, [])
@@ -354,15 +585,37 @@ def main():
                             "t": float(m.group(3)),
                             "mode": m.group(2),
                         }
+                # Merge this step's gauge fields into the running state.
+                gd = gauges_by_step.get(s)
+                if gd:
+                    new_mode = gd.get("mode")
+                    if new_mode and new_mode != cur_gauge.get("mode"):
+                        # Mode flipped: drop the other mode's stale fields.
+                        for k in ("fin_val", "fin_thr", "lam_n",
+                                  "contact", "f_cmd"):
+                            cur_gauge.pop(k, None)
+                        if new_mode != "c3":
+                            cur_gauge["_streak"] = 0
+                    if "c_type" in gd:
+                        cur_gauge["_streak"] = (
+                            cur_gauge.get("_streak", 0) + 1
+                            if gd["c_type"] == "NONE" else 0)
+                        cur_gauge["_c_step"] = s
+                    if "eg_val" in gd:
+                        cur_gauge["_eg_step"] = s
+                    cur_gauge.update(gd)
             prev_step = step
             info = step_info_map.get(step)
+            cur_gauge["_c_age"] = step - cur_gauge.get("_c_step", -999)
+            cur_gauge["_eg_age"] = step - cur_gauge.get("_eg_step", -999)
             img = Image.open(path)
             out = compose_frame(img, step, info,
                                 list(rolling), sticky_lines,
                                 font_tiny, font_small,
                                 args.panel_width, args.panel_max_chars,
                                 result_line if i >= len(frames) - 30
-                                else None)
+                                else None,
+                                gauge=dict(cur_gauge))
             out.save(tmp_dir / f"annot_{i:06d}.png", optimize=False)
             if i % 200 == 0:
                 print(f"[sidepanel] painted {i}/{len(frames)}")
