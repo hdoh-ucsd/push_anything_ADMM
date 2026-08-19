@@ -46,7 +46,8 @@ if _ROOT not in sys.path:
 import profiling.section_timer as ST
 ST.ENABLED = True   # enable fine-grained section timing
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q, EE_BODY_NAME
+from sim.env_builder import build_environment, EE_BODY_NAME
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q  # IK seed, not the production start pose (7ff5a21)
 from control.lcs_formulator import LCSFormulator
 from control.admm_solver import C3Solver
 from control.task_costs import QuadraticManipulationCost

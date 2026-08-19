@@ -48,7 +48,8 @@ import pydrake.all as ad
 import yaml
 
 from control.sampling_c3.params import SamplingC3Params
-from sim.env_builder import EE_BODY_NAME, INITIAL_ARM_Q, build_environment
+from sim.env_builder import EE_BODY_NAME, build_environment
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q  # IK seed, not the production start pose (7ff5a21)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

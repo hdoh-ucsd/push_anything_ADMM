@@ -17,7 +17,7 @@ Output: ``results/probe_9_4_7_B_c3_landscape_path_d.csv``
 Methodology
 -----------
 Read-only probe. Monkey-patches
-``SamplingC3MPC._print_table_diag`` to a per-step CSV-writing variant
+``SamplingC3Controller._print_table_diag`` to a per-step CSV-writing variant
 inside the probe process. Wrapper logic is untouched; no controller
 changes. Probe records the same fields the in-wrapper diagnostic
 already prints, just at every step instead of every 20.
@@ -42,9 +42,10 @@ import yaml
 from control.admm_solver import C3Solver
 from control.ci_mpc_c3 import C3MPC
 from control.lcs_formulator import LCSFormulator
-from control.sampling_c3 import SamplingC3MPC, SamplingC3Params
+from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
 from control.task_costs import QuadraticManipulationCost
-from sim.env_builder import EE_BODY_NAME, INITIAL_ARM_Q, build_environment
+from sim.env_builder import EE_BODY_NAME, build_environment
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q  # IK seed, not the production start pose (7ff5a21)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -64,7 +65,7 @@ _csv_file   = None
 
 
 def _patched_print_table_diag(self, step, samples, labels, results, k_star):
-    """Replacement for ``SamplingC3MPC._print_table_diag``. Writes one
+    """Replacement for ``SamplingC3Controller._print_table_diag``. Writes one
     row per sample to the CSV instead of every-20-step terminal print.
 
     The c3-mode branch of compute_control sets best_src="current" and
@@ -134,7 +135,7 @@ def _build_pipeline(task_cfg):
     # natural c_C3_raw distribution under the F2 regime, not the
     # watchdog-modified one (Option A captures that separately).
     sc3_params.progress_params.watchdog_steps_since_improve_threshold = 0
-    wrapper = SamplingC3MPC(
+    wrapper = SamplingC3Controller(
         base_mpc=base_mpc,
         plant=plant,
         ee_frame=ee_frame,
@@ -148,7 +149,7 @@ def _build_pipeline(task_cfg):
     # Patch _print_step_diag (called every step) to ALSO trigger the
     # table dump. The original wrapper only fires _print_table_diag
     # every 20 steps; we want every-step CSV rows for landscape work.
-    _orig_step_diag = SamplingC3MPC._print_step_diag
+    _orig_step_diag = SamplingC3Controller._print_step_diag
 
     def _patched_print_step_diag(self, *args, **kwargs):
         _orig_step_diag(self, *args, **kwargs)
@@ -160,11 +161,11 @@ def _build_pipeline(task_cfg):
             _patched_print_table_diag(self, step, samples, labels, results, k_star)
             self._probeB_pending = None
 
-    SamplingC3MPC._print_step_diag = _patched_print_step_diag
+    SamplingC3Controller._print_step_diag = _patched_print_step_diag
 
     # Patch compute_control to stash the per-step table-diag inputs on
     # `self` so _patched_print_step_diag can pick them up.
-    _orig_compute_control = SamplingC3MPC.compute_control
+    _orig_compute_control = SamplingC3Controller.compute_control
 
     def _patched_compute_control(self, current_q, current_v, plant_ctx, target_xy):
         # Run the original compute_control AS-IS. Then we don't have
@@ -208,7 +209,7 @@ def _build_pipeline(task_cfg):
     # Accept the every-20 cadence — Path A's full-resolution table is
     # what we have. With 200 steps, that's 10 blocks × ~5 samples = 50
     # feasible rows, still informative for a coarse landscape view.
-    SamplingC3MPC._print_table_diag = _patched_print_table_diag
+    SamplingC3Controller._print_table_diag = _patched_print_table_diag
 
     return diagram, plant, plant_ctx, simulator, wrapper, n_u
 
