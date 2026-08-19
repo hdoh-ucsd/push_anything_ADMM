@@ -156,6 +156,13 @@ _G_GS_RES = {
 }
 _G_CONTACT_RE = re.compile(
     rf"^\[CONTACT-RUN\] step=(\d+) .*distance=({_G_FLOAT}) contact_type=(\S+)")
+# Actual sim contact force (Drake PointPairContactInfo, sampled once per
+# planner tick in main.py). This is the PHYSICAL ground truth; the [STEP]
+# contact= flag only says an EE-BOX pair was ADMITTED to the planner's LCS,
+# which in c3 mode is true every step by construction (2026-08-18 phantom-
+# contact audit: 43-72% of admitted steps carry zero actual force).
+_G_DRAKE_RE = re.compile(
+    rf"^\[DRAKE-CONTACT\] step=(\d+) n_pairs=\d+ ee_box_normal=({_G_FLOAT})")
 _G_ENTRY_RE = re.compile(
     r"^\[ENTRY-GATE\] step=(\d+) (ee_to_\w+)=([\d.]+)mm >= thr=([\d.]+)mm")
 
@@ -214,6 +221,10 @@ def parse_gauges(log_path: Path) -> Dict[int, dict]:
                 d = g(int(m.group(1)))
                 d["eg_label"], d["eg_val"], d["eg_thr"] = \
                     m.group(2), m.group(3), m.group(4)
+                continue
+            m = _G_DRAKE_RE.match(line)
+            if m:
+                g(int(m.group(1)))["fn_sim"] = m.group(2)
     return gauges
 
 
@@ -309,12 +320,26 @@ def _draw_gauges(draw, x0: int, y: int, g: dict, font, line_h: int) -> int:
                   font=font, fill=_GAUGE_TRIP)
         y += line_h
 
-    # c3 executor commitment
+    # c3 executor commitment. The [STEP] contact= flag is LCS ADMISSION
+    # (true every c3 step by construction), so label it honestly and put
+    # the sim's measured normal force beside it — Fn_sim ≈ 0 while λ_n
+    # demands force is the phantom/λ-hover signature.
     if mode == "c3" and "lam_n" in g:
+        fn = _gfloat(g.get("fn_sim", ""))
+        fn_txt = f"Fn_sim {fn:.2f}N" if fn is not None else "Fn_sim ?"
+        lam = _gfloat(g.get("lam_n", "")) or 0.0
+        if fn is not None and fn > 0.5:
+            color = _GAUGE_OK
+        elif fn is not None and fn <= 0.01 and lam > 0.5:
+            color = _GAUGE_TRIP   # demanding force, touching nothing
+            fn_txt += " PHANTOM"
+        else:
+            color = _GAUGE_WARN
         draw.text((x0, y),
-                  f"c3      λ_n {g['lam_n']}  contact {g.get('contact', '?')}"
+                  f"c3      λ_n {g['lam_n']}  {fn_txt}  "
+                  f"lcs-admit {g.get('contact', '?')}"
                   f"  f_cmd ({g.get('f_cmd', '?')})",
-                  font=font, fill=_GAUGE_OK)
+                  font=font, fill=color)
         y += line_h
 
     # contact distance + no-contact disengage streak
