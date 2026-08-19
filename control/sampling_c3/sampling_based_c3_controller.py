@@ -1182,6 +1182,29 @@ class SamplingC3Controller:
                   f"[{_ub_entries}]",
                   flush=True)
 
+    def reset_for_new_goal(self) -> None:
+        """Reference goal-change reset (sampling_based_c3_controller.cc
+        :827-845): when the final goal changes, drop back to the position
+        regime (crossed flag false -> dt/costs/hysteresis revert via the
+        per-tick flag sync), clear the achieved latch, reset the progress
+        tracker, and empty BOTH sample buffers ('Reset the sample buffers
+        now that the costs have changed')."""
+        self._crossed_switching_threshold = False
+        self._achieved_fixed_goal = False
+        self._off_target_streak = 0
+        try:
+            self.progress.reset()
+        except AttributeError:
+            pass
+        try:
+            self.buffer.clear()
+        except AttributeError:
+            pass
+        try:
+            self.unsuccessful_buffer.clear()
+        except AttributeError:
+            pass
+
     # ------------------------------------------------------------------
     # Main control entry
     # ------------------------------------------------------------------

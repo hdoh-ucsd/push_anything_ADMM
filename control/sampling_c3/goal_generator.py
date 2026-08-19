@@ -109,7 +109,14 @@ class JackRandomGoalGenerator:
                  x_limits=(0.42, 0.5),          # random_goal_x_limits
                  y_limits=(0.02, 0.25),         # random_goal_y_limits
                  pos_success_threshold=0.02,    # position_success_threshold
-                 ori_success_threshold=0.1):    # orientation_success_threshold
+                 ori_success_threshold=0.1,     # orientation_success_threshold
+                 nominal_orientations=None,     # None -> jack tripods; a
+                                                # planar object passes
+                                                # [identity] (its single
+                                                # flat-resting nominal, cf.
+                                                # reference
+                                                # GetNominalOrientations)
+                 nominal_names=None):
         self._rng = rng
         self.goal_xy = np.asarray(initial_xy, dtype=float).copy()
         q0 = np.asarray(initial_quat, dtype=float)
@@ -118,6 +125,12 @@ class JackRandomGoalGenerator:
         self._y_limits = tuple(y_limits)
         self._pos_thr = float(pos_success_threshold)
         self._ori_thr = float(ori_success_threshold)
+        self._nominals = (KNOMINAL_ORIENTATIONS_JACK
+                          if nominal_orientations is None
+                          else [np.asarray(q, dtype=float)
+                                for q in nominal_orientations])
+        self.nominal_names = (KNOMINAL_NAMES_JACK
+                              if nominal_names is None else list(nominal_names))
         self.orientation_index = -1     # reference h:182
         self.goals_reached = 0
 
@@ -168,15 +181,17 @@ class JackRandomGoalGenerator:
         ])
 
     def _draw_orientation(self) -> None:
-        idx = int(self._rng.integers(0, len(KNOMINAL_ORIENTATIONS_JACK)))
+        idx = int(self._rng.integers(0, len(self._nominals)))
         if idx == self.orientation_index:
             # Repeat draw: >= 90 deg of extra yaw on the PREVIOUS GOAL
             # QUAT (cc:330-336) so the new goal always needs real work.
+            # A planar object has ONE nominal, so every draw after the
+            # first takes this branch — reference semantics for the T.
             yaw_lo, yaw_hi = np.pi / 2, 3 * np.pi / 2
             base = self.goal_quat
         else:
             yaw_lo, yaw_hi = 0.0, 2.0 * np.pi
-            base = KNOMINAL_ORIENTATIONS_JACK[idx]
+            base = self._nominals[idx]
         yaw = float(self._rng.uniform(yaw_lo, yaw_hi))
         qz = np.array([np.cos(yaw / 2.0), 0.0, 0.0, np.sin(yaw / 2.0)])
         q = quat_multiply(qz, base)
