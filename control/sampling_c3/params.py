@@ -1135,7 +1135,7 @@ class SamplingC3Params:
     # Port-only lift-traverse-descend override for approach path. Reference
     # relies on the PWL reposition trajectory (which itself does lift/traverse/
     # descend via z_safe). Disabling to remove the redundant approach shaper.
-    use_lift_traverse_descend_override: bool = True   # effective default (see note above use_contact_entry_gate)
+    use_lift_traverse_descend_override: bool = False
     # PHASE B descent puts the sphere SURFACE at (clearance - PUSHER_RADIUS)
     # from the face plane. Floor is PUSHER_RADIUS + LCS_THRESHOLD + 5 mm
     # safety = 32 mm: smaller would admit contact mid-descent and re-
@@ -1268,7 +1268,7 @@ class SamplingC3Params:
             velocity_feedforward_v_max  = float(raw.get("velocity_feedforward_v_max", 1.5)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
-            use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", True)),
+            use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", False)),
             ltd_clearance = float(raw.get("ltd_clearance", 0.050)),
             ltd_z_margin  = float(raw.get("ltd_z_margin",  0.010)),
             ltd_xy_tol    = float(raw.get("ltd_xy_tol",    0.020)),

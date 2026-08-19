@@ -3863,6 +3863,38 @@ class SamplingC3Controller:
             # is now unconditional (was PORT_DISABLE_C3_OVERRIDE=1,
             # canonical since the p10x series).
             _disable_c3_override = True
+            # NOTE (audit 2026-08-19): `not _disable_c3_override` is a literal
+            # False, so _no_admitted_pair is ALWAYS False and the ~200-line
+            # block below (through the end of the `if`) is UNREACHABLE. That
+            # includes the whole lift-traverse-descend phase A/B/C machinery
+            # and the `params.use_lift_traverse_descend_override` check inside
+            # it — that flag cannot affect behaviour no matter what it is set
+            # to. Downstream, _override_fired_this_tick therefore stays False,
+            # so self._approach_override_firing (read at :2430) is always
+            # False and _new_phase is always 'none'.
+            #
+            # Evidence: across 352 run logs totalling 502,539 [STEP] lines,
+            # [APPROACH-OVERRIDE] appears 19 times, all in ONE archived log
+            # from 2026-06-03 (results/_archive_worktrees/q1_verify_02eca7f/
+            # seed0_run.log) — i.e. before the defaults flip hard-wired
+            # _disable_c3_override. Zero occurrences since, in any canonical
+            # box/T/jack run. [LTD-WORKSPACE-FALLBACK] has never appeared.
+            #
+            # Corroborated independently by the block-T session against six
+            # canonical logs (blockT_retention_canon180, blockT_muintent_*,
+            # meshT_meshnormal_canon180, meshT_wit3ref_seed0, box 60 s gate —
+            # every tight-PASS result among them): zero phase events. It also
+            # notes the shaper's geometry is box-specific (_box_half / _R_box /
+            # face-axis), so on the mesh tasks it is doubly unreachable.
+            #
+            # NOT deleted here, deliberately. The block defines `_phase`, which
+            # ~15 downstream sites still reference (the disengage_threshold
+            # chain at :2424-2433, :2498, :2822, and :4091-4120). Deleting only
+            # this block would leave those dangling; removing the whole
+            # approach-override state machine is a separate, larger change.
+            # params.use_lift_traverse_descend_override now defaults False on
+            # BOTH sides (declaration and from_dict), matching the stated
+            # intent — behaviour-neutral precisely because of the above.
             _no_admitted_pair = ((len(_ee_box_pairs) == 0)
                                  and not _disable_c3_override)
             _override_fired_this_tick = False
