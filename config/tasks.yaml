@@ -587,7 +587,11 @@ tasks:
     # goal #1 is drawn from that distribution at startup (seeded via
     # --seed), replacing the one-time fixed boot transient. false =
     # reference-literal boot.
-    krandom_draw_initial_goal: true
+    # EVAL PROTOCOL (jack-recipe-costlcs branch): boot at the reference's
+    # fixed_target (AllUp) — the jack_refrecipe_fixedgoal canonical protocol —
+    # so the cost-LCS ranking A/B is judged on the goal the recipe was
+    # validated against. The drawn-goal default (true) resumes on merge-back.
+    krandom_draw_initial_goal: false
     # User directive 2026-08-17: success = FLIPS. A goal is reached when the
     # jack's RESTING TRIPOD matches the goal's tripod (held 10 ticks);
     # position and yaw are ignored — replaces the reference gate pos<0.02
