@@ -1357,7 +1357,6 @@ class LCSFormulator:
             return self._linearize_discrete_impl(context, *a, **kw)
 
     def _linearize_discrete_impl(self, context, dt: float, u_lin=None):
-        self._last_planner_dt = float(dt)
         """
         Linearize the Drake plant into a discrete-time LCS at (q*, v*, u*).
 
@@ -1414,6 +1413,7 @@ class LCSFormulator:
         phi    : (n_c,)
         mu     : float
         """
+        self._last_planner_dt = float(dt)
         if u_lin is None:
             u_lin = np.zeros(self.n_u)
         else:
@@ -1836,23 +1836,6 @@ class LCSFormulator:
     def _linearize_discrete_ee_space_impl(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
                                     force_top_k_ee_box: bool = False):
-        self._last_planner_dt = float(dt)
-        # d.1 — reference-conforming pair admission for the planner LCS.
-        # When the caller didn't already opt in (force_top_k_ee_box=False,
-        # the ci_mpc_c3plus.py planner default) AND the object is a tshape
-        # AND the class-level flag is on, promote to force_top_k=True with
-        # n_ee_top_k=1 (matches reference push_t planner's 1 EE-manipuland
-        # pair). Bypasses the 2 mm auto-discovery, keeping the pair in the
-        # LCS across the arm's off-face rise — the T-c3-chatter fix.
-        # Cost-LCS caller (inner_solve.py:593) sets force_top_k=True
-        # explicitly, so this override is a no-op there.
-        # Gated to tshape so the box planner path is byte-identical when the
-        # class flag is True.
-        if (not force_top_k_ee_box
-                and self._object_shape in ("tshape", "hshape")
-                and getattr(self, "_ref_pair_admission_planner_lcs", False)):
-            force_top_k_ee_box = True
-            n_ee_top_k = 1
         """
         Paper-aligned low-dim LCS at (q*, v*, u*).
 
@@ -1902,6 +1885,23 @@ class LCSFormulator:
             phi    : (n_c,)
             mu     : float
         """
+        self._last_planner_dt = float(dt)
+        # d.1 — reference-conforming pair admission for the planner LCS.
+        # When the caller didn't already opt in (force_top_k_ee_box=False,
+        # the ci_mpc_c3plus.py planner default) AND the object is a tshape
+        # AND the class-level flag is on, promote to force_top_k=True with
+        # n_ee_top_k=1 (matches reference push_t planner's 1 EE-manipuland
+        # pair). Bypasses the 2 mm auto-discovery, keeping the pair in the
+        # LCS across the arm's off-face rise — the T-c3-chatter fix.
+        # Cost-LCS caller (inner_solve.py:593) sets force_top_k=True
+        # explicitly, so this override is a no-op there.
+        # Gated to tshape so the box planner path is byte-identical when the
+        # class flag is True.
+        if (not force_top_k_ee_box
+                and self._object_shape in ("tshape", "hshape")
+                and getattr(self, "_ref_pair_admission_planner_lcs", False)):
+            force_top_k_ee_box = True
+            n_ee_top_k = 1
         if u_lin is None:
             u_lin = np.zeros(self.N_U_NEW)
         else:
