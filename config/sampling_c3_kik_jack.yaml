@@ -92,6 +92,10 @@ u_vertical_limit: 50.0
 lcs_explicit_manipuland_ground_contacts: 3
 use_reference_pair_admission_planner_lcs: true
 use_cost_lcs_ranking: true
+# Reference jacktoy progress_params_c3plus.yaml:18 cost_type: 3
+# (kSimImpedance): the ranking rollout is scored with the FULL Q and R —
+# unlike push_t/anything/H, which use 5 (kSimImpedanceObjectCostOnly).
+cost_type: 3
 Kp_for_ee_pd_rollout: 100.0
 Kd_for_ee_pd_rollout: 0.5
 lcs_dt_resolution: 4
