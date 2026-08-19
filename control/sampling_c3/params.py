@@ -887,7 +887,15 @@ class SamplingC3Params:
     # ------------------------------------------------------------------
     achieved_goal_release_loops: int = 0
 
-    use_contact_entry_gate: bool = False
+    # NOTE (defaults audit): this and the three flags marked "effective
+    # default" below read True, not False, because True is what every launch
+    # actually gets — from_dict's fallback is True and it is the only path
+    # production uses (main.py:816 from_yaml -> from_dict). The declared
+    # default is set to match so the two agree; see the block comment above
+    # from_dict. The port-only/reference-conformance argument in the comments
+    # here is about what the value ARGUABLY SHOULD be, which is a separate,
+    # behaviour-changing decision — not what it currently is.
+    use_contact_entry_gate: bool = True   # effective default
     # Threshold on ‖ee_now − box_center‖ in meters. Default 0.090 m
     # (loosened from 0.080 after the both_fixes_20260521_193033 run
     # found that IK arrivals systematically land at 80-95 mm — a 0.080
@@ -917,7 +925,7 @@ class SamplingC3Params:
     # translation tasks too; threshold chosen to preserve their
     # engagement behavior.
     # Port-only surface-distance entry gate — reference has no such gate.
-    use_surface_entry_gate: bool = False
+    use_surface_entry_gate: bool = True   # effective default (see note above use_contact_entry_gate)
     contact_entry_surface_threshold: float = 0.060
 
     # Stage 2 L1: goal-aligned contact-normal requirement at admission.
@@ -971,7 +979,7 @@ class SamplingC3Params:
     # definition when finished_repos==True.
     # Port-only face-selection gate on c3 entry — reference doesn't gate by
     # face alignment; dispatcher lets the sample scorer sort candidates.
-    use_commit_face_gate: bool = False
+    use_commit_face_gate: bool = True   # effective default (see note above use_contact_entry_gate)
     commit_face_gate_threshold: float = 0.3
 
     # ------------ T1a — EE_z altitude mode-switch gate --------------------
@@ -1125,7 +1133,7 @@ class SamplingC3Params:
     # Port-only lift-traverse-descend override for approach path. Reference
     # relies on the PWL reposition trajectory (which itself does lift/traverse/
     # descend via z_safe). Disabling to remove the redundant approach shaper.
-    use_lift_traverse_descend_override: bool = False
+    use_lift_traverse_descend_override: bool = True   # effective default (see note above use_contact_entry_gate)
     # PHASE B descent puts the sphere SURFACE at (clearance - PUSHER_RADIUS)
     # from the face plane. Floor is PUSHER_RADIUS + LCS_THRESHOLD + 5 mm
     # safety = 32 mm: smaller would admit contact mid-descent and re-
@@ -1147,6 +1155,19 @@ class SamplingC3Params:
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
+        # INVARIANT: every `raw.get(key, FALLBACK)` fallback below MUST equal
+        # the field's declared default above. They are two hand-maintained
+        # copies of one value, and they had silently drifted apart on four
+        # flags (use_contact_entry_gate, use_surface_entry_gate,
+        # use_commit_face_gate, use_lift_traverse_descend_override): declared
+        # False, fallback True. Because production only ever builds params via
+        # from_yaml -> from_dict, True was the real behaviour and the declared
+        # False was fiction — a direct SamplingC3Params() (unit tests) got a
+        # different controller than any run.
+        #
+        # tests/test_sampling_c3_params.py::test_empty_yaml_uses_all_defaults
+        # asserts `from_yaml("") == SamplingC3Params()` and is the regression
+        # guard for exactly this; it was failing on those four fields.
         return cls(
             progress_params   = ProgressParams.from_dict(raw.get("progress_params", {}) or {}),
             sampling_params   = SamplingParams.from_dict(raw.get("sampling_params", {}) or {}),
