@@ -62,6 +62,32 @@ _STICKY_TAGS = {
 }
 _ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]", "[CONTACT-RUN]", "[ENTRY-GATE]",
                  "[TOPPLE-DRIVER]"}
+
+# Solver display name. The [STEP] `mode=c3` string is the DISPATCHER mode
+# (reference is_doing_c3_ terminology) and every parser keys on it — the
+# SOLVER actually running inside that mode is echoed once per log in
+# [RUN-META] flags=[solver=...]. Map the label for display only (user
+# directive 2026-08-19: the jack runs C3+, never label its mode plain
+# "c3" in the panel). Logs without a RUN-META line keep the raw string.
+_SOLVER_DISPLAY = {"c3plus": "C3+", "c3": "C3"}
+_RUN_META_SOLVER_RE = re.compile(r"^\[RUN-META\] .*?flags=\[solver=(\w+)")
+_C3_LABEL = "c3"  # overwritten in main() from the log's RUN-META line
+
+
+def _detect_solver_label(log_path: Path) -> str:
+    with open(log_path, errors="replace") as f:
+        for _ in range(20):
+            line = f.readline()
+            if not line:
+                break
+            m = _RUN_META_SOLVER_RE.match(line)
+            if m:
+                return _SOLVER_DISPLAY.get(m.group(1), m.group(1))
+    return "c3"
+
+
+def _mode_disp(mode: str) -> str:
+    return _C3_LABEL if mode == "c3" else mode
 _RESULT_TAG = "[RESULT]"
 
 _TAG_COLORS = {
@@ -347,7 +373,7 @@ def _draw_gauges(draw, x0: int, y: int, g: dict, font, line_h: int) -> int:
         else:
             color = _GAUGE_WARN
         draw.text((x0, y),
-                  f"c3      λ_n {g['lam_n']}  {fn_txt}  "
+                  f"{_C3_LABEL:<8}λ_n {g['lam_n']}  {fn_txt}  "
                   f"lcs-admit {g.get('contact', '?')}"
                   f"  f_cmd ({g.get('f_cmd', '?')})",
                   font=font, fill=color)
@@ -466,7 +492,7 @@ def compose_frame(
         hdr = [
             f"step={step}",
             f"t={step_info.get('t', 0.0):.2f}s",
-            f"mode={step_info.get('mode', '?')}",
+            f"mode={_mode_disp(step_info.get('mode', '?'))}",
         ]
     else:
         hdr = [f"step={step}"]
@@ -577,6 +603,9 @@ def main():
     by_step, header_lines = parse_log_by_step(args.log_path)
     print(f"[sidepanel] parsed {len(by_step)} step buckets, "
           f"{len(header_lines)} header lines")
+    global _C3_LABEL
+    _C3_LABEL = _detect_solver_label(args.log_path)
+    print(f"[sidepanel] solver label for mode=c3: {_C3_LABEL}")
     gauges_by_step = parse_gauges(args.log_path)
     print(f"[sidepanel] parsed gauges for {len(gauges_by_step)} steps")
 
