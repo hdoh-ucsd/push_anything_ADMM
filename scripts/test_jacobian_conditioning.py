@@ -14,7 +14,7 @@ import numpy as np
 import yaml
 import pydrake.all as ad
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q, EE_BODY_NAME
+from sim.env_builder import build_environment, EE_BODY_NAME
 
 
 # Configurations from results/jacond_nowrap_s0.log

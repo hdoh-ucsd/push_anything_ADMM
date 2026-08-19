@@ -192,7 +192,6 @@ def _build_pipeline(task_cfg):
     # by replacing the wrapper bound method with a version that calls
     # our dump after the original. Replace _orig_compute_control by
     # binding through MethodType so `self` resolution is correct.
-    import types
     def _every_step_compute_control(self, current_q, current_v, plant_ctx, target_xy):
         # Pre-step state — must inspect after the wrapper has done its
         # work to get the actual k_star and results. Use a closure

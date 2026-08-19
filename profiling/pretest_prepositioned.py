@@ -667,7 +667,7 @@ def pretest_8(task_cfg: dict, n_calls: int = 100, seed: int | None = None) -> di
       (RNG seeded to a constant, num_additional == 0, etc.) — the
       problem is elsewhere.
     """
-    from control.sampling_c3.params import SamplingParams, SamplingStrategy
+    from control.sampling_c3.params import SamplingParams
     from control.sampling_c3.sampling import generate_samples
 
     sp = SamplingParams()    # defaults; matches what main.py uses unless

@@ -18,7 +18,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -157,7 +157,6 @@ _SAMPLE_PALETTE = [
 
 def _project_world_to_pixel(xyz):
     """Return (u, v, in_frame) for a world-frame xyz sample."""
-    import numpy as _np
     sx, sy, sz = float(xyz[0]), float(xyz[1]), float(xyz[2])
     dz = _CAM_XYZ[2] - sz
     if dz <= 1e-4:
