@@ -98,12 +98,18 @@ def _tag_color(tag: str) -> Tuple[int, int, int]:
 
 
 def _line_family(line: str) -> str:
-    tag = _tag_of(line) or ""
-    if tag in _TAG_COLORS:
-        return "hi"
+    # Sticky prefixes FIRST: most sticky tags ([ACHIEVED-FIXED-GOAL],
+    # [TASK], [CONSENSUS*], ...) also have colors, and the old
+    # colors-first order classified them "hi" — a family the frame loop
+    # only routes to the rolling window for [STEP]/[GS]/[C3+] lines, so
+    # every milestone was silently dropped and the sticky section only
+    # ever showed colorless boot lines.
     for sticky in _STICKY_TAGS:
         if line.startswith(sticky):
             return "sticky"
+    tag = _tag_of(line) or ""
+    if tag in _TAG_COLORS:
+        return "hi"
     if tag in _ROLLING_TAGS:
         return "rolling"
     return "skip"
@@ -198,11 +204,21 @@ def compose_frame(
     draw.line((panel_x0, y, W_out - 12, y), fill=(60, 60, 60), width=1)
     y += pad
 
-    # Sticky milestone lines
+    # Sticky milestone lines. Cap the display: with the sticky-vs-hi
+    # classification fixed, [CONSENSUS] setup blocks alone can run to ~18
+    # lines and starve the rolling window. Milestones accumulate in fire
+    # order, so keeping the LAST N keeps late events (ACHIEVED-FIXED-GOAL)
+    # visible; an overflow note stands in for the elided early boot lines.
+    _STICKY_SHOWN = 12
     draw.text((panel_x0, y), "── milestones (sticky) ──", font=font_tiny,
               fill=(150, 150, 150))
     y += line_h
-    y = _draw_lines(draw, panel_x0, y, sticky_lines, font_tiny,
+    shown_sticky = sticky_lines
+    if len(sticky_lines) > _STICKY_SHOWN:
+        n_hidden = len(sticky_lines) - (_STICKY_SHOWN - 1)
+        shown_sticky = ([f"(… +{n_hidden} earlier)"]
+                        + sticky_lines[-(_STICKY_SHOWN - 1):])
+    y = _draw_lines(draw, panel_x0, y, shown_sticky, font_tiny,
                     panel_max_chars, line_h)
     y += pad
 
