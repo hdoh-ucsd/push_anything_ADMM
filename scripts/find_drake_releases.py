@@ -12,8 +12,8 @@ For each Drake-release event, decompose K->K+1:
   - mode, override, planner λ_n
 """
 from __future__ import annotations
-import argparse, re, sys, pathlib
-from collections import Counter, defaultdict
+import argparse, re, pathlib
+from collections import Counter
 from dataclasses import dataclass
 
 GC_RE = re.compile(
