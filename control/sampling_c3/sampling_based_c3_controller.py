@@ -2606,19 +2606,14 @@ class SamplingC3Controller:
                       f"← Total reach error to box face")
                 print(f"  φ (Drake signed distance)      = {1000*_phi:7.2f} mm")
                 print(f"  φ < 20 mm threshold?           = {_admits}")
-                # [IK-SOLVE] / [BODY-VS-CONTACT] — H1/H2/H3/H4 disambiguation.
-                _qk=getattr(self.tracker,"last_q_knots",None); _ek=getattr(self.tracker,"last_ee_knots",None)
-                _ft=getattr(self.tracker,"last_feasible",None); _pt=getattr(self.tracker,"_prev_target_pos",None)
-                if _qk is not None and _ek is not None and _pt is not None:
-                    _ee_q=_ek[:,0]; _qa=_qk[:,0]
-                    _stat="success" if (_ft and _ft[0]) else "failed"
-                    print(f"[IK-SOLVE] step={self._step}")
-                    print(f"  IK target body name:    {self.ee_frame.body().name()}")
-                    print(f"  IK target position:     [{_pt[0]:+.4f}, {_pt[1]:+.4f}, {_pt[2]:+.4f}]")
-                    print(f"  IK solver status:       {_stat}")
-                    print(f"  Solved q*:              {np.round(_qa,4).tolist()}")
-                    print(f"  Cartesian position of target body at q*: [{_ee_q[0]:+.4f}, {_ee_q[1]:+.4f}, {_ee_q[2]:+.4f}]")
-                    print(f"  ||target_body_position - p_target||: {1000*float(np.linalg.norm(_ee_q-_pt)):7.2f} mm")
+                # [BODY-VS-CONTACT] — H1/H2/H3/H4 disambiguation.
+                #
+                # The [IK-SOLVE] block that stood here was unreachable: its
+                # guard required self.tracker.last_q_knots / .last_ee_knots,
+                # which only reposition_ik's RepositionIKTracker ever set.
+                # With that tracker deleted, self.tracker is always a
+                # PiecewiseLinearTracker (which defines neither), so both
+                # getattrs returned None and the body never ran.
                 _pairs_local = locals().get("_pairs", None)
                 if _pairs_local:
                     _s=_pairs_local[0]; _ee_ids_l=self.base_mpc.formulator._ee_geom_ids
@@ -3144,11 +3139,12 @@ class SamplingC3Controller:
                 self._last_held_existed = (_held_idx is not None)
                 self._last_held_cost_logged = _held_cost
 
-                self.tracker._diag_step = self._step  # [IK-CONVERGE] plumb
                 # Contact-admit guard (Stage 2 of 2026-06-01 contact-duration fix):
-                # signal the IK tracker that LCS has admitted an EE-BOX pair
-                # so it can suspend its Phase 1 lift while contact is forming.
-                # Debouncing happens inside the tracker (ADMIT_LATCH_TICKS).
+                # signal the tracker that LCS has admitted an EE-BOX pair so it
+                # can suspend its Phase 1 lift while contact is forming.
+                # (The `self.tracker._diag_step = ...` plumb that stood here fed
+                # an [IK-CONVERGE] emitter that no longer exists — it wrote an
+                # attribute PiecewiseLinearTracker never reads.)
                 _ee_box_pairs = getattr(self.base_mpc.formulator,
                                         "_last_ee_box_contacts", [])
                 _admit_active = bool(_ee_box_pairs)
@@ -3165,49 +3161,26 @@ class SamplingC3Controller:
                     dt_osc=self._dt_osc,
                     admit_active=_admit_active,
                 ))
-                # Diagnostic: emit one-line [ADMIT-GUARD] per step the latch
-                # is decrementing or active so post-fix logs can verify SC1
-                # (target_z holds) and SC6 (no chatter at boundary).
+                # Diagnostic: emit one-line [ADMIT-GUARD] per step so post-fix
+                # logs can verify SC1 (target_z holds) and SC6 (no chatter at
+                # the boundary). ee_z comes from free_diag (the tracker
+                # already computed FK).
+                #
+                # The former latch=/gate_cap= fields and the [ALT-GATE] /
+                # [TGT-CHANGE] lines were dropped with the reposition_ik
+                # tracker: every one of them read an IK-tracker-only attribute
+                # (_admit_latch, ADMIT_LATCH_TICKS, _last_cap_z_safe,
+                # _target_stable_ticks, TARGET_STABLE_TICKS,
+                # _target_changed_this_tick) that PiecewiseLinearTracker — now
+                # the only tracker — does not define, so each getattr fell to
+                # its default and the lines reported constants (latch=0/0,
+                # gate_cap=0, allow_descent=1) regardless of what the arm did.
                 if self.log_diag:
-                    # Q2c (2026-06-04): extended with ee_z + gate_cap so the
-                    # parser at scripts/parse_admit_guard_gate.py can verify
-                    # SC-collision-gone (pass-through at high ee_z) and the
-                    # gate's per-tick decision history. ee_z comes from
-                    # free_diag (the tracker already computed FK).
                     _ee_z_log = float(free_diag.get("ee_now", [0.0, 0.0, 0.0])[2])
-                    _latch = int(getattr(self.tracker, "_admit_latch", 0))
-                    _latch_ticks = int(getattr(self.tracker,
-                                               "ADMIT_LATCH_TICKS", 0))
                     print(f"[ADMIT-GUARD] step={self._step} "
                           f"admit_active={int(_admit_active)} "
-                          f"latch={_latch}/{_latch_ticks} "
-                          f"ee_z={_ee_z_log:.3f} "
-                          f"gate_cap={int(getattr(self.tracker, '_last_cap_z_safe', False))}",
+                          f"ee_z={_ee_z_log:.3f}",
                           flush=True)
-                    # Stage 1 (2026-06-01 wrong-face race-fix): emit the
-                    # descent-gate state and a one-shot [TGT-CHANGE] event
-                    # when p_target jumped > TARGET_STABLE_TOL this tick.
-                    # The change-interval distribution disambiguates Stage-1
-                    # deadlock cause (real oscillation vs mistuned constant).
-                    _stable_ticks = int(getattr(self.tracker,
-                                                "_target_stable_ticks", 0))
-                    _stable_req = int(getattr(self.tracker,
-                                              "TARGET_STABLE_TICKS", 0))
-                    _allow_desc = int(_stable_ticks >= _stable_req
-                                      if _stable_req > 0 else 1)
-                    print(f"[ALT-GATE] step={self._step} "
-                          f"target_stable={_stable_ticks}/{_stable_req} "
-                          f"allow_descent={_allow_desc}",
-                          flush=True)
-                    if bool(getattr(self.tracker,
-                                    "_target_changed_this_tick", False)):
-                        _intervals = getattr(self.tracker,
-                                             "_target_change_intervals", [])
-                        _last_int = (_intervals[-1] if _intervals else -1)
-                        print(f"[TGT-CHANGE] step={self._step} "
-                              f"interval_ticks={_last_int} "
-                              f"n_changes={len(_intervals)}",
-                              flush=True)
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(
