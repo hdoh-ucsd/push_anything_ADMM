@@ -894,6 +894,12 @@ class SamplingC3Params:
     # cost_type=5 (kSimImpedanceObjectCostOnly). Disabled by default →
     # keeps Stage-1 behavior (planner's own x_seq + object-only Q).
     use_cost_lcs_ranking: bool = False
+    # Reference progress_params `cost_type` (C3CostComputationType) — which
+    # weights score the ranking rollout. 5 = kSimImpedanceObjectCostOnly
+    # (push_t/anything/H reference value, historical port behaviour);
+    # 3 = kSimImpedance, FULL Q/R on the simulated trajectory (jacktoy pose
+    # regime, jacktoy/parameters/progress_params_c3plus.yaml:18).
+    cost_type: int = 5
     # Reference anything-N1 sampling_c3plus_options.yaml (2026-08-11 L3):
     #   Kp_for_ee_pd_rollout: [100, 100, 50]   (z gain halved)
     #   Kd_for_ee_pd_rollout: [0.5, 0.5, 0.5]
@@ -1311,6 +1317,7 @@ class SamplingC3Params:
             resolve_contacts_to_for_cost = raw.get(
                 "resolve_contacts_to_for_cost", None),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
+            cost_type                = int(raw.get("cost_type", 5)),
             Kp_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kp_for_ee_pd_rollout", 100.0)),
             Kd_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kd_for_ee_pd_rollout", 0.5)),
             lcs_dt_resolution        = int(raw.get("lcs_dt_resolution", 4)),
