@@ -860,9 +860,11 @@ class SamplingC3Params:
     # march + per-knot IK + joint-PD path (RepositionIKTracker /
     # PiecewiseLinearTracker) and instead builds a full N-knot Cartesian
     # PWL trajectory (RepositionTrajectory) at planner cadence, feeding
-    # (p_des, v_des) to the OSC at each control tick. Default False →
-    # legacy path. Read from env var REFCONF_REPOSITION_PWL=1 in main.py
-    # at controller construction. See alignment plan §3 Stage A.
+    # (p_des, v_des) to the OSC at each control tick. See alignment plan §3
+    # Stage A. (This used to read "Default False → legacy path. Read from env
+    # var REFCONF_REPOSITION_PWL=1 in main.py at controller construction" —
+    # both halves are stale: the default is True, four lines down, and no
+    # REFCONF_REPOSITION_PWL is read anywhere.)
     # Reference uses derivative-carrying PWL trajectory (LcmTrajectoryReceiver
     # → FirstOrderHold PP) so OSC gets (p_des, v_des). Default ON.
     use_reposition_pwl_trajectory: bool = True

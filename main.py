@@ -257,12 +257,14 @@ def main():
     # override levers), --pitch-probe (pre-DIAG_* diagnostic),
     # --extra-log-path (superseded by scripts/sync_results_to_d.sh),
     # --ee-space (no-op; the ee_space ATTRIBUTE is still derived from
-    # --r7 below). Dead task choices (hard_pushing/shepherding/
-    # cube_turning) pruned; their tasks.yaml entries remain as inert data.
+    # --r7 below).
     # Task choices come from config/tasks.yaml so imported anything objects
     # (Fig 8 campaign 2026-08-15) are runnable without touching argparse.
-    # Dead tasks (hard_pushing/...) remain excluded via the legacy allowlist
-    # union.
+    # NOTE: that means ALL tasks.yaml keys are selectable — including the
+    # stale hard_pushing / shepherding / cube_turning entries. The comment
+    # here used to claim they "remain excluded via the legacy allowlist
+    # union"; no such union exists. The hardcoded list below is only the
+    # fallback for when tasks.yaml cannot be read.
     try:
         import yaml as _yaml_choices
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),

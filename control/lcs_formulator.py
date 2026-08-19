@@ -1551,7 +1551,7 @@ class LCSFormulator:
             # gradient of phi wrt q). Port R^7 previously had only `dt·(J_n@J_q)`
             # — missing the pure phi(q_{k+1}) gradient. Same bug that was
             # fixed for EE-space at A2 (commit 5e5ec10). Env-gated
-            # REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+            # (was env-gate REFCONF_E_BLOCK_SPLIT=1; retired and unread).
             _use_e_block_split_r7 = True   # 2026-07-28 defaults flip
             vNqdot_full = None
             if _use_e_block_split_r7:
@@ -2016,7 +2016,7 @@ class LCSFormulator:
         # via `plant_.MakeQDotToVelocityMap()`. Used below to add the missing
         # position-forcing gradient `E_tᵀ·Jn·vNqdot/dt` to E's q-column
         # (`lcs_factory.cc:533` in Anitescu, `:465` in Stewart-Trinkle).
-        # Env-gate REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+        # (was env-gate REFCONF_E_BLOCK_SPLIT=1; retired and unread).
         # G-off calibration was previously validated without this gradient,
         # so the OFF path preserves p73 arc-1 baseline byte-identical.
         self._use_e_block_split = True   # 2026-07-28 defaults flip
