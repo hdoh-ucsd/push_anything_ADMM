@@ -180,6 +180,12 @@ def main():
                     help="Optional floor on the first rendered step "
                          "(with --max-step: render a window, e.g. a "
                          "highlight clip of one episode)")
+    ap.add_argument("--goal-xy", default=None, metavar="X,Y",
+                    help="Override the goal position the ghost is drawn at "
+                         "(kRandom multi-goal logs: render each goal segment "
+                         "with its own ghost via --min/--max-step windows)")
+    ap.add_argument("--goal-yaw", type=float, default=None,
+                    help="Override the goal yaw for the ghost (radians)")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -196,6 +202,16 @@ def main():
 
     print("[render-log-drake] loading task config", flush=True)
     task_cfg = load_task_cfg(args.task, args.task_id, parse_log_goal(args.log))
+    # Per-segment goal override (kRandom multi-goal renders): the ghost is
+    # anchored geometry, so a multi-goal log is rendered segment-by-segment,
+    # each with its goal injected here.
+    if args.goal_xy is not None:
+        task_cfg["goal_xy"] = [float(v) for v in args.goal_xy.split(",")]
+        print(f"[render-log-drake] goal override: xy={task_cfg['goal_xy']}")
+    if args.goal_yaw is not None:
+        task_cfg["goal_yaw"] = float(args.goal_yaw)
+        task_cfg.pop("goal_quat", None)
+        print(f"[render-log-drake] goal override: yaw={args.goal_yaw}")
 
     print("[render-log-drake] building Drake env (add_camera=True, "
           f"PORT_CAMERA_PERSPECTIVE={os.environ.get('PORT_CAMERA_PERSPECTIVE')})",
