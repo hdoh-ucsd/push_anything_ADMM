@@ -614,146 +614,45 @@ class RepositionParams:
 
 
 # ---------------------------------------------------------------------------
-# RepositionIKParams — DEAD CODE, kept only so any external caller loading
-# an old yaml with `repos_ik_params:` doesn't crash. The kIK reposition
-# tracker (control/sampling_c3/reposition_ik.py) was removed as part of
-# the reference-only cleanup — the reference dairlib
-# push_anything_dev@257e3ed only ships PiecewiseLinearTracker.
+# RepositionIKParams — vestigial. The kIK reposition tracker
+# (control/sampling_c3/reposition_ik.py) was deleted in the reference-only
+# cleanup: reference dairlib push_anything_dev@257e3ed ships only
+# PiecewiseLinearTracker. The class survives for two reasons:
+#
+#   1. `q_nominal` is still read — sampling_based_c3_controller.py:227 feeds
+#      it to the OSC as the nominal arm posture. That is the ONLY field any
+#      code reads (verified: it is the sole `repos_ik_params.<field>` access
+#      in the repo).
+#   2. An old yaml carrying a `repos_ik_params:` block must not crash.
+#      `_filter_kwargs` warns on and drops unknown keys, so that holds no
+#      matter which fields exist here.
+#
+# The other 17 fields (IK tolerances, min-distance bounds, Ipopt limits,
+# warm-up and infeasibility knobs, frame names) were removed: they
+# configured the deleted solver and nothing read them.
 # ---------------------------------------------------------------------------
 
 @dataclass
 class RepositionIKParams:
-    """Parameters for ``RepositionIKTracker`` (sibling planner — selected by
-    ``RepositionParams.traj_type == kIK``).
+    """Carrier for the nominal arm posture consumed by the OSC.
 
-    Orientation cone (orientation_cone_deg)
-    --------------------------------------
-    Defaults to 0.0 (disabled). With only the 3-DoF position constraint
-    active, IK has 7 DoFs to fit a 3D target — leaving 4 DoFs of redundancy
-    that the centering + smoothness costs use to keep warm-started solutions
-    on a single IK branch (no q-jumps between adjacent knots). Enabling the
-    cone consumes 1-2 redundant DoFs and increases solver-failure rate near
-    workspace edges. Don't enable unless the downstream task actually
-    requires a constrained EE orientation.
-
-    Min-distance bounds (ik_min_distance_lower_bound + fk_min_distance)
-    -------------------------------------------------------------------
-    Two distinct knobs, intentionally split (5f V-7, 2026-05-08):
-
-    * ``ik_min_distance_lower_bound`` (default 0.0): lower bound enforced
-      INSIDE the per-knot IK solve via Drake's
-      ``AddMinimumDistanceLowerBoundConstraint``. Default disables the
-      constraint entirely. For typical pushing/manipulation tasks where
-      the pusher must contact objects, keep this at 0.0 — every value
-      > 0.0 causes the IK to reject any warm-start whose pusher is
-      already at table contact, which is the common case at the start
-      of a free-mode entry. Set positive only if the task does NOT
-      require approach-to-contact.
-    * ``fk_min_distance`` (default 0.0): min-distance threshold for the
-      FK sweep on knots K..N-1. Default 0.0 disables FK-side clearance
-      enforcement entirely; this matches the dairlib upstream precedent
-      where reposition IK does not enforce per-knot collision avoidance
-      and instead relies on the trajectory's geometric design (lift-
-      traverse-descend with safe-height clearance) for safety. Set to a
-      positive value only if your trajectory shape genuinely needs
-      per-knot signed-distance verification — and budget for the ~19
-      ``ComputeSignedDistancePairwiseClosestPoints`` calls per free-mode
-      loop that the sweep performs (5f V-8 measurement: borderline
-      overshoots of the 8 ms IK cap on a non-trivial fraction of loops).
-
-    Old single ``min_distance_lower_bound`` field has been removed;
-    YAMLs containing it raise a clear migration error in ``from_dict``.
-
-    Knot horizon (num_full_ik_knots, "K")
-    -------------------------------------
-    K = 1 (default) means one full IK solve per control loop and N-1 knots
-    filled by joint-space hold + FK signed-distance check. Diagnostic
-    only — wrapper consumes only ``q_knots[:, 0]``. Raise K only after
-    timing benchmarks show the per-knot budget is met.
+    Formerly the full parameter set for ``RepositionIKTracker``. See the
+    banner above for what was removed and why.
     """
-    # Constraints
-    position_tolerance:                         float = 1e-3
-    orientation_cone_deg:                       float = 0.0
-    R_des_world_to_ee:                          list  = field(default_factory=list)  # 3x3 row-major; unused if cone == 0
-    # Min-distance: split between IK-side and FK-sweep-side, both
-    # default 0.0 (disabled) — matches dairlib upstream which relies
-    # on lift-traverse-descend trajectory shape for safety. See class
-    # docstring for why and when to opt in.
-    ik_min_distance_lower_bound:                float = 0.0
-    fk_min_distance:                            float = 0.0
-    influence_distance_offset:                  float = 0.01
-
-    # Costs
-    joint_centering_weight:                     float = 1e-2
-    joint_movement_weight:                      float = 1e-1
     q_nominal:                                  list  = field(
         default_factory=lambda: [+0.552150, +0.325037, +0.976275,
                                   -2.246164, -0.188979, +3.044706, +0.785000]
-    )  # J2 reduced 0.35 rad from INITIAL_ARM_Q[1]=0.675 to 0.325 (≈19°).
-       # Lowers IK's nominal shoulder posture so gravity load on J2 at q*
-       # doesn't saturate the 30 N·m budget. Prior nominal (=INITIAL_ARM_Q)
-       # produced q*[1]≈0.90 rad, where the gravity-comp term consumed ~28
-       # of 30 N·m, leaving the PD only ~2 N·m of proportional headroom and
-       # ~2.3° of unresolvable residual on J2 — see
-       # results/tracker_bias_north.log. Other 6 joints unchanged.
-
-    # Solver / timing
-    per_knot_solve_timeout_s:                   float = 8e-3
-    max_ipopt_iter:                             int   = 30  # structural cap — IPOPT max_iter; complements the wall-clock cap
-    max_consecutive_failures_before_abort:      int   = 2   # only active when num_full_ik_knots >= 2
-    num_full_ik_knots:                          int   = 1
-
-    # IPOPT first-call cold-start can take ~15-25 ms (vs ~6 ms warm), so
-    # the very first compute_torque() at t=0 would otherwise overshoot
-    # the production wall-clock cap. RepositionIKTracker.__init__ runs a
-    # one-shot warm-up Solve() at the end of construction (with a
-    # trivially-feasible target = FK of the current arm pose) so the
-    # in-loop solves all hit the warm path. Disable for tight test loops
-    # where the cumulative warm-up cost across many tracker constructions
-    # adds up.
-    warm_up_on_construction:                    bool  = True
-
-    # Infeasibility-poison interface to wrapper.py
-    infeasibility_match_radius_m:               float = 0.01
-
-    # Option A noise-floor reducer (default OFF — identity behavior):
-    # on knot[0] IK failure, q_arm_sol == q_warm, so the default
-    # p_des == FK(q_warm) ≈ ee_now commands the executor to stay put,
-    # cascading a missed-motion tick into a 25-35cm trajectory bifurcation
-    # (verified at step 103 of nondet_seed0_serial_16s_pair). Enabling this
-    # flag substitutes p_des := self._last_good_p_des (cached previous
-    # successful target) when knot[0] fails — keeps the executor on the
-    # last-known reachable target rather than stalling. Does NOT confer
-    # bit-determinism (Ipopt FP-noise is sub-ULP per call, not confined to
-    # failures — see project_b3b_refuted_paired_bit_identical.md), but
-    # removes the catastrophic 35cm failure-cascades, leaving only the
-    # silent FP-drift floor. Use as a noise-floor reducer for ablation
-    # studies / video runs.
-    hold_last_good_p_des_on_failure:            bool  = False
-
-    # Frames (informational; tracker resolves via the obj_body / ee_frame
-    # objects passed at construction — these names are kept for parity with
-    # upstream YAMLs and for potential debugging output)
-    ee_frame_name:                              str = "pusher"
-    object_body_name:                           str = ""
+    )  # J2 reduced 0.35 rad from the old INITIAL_ARM_Q[1]=0.675 to 0.325
+       # (~19 deg). Lowers the nominal shoulder posture so gravity load on J2
+       # at q* doesn't saturate the 30 N.m budget. The prior nominal produced
+       # q*[1] ~ 0.90 rad, where gravity-comp consumed ~28 of 30 N.m, leaving
+       # the PD only ~2 N.m of proportional headroom and ~2.3 deg of
+       # unresolvable residual on J2 (results/tracker_bias_north.log).
+       # Other 6 joints unchanged.
 
     @classmethod
     def from_dict(cls, raw: dict) -> "RepositionIKParams":
-        # 5f V-7 migration: the old single field is split into two with
-        # different defaults. Fail loudly so YAMLs that still set the
-        # old name don't silently get the new (much looser) IK default.
-        if "min_distance_lower_bound" in raw:
-            raise ValueError(
-                "RepositionIKParams.min_distance_lower_bound has been "
-                "split into ik_min_distance_lower_bound (default 0.0, "
-                "disables IK-side enforcement) and fk_min_distance "
-                "(default 0.0, disables FK-sweep enforcement — matches "
-                "dairlib upstream). Update your YAML to declare which "
-                "one(s) you want. See the class docstring for the "
-                "rationale."
-            )
-        kw = _filter_kwargs(cls, raw)
-        return cls(**kw)
+        return cls(**_filter_kwargs(cls, raw))
 
 
 # ---------------------------------------------------------------------------
