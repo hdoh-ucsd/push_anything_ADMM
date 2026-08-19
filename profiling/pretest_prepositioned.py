@@ -99,12 +99,17 @@ ad.MeshcatVisualizer.AddToBuilder = staticmethod(_patched_add_to_builder)
 # Now safe to import repo modules
 from sim.env_builder import (                                          # noqa: E402
     build_environment,
-    INITIAL_ARM_Q,
     EE_BODY_NAME,
     PUSHER_RADIUS,
     ROBOT_BASE_XYZ,
-    compute_prepositioned_arm_q,
 )
+# INITIAL_ARM_Q was replaced by safe-offset IK init (7ff5a21). The seed is
+# the IK warm-start, NOT the production start pose — pretests 1/2 below
+# characterise a fixed pose, which the seed still serves.
+# `compute_prepositioned_arm_q` was imported here but never called; its
+# successor `compute_safe_init_arm_q` takes a different argument list and
+# different semantics, so there is nothing to re-point it at.
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q       # noqa: E402
 from control.sampling_c3.ik import solve_ik_to_ee_pos                  # noqa: E402
 
 
