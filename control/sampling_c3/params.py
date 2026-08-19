@@ -1016,50 +1016,11 @@ class SamplingC3Params:
     # analog (reference has no contact-loss disengage counter). Port-only
     # candidate band-aid; alignment-status-OPEN.
     contact_loss_threshold_default_s: float = 0.05
-    contact_loss_threshold_with_override_s: float = 0.12
-    # LTD PHASE A traverse needs ~80-110 ticks at realized lateral rate
-    # (~0.8 mm/tick observed) to cover the box_half + clearance ~ 75 mm
-    # to W_side. With the `_with_override` value of 12 ticks, the gate
-    # killed PHASE A 9× too early during LTD smoke tests. PHASE A holds
-    # EE.z at z_safe (above box top) under active z-Kp tracking, so the
-    # earlier objection to a longer timer ("EE has more time to fall
-    # onto the top") does not apply in PHASE A specifically. The threshold
-    # also acts as a stuck-watchdog: if PHASE A can't form contact by
-    # this many ticks, the system gives up and the dispatcher routes to
-    # free mode. 120 ≈ 1.5× the expected 80 ticks.
-    contact_loss_threshold_phaseA_ltd_s: float = 1.20   # was 120 ticks @ 100 Hz
-    # PHASE B (descend beside the face from z_safe down to face-centroid z)
-    # needs ~215 ticks at the realized ~0.84 mm/tick rate to cover
-    # ~150 mm of vertical travel. Per the PHASE-B lateral-clearance probe
-    # (ee.x stays 4–16 mm east of the face plane through the entire
-    # descent, monotonically drifting outward toward W_side), the
-    # fall-onto-top objection that motivated the strict default does not
-    # apply: EE is laterally outside the box footprint, so a free-mode
-    # interlude would fall east of the box, not onto its top. Extend the
-    # threshold with the same 1.5× watchdog margin as PHASE A.
-    contact_loss_threshold_phaseB_ltd_s: float = 3.00   # was 300 ticks @ 100 Hz
-
-    # ------------ PHASE C progress-gated exit (Layer 2.5/2.6) -------------
-    # Once the EE is in PHASE C (pushing into the face), the contact-loss
-    # tick-count gate is the wrong productivity metric: the EE may sit
-    # one tick from LCS admission and need only a few more ticks of
-    # convergence. The C gate keys on surf_dist progress instead.
-    #   * phaseC_stall_threshold — consecutive C ticks without
-    #     surf_dist improving by ≥ phaseC_progress_eps. Fires even
-    #     when the absolute time budget is small.
-    #   * phaseC_hard_cap — absolute max active C ticks. Bounds the
-    #     worst case even when surf_dist creeps in but never closes.
-    #     Also used as the contact-loss tick-count budget during C
-    #     (the elif _approach_override_phase=='C_approach' branch in
-    #     wrapper.py) so the existing tick-count gate doesn't
-    #     pre-empt the progress gate.
-    #   * phaseC_progress_eps — minimum surf_dist improvement (m) to
-    #     count as progress. Default 0.0002 m = 0.2 mm ≈ 0.1 × LCS
-    #     admission threshold (2 mm), so noise-level oscillation
-    #     does not register as progress.
-    phaseC_stall_threshold_s: float = 0.30   # was 30 ticks @ 100 Hz
-    phaseC_hard_cap_s: float = 1.00          # was 100 ticks @ 100 Hz
-    phaseC_progress_eps: float = 0.0002
+    # (contact_loss_threshold_with_override_s, _phaseA_ltd_s, _phaseB_ltd_s
+    # and the PHASE C trio phaseC_stall_threshold_s / phaseC_hard_cap_s /
+    # phaseC_progress_eps were removed on 2026-08-19 with the LTD
+    # approach-override they configured. Only contact_loss_threshold_default_s
+    # above is still read — it is the sole disengage threshold now.)
 
     # ------------ Velocity feedforward to OSC (bounded re-enable) ---------
     # `v_ee_desired` was set to None at commit 02c48e9 (2026-05-20). Reason
@@ -1118,42 +1079,12 @@ class SamplingC3Params:
     dt_mpc: float = 0.01   # CI-MPC re-solve period (sec); defaults to dt_ctrl
 
     # ------------ Lift-Traverse-Descend (LTD) override geometry -----------
-    # The contact-free override (wrapper.py face-picker block) used to aim
-    # a direct line at the face centroid. From above-box starts that line
-    # was 67° below horizontal → EE descended onto the box top before
-    # reaching the side face. Stage-3 sweep with the directional picker
-    # but legacy direct-line target: 30/30 EE-BOX events landed on TOP
-    # face (nhat≈[0,0,+1]), 3.82 mm box motion across the one seed of 20
-    # that completed.
-    #
-    # LTD routes the override's approach through a beside-box waypoint at
-    # face mid-height, with a lift-above-box-top traverse phase if needed.
-    # Three phases (stateless, decided per-tick from EE geometry):
-    #   A: lift-and-traverse — aim above-and-beside box at face-x/y
-    #   B: descend           — aim at W_side (beside box, face mid-height)
-    #   C: approach          — aim at face centroid (z rigidly clamped)
-    # Port-only lift-traverse-descend override for approach path. Reference
-    # relies on the PWL reposition trajectory (which itself does lift/traverse/
-    # descend via z_safe). Disabling to remove the redundant approach shaper.
-    use_lift_traverse_descend_override: bool = False
-    # PHASE B descent puts the sphere SURFACE at (clearance - PUSHER_RADIUS)
-    # from the face plane. Floor is PUSHER_RADIUS + LCS_THRESHOLD + 5 mm
-    # safety = 32 mm: smaller would admit contact mid-descent and re-
-    # introduce the very bypass that motivated LTD. Asserted at every
-    # override entry; never sweep below the floor.
-    ltd_clearance: float = 0.050
-    # PHASE A safe-traverse height above box top:
-    #   z_safe = box.z + box_half + PUSHER_RADIUS + ltd_z_margin
-    # Margin > LCS_THRESHOLD (2 mm) so accidental grazing doesn't admit.
-    ltd_z_margin: float = 0.010
-    # PHASE A → B transition: lateral distance to W_side below which the
-    # override switches from lift-and-traverse to descend. Sized above
-    # typical OSC steady-state xy error to prevent boundary ping-pong.
-    ltd_xy_tol: float = 0.020
-    # PHASE B → C transition: z above W_side at which the override
-    # switches from descend to approach. Orthogonal to ltd_xy_tol so the
-    # two boundaries cannot couple into a single oscillating state.
-    ltd_z_band: float = 0.005
+    # (The lift-traverse-descend override knobs — use_lift_traverse_descend_override,
+    # ltd_clearance, ltd_z_margin, ltd_xy_tol, ltd_z_band — were removed on
+    # 2026-08-19 together with the approach-override block they configured.
+    # That block had been unreachable since the 2026-07-28 defaults flip, and
+    # the reference has no counterpart: the PWL reposition trajectory owns the
+    # approach path.)
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
@@ -1256,23 +1187,19 @@ class SamplingC3Params:
             **{f"{new}_s": _resolve_legacy_int_to_seconds(raw, old, new, default_ticks)
                for old, new, default_ticks in (
                    ("contact_loss_threshold_default",       "contact_loss_threshold_default",       5),
-                   ("contact_loss_threshold_with_override", "contact_loss_threshold_with_override", 12),
-                   ("contact_loss_threshold_phaseA_ltd",    "contact_loss_threshold_phaseA_ltd",    120),
-                   ("contact_loss_threshold_phaseB_ltd",    "contact_loss_threshold_phaseB_ltd",    300),
-                   ("phaseC_stall_threshold",               "phaseC_stall_threshold",               30),
-                   ("phaseC_hard_cap",                      "phaseC_hard_cap",                      100),
+                   # The five LTD/PHASE-C entries that used to follow
+                   # (_with_override, _phaseA_ltd, _phaseB_ltd,
+                   # phaseC_stall_threshold, phaseC_hard_cap) went with the
+                   # approach-override removal on 2026-08-19. An old yaml
+                   # still carrying them now warns as an unknown key and is
+                   # ignored, rather than converting into a field that no
+                   # longer exists.
                )},
-            phaseC_progress_eps    = float(raw.get("phaseC_progress_eps", 0.0002)),
             use_velocity_feedforward    = bool(raw.get("use_velocity_feedforward", False)),
             velocity_feedforward_alpha  = float(raw.get("velocity_feedforward_alpha", 0.5)),
             velocity_feedforward_v_max  = float(raw.get("velocity_feedforward_v_max", 1.5)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
-            use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", False)),
-            ltd_clearance = float(raw.get("ltd_clearance", 0.050)),
-            ltd_z_margin  = float(raw.get("ltd_z_margin",  0.010)),
-            ltd_xy_tol    = float(raw.get("ltd_xy_tol",    0.020)),
-            ltd_z_band    = float(raw.get("ltd_z_band",    0.005)),
         )
 
     @classmethod
