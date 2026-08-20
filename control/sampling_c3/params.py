@@ -822,6 +822,13 @@ class SamplingC3Params:
     # PORT_U_LAMBDA / PORT_W_G env hooks keep highest precedence.
     u_lambda: Optional[float] = None
     w_G:      Optional[float] = None
+    # Paper-era plain-C3 G structure (user-directed experiment 2026-08-17):
+    # per-slot x binding + lambda/u/eta scalar overrides. None = C3+
+    # class defaults (g_x 0, g_lambda 2, g_u 0, g_eta 1).
+    g_x_vector: Optional[list] = None
+    g_lambda: Optional[float] = None
+    g_u:      Optional[float] = None
+    g_eta:    Optional[float] = None
 
     # ---- Parallel sample evaluation (port-todo #1) -----------------------
     # Port of reference `num_outer_threads`
@@ -895,6 +902,12 @@ class SamplingC3Params:
     # cost_type=5 (kSimImpedanceObjectCostOnly). Disabled by default →
     # keeps Stage-1 behavior (planner's own x_seq + object-only Q).
     use_cost_lcs_ranking: bool = False
+    # Reference progress_params `cost_type` (C3CostComputationType) — which
+    # weights score the ranking rollout. 5 = kSimImpedanceObjectCostOnly
+    # (push_t/anything/H reference value, historical port behaviour);
+    # 3 = kSimImpedance, FULL Q/R on the simulated trajectory (jacktoy pose
+    # regime, jacktoy/parameters/progress_params_c3plus.yaml:18).
+    cost_type: int = 5
     # Reference anything-N1 sampling_c3plus_options.yaml (2026-08-11 L3):
     #   Kp_for_ee_pd_rollout: [100, 100, 50]   (z gain halved)
     #   Kd_for_ee_pd_rollout: [0.5, 0.5, 0.5]
@@ -1098,6 +1111,11 @@ class SamplingC3Params:
     # Defaults match reference: ee_z_close=True, c3_min_clearance=0.01 m.
     ee_z_close: bool = True
     c3_min_clearance: float = 0.01
+    # Paper-era jacktoy opt-out (see ee_z_close note): when False, c3
+    # execution keeps the planner's raw EE z instead of freezing every
+    # knot to z_height (reference z-freeze added post-paper @ 99a8abaf
+    # 2025-08-12). Default True = current reference 257e3ed behavior.
+    freeze_c3_ee_z: bool = True
 
     # ------------ Contact-loss disengage thresholds -----------------------
     # The contact-loss gate exits c3 when `_no_ee_box_streak` consecutive
@@ -1275,6 +1293,18 @@ class SamplingC3Params:
             w_G = (
                 float(raw["w_G"])
                 if raw.get("w_G") is not None else None),
+            g_x_vector = (
+                [float(v) for v in raw["g_x_vector"]]
+                if raw.get("g_x_vector") is not None else None),
+            g_lambda = (
+                float(raw["g_lambda"])
+                if raw.get("g_lambda") is not None else None),
+            g_u = (
+                float(raw["g_u"])
+                if raw.get("g_u") is not None else None),
+            g_eta = (
+                float(raw["g_eta"])
+                if raw.get("g_eta") is not None else None),
             u_horizontal_limit = (
                 float(raw["u_horizontal_limit"])
                 if raw.get("u_horizontal_limit") is not None else None),
@@ -1295,6 +1325,7 @@ class SamplingC3Params:
             resolve_contacts_to_for_cost = raw.get(
                 "resolve_contacts_to_for_cost", None),
             use_cost_lcs_ranking     = bool(raw.get("use_cost_lcs_ranking", False)),
+            cost_type                = int(raw.get("cost_type", 5)),
             Kp_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kp_for_ee_pd_rollout", 100.0)),
             Kd_for_ee_pd_rollout     = _float_or_vec3(raw.get("Kd_for_ee_pd_rollout", 0.5)),
             lcs_dt_resolution        = int(raw.get("lcs_dt_resolution", 4)),
@@ -1324,6 +1355,7 @@ class SamplingC3Params:
             # T1a — EE_z altitude mode-switch gate (reference cc:1290-1293).
             ee_z_close                     = bool(raw.get("ee_z_close", True)),
             c3_min_clearance               = float(raw.get("c3_min_clearance", 0.01)),
+            freeze_c3_ee_z                 = bool(raw.get("freeze_c3_ee_z", True)),
             # 2026-06-25 reconciliation: tick-int → sim-time-float with
             # auto-conversion from old YAMLs. If the OLD int form is present
             # and the new _s float form is not, convert old × 0.01 (the

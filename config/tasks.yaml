@@ -587,7 +587,34 @@ tasks:
     # goal #1 is drawn from that distribution at startup (seeded via
     # --seed), replacing the one-time fixed boot transient. false =
     # reference-literal boot.
-    krandom_draw_initial_goal: true
+    # EVAL PROTOCOL (jack-recipe-costlcs branch): boot at the reference's
+    # fixed_target (AllUp) — the jack_refrecipe_fixedgoal canonical protocol —
+    # so the cost-LCS ranking A/B is judged on the goal the recipe was
+    # validated against. The drawn-goal default (true) resumes on merge-back.
+    krandom_draw_initial_goal: false
+    # User directive 2026-08-17: success = FLIPS. A goal is reached when the
+    # jack's RESTING TRIPOD matches the goal's tripod (held 10 ticks);
+    # position and yaw are ignored — replaces the reference gate pos<0.02
+    # AND rot<0.1 (goal_generator.cc:135-154). Rationale: the burst push
+    # primitive operates below the 55.3 mm tip-before-slide height, so the
+    # reference gate is structurally unreachable for tripod-changing goals;
+    # this makes the score measure the actual blocker (topple induction).
+    # Draws avoid the current tripod so every goal demands a flip. Remove
+    # the key (or set "reference") to restore the reference gate.
+    # 2026-08-17 pt3 (user: "flip and translate/rotate in the same
+    # time"): back to the FULL REFERENCE gate — pos<0.02 AND rot<0.1.
+    # Now reachable: under the ref-validated recipe the emergent MPC
+    # flips AND refines simultaneously (measured t=104s: 0.024m/0.196rad
+    # vs the just-flipped-onto goal — the flip gate's early latch was
+    # cutting off the refinement). flip mode remains available by
+    # setting this back to: flip. flip_primitive below is inert under
+    # reference mode (gated to flip mode in main.py).
+    goal_success_mode: reference
+    # User directive 2026-08-17 pt2: the CONTROLLER induces the flips
+    # itself (no diagnostic external forces): a staged EE push primitive
+    # at the toggling capsule's up-tip, goal-ward roll selection. Only
+    # active under goal_success_mode: flip.
+    flip_primitive: true
 
     color_rgba: [0.90, 0.45, 0.10, 1.0]
     sampling_height: 0.069   # 0.04 + 0.029; unused by kRandomOnSphere

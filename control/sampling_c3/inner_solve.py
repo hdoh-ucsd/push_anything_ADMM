@@ -196,6 +196,20 @@ def traj_cost(x_seq:  np.ndarray,
     return J
 
 
+# Shapes whose sample ranking uses the reference cost-LCS forward-sim path.
+# Audited 2026-08-18: "box" is DELIBERATELY excluded even though
+# sampling_c3_kik.yaml sets use_cost_lcs_ranking=true — the box banked its
+# 72% closure on the w_ee_approach ranking and regressed to ~39% under the
+# object-only path (§9-leak memory), so the shape gate, not the yaml key, is
+# what protects it. "jack" added 2026-08-18: reference jacktoy ranks with
+# CalcCost forward-sim like every non-box demo (cost_type 3, richer
+# resolve_contacts_to_for_cost [0,3,6]); before this the jack's yaml request
+# was silently ignored and its samples were ranked on the planner's own plan.
+# Both T tasks (push_t_mesh, push_t_block) declare tshape via
+# sampling_c3_kik_t.yaml and take this path; H declares hshape.
+_COST_LCS_RANKING_SHAPES = ("tshape", "hshape", "jack")
+
+
 def _object_only_cost_matrices_ee_space(Q, QN, R):
     """Return copies of (Q, QN, R) with robot pos/vel/torque entries zeroed —
     reference's C3CostComputationType::kSimImpedanceObjectCostOnly semantics
@@ -375,6 +389,19 @@ class InnerSolver:
         self._pgs_max_iter = int(getattr(params, "cost_lcs_pgs_max_iter", 50))
         self._pgs_tol      = float(getattr(params, "cost_lcs_pgs_tol", 1.0e-6))
         self._pgs_reg      = float(getattr(params, "cost_lcs_pgs_reg", 1.0e-8))
+        # Reference progress_params `cost_type` (C3CostComputationType) —
+        # which weights score the ranking rollout. 5 (object-only) is the
+        # push_t/anything/H reference value and the historical port
+        # behaviour; jacktoy uses 3 (full Q/R). See the selection site below.
+        self._cost_lcs_cost_type = int(getattr(params, "cost_type", 5))
+        if self._cost_lcs_cost_type not in (3, 5):
+            print(f"[COST-LCS] WARNING cost_type={self._cost_lcs_cost_type} "
+                  f"unsupported (only 3=kSimImpedance, 5=ObjectCostOnly); "
+                  f"using 5.", flush=True)
+            self._cost_lcs_cost_type = 5
+        print(f"[COST-LCS] ranking cost_type={self._cost_lcs_cost_type} "
+              f"({'kSimImpedance/full-QR' if self._cost_lcs_cost_type == 3 else 'kSimImpedanceObjectCostOnly'})",
+              flush=True)
         # §9-leak gate: object-only ranking cost + cost-LCS path apply ONLY to
         # tshape (reference-faithful for push_t). Box path keeps the pre-§9
         # w_ee_approach-weighted ranking (72 % closure banked at b23fa82;
@@ -632,7 +659,8 @@ class InnerSolver:
                 # Polygonal (non-box) manipulands share the cost-LCS ranking
                 # path: both T and H are concave outlines whose ranking needs
                 # the object-only forward-sim, unlike the convex box.
-                _tshape_gate = _ee_space and self._object_shape in ("tshape", "hshape")
+                _tshape_gate = _ee_space and \
+                    self._object_shape in _COST_LCS_RANKING_SHAPES
                 _u_lo = self._u_lo if _ee_space else None
                 _u_hi = self._u_hi if _ee_space else None
                 if not _ee_space:
@@ -683,9 +711,24 @@ class InnerSolver:
             # variant) rather than SimulatePDControlWithLCS(...) on a
             # separate 5-pair cost-LCS. The full forward-sim (Stage 2) is
             # left for a follow-up if Stage 1 doesn't unblock c3 dispatch.
-            if _ee_space and self._object_shape in ("tshape", "hshape"):
-                Q_obj, QN_obj, R_obj = _object_only_cost_matrices_ee_space(
-                    Q, QN, R)
+            if _ee_space and self._object_shape in _COST_LCS_RANKING_SHAPES:
+                # Reference cost_type selects the weights on the rolled-out
+                # trajectory (progress_params C3CostComputationType):
+                #   5 = kSimImpedanceObjectCostOnly — robot pos/vel Q-blocks
+                #       and R zeroed (push_t/anything/H: cost_type 5 in BOTH
+                #       regimes, progress_params_c3plus.yaml:18-19).
+                #   3 = kSimImpedance — FULL Q and R on the simulated states
+                #       and controls (jacktoy pose regime,
+                #       jacktoy/parameters/progress_params_c3plus.yaml:18).
+                # The jacktoy position-regime variant (cost_type_position=2,
+                # kSimLCSReplaceC3EEPlan open-loop rollout) is not
+                # implemented; jack goals sit inside the 0.5 m cost-switching
+                # threshold from step 1, so the pose regime is the live one.
+                if self._cost_lcs_cost_type == 3:
+                    Q_obj, QN_obj, R_obj = Q, QN, R
+                else:
+                    Q_obj, QN_obj, R_obj = _object_only_cost_matrices_ee_space(
+                        Q, QN, R)
                 # §9 Option B (Stage 2): forward-simulate the plan on the LCS
                 # via PD-with-feedforward + PGS LCP per knot, then score the
                 # SIMULATED trajectory (kSimImpedanceObjectCostOnly).
@@ -1108,6 +1151,7 @@ class InnerSolver:
         _solver_attrs_to_sync = (
             "_u_lambda", "_u_eta", "_end_on_qp_step", "_rho_scale",
             "_use_g_matrix", "_w_G", "_g_lambda", "_g_eta", "_g_x", "_g_u",
+            "_g_x_vector",
             "_w_G_ee_contact",
         )
 

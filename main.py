@@ -52,7 +52,11 @@ from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
 from control.sampling_c3.goal_generator import (
     JackRandomGoalGenerator,
     KNOMINAL_NAMES_JACK,
+    TRIPOD_NAMES,
     geodesic_angle,
+    orientation_lookahead,
+    topple_roll_plan,
+    tripod_id,
 )
 
 
@@ -505,16 +509,27 @@ def main():
         if task_cfg.get("random_goal_y_limits") is not None:
             _gg_kwargs["y_limits"] = tuple(
                 float(v) for v in task_cfg["random_goal_y_limits"])
+        # goal_success_mode "flip" (USER-DIRECTED DEVIATION 2026-08-17,
+        # jack-only): success = the jack's resting tripod matches the
+        # goal's tripod (position and yaw ignored; replaces the reference
+        # pos<0.02 AND rot<0.1 gate). Absent/"reference" keeps the
+        # reference gate.
+        _goal_success_mode = str(
+            task_cfg.get("goal_success_mode", "reference"))
         _goal_gen = JackRandomGoalGenerator(
             rng=np.random.default_rng(
                 None if args.seed is None else [args.seed, 0x60A1]),
             initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
             initial_quat=np.asarray(_gg_boot_quat, dtype=float),
+            success_mode=_goal_success_mode,
             **_gg_kwargs,
         )
         _gg_planar = (task_cfg.get("object_type") == "tshape")
         if bool(task_cfg.get("krandom_draw_initial_goal", False)):
-            _goal_gen.draw_initial_goal()
+            _avoid = (tripod_id(np.asarray(task_cfg.get(
+                          "init_quat", [1.0, 0.0, 0.0, 0.0]), dtype=float))
+                      if _goal_success_mode == "flip" else None)
+            _goal_gen.draw_initial_goal(avoid_tripod=_avoid)
             task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
                                    float(_goal_gen.goal_xy[1])]
             task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
@@ -807,12 +822,10 @@ def main():
         target_quat = target_quat / float(np.linalg.norm(target_quat))
         quad_cost.set_goal_quat(target_quat)
         _pending_goal_quat = target_quat
-        # The per-tick angular lookahead below is yaw-only and is bypassed for
-        # quaternion goals, so the goal handed to the cost is STATIC. That is
-        # only equivalent to the reference when the clip would never fire --
-        # i.e. when the whole reorientation demand is under lookahead_angle
-        # (reference goal_generator.cc:427 `angle = min(angle, lookahead)`).
-        # Check it at startup rather than silently mis-modelling the task.
+        # Quaternion goals get the per-tick SLERP lookahead in the sim loop
+        # (orientation_lookahead, reference goal_generator.cc:408-437), so
+        # demands beyond lookahead_angle run against a moving sub-goal.
+        # The startup demand print below is informational.
         _q0 = np.asarray(task_cfg.get("init_quat", [1.0, 0.0, 0.0, 0.0]), float)
         _q0 = _q0 / float(np.linalg.norm(_q0))
         _R0 = ad.RotationMatrix(ad.Quaternion(_q0[0], _q0[1], _q0[2], _q0[3])).matrix()
@@ -824,20 +837,9 @@ def main():
               f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]  "
               f"reorientation demand = {_demand:.4f} rad ({np.degrees(_demand):.1f} deg)")
         if _demand > 2.0:
-            if _initial_goal_drawn:
-                # A drawn goal is one draw of the reference's continuous
-                # distribution — demands > lookahead_angle run under the
-                # static-goal deviation (same WARN as re-goals).
-                print(f"[GOAL-QUAT] WARN drawn goal demands {_demand:.3f} rad "
-                      f"> 2.0 rad lookahead_angle — static-goal deviation "
-                      f"(SLERP lookahead unported)")
-            else:
-                raise SystemExit(
-                    f"[GOAL-QUAT] task demands {_demand:.3f} rad of reorientation, "
-                    f"which exceeds goal_params lookahead_angle = 2.0 rad. The port's "
-                    f"quaternion goal is static (no per-tick geodesic SLERP), so this "
-                    f"task would be mis-modelled. Implement the SLERP lookahead "
-                    f"(reference goal_generator.cc:410-434) before running it.")
+            print(f"[GOAL-QUAT] demand {_demand:.3f} rad > 2.0 rad "
+                  f"lookahead_angle — per-tick SLERP sub-goal active "
+                  f"(reference goal_generator.cc:408-437)")
     # _goal_gen was constructed just after load_task (initial-draw path
     # mutates task_cfg before build_environment). Banner here, where the
     # normalized target_quat exists.
@@ -849,6 +851,20 @@ def main():
         print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
               f"goal #1 {'DRAWN' if _initial_goal_drawn else 'fixed (reference boot value)'} "
               f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) {_gg_q_str}")
+        if _goal_gen.success_mode == "flip":
+            print(f"[GOAL-GEN] success mode = FLIP (user-directed deviation "
+                  f"2026-08-17): goal reached when resting tripod matches "
+                  f"goal tripod {TRIPOD_NAMES[tripod_id(target_quat)]} "
+                  f"(pos/yaw ignored; reference gate pos<0.02 AND rot<0.1 "
+                  f"replaced)")
+            if (bool(task_cfg.get("flip_primitive", False))
+                    and os.environ.get("PORT_FLIP_PRIMITIVE", "1") != "0"):
+                mpc._flip_primitive_enabled = True
+                print(f"[FLIP-PRIM] ENABLED (task flip_primitive): the "
+                      f"controller stages the EE at the toggling capsule's "
+                      f"up-tip (97mm > 55.3mm tip-before-slide) and pushes "
+                      f"through it — controller-induced flips, no external "
+                      f"forces", flush=True)
     # Diagnostic (default-inert): force one re-goal at planner step N to
     # exercise the live re-goal path without a real goal achievement.
     _goal_gen_force_step = int(
@@ -1041,6 +1057,14 @@ def main():
         # rotation error is the geodesic angle rather than a yaw difference.
         if _pending_goal_quat is not None:
             mpc.set_goal_quat(_pending_goal_quat)
+        # Flip primitive: re-apply on the WRAPPER — `mpc` was rebound above,
+        # so the earlier set on the base controller object is inert.
+        # PORT_FLIP_PRIMITIVE=0 disables it for emergent-toppling
+        # experiments (paper-era MPC alone, no scripted pushes).
+        if (_goal_gen is not None and _goal_gen.success_mode == "flip"
+                and bool(task_cfg.get("flip_primitive", False))
+                and os.environ.get("PORT_FLIP_PRIMITIVE", "1") != "0"):
+            mpc._flip_primitive_enabled = True
         print(f"[GS] SamplingC3Controller enabled (config: {_yaml_path})")
         print(f"[GS]   strategy={sc3_params.sampling_params.sampling_strategy.name} "
               f"num_add_c3={sc3_params.sampling_params.num_additional_samples_c3} "
@@ -1087,6 +1111,37 @@ def main():
     # |Δyaw| to fall below (lookahead_angle - hysteresis) before un-clipping.
     # Prevents sub-goal orientation flip near the 180° error singularity.
     _yaw_clip_active = False
+    # Quaternion-goal SLERP lookahead state (reference goal_generator.h:180
+    # last_rotation_axis_, zero-initialized) + clamp-transition log latch.
+    _last_rot_axis = np.zeros(3)
+    _lookahead_was_clamped = False
+    # Tripod-change ([FLIP]) log high-water mark.
+    _flip_events_seen = 0
+    # ------------------------------------------------------------------
+    # DIAG_JACK_TOPPLE_DRIVER=<n> (diagnostic, default OFF): induce up to
+    # n goal-directed tripod flips by applying an external horizontal
+    # force at the UP end of the toggling capsule (97 mm — above the
+    # 55.3 mm tip-before-slide critical height, so ~1 N tips instead of
+    # sliding; see jack-topple-mechanics analysis 2026-08-17). Exercises
+    # the flip-goal loop the CONTROLLER cannot yet drive: settle -> push
+    # over the toggling support edge -> [FLIP] -> goal reached -> redraw.
+    # Never active on the canonical path.
+    # ------------------------------------------------------------------
+    _topple_n = int(os.environ.get("DIAG_JACK_TOPPLE_DRIVER", "0") or 0)
+    _topple = {"phase": "idle", "cooldown_until": 0.0, "push_until": 0.0,
+               "fmag": 1.5, "tripod_at_push": None}
+    _topple_body = None
+    if _topple_n > 0 and _goal_gen is not None:
+        _topple_body = plant.GetBodyByName(task_cfg["link_name"])
+        print(f"[TOPPLE-DRIVER] ACTIVE (diagnostic): target flips="
+              f"{_topple_n} f0=1.5N push_point=up-tip (97mm)", flush=True)
+
+    def _topple_set_force(fvec_W, p_B):
+        f = ad.ExternallyAppliedSpatialForce()
+        f.body_index = _topple_body.index()
+        f.p_BoBq_B = np.asarray(p_B, dtype=float)
+        f.F_Bq_W = ad.SpatialForce(np.zeros(3), np.asarray(fvec_W, float))
+        plant.get_applied_spatial_force_input_port().FixValue(plant_ctx, [f])
     # 1 kHz OSC decoupling — mirror dairlib's LcmDrivenLoop where the OSC
     # subscribes to the last-published planner trajectory and ticks at
     # osc_params.yaml:2 `controller_frequency: 1000`. Every outer iteration
@@ -1156,6 +1211,11 @@ def main():
             _obj_quat_now = np.array(
                 [current_q[pos_start + _i] for _i in range(4)])
             _regoaled = _goal_gen.check_and_regoal(_obj_xy_now, _obj_quat_now)
+            if _goal_gen.flip_events > _flip_events_seen:
+                _flip_events_seen = _goal_gen.flip_events
+                print(f"[FLIP] #{_goal_gen.flip_events} at t={sim_time:.3f}s "
+                      f"{_goal_gen.last_flip[0]} -> {_goal_gen.last_flip[1]}",
+                      flush=True)
             if not _regoaled and step == _goal_gen_force_step:
                 _goal_gen.force_regoal()
                 _regoaled = True
@@ -1197,8 +1257,8 @@ def main():
                       f"quat=[{_gg_new_quat[0]:+.4f} {_gg_new_quat[1]:+.4f} "
                       f"{_gg_new_quat[2]:+.4f} {_gg_new_quat[3]:+.4f}] "
                       f"demand={_gg_demand:.3f} rad"
-                      + ("  [WARN > 2.0 rad lookahead_angle -- static-goal "
-                         "deviation, see GOAL-QUAT note]"
+                      + ("  [> 2.0 rad lookahead_angle -- SLERP sub-goal "
+                         "will clamp]"
                          if (_gg_demand > 2.0 and not _gg_planar) else ""),
                       flush=True)
                 # PORT_GOALGEN_N: stop the run once N goals have been
@@ -1211,6 +1271,46 @@ def main():
                           f"goals achieved (PORT_GOALGEN_N={_gg_n}) at "
                           f"t={sim_time:.3f}s — ending run", flush=True)
                     break
+            # DIAG topple driver (see init above): settle -> push the
+            # toggling capsule's up end over the support edge -> release
+            # on raw tripod change -> cooldown; escalate force on a
+            # failed window; inert once the target flip count is reached.
+            if _topple_body is not None and _goal_gen.flip_events < _topple_n:
+                _raw_trip = tripod_id(_obj_quat_now)
+                _obj_w = float(np.linalg.norm(current_v[n_u:n_u + 3]))
+                _obj_vl = float(np.linalg.norm(current_v[n_u + 3:n_u + 6]))
+                if _topple["phase"] == "push":
+                    _flipped = _raw_trip != _topple["tripod_at_push"]
+                    if _flipped or sim_time >= _topple["push_until"]:
+                        _topple_set_force(np.zeros(3), np.zeros(3))
+                        _topple["phase"] = "idle"
+                        _topple["cooldown_until"] = sim_time + 1.5
+                        _topple["fmag"] = (1.5 if _flipped else
+                                           min(_topple["fmag"] * 1.5, 8.0))
+                        print(f"[TOPPLE-DRIVER] release t={sim_time:.3f}s "
+                              f"{'FLIPPED' if _flipped else 'no flip'} "
+                              f"next_f={_topple['fmag']:.2f}N", flush=True)
+                elif (sim_time >= _topple["cooldown_until"]
+                      and _obj_w < 0.5 and _obj_vl < 0.05
+                      and _goal_gen.current_tripod == _raw_trip):
+                    _plan = topple_roll_plan(
+                        _obj_quat_now, _raw_trip,
+                        tripod_id(_goal_gen.goal_quat))
+                    if _plan is not None:
+                        _tk, _tp_B, _td_W = _plan
+                        _topple_set_force(_topple["fmag"] * _td_W, _tp_B)
+                        _topple["phase"] = "push"
+                        _topple["push_until"] = sim_time + 0.8
+                        _topple["tripod_at_push"] = _raw_trip
+                        print(f"[TOPPLE-DRIVER] push t={sim_time:.3f}s "
+                              f"capsule={_tk} f={_topple['fmag']:.2f}N "
+                              f"dir=({_td_W[0]:+.2f},{_td_W[1]:+.2f})",
+                              flush=True)
+            elif _topple_body is not None and _topple["phase"] == "push":
+                _topple_set_force(np.zeros(3), np.zeros(3))
+                _topple["phase"] = "done"
+                print(f"[TOPPLE-DRIVER] target reached; driver inert",
+                      flush=True)
         _delta_vec  = target_xy - _obj_xy_now
         _dist       = float(np.linalg.norm(_delta_vec))
         if _dist > 1e-9:
@@ -1249,6 +1349,30 @@ def main():
                                           + np.sign(_dyaw) * _lookahead_angle)
         else:
             _effective_target_yaw = float(target_yaw)
+        # Quaternion-goal SLERP lookahead (reference goal_generator.cc:
+        # 408-437): the COST chases a sub-goal at most lookahead_angle
+        # (2 rad) along the geodesic from the CURRENT orientation,
+        # recomputed every tick, with the near-180° axis hysteresis.
+        # Progress metrics, the achievement latch and RESULT stay on the
+        # final goal (reference current_*_error_ vs x_lcs_final_des,
+        # controller cc:780-805; only x_desired uses the lookahead target,
+        # cc:1009). mpc.set_goal_quat therefore keeps the FINAL quat.
+        if target_quat is not None:
+            _q_obj_now = np.array([_qw, _qx, _qy, _qz])
+            _sub_quat, _last_rot_axis = orientation_lookahead(
+                _q_obj_now, target_quat, _last_rot_axis)
+            quad_cost.set_goal_quat(_sub_quat)
+            _full_err = geodesic_angle(target_quat, _q_obj_now)
+            _clamped = _full_err > 2.0
+            _clamp_transition = _clamped != _lookahead_was_clamped
+            _lookahead_was_clamped = _clamped
+            if _clamp_transition or (_clamped and step % 100 == 0):
+                print(f"[LOOKAHEAD] step={step} full_err={_full_err:.4f}rad "
+                      f"clamped={'Y' if _clamped else 'N'} "
+                      f"sub_err={geodesic_angle(_sub_quat, _q_obj_now):.4f}rad "
+                      f"axis=({_last_rot_axis[0]:+.3f},"
+                      f"{_last_rot_axis[1]:+.3f},"
+                      f"{_last_rot_axis[2]:+.3f})", flush=True)
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx,
                                     _effective_target_xy,
                                     target_yaw=_effective_target_yaw,
@@ -1495,6 +1619,10 @@ def main():
         # kRandom headline: the reference task is continuous re-goaling, so
         # goals_reached is the success count; RESULT below is measured
         # against the LAST active goal only.
+        if _goal_gen.success_mode == "flip":
+            print(f"[GOAL-GEN] flips={_goal_gen.flip_events} "
+                  f"(flip success mode: goals_reached counts goal-tripod "
+                  f"matches; flips counts ALL persisted tripod changes)")
         print(f"[GOAL-GEN] goals_reached={_goal_gen.goals_reached} "
               f"(kRandom re-goaling; RESULT metrics are vs the final goal)")
     print(f"[RESULT] method={_method}  "
