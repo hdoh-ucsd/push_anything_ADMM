@@ -535,6 +535,16 @@ def main():
             task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
                                    float(_goal_gen.goal_xy[1])]
             task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
+            if _gg_planar:
+                # Planar tasks consume goal_yaw (target_yaw path — keeps
+                # the reference yaw-lookahead machinery active). Mirror
+                # the re-goal planar conversion for the drawn boot goal;
+                # without this the drawn quat would be ignored and the
+                # boot yaw would silently stay at the task literal.
+                _q0 = _goal_gen.goal_quat
+                task_cfg["goal_yaw"] = float(np.arctan2(
+                    2.0 * (_q0[0] * _q0[3] + _q0[1] * _q0[2]),
+                    1.0 - 2.0 * (_q0[2] ** 2 + _q0[3] ** 2)))
             _initial_goal_drawn = True
             _gq0 = _goal_gen.goal_quat
             print(f"[GOAL-GEN] initial goal DRAWN "
