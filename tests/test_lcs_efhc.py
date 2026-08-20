@@ -38,8 +38,18 @@ pytest.importorskip("pydrake", reason="Drake required")
 
 import pydrake.all as ad
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q
+from sim.env_builder import build_environment, _INITIAL_ARM_Q_SEED
 from control.lcs_formulator import LCSFormulator
+
+# `sim.env_builder.INITIAL_ARM_Q` was removed in 7ff5a21 ("replace
+# INITIAL_ARM_Q + --prepositioned with safe-offset IK init"): there is no
+# longer one fixed start pose, the runtime derives it per task (IK safe-offset,
+# or `q_init_franka` from tasks.yaml for the canonical tasks). These tests only
+# ever needed *a* valid, representative arm configuration to evaluate the
+# LCS/OSC at, so they pin the IK seed. Note it is NOT the production start
+# pose, and its joint 2 moved 0.675 -> 1.1 rad when the arm-fly-up bug was
+# fixed.
+ARM_Q_FIXTURE = _INITIAL_ARM_Q_SEED
 
 
 def _build():
@@ -49,10 +59,10 @@ def _build():
         "init_xyz": [0, 0, 0.05], "goal_xy": [0.3, 0],
         "link_name": "box_link", "cost": {},
     }
-    diagram, plant, panda_model, _, _, plant_ad, ctx_ad = build_environment(cfg)
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
     diag_ctx  = diagram.CreateDefaultContext()
     plant_ctx = plant.GetMyMutableContextFromRoot(diag_ctx)
-    plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+    plant.SetPositions(plant_ctx, panda_model, ARM_Q_FIXTURE)
     obj_body = plant.GetBodyByName("box_link")
     plant.SetFreeBodyPose(
         plant_ctx, obj_body,
@@ -217,7 +227,7 @@ def test_no_contacts_returns_zero_lcp_blocks():
         "init_xyz": [0, 0, 0.05], "goal_xy": [0.3, 0],
         "link_name": "box_link", "cost": {},
     }
-    diagram, plant, panda_model, _, _, plant_ad, ctx_ad = build_environment(cfg)
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
     diag_ctx  = diagram.CreateDefaultContext()
     plant_ctx = plant.GetMyMutableContextFromRoot(diag_ctx)
     obj_body = plant.GetBodyByName("box_link")
@@ -226,7 +236,7 @@ def test_no_contacts_returns_zero_lcp_blocks():
         plant_ctx, obj_body,
         ad.RigidTransform(ad.RotationMatrix(), [2.0, 2.0, 0.05]),
     )
-    plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+    plant.SetPositions(plant_ctx, panda_model, ARM_Q_FIXTURE)
     f = LCSFormulator(plant, mu=0.4, obj_body=obj_body,
                       plant_ad=plant_ad, context_ad=ctx_ad)
     A, B, D, d, E, F, H, c, J_n, J_t, phi, mu = \

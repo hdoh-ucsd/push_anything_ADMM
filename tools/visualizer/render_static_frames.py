@@ -5,7 +5,6 @@ Produces PNGs that can be visually compared to Drake's verdict.mp4 frames.
 """
 import argparse
 import json
-import sys
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")

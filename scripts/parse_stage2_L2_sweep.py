@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
-from typing import Optional
 
 RE_RESULT = re.compile(
     r"^\[RESULT\] method=\S+\s+final_obj_xy=\(([-+0-9.]+),\s*([-+0-9.]+)\)"

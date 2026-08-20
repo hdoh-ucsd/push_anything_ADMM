@@ -9,10 +9,8 @@ With n=1 trials per object the boxes degenerate onto the single dot;
 the script draws real boxes automatically once more trials accumulate
 in results/fig8_objects/<task>_seed*.log.
 """
-import csv
 import os
 import re
-import sys
 from collections import OrderedDict
 
 import matplotlib

@@ -171,12 +171,15 @@ resolve_contacts_to_for_cost: [0, 2, 3]
 # has this ported as `force_top_k_ee_box=True, n_ee_top_k=1` (see
 # `lcs_formulator.py:550-555` — comment says "mirrors reference
 # GetResolvedContactPairs sampling_based_c3_controller.cc:1582-1615"),
-# but currently only wired for the COST-LCS (`inner_solve.py:593`), NOT the
-# planner LCS. This flag extends it to the planner path for the T only
-# (gated by `object_shape=="tshape"` at the use site in
-# `lcs_formulator.py:linearize_discrete_ee_space`); box path is
-# byte-identical when this flag is True.
-use_reference_pair_admission_planner_lcs: true
+# but was originally wired only for the COST-LCS (`inner_solve.py:593`).
+# The planner LCS gets it too, scoped to tshape/hshape at the use sites in
+# `lcs_formulator.py` (linearize_discrete_ee_space and
+# extract_lcs_contacts); the box path is byte-identical because that gate
+# requires the shape check.
+# use_reference_pair_admission_planner_lcs: REMOVED — it was never read.
+# The behaviour is hard-wired ON at lcs_formulator.py:165
+# (`self._ref_pair_admission_planner_lcs = True`) and scoped to
+# tshape/hshape at the two use sites, so setting it here did nothing.
 
 # §9 Option B (Stage 2) — cost-LCS forward-sim ranking.
 # When True, InnerSolver.evaluate_sample computes each sample's cost by
