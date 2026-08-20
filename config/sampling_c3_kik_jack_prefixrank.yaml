@@ -119,11 +119,14 @@ u_horizontal_limit: 50.0
 u_vertical_limit: 50.0
 lcs_explicit_manipuland_ground_contacts: 3
 use_reference_pair_admission_planner_lcs: true
-use_cost_lcs_ranking: true
-# Reference jacktoy progress_params_c3plus.yaml:18 cost_type: 3
-# (kSimImpedance): the ranking rollout is scored with the FULL Q and R —
-# unlike push_t/anything/H, which use 5 (kSimImpedanceObjectCostOnly).
-cost_type: 3
+# BASELINE VARIANT (A/B provenance, 2026-08-18): this file differs from
+# sampling_c3_kik_jack.yaml ONLY in the two keys below, which reproduce the
+# PRE-185a8fc ranking exactly — with use_cost_lcs_ranking false the gated
+# branch scores the planner's own x_seq, and cost_type 5 applies the
+# object-only weights: byte-identical arithmetic to the pre-gate-widening
+# fallback path. Single-variable baseline for the cost-LCS ranking A/B.
+use_cost_lcs_ranking: false
+cost_type: 5
 Kp_for_ee_pd_rollout: 100.0
 Kd_for_ee_pd_rollout: 0.5
 lcs_dt_resolution: 4

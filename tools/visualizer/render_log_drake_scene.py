@@ -47,6 +47,10 @@ from sim.env_builder import (  # noqa: E402
 )
 from control.sampling_c3.ik import solve_ik_to_ee_pos  # noqa: E402
 
+# Vertical-tool rotation target for the per-frame IK — identical to the
+# sim's _R_vert (sim/env_builder.py) that the OSC holds at Kp_rot=800.
+_R_VERT = ad.RotationMatrix()
+
 
 RE_GATE = re.compile(
     r"^\[GATE-CONTACT\] step=(\d+).*?"
@@ -133,6 +137,31 @@ def parse_log_goal(log_path: Path):
     return goal_xy, goal_quat
 
 
+RE_REGOAL = re.compile(
+    r"\[GOAL-GEN\] goal #\d+ REACHED at t=([\d.]+)s -> new goal "
+    r"xy=\(([-+\d.]+),([-+\d.]+)\) tripod=\w+ "
+    r"quat=\[([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\]")
+
+
+def parse_log_regoals(log_path: Path):
+    """kRandom re-goal events: [{t, xy, quat}] in log order.
+
+    Each one starts a new goal SEGMENT — the goal ghost is anchored world
+    geometry, so the render env must be rebuilt with the new goal pose.
+    """
+    out = []
+    with open(log_path, errors="replace") as f:
+        for line in f:
+            m = RE_REGOAL.search(line)
+            if m:
+                out.append({
+                    "t": float(m.group(1)),
+                    "xy": [float(m.group(2)), float(m.group(3))],
+                    "quat": [float(m.group(i)) for i in range(4, 8)],
+                })
+    return out
+
+
 def load_task_cfg(task_name: str, task_id, log_goal_pair):
     """main.py's load_task; goal priority: explicit --task-id > log > yaml."""
     log_goal, log_goal_quat = log_goal_pair
@@ -186,6 +215,12 @@ def main():
                          "with its own ghost via --min/--max-step windows)")
     ap.add_argument("--goal-yaw", type=float, default=None,
                     help="Override the goal yaw for the ghost (radians)")
+    ap.add_argument("--interp", type=int, default=1,
+                    help="Sub-frames per log step (poses SLERP/lerp "
+                         "interpolated toward the next step). Frame index "
+                         "= step*interp + j; pass the SAME --interp to "
+                         "paint_log_sidepanel.py so it maps frames back "
+                         "to log steps.")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -213,28 +248,44 @@ def main():
         task_cfg.pop("goal_quat", None)
         print(f"[render-log-drake] goal override: yaw={args.goal_yaw}")
 
-    print("[render-log-drake] building Drake env (add_camera=True, "
-          f"PORT_CAMERA_PERSPECTIVE={os.environ.get('PORT_CAMERA_PERSPECTIVE')})",
-          flush=True)
-    diagram, plant, panda_model, obj_model, meshcat, _pad, _cad, _vw = \
-        build_environment(task_cfg, add_camera=True)
+    # --- goal segments: the ghost is ANCHORED world geometry, so every
+    # kRandom re-goal needs an env rebuild with that segment's goal pose.
+    # Single-goal logs collapse to one segment (previous behavior).
+    seg_cfgs = [dict(task_cfg)]
+    seg_starts = [valid[0]]
+    for rg in parse_log_regoals(args.log):
+        b = next((k for k in valid
+                  if frames[k].get("sim_t", -1.0) >= rg["t"]), None)
+        if b is None:
+            continue
+        cfg = dict(task_cfg)
+        cfg["goal_xy"] = rg["xy"]
+        cfg["goal_quat"] = rg["quat"]
+        seg_cfgs.append(cfg)
+        seg_starts.append(b)
+    if len(seg_starts) > 1:
+        print(f"[render-log-drake] {len(seg_starts)} goal segments "
+              f"starting at steps {seg_starts}", flush=True)
 
-    simulator = ad.Simulator(diagram)
-    context   = simulator.get_mutable_context()
-    plant_ctx = plant.GetMyContextFromRoot(context)
-    drake_cam = diagram.GetSubsystemByName("drake_render_camera")
-
-    link_name = task_cfg["link_name"]
-    obj_body  = plant.GetBodyByName(link_name)
-    ee_frame  = plant.GetFrameByName(EE_BODY_NAME)
-
-    n_arm_dofs = plant.num_actuators()
-    q_lo_arm = plant.GetPositionLowerLimits()[:n_arm_dofs]
-    q_hi_arm = plant.GetPositionUpperLimits()[:n_arm_dofs]
-
-    # Seed the arm with the standard INITIAL_ARM_Q so the first IK pass
-    # starts from a legal home pose.
-    plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+    def _build_scene(cfg):
+        print("[render-log-drake] building Drake env (add_camera=True, "
+              f"goal_xy={cfg.get('goal_xy')})", flush=True)
+        diagram, plant, panda_model, _obj, _mc, _pad, _cad, _vw = \
+            build_environment(cfg, add_camera=True)
+        simulator = ad.Simulator(diagram)
+        context = simulator.get_mutable_context()
+        plant_ctx = plant.GetMyContextFromRoot(context)
+        drake_cam = diagram.GetSubsystemByName("drake_render_camera")
+        obj_body = plant.GetBodyByName(cfg["link_name"])
+        ee_frame = plant.GetFrameByName(EE_BODY_NAME)
+        n_arm = plant.num_actuators()
+        q_lo = plant.GetPositionLowerLimits()[:n_arm]
+        q_hi = plant.GetPositionUpperLimits()[:n_arm]
+        # Seed the arm with the standard INITIAL_ARM_Q so the first IK
+        # pass starts from a legal home pose.
+        plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+        return (simulator, context, plant, panda_model, plant_ctx,
+                drake_cam, obj_body, ee_frame, n_arm, q_lo, q_hi)
 
     # Timeline CSV — one row per rendered frame; paint_mode_text.py looks up
     # frame_NNNNNN.png's step in this file to pick the banner label.
@@ -242,70 +293,113 @@ def main():
     tl_fp = open(timeline_path, "w", buffering=1)
     tl_fp.write("step,sim_t,mode,switch\n")
 
+    def _slerp(q0, q1, a):
+        q0 = q0 / np.linalg.norm(q0)
+        q1 = q1 / np.linalg.norm(q1)
+        if float(np.dot(q0, q1)) < 0.0:
+            q1 = -q1
+        d = float(np.clip(np.dot(q0, q1), -1.0, 1.0))
+        if d > 0.9995:
+            q = (1.0 - a) * q0 + a * q1
+            return q / np.linalg.norm(q)
+        th = np.arccos(d)
+        return (np.sin((1.0 - a) * th) * q0 + np.sin(a * th) * q1) \
+            / np.sin(th)
+
     prev_arm_q = INITIAL_ARM_Q.copy()
     kept = 0
     ik_failures = 0
-    for step in valid:
-        if step % args.stride != 0:
-            continue
+    seg_idx = -1
+    K = max(1, args.interp)
+    rendered = [k for k in valid if k % args.stride == 0]
+    for r_i, step in enumerate(rendered):
+        _entered_new_seg = False
+        while (seg_idx + 1 < len(seg_starts)
+               and step >= seg_starts[seg_idx + 1]):
+            seg_idx += 1
+            _entered_new_seg = True
+        if _entered_new_seg:
+            (_sim, context, plant, panda_model, plant_ctx, drake_cam,
+             obj_body, ee_frame, n_arm_dofs, q_lo_arm, q_hi_arm) = \
+                _build_scene(seg_cfgs[seg_idx])
+            prev_arm_q = INITIAL_ARM_Q.copy()
         rec = frames[step]
+        nxt = frames[rendered[r_i + 1]] if r_i + 1 < len(rendered) else None
 
-        # 1) Set the box floating-body pose from the log.
-        bq = rec["box_q"]  # (w, x, y, z)
-        bp = rec["box_p"]
-        _n = float(np.linalg.norm(bq))
-        if _n < 1e-9:
-            bq_n = np.array([1.0, 0.0, 0.0, 0.0])
-        else:
-            bq_n = bq / _n
-        X_WO = ad.RigidTransform(
-            ad.Quaternion(float(bq_n[0]), float(bq_n[1]),
-                          float(bq_n[2]), float(bq_n[3])),
-            bp.tolist(),
-        )
-        plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
+        # --interp K emits K sub-frames per log step, poses interpolated
+        # toward the next step (SLERP box quat, lerp positions) so a
+        # 0.2-0.4 s tripod roll spans enough frames to read as a roll
+        # instead of a 2-frame snap. Frame index = step*K + j; painters
+        # recover the log step as index // K (pass the same --interp).
+        for j in range(K if nxt is not None else 1):
+            a = j / float(K)
+            if a == 0.0:
+                bq, bp, eep = rec["box_q"], rec["box_p"], rec["ee_p"]
+            else:
+                bq = _slerp(rec["box_q"], nxt["box_q"], a)
+                bp = (1.0 - a) * rec["box_p"] + a * nxt["box_p"]
+                eep = (1.0 - a) * rec["ee_p"] + a * nxt["ee_p"]
+            _n = float(np.linalg.norm(bq))
+            if _n < 1e-9:
+                bq_n = np.array([1.0, 0.0, 0.0, 0.0])
+            else:
+                bq_n = bq / _n
+            X_WO = ad.RigidTransform(
+                ad.Quaternion(float(bq_n[0]), float(bq_n[1]),
+                              float(bq_n[2]), float(bq_n[3])),
+                np.asarray(bp, dtype=float).tolist(),
+            )
+            plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
 
-        # 2) Solve DLS IK so the pusher sphere sits at ee_p from the log.
-        #    Warm-start from previous arm q for fast convergence.
-        plant.SetPositions(plant_ctx, panda_model, prev_arm_q)
-        q_full = plant.GetPositions(plant_ctx).copy()
-        q_sol, err, it = solve_ik_to_ee_pos(
-            plant, ee_frame, rec["ee_p"], q_full, plant_ctx,
-            n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
-            q_lo=q_lo_arm, q_hi=q_hi_arm,
-        )
-        if err > 5e-3:
-            # Retry once from the standard home pose.
-            plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+            # DLS IK so the pusher sphere sits at the (interpolated) ee
+            # position. Warm-start from the previous arm q. 6-DOF with the
+            # tool held vertical (identity R — sim/env_builder.py _R_vert,
+            # the OSC's own Kp_rot=800 hold): position-only IK leaves a
+            # 4-dim null space that drifts across joint branches on long
+            # continuous renders (full-600s render: the wrist flipped
+            # during the t=440-457s flip burst and stayed wrong for the
+            # remaining 140 s). The small home-pull on the seed anchors the
+            # remaining 1-DOF elbow redundancy without visible snapping.
+            seed_q = 0.98 * prev_arm_q + 0.02 * INITIAL_ARM_Q
+            plant.SetPositions(plant_ctx, panda_model, seed_q)
             q_full = plant.GetPositions(plant_ctx).copy()
             q_sol, err, it = solve_ik_to_ee_pos(
-                plant, ee_frame, rec["ee_p"], q_full, plant_ctx,
-                n_arm_dofs=n_arm_dofs, max_iter=120, damping=0.02,
-                q_lo=q_lo_arm, q_hi=q_hi_arm,
+                plant, ee_frame, eep, q_full, plant_ctx,
+                n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
+                q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_VERT,
             )
             if err > 5e-3:
-                ik_failures += 1
-        prev_arm_q = q_sol[:n_arm_dofs].copy()
+                # Retry once from the standard home pose.
+                plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)
+                q_full = plant.GetPositions(plant_ctx).copy()
+                q_sol, err, it = solve_ik_to_ee_pos(
+                    plant, ee_frame, eep, q_full, plant_ctx,
+                    n_arm_dofs=n_arm_dofs, max_iter=120, damping=0.02,
+                    q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_VERT,
+                )
+                if err > 5e-3:
+                    ik_failures += 1
+            prev_arm_q = q_sol[:n_arm_dofs].copy()
 
-        # 3) Re-set the box pose after IK (solve_ik_to_ee_pos may have
-        #    written back a slightly perturbed context).
-        plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
+            # Re-set the box pose after IK (solve_ik_to_ee_pos may have
+            # written back a slightly perturbed context).
+            plant.SetFreeBodyPose(plant_ctx, obj_body, X_WO)
 
-        # 4) Query the Drake render camera.
-        cam_ctx = drake_cam.GetMyContextFromRoot(context)
-        img = drake_cam.color_image_output_port().Eval(cam_ctx)
-        arr = np.asarray(img.data, dtype=np.uint8)  # (H, W, 4) RGBA
-        out_png = args.out_dir / f"frame_{step:06d}.png"
-        Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
+            cam_ctx = drake_cam.GetMyContextFromRoot(context)
+            img = drake_cam.color_image_output_port().Eval(cam_ctx)
+            arr = np.asarray(img.data, dtype=np.uint8)  # (H, W, 4) RGBA
+            fidx = step * K + j
+            out_png = args.out_dir / f"frame_{fidx:06d}.png"
+            Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
 
-        # 5) Timeline row.
-        tl_fp.write(f"{step},{rec['sim_t']:.4f},{rec['mode']},{rec['switch']}\n")
+            _t = rec["sim_t"] + (0.1 * a if nxt is not None else 0.0)
+            tl_fp.write(f"{fidx},{_t:.4f},{rec['mode']},{rec['switch']}\n")
 
-        kept += 1
-        if kept % 25 == 0:
-            print(f"[render-log-drake] step={step:04d} "
-                  f"ik_err={err*1000:.2f}mm frames={kept} "
-                  f"ik_fail_far={ik_failures}", flush=True)
+            kept += 1
+            if kept % 50 == 0:
+                print(f"[render-log-drake] step={step:04d} "
+                      f"ik_err={err*1000:.2f}mm frames={kept} "
+                      f"ik_fail_far={ik_failures}", flush=True)
 
     tl_fp.close()
     print(f"[render-log-drake] wrote {kept} frames + {timeline_path}",

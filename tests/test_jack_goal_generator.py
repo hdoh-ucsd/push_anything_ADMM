@@ -212,4 +212,7 @@ def test_push_jack_task_config_enables_krandom():
     import yaml
     cfg = yaml.safe_load(open("config/tasks.yaml"))
     assert cfg["tasks"]["push_jack"].get("goal_mode") == "kRandom"
-    assert cfg["tasks"]["push_jack"].get("krandom_draw_initial_goal") is True
+    # Parked to false with the 2026-08-19 canonical jack recipe (boot from
+    # the fixed reference target; draw on success only). Stale `is True`
+    # assertion corrected during the 2026-08-19 T+jack merge.
+    assert cfg["tasks"]["push_jack"].get("krandom_draw_initial_goal") is False

@@ -431,13 +431,44 @@ class C3PlusMPC:
             # delta_pos = 5 mm; reference at port's ~96 ms wall time
             # would give delta_pos ~ 18 mm — reference allows the
             # prediction to drive x0 more often (more anticipatory).
+            # Reference reset mechanism on the C3-mode path (cc:1445-1455,
+            # gated in_c3_mode_and_predict || in_repos_mode_and_predict —
+            # the port's repos path already implements it, controller
+            # :4982-5017, threshold rule per the vacuous-first-term note
+            # there). Without it a plan chain whose EE hovers (e.g. the
+            # C3+ z-solution floating ~51 mm while the z-frozen executor
+            # holds 24 mm) entrenches: x_pred stays pinned at the clamp
+            # ceiling (+20 mm, all in z), every solve anchors at a
+            # FICTIONAL floating EE, the LCS witness gaps are ~20 mm wrong,
+            # and the planner's λ detaches from reality — measured as the
+            # jack's 72-76% PHANTOM C3+ ticks with the arm frozen at a
+            # 13-21 mm standoff (2026-08-19 root cause).
+            _pred_reset_c3 = False
             if (self._x_pred_curr_plan is not None
+                    and bool(getattr(self, "_use_x_pred_reset", True))):
+                _pred_err = float(np.linalg.norm(
+                    self._x_pred_curr_plan[self._EE_POS_SLICE]
+                    - x0[self._EE_POS_SLICE]))
+                _thr = float(getattr(self, "_x_pred_reset_threshold", 0.01))
+                if _pred_err > _thr:
+                    _pred_reset_c3 = True
+                    self._x_pred_reset_count = getattr(
+                        self, "_x_pred_reset_count", 0) + 1
+                    if (self._x_pred_reset_count <= 40
+                            or os.environ.get("DIAG_X0_CLAMP", "0") == "1"):
+                        print(f"[XPRED-RESET-C3] step={self._mpc_step} "
+                              f"pred_err={_pred_err*1000:.1f}mm > "
+                              f"thr={_thr*1000:.1f}mm — using measured x0",
+                              flush=True)
+            if (self._x_pred_curr_plan is not None
+                    and not _pred_reset_c3
                     and self.nominal_ee_accel > 0.0):
                 _dt_c = min(0.1, self._filtered_solve_time)
                 _delta_pos = self.nominal_ee_accel * _dt_c * _dt_c
                 _delta_vel = self.nominal_ee_accel * _dt_c
                 _ee_pos_plan = self._x_pred_curr_plan[self._EE_POS_SLICE]
                 _ee_vel_plan = self._x_pred_curr_plan[self._EE_VEL_SLICE]
+                _ee_meas_dbg = x0[self._EE_POS_SLICE].copy()
                 x0[self._EE_POS_SLICE] = np.clip(
                     _ee_pos_plan,
                     x0[self._EE_POS_SLICE] - _delta_pos,
@@ -448,6 +479,22 @@ class C3PlusMPC:
                     x0[self._EE_VEL_SLICE] - _delta_vel,
                     x0[self._EE_VEL_SLICE] + _delta_vel,
                 )
+                self._last_solve_x0_ee = x0[self._EE_POS_SLICE].copy()
+                if os.environ.get("DIAG_X0_CLAMP", "0") == "1":
+                    _adv = float(np.linalg.norm(
+                        x0[self._EE_POS_SLICE] - _ee_meas_dbg))
+                    _pred_off = float(np.linalg.norm(
+                        _ee_pos_plan - _ee_meas_dbg))
+                    print(f"[X0-CLAMP] step={self._mpc_step} "
+                          f"pred_off={1000*_pred_off:.2f}mm "
+                          f"applied_adv={1000*_adv:.2f}mm "
+                          f"delta_pos={1000*_delta_pos:.2f}mm "
+                          f"fst={1000*self._filtered_solve_time:.1f}ms",
+                          flush=True)
+            elif os.environ.get("DIAG_X0_CLAMP", "0") == "1":
+                print(f"[X0-CLAMP] step={self._mpc_step} SKIPPED "
+                      f"pred_none={self._x_pred_curr_plan is None}",
+                      flush=True)
         else:
             x0 = np.concatenate([current_q, current_v])
 

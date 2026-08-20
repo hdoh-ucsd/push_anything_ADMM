@@ -311,7 +311,9 @@ class C3Solver:
         self._lprobe_mpc_step:    int         = 0
 
     # ------------------------------------------------------------------
-    def apply_task_solver_scales(self, u_lambda=None, w_G=None) -> None:
+    def apply_task_solver_scales(self, u_lambda=None, w_G=None,
+                                 g_x_vector=None, g_lambda=None,
+                                 g_u=None, g_eta=None) -> None:
         """Per-task ADMM scale overrides from the sampling-c3 yaml.
 
         The class defaults are the anything-N1 literals (u_lambda 1000,
@@ -322,7 +324,9 @@ class C3Solver:
         override (recorded in _env_scale_overrides at __init__) keeps
         highest precedence — a yaml value never silently clobbers it.
         """
-        for _attr, _val in (("_u_lambda", u_lambda), ("_w_G", w_G)):
+        for _attr, _val in (("_u_lambda", u_lambda), ("_w_G", w_G),
+                            ("_g_lambda", g_lambda), ("_g_u", g_u),
+                            ("_g_eta", g_eta)):
             if _val is None:
                 continue
             if _attr in self._env_scale_overrides:
@@ -331,6 +335,14 @@ class C3Solver:
                       f"{getattr(self, _attr)} active", flush=True)
                 continue
             setattr(self, _attr, float(_val))
+        # Per-slot x augmentation (paper-era plain-C3 G structure: the
+        # consensus BINDS the state — jacktoy g_x = [800 EE pos, 100 quat,
+        # 10 obj pos, 0.1 velocities] in REFERENCE layout; callers pass it
+        # remapped to the PORT layout [quat, obj pos, EE pos, vels]).
+        # Overrides the scalar _g_x for the x slots when set.
+        if g_x_vector is not None:
+            import numpy as _np_ts
+            self._g_x_vector = _np_ts.asarray(g_x_vector, dtype=float)
 
     # ------------------------------------------------------------------
     def enable_lambda_horizon_probe(self,
@@ -1181,19 +1193,29 @@ class C3Solver:
             _gu = float(self._g_u) * _wG
             _gE = float(self._g_eta) * _wG
             # Per-knot layout: [x, λ, u, η] at offsets [0, SL, SU, SE).
+            _gxv = getattr(self, "_g_x_vector", None)
+            if _gxv is not None and len(_gxv) != n_x:
+                print(f"[G-MATRIX] WARN g_x_vector len {len(_gxv)} != "
+                      f"n_x {n_x} — falling back to scalar g_x", flush=True)
+                _gxv = None
+            _gx_slots = (_gxv * _wG) if _gxv is not None else _gx
             for _k_kn in range(N):
                 _base = _k_kn * TOT
-                _gd[_base + 0 : _base + n_x]                    = _gx
+                _gd[_base + 0 : _base + n_x]                    = _gx_slots
                 _gd[_base + SL : _base + SL + n_lambda]         = _gL
                 _gd[_base + SU : _base + SU + n_u]              = _gu
                 _gd[_base + SE : _base + SE + n_lambda]         = _gE
             # Terminal x_N at end of vector.
-            _gd[N * TOT : N * TOT + n_x] = _gx
+            _gd[N * TOT : N * TOT + n_x] = _gx_slots
             self._g_diag_c3p_cache = _gd
             self._g_diag_c3p_shape = _shape_key
             if not getattr(self, "_g_matrix_banner", False):
                 self._g_matrix_banner = True
-                print(f"[G-MATRIX] active: w_G={_wG} g_x={self._g_x} "
+                _gxv_note = ("vector[" + ",".join(
+                    f"{v:g}" for v in getattr(self, '_g_x_vector', []))
+                    + "]" if getattr(self, "_g_x_vector", None) is not None
+                    else f"{self._g_x}")
+                print(f"[G-MATRIX] active: w_G={_wG} g_x={_gxv_note} "
                       f"g_λ={self._g_lambda} g_u={self._g_u} g_η={self._g_eta}  "
                       f"→ per-slot: x={_gx} λ={_gL} u={_gu} η={_gE}  "
                       f"(effective at rho=100: x=0 λ=2.0 η=1.0)",
