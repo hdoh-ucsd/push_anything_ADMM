@@ -171,7 +171,9 @@ def test_radially_symmetric_evenly_spaced():
     SamplingStrategy.kRandomOnSphere,
     SamplingStrategy.kRandomOnPerimeter,
     SamplingStrategy.kRandomOnShell,
-    SamplingStrategy.kMeshNormal,
+    # kMeshNormal removed 2026-08-19: implemented at 7f7fa39 (the anything
+    # lineage's sampler); its no-mesh contract (ValueError) is covered by
+    # tests/test_mesh_normal_sampling.py::test_dispatch_requires_mesh_faces.
 ])
 def test_unimplemented_strategy_raises(strat):
     with pytest.raises(NotImplementedError):

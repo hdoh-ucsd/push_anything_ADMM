@@ -118,7 +118,10 @@ w_G: 0.03
 u_horizontal_limit: 50.0
 u_vertical_limit: 50.0
 lcs_explicit_manipuland_ground_contacts: 3
-use_reference_pair_admission_planner_lcs: true
+# use_reference_pair_admission_planner_lcs: REMOVED — it was never read.
+# The behaviour is hard-wired ON at lcs_formulator.py:165
+# (`self._ref_pair_admission_planner_lcs = True`) and scoped to
+# tshape/hshape at the two use sites, so setting it here did nothing.
 use_cost_lcs_ranking: true
 # Reference jacktoy progress_params_c3plus.yaml:18 cost_type: 3
 # (kSimImpedance): the ranking rollout is scored with the FULL Q and R —

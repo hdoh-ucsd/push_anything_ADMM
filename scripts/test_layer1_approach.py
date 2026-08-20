@@ -16,7 +16,8 @@ import pydrake.all as ad
 
 sys.path.insert(0, ".")
 
-from main import load_task, EE_BODY_NAME, INITIAL_ARM_Q
+from main import load_task, EE_BODY_NAME
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q  # IK seed, not the production start pose (7ff5a21)
 from sim.env_builder import build_environment
 from control.task_costs import QuadraticManipulationCost
 

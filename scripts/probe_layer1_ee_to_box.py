@@ -8,7 +8,6 @@ _update_predicted_trajectory so we can log per-step:
 Pure observation; no behavioral change.
 """
 import sys
-import numpy as np
 
 sys.path.insert(0, ".")
 sys.argv = [

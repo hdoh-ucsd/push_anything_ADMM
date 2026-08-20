@@ -217,17 +217,6 @@ def load_task(task_name: str) -> dict:
     return tasks[task_name]
 
 
-def _obj_size_from_cfg(task_cfg: dict) -> float:
-    if task_cfg["object_type"] == "sphere":
-        return float(task_cfg["radius"]) * 2.0
-    if task_cfg["object_type"] == "tshape":
-        # Rough T size: max linear extent (crossbar tip to stem back) = 0.20 m.
-        # Used only for meshcat camera framing / visual-only helpers, not
-        # dynamics — an approximation is fine.
-        return 0.20
-    return float(task_cfg["size"][0])
-
-
 def build_planner_workspace_bounds(sc3_params) -> list:
     """Planner workspace state rows (reference cc:995-1025) for the EE-space
     LCS: [(state_idx, lo, hi), ...] bounding the EE position AND object
@@ -283,20 +272,22 @@ def main():
     # override levers), --pitch-probe (pre-DIAG_* diagnostic),
     # --extra-log-path (superseded by scripts/sync_results_to_d.sh),
     # --ee-space (no-op; the ee_space ATTRIBUTE is still derived from
-    # --r7 below). Dead task choices (hard_pushing/shepherding/
-    # cube_turning) pruned; their tasks.yaml entries remain as inert data.
+    # --r7 below).
     # Task choices come from config/tasks.yaml so imported anything objects
     # (Fig 8 campaign 2026-08-15) are runnable without touching argparse.
-    # Dead tasks (hard_pushing/...) remain excluded via the legacy allowlist
-    # union.
+    # NOTE: that means ALL tasks.yaml keys are selectable — including the
+    # stale hard_pushing / shepherding / cube_turning entries. The comment
+    # here used to claim they "remain excluded via the legacy allowlist
+    # union"; no such union exists. The hardcoded list below is only the
+    # fallback for when tasks.yaml cannot be read.
     try:
         import yaml as _yaml_choices
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "config", "tasks.yaml")) as _f:
             _task_choices = sorted(_yaml_choices.safe_load(_f)["tasks"].keys())
     except Exception:
-        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_h",
-                         "push_jack"]
+        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_t_block",
+                         "push_h", "push_jack"]
     parser.add_argument(
         "task", nargs="?", default="pushing",
         choices=_task_choices,
@@ -483,23 +474,59 @@ def main():
     # REF_jacktoy run) — the draw samples the reference's steady-state
     # goal distribution from t=0 instead of its one-time boot transient.
     # ------------------------------------------------------------------
+    # PORT_GOAL_MODE: env override to run a task under kRandom re-goaling
+    # (the reference's consecutive-goals protocol, goal_params goal_mode: 0)
+    # without touching its canonical yaml. Planar tasks get their boot
+    # quat synthesized from goal_yaw (flat rest: yaw quat ≡ full goal).
+    _env_goal_mode = os.environ.get("PORT_GOAL_MODE")
+    if _env_goal_mode:
+        task_cfg["goal_mode"] = _env_goal_mode
+    # The generator works in quaternions internally. Planar tasks do NOT
+    # get task_cfg["goal_quat"] set — they stay on the target_yaw path so
+    # the reference yaw lookahead (goal_params lookahead_angle 2 +
+    # angle_hysteresis 0.4; cc:427 min(angle, lookahead)) chunks large
+    # re-goal demands into sub-goals. Installing a goal quat bypasses that
+    # machinery (main.py GOAL-QUAT note) — the first 5-goal attempt stalled
+    # 390 s on a 2.66 rad static demand exactly this way.
+    _gg_boot_quat = task_cfg.get("goal_quat")
+    if _gg_boot_quat is None and "goal_yaw" in task_cfg:
+        _hy = 0.5 * float(task_cfg["goal_yaw"])
+        _gg_boot_quat = [float(np.cos(_hy)), 0.0, 0.0, float(np.sin(_hy))]
     _goal_gen = None
     _initial_goal_drawn = False
     if (str(task_cfg.get("goal_mode", "")) == "kRandom"
-            and task_cfg.get("goal_quat") is not None):
-        # goal_success_mode "flip" (USER-DIRECTED DEVIATION 2026-08-17):
-        # success = the jack's resting tripod matches the goal's tripod
-        # (position and yaw ignored; replaces the reference pos<0.02 AND
-        # rot<0.1 gate). Absent/"reference" keeps the reference gate.
+            and _gg_boot_quat is not None):
+        # Planar (tshape) objects have ONE flat-resting nominal orientation
+        # (reference GetNominalOrientations) — pass [identity] so every
+        # re-draw after the first applies >=90 deg of yaw to the previous
+        # goal quat (cc:330-336). The jack keeps its tripod nominals.
+        _gg_kwargs = {}
+        if task_cfg.get("object_type") == "tshape":
+            _gg_kwargs["nominal_orientations"] = [
+                np.array([1.0, 0.0, 0.0, 0.0])]
+            _gg_kwargs["nominal_names"] = ["planar"]
+        if task_cfg.get("random_goal_x_limits") is not None:
+            _gg_kwargs["x_limits"] = tuple(
+                float(v) for v in task_cfg["random_goal_x_limits"])
+        if task_cfg.get("random_goal_y_limits") is not None:
+            _gg_kwargs["y_limits"] = tuple(
+                float(v) for v in task_cfg["random_goal_y_limits"])
+        # goal_success_mode "flip" (USER-DIRECTED DEVIATION 2026-08-17,
+        # jack-only): success = the jack's resting tripod matches the
+        # goal's tripod (position and yaw ignored; replaces the reference
+        # pos<0.02 AND rot<0.1 gate). Absent/"reference" keeps the
+        # reference gate.
         _goal_success_mode = str(
             task_cfg.get("goal_success_mode", "reference"))
         _goal_gen = JackRandomGoalGenerator(
             rng=np.random.default_rng(
                 None if args.seed is None else [args.seed, 0x60A1]),
             initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
-            initial_quat=np.asarray(task_cfg["goal_quat"], dtype=float),
+            initial_quat=np.asarray(_gg_boot_quat, dtype=float),
             success_mode=_goal_success_mode,
+            **_gg_kwargs,
         )
+        _gg_planar = (task_cfg.get("object_type") == "tshape")
         if bool(task_cfg.get("krandom_draw_initial_goal", False)):
             _avoid = (tripod_id(np.asarray(task_cfg.get(
                           "init_quat", [1.0, 0.0, 0.0, 0.0]), dtype=float))
@@ -644,11 +671,11 @@ def main():
         # into tasks.yaml by scripts/emit_controller_inertia.py from each
         # object's *_controller.sdf <inertial> block.
         controller_inertia=task_cfg.get("controller_inertia", None),
-        # Mesh-T tasks (object_sdf set) use the reference mesh's ground-
-        # witness footprint instead of the box-T vertex table.
+        # Fallback for object_sdf tasks WITHOUT a per-task witness key:
+        # port-computed mesh-footprint table (see _tshape_vertex_set_body_frame).
         tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
-        # Imported anything objects (Fig 8 campaign): per-task witness
-        # triangle from the object's reference *_controller.sdf spheres.
+        # Per-task witness triangle from the object's reference
+        # *_controller.sdf spheres (imported anything objects + push_t_mesh).
         mesh_ground_witnesses_body=task_cfg.get(
             "ground_witness_points_body", None),
     )
@@ -819,11 +846,13 @@ def main():
     # mutates task_cfg before build_environment). Banner here, where the
     # normalized target_quat exists.
     if _goal_gen is not None:
+        _gg_q_str = ("target_yaw path (planar; reference yaw lookahead active)"
+                     if target_quat is None else
+                     f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+                     f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
         print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
               f"goal #1 {'DRAWN' if _initial_goal_drawn else 'fixed (reference boot value)'} "
-              f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
-              f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
-              f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
+              f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) {_gg_q_str}")
         if _goal_gen.success_mode == "flip":
             print(f"[GOAL-GEN] success mode = FLIP (user-directed deviation "
                   f"2026-08-17): goal reached when resting tripod matches "
@@ -892,6 +921,58 @@ def main():
             sc3_params.sampling_params.sampling_height = float(_task_sample_h)
             print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
                   f"(was {_was_sh:.3f}, per-task '{task_name}')")
+        # 2026-08-17: per-task grid_x/y_limits override. The perimeter-sampler
+        # draw grid is a PER-DEMO reference literal (push_t [-0.12,0.08] x
+        # [-0.08,0.08]; anything [-0.11,0.11]^2) and each object belongs to
+        # one lineage: push_t_block to the push_t demo (the shared kik_t yaml
+        # carries those), the mesh letters to anything. Absent -> yaml value.
+        for _gk in ("grid_x_limits", "grid_y_limits"):
+            _task_g = task_cfg.get(_gk)
+            if _task_g is not None:
+                _was_g = getattr(sc3_params.sampling_params, _gk, None)
+                setattr(sc3_params.sampling_params, _gk,
+                        [float(_task_g[0]), float(_task_g[1])])
+                print(f"[OVERRIDE] {_gk}={_task_g} "
+                      f"(was {_was_g}, per-task '{task_name}')")
+        # 2026-08-17: per-task sampling strategy + kMeshNormal literals.
+        # The strategy is a per-demo reference literal: push_t runs
+        # kRandomOnPerimeter (kik_t default), the ANYTHING lineage runs
+        # kMeshNormal(MultiObject) — anything sampling_params.yaml:14
+        # sampling_strategy: 7, N=1 ≡ port kMeshNormal.
+        _task_strat = task_cfg.get("sampling_strategy")
+        if _task_strat is not None:
+            from control.sampling_c3.params import SamplingStrategy as _SS
+            _was_s = sc3_params.sampling_params.sampling_strategy
+            sc3_params.sampling_params.sampling_strategy = _SS[_task_strat]
+            print(f"[OVERRIDE] sampling_strategy={_task_strat} "
+                  f"(was {_was_s.name}, per-task '{task_name}')")
+        for _sk, _cast in (("sample_projection_clearance", float),
+                           ("buffer_distance", float),
+                           ("max_attempts", int),
+                           ("barycentric_bias", float)):
+            _task_v = task_cfg.get(_sk)
+            if _task_v is not None:
+                _was_v = getattr(sc3_params.sampling_params, _sk, None)
+                setattr(sc3_params.sampling_params, _sk, _cast(_task_v))
+                print(f"[OVERRIDE] {_sk}={_task_v} "
+                      f"(was {_was_v}, per-task '{task_name}')")
+        # kMeshNormal face preprocessing — AFTER the overrides so the
+        # reference z-filter uses the final buffer/clearance literals.
+        _mesh_faces_for_task = None
+        from control.sampling_c3.params import SamplingStrategy as _SSm
+        if (sc3_params.sampling_params.sampling_strategy
+                == _SSm.kMeshNormal):
+            from control.sampling_c3.sampling import load_mesh_faces
+            from pathlib import Path as _PathM
+            _obj_p = (_PathM(task_cfg["object_sdf"]).parent
+                      / f"{task_cfg['link_name']}.obj")
+            _spm = sc3_params.sampling_params
+            _mesh_faces_for_task = load_mesh_faces(
+                str(_obj_p), _spm.buffer_distance,
+                _spm.sample_projection_clearance)
+            print(f"[MESH-NORMAL] {_obj_p.name}: "
+                  f"{len(_mesh_faces_for_task['areas'])} side-wall faces, "
+                  f"total_area={_mesh_faces_for_task['total_area']:.4f} m^2")
         # 2026-07-19: per-task pwl_waypoint_height override. Object top varies
         # by task (T top 0.04, box top 0.10), so the PWL traverse height must
         # be per-object to keep sphere-bottom above object top. tasks.yaml
@@ -957,18 +1038,22 @@ def main():
             # (interior draw + signed-distance projection off the real
             # collision geometry) — they have no face tables, and the old
             # box-T table mis-placed their approach targets (never-engaged
-            # class). push_t_mesh is EXCLUDED: it keeps the validated
-            # box-T face table (~6 passing draws at this HEAD) after the
-            # projection sampler spun it in 3/3 gate draws across three
-            # standoff variants (1.86/1.80/2.97 rad — standoff falsified
-            # as the mechanism; the interior-projection DISTRIBUTION
-            # interaction is an open question, see memory
-            # fig8-sampler-hardcoded-facetable-bug addendum). Legacy
-            # analytic tasks (push_t, push_h) keep their tables — their
-            # sim geometry IS the analytic shape.
-            use_geometry_perimeter_sampling=(
-                bool(task_cfg.get("object_sdf", None))
-                and args.task != "push_t_mesh"),
+            # class). 2026-08-17: push_t_mesh is now INCLUDED (T-mesh
+            # divergence fix 2) — the box-T face table was a port-only
+            # substitute (reference PerimeterSampling has no face tables).
+            # The earlier 3/3 gate-draw spins that motivated the opt-out
+            # predate the reference witness triangle (089aaf6); re-gated
+            # at the canonical seed with that fix in. Legacy analytic
+            # tasks (push_t, push_h) keep their tables — their sim
+            # geometry IS the analytic shape.
+            use_geometry_perimeter_sampling=bool(
+                task_cfg.get("object_sdf", None)),
+            # kMeshNormal (anything lineage): preprocess the object's
+            # full-resolution OBJ into the reference face set. Path
+            # convention mirrors the reference's
+            # "urdf/<base_name>/<base_name>.obj"
+            # (sampling_based_c3_controller.cc:435-438).
+            mesh_faces=_mesh_faces_for_task,
         )
         # SE(3) tasks: hand the controller the full goal orientation so its
         # rotation error is the geodesic angle rather than a yaw difference.
@@ -1139,28 +1224,55 @@ def main():
                 print(f"[GOAL-GEN] DIAG forced re-goal at step={step}",
                       flush=True)
             if _regoaled:
-                target_xy   = _goal_gen.goal_xy.copy()
-                target_quat = _goal_gen.goal_quat.copy()
-                quad_cost.set_goal_quat(target_quat)
-                if hasattr(mpc, "set_goal_quat"):
-                    mpc.set_goal_quat(target_quat)
-                if hasattr(mpc, "_achieved_fixed_goal"):
+                target_xy = _goal_gen.goal_xy.copy()
+                _gg_new_quat = _goal_gen.goal_quat.copy()
+                if _gg_planar:
+                    # Planar task: stay on the target_yaw path — the
+                    # per-tick yaw lookahead below (reference
+                    # goal_params lookahead_angle 2 / angle_hysteresis
+                    # 0.4, cc:427 min(angle, lookahead)) then chunks the
+                    # new demand into <=2 rad sub-goals. Installing the
+                    # quat would bypass it (static-goal deviation — the
+                    # first 5-goal attempt stalled 390 s on 2.66 rad).
+                    target_yaw = float(np.arctan2(
+                        2.0 * (_gg_new_quat[0] * _gg_new_quat[3]),
+                        1.0 - 2.0 * (_gg_new_quat[3] ** 2)))
+                else:
+                    target_quat = _gg_new_quat
+                    quad_cost.set_goal_quat(target_quat)
+                    if hasattr(mpc, "set_goal_quat"):
+                        mpc.set_goal_quat(target_quat)
+                # Reference goal-change reset (cc:827-845): position regime,
+                # achieved latch, progress, and BOTH sample buffers.
+                if hasattr(mpc, "reset_for_new_goal"):
+                    mpc.reset_for_new_goal()
+                elif hasattr(mpc, "_achieved_fixed_goal"):
                     mpc._achieved_fixed_goal = False
                     mpc._off_target_streak = 0
-                _update_jack_goal_marker(meshcat, target_xy, target_quat,
+                _update_jack_goal_marker(meshcat, target_xy, _gg_new_quat,
                                          task_cfg["init_xyz"][2])
-                _gg_demand = geodesic_angle(target_quat, _obj_quat_now)
+                _gg_demand = geodesic_angle(_gg_new_quat, _obj_quat_now)
                 print(f"[GOAL-GEN] goal #{_goal_gen.goals_reached} REACHED "
                       f"at t={sim_time:.3f}s -> new goal "
                       f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
-                      f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
-                      f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
-                      f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}] "
+                      f"tripod={_goal_gen.nominal_names[_goal_gen.orientation_index]} "
+                      f"quat=[{_gg_new_quat[0]:+.4f} {_gg_new_quat[1]:+.4f} "
+                      f"{_gg_new_quat[2]:+.4f} {_gg_new_quat[3]:+.4f}] "
                       f"demand={_gg_demand:.3f} rad"
                       + ("  [> 2.0 rad lookahead_angle -- SLERP sub-goal "
                          "will clamp]"
-                         if _gg_demand > 2.0 else ""),
+                         if (_gg_demand > 2.0 and not _gg_planar) else ""),
                       flush=True)
+                # PORT_GOALGEN_N: stop the run once N goals have been
+                # achieved (achievements counted by the generator, boot
+                # goal included). Diagnostic-class env gate for the
+                # consecutive-goals protocol; unset = run to max-time.
+                _gg_n = int(os.environ.get("PORT_GOALGEN_N", "0") or 0)
+                if _gg_n > 0 and _goal_gen.goals_reached >= _gg_n:
+                    print(f"[GOAL-GEN] COMPLETE: {_goal_gen.goals_reached} "
+                          f"goals achieved (PORT_GOALGEN_N={_gg_n}) at "
+                          f"t={sim_time:.3f}s — ending run", flush=True)
+                    break
             # DIAG topple driver (see init above): settle -> push the
             # toggling capsule's up end over the support edge -> release
             # on raw tripod change -> cooldown; escalate force on a

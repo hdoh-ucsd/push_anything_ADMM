@@ -11,7 +11,8 @@ import numpy as np
 import yaml
 import pydrake.all as ad
 
-from sim.env_builder import build_environment, INITIAL_ARM_Q, EE_BODY_NAME
+from sim.env_builder import build_environment, EE_BODY_NAME
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q  # IK seed, not the production start pose (7ff5a21)
 from control.sampling_c3.params import SamplingC3Params
 
 
