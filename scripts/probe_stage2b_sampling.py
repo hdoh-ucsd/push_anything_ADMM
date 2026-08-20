@@ -15,7 +15,6 @@ in Stage 2C, separate plan.
 
 from __future__ import annotations
 import re
-import sys
 from pathlib import Path
 
 REPO = Path("/root/push_anything_ADMM")

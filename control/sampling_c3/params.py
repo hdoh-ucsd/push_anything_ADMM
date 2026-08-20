@@ -622,146 +622,45 @@ class RepositionParams:
 
 
 # ---------------------------------------------------------------------------
-# RepositionIKParams — DEAD CODE, kept only so any external caller loading
-# an old yaml with `repos_ik_params:` doesn't crash. The kIK reposition
-# tracker (control/sampling_c3/reposition_ik.py) was removed as part of
-# the reference-only cleanup — the reference dairlib
-# push_anything_dev@257e3ed only ships PiecewiseLinearTracker.
+# RepositionIKParams — vestigial. The kIK reposition tracker
+# (control/sampling_c3/reposition_ik.py) was deleted in the reference-only
+# cleanup: reference dairlib push_anything_dev@257e3ed ships only
+# PiecewiseLinearTracker. The class survives for two reasons:
+#
+#   1. `q_nominal` is still read — sampling_based_c3_controller.py:227 feeds
+#      it to the OSC as the nominal arm posture. That is the ONLY field any
+#      code reads (verified: it is the sole `repos_ik_params.<field>` access
+#      in the repo).
+#   2. An old yaml carrying a `repos_ik_params:` block must not crash.
+#      `_filter_kwargs` warns on and drops unknown keys, so that holds no
+#      matter which fields exist here.
+#
+# The other 17 fields (IK tolerances, min-distance bounds, Ipopt limits,
+# warm-up and infeasibility knobs, frame names) were removed: they
+# configured the deleted solver and nothing read them.
 # ---------------------------------------------------------------------------
 
 @dataclass
 class RepositionIKParams:
-    """Parameters for ``RepositionIKTracker`` (sibling planner — selected by
-    ``RepositionParams.traj_type == kIK``).
+    """Carrier for the nominal arm posture consumed by the OSC.
 
-    Orientation cone (orientation_cone_deg)
-    --------------------------------------
-    Defaults to 0.0 (disabled). With only the 3-DoF position constraint
-    active, IK has 7 DoFs to fit a 3D target — leaving 4 DoFs of redundancy
-    that the centering + smoothness costs use to keep warm-started solutions
-    on a single IK branch (no q-jumps between adjacent knots). Enabling the
-    cone consumes 1-2 redundant DoFs and increases solver-failure rate near
-    workspace edges. Don't enable unless the downstream task actually
-    requires a constrained EE orientation.
-
-    Min-distance bounds (ik_min_distance_lower_bound + fk_min_distance)
-    -------------------------------------------------------------------
-    Two distinct knobs, intentionally split (5f V-7, 2026-05-08):
-
-    * ``ik_min_distance_lower_bound`` (default 0.0): lower bound enforced
-      INSIDE the per-knot IK solve via Drake's
-      ``AddMinimumDistanceLowerBoundConstraint``. Default disables the
-      constraint entirely. For typical pushing/manipulation tasks where
-      the pusher must contact objects, keep this at 0.0 — every value
-      > 0.0 causes the IK to reject any warm-start whose pusher is
-      already at table contact, which is the common case at the start
-      of a free-mode entry. Set positive only if the task does NOT
-      require approach-to-contact.
-    * ``fk_min_distance`` (default 0.0): min-distance threshold for the
-      FK sweep on knots K..N-1. Default 0.0 disables FK-side clearance
-      enforcement entirely; this matches the dairlib upstream precedent
-      where reposition IK does not enforce per-knot collision avoidance
-      and instead relies on the trajectory's geometric design (lift-
-      traverse-descend with safe-height clearance) for safety. Set to a
-      positive value only if your trajectory shape genuinely needs
-      per-knot signed-distance verification — and budget for the ~19
-      ``ComputeSignedDistancePairwiseClosestPoints`` calls per free-mode
-      loop that the sweep performs (5f V-8 measurement: borderline
-      overshoots of the 8 ms IK cap on a non-trivial fraction of loops).
-
-    Old single ``min_distance_lower_bound`` field has been removed;
-    YAMLs containing it raise a clear migration error in ``from_dict``.
-
-    Knot horizon (num_full_ik_knots, "K")
-    -------------------------------------
-    K = 1 (default) means one full IK solve per control loop and N-1 knots
-    filled by joint-space hold + FK signed-distance check. Diagnostic
-    only — wrapper consumes only ``q_knots[:, 0]``. Raise K only after
-    timing benchmarks show the per-knot budget is met.
+    Formerly the full parameter set for ``RepositionIKTracker``. See the
+    banner above for what was removed and why.
     """
-    # Constraints
-    position_tolerance:                         float = 1e-3
-    orientation_cone_deg:                       float = 0.0
-    R_des_world_to_ee:                          list  = field(default_factory=list)  # 3x3 row-major; unused if cone == 0
-    # Min-distance: split between IK-side and FK-sweep-side, both
-    # default 0.0 (disabled) — matches dairlib upstream which relies
-    # on lift-traverse-descend trajectory shape for safety. See class
-    # docstring for why and when to opt in.
-    ik_min_distance_lower_bound:                float = 0.0
-    fk_min_distance:                            float = 0.0
-    influence_distance_offset:                  float = 0.01
-
-    # Costs
-    joint_centering_weight:                     float = 1e-2
-    joint_movement_weight:                      float = 1e-1
     q_nominal:                                  list  = field(
         default_factory=lambda: [+0.552150, +0.325037, +0.976275,
                                   -2.246164, -0.188979, +3.044706, +0.785000]
-    )  # J2 reduced 0.35 rad from INITIAL_ARM_Q[1]=0.675 to 0.325 (≈19°).
-       # Lowers IK's nominal shoulder posture so gravity load on J2 at q*
-       # doesn't saturate the 30 N·m budget. Prior nominal (=INITIAL_ARM_Q)
-       # produced q*[1]≈0.90 rad, where the gravity-comp term consumed ~28
-       # of 30 N·m, leaving the PD only ~2 N·m of proportional headroom and
-       # ~2.3° of unresolvable residual on J2 — see
-       # results/tracker_bias_north.log. Other 6 joints unchanged.
-
-    # Solver / timing
-    per_knot_solve_timeout_s:                   float = 8e-3
-    max_ipopt_iter:                             int   = 30  # structural cap — IPOPT max_iter; complements the wall-clock cap
-    max_consecutive_failures_before_abort:      int   = 2   # only active when num_full_ik_knots >= 2
-    num_full_ik_knots:                          int   = 1
-
-    # IPOPT first-call cold-start can take ~15-25 ms (vs ~6 ms warm), so
-    # the very first compute_torque() at t=0 would otherwise overshoot
-    # the production wall-clock cap. RepositionIKTracker.__init__ runs a
-    # one-shot warm-up Solve() at the end of construction (with a
-    # trivially-feasible target = FK of the current arm pose) so the
-    # in-loop solves all hit the warm path. Disable for tight test loops
-    # where the cumulative warm-up cost across many tracker constructions
-    # adds up.
-    warm_up_on_construction:                    bool  = True
-
-    # Infeasibility-poison interface to wrapper.py
-    infeasibility_match_radius_m:               float = 0.01
-
-    # Option A noise-floor reducer (default OFF — identity behavior):
-    # on knot[0] IK failure, q_arm_sol == q_warm, so the default
-    # p_des == FK(q_warm) ≈ ee_now commands the executor to stay put,
-    # cascading a missed-motion tick into a 25-35cm trajectory bifurcation
-    # (verified at step 103 of nondet_seed0_serial_16s_pair). Enabling this
-    # flag substitutes p_des := self._last_good_p_des (cached previous
-    # successful target) when knot[0] fails — keeps the executor on the
-    # last-known reachable target rather than stalling. Does NOT confer
-    # bit-determinism (Ipopt FP-noise is sub-ULP per call, not confined to
-    # failures — see project_b3b_refuted_paired_bit_identical.md), but
-    # removes the catastrophic 35cm failure-cascades, leaving only the
-    # silent FP-drift floor. Use as a noise-floor reducer for ablation
-    # studies / video runs.
-    hold_last_good_p_des_on_failure:            bool  = False
-
-    # Frames (informational; tracker resolves via the obj_body / ee_frame
-    # objects passed at construction — these names are kept for parity with
-    # upstream YAMLs and for potential debugging output)
-    ee_frame_name:                              str = "pusher"
-    object_body_name:                           str = ""
+    )  # J2 reduced 0.35 rad from the old INITIAL_ARM_Q[1]=0.675 to 0.325
+       # (~19 deg). Lowers the nominal shoulder posture so gravity load on J2
+       # at q* doesn't saturate the 30 N.m budget. The prior nominal produced
+       # q*[1] ~ 0.90 rad, where gravity-comp consumed ~28 of 30 N.m, leaving
+       # the PD only ~2 N.m of proportional headroom and ~2.3 deg of
+       # unresolvable residual on J2 (results/tracker_bias_north.log).
+       # Other 6 joints unchanged.
 
     @classmethod
     def from_dict(cls, raw: dict) -> "RepositionIKParams":
-        # 5f V-7 migration: the old single field is split into two with
-        # different defaults. Fail loudly so YAMLs that still set the
-        # old name don't silently get the new (much looser) IK default.
-        if "min_distance_lower_bound" in raw:
-            raise ValueError(
-                "RepositionIKParams.min_distance_lower_bound has been "
-                "split into ik_min_distance_lower_bound (default 0.0, "
-                "disables IK-side enforcement) and fk_min_distance "
-                "(default 0.0, disables FK-sweep enforcement — matches "
-                "dairlib upstream). Update your YAML to declare which "
-                "one(s) you want. See the class docstring for the "
-                "rationale."
-            )
-        kw = _filter_kwargs(cls, raw)
-        return cls(**kw)
+        return cls(**_filter_kwargs(cls, raw))
 
 
 # ---------------------------------------------------------------------------
@@ -982,9 +881,11 @@ class SamplingC3Params:
     # march + per-knot IK + joint-PD path (RepositionIKTracker /
     # PiecewiseLinearTracker) and instead builds a full N-knot Cartesian
     # PWL trajectory (RepositionTrajectory) at planner cadence, feeding
-    # (p_des, v_des) to the OSC at each control tick. Default False →
-    # legacy path. Read from env var REFCONF_REPOSITION_PWL=1 in main.py
-    # at controller construction. See alignment plan §3 Stage A.
+    # (p_des, v_des) to the OSC at each control tick. See alignment plan §3
+    # Stage A. (This used to read "Default False → legacy path. Read from env
+    # var REFCONF_REPOSITION_PWL=1 in main.py at controller construction" —
+    # both halves are stale: the default is True, four lines down, and no
+    # REFCONF_REPOSITION_PWL is read anywhere.)
     # Reference uses derivative-carrying PWL trajectory (LcmTrajectoryReceiver
     # → FirstOrderHold PP) so OSC gets (p_des, v_des). Default ON.
     use_reposition_pwl_trajectory: bool = True
@@ -1009,7 +910,15 @@ class SamplingC3Params:
     # ------------------------------------------------------------------
     achieved_goal_release_loops: int = 0
 
-    use_contact_entry_gate: bool = False
+    # NOTE (defaults audit): this and the three flags marked "effective
+    # default" below read True, not False, because True is what every launch
+    # actually gets — from_dict's fallback is True and it is the only path
+    # production uses (main.py:816 from_yaml -> from_dict). The declared
+    # default is set to match so the two agree; see the block comment above
+    # from_dict. The port-only/reference-conformance argument in the comments
+    # here is about what the value ARGUABLY SHOULD be, which is a separate,
+    # behaviour-changing decision — not what it currently is.
+    use_contact_entry_gate: bool = True   # effective default
     # Threshold on ‖ee_now − box_center‖ in meters. Default 0.090 m
     # (loosened from 0.080 after the both_fixes_20260521_193033 run
     # found that IK arrivals systematically land at 80-95 mm — a 0.080
@@ -1039,7 +948,7 @@ class SamplingC3Params:
     # translation tasks too; threshold chosen to preserve their
     # engagement behavior.
     # Port-only surface-distance entry gate — reference has no such gate.
-    use_surface_entry_gate: bool = False
+    use_surface_entry_gate: bool = True   # effective default (see note above use_contact_entry_gate)
     contact_entry_surface_threshold: float = 0.060
 
     # Stage 2 L1: goal-aligned contact-normal requirement at admission.
@@ -1093,7 +1002,7 @@ class SamplingC3Params:
     # definition when finished_repos==True.
     # Port-only face-selection gate on c3 entry — reference doesn't gate by
     # face alignment; dispatcher lets the sample scorer sort candidates.
-    use_commit_face_gate: bool = False
+    use_commit_face_gate: bool = True   # effective default (see note above use_contact_entry_gate)
     commit_face_gate_threshold: float = 0.3
 
     # ------------ T1a — EE_z altitude mode-switch gate --------------------
@@ -1133,50 +1042,11 @@ class SamplingC3Params:
     # analog (reference has no contact-loss disengage counter). Port-only
     # candidate band-aid; alignment-status-OPEN.
     contact_loss_threshold_default_s: float = 0.05
-    contact_loss_threshold_with_override_s: float = 0.12
-    # LTD PHASE A traverse needs ~80-110 ticks at realized lateral rate
-    # (~0.8 mm/tick observed) to cover the box_half + clearance ~ 75 mm
-    # to W_side. With the `_with_override` value of 12 ticks, the gate
-    # killed PHASE A 9× too early during LTD smoke tests. PHASE A holds
-    # EE.z at z_safe (above box top) under active z-Kp tracking, so the
-    # earlier objection to a longer timer ("EE has more time to fall
-    # onto the top") does not apply in PHASE A specifically. The threshold
-    # also acts as a stuck-watchdog: if PHASE A can't form contact by
-    # this many ticks, the system gives up and the dispatcher routes to
-    # free mode. 120 ≈ 1.5× the expected 80 ticks.
-    contact_loss_threshold_phaseA_ltd_s: float = 1.20   # was 120 ticks @ 100 Hz
-    # PHASE B (descend beside the face from z_safe down to face-centroid z)
-    # needs ~215 ticks at the realized ~0.84 mm/tick rate to cover
-    # ~150 mm of vertical travel. Per the PHASE-B lateral-clearance probe
-    # (ee.x stays 4–16 mm east of the face plane through the entire
-    # descent, monotonically drifting outward toward W_side), the
-    # fall-onto-top objection that motivated the strict default does not
-    # apply: EE is laterally outside the box footprint, so a free-mode
-    # interlude would fall east of the box, not onto its top. Extend the
-    # threshold with the same 1.5× watchdog margin as PHASE A.
-    contact_loss_threshold_phaseB_ltd_s: float = 3.00   # was 300 ticks @ 100 Hz
-
-    # ------------ PHASE C progress-gated exit (Layer 2.5/2.6) -------------
-    # Once the EE is in PHASE C (pushing into the face), the contact-loss
-    # tick-count gate is the wrong productivity metric: the EE may sit
-    # one tick from LCS admission and need only a few more ticks of
-    # convergence. The C gate keys on surf_dist progress instead.
-    #   * phaseC_stall_threshold — consecutive C ticks without
-    #     surf_dist improving by ≥ phaseC_progress_eps. Fires even
-    #     when the absolute time budget is small.
-    #   * phaseC_hard_cap — absolute max active C ticks. Bounds the
-    #     worst case even when surf_dist creeps in but never closes.
-    #     Also used as the contact-loss tick-count budget during C
-    #     (the elif _approach_override_phase=='C_approach' branch in
-    #     wrapper.py) so the existing tick-count gate doesn't
-    #     pre-empt the progress gate.
-    #   * phaseC_progress_eps — minimum surf_dist improvement (m) to
-    #     count as progress. Default 0.0002 m = 0.2 mm ≈ 0.1 × LCS
-    #     admission threshold (2 mm), so noise-level oscillation
-    #     does not register as progress.
-    phaseC_stall_threshold_s: float = 0.30   # was 30 ticks @ 100 Hz
-    phaseC_hard_cap_s: float = 1.00          # was 100 ticks @ 100 Hz
-    phaseC_progress_eps: float = 0.0002
+    # (contact_loss_threshold_with_override_s, _phaseA_ltd_s, _phaseB_ltd_s
+    # and the PHASE C trio phaseC_stall_threshold_s / phaseC_hard_cap_s /
+    # phaseC_progress_eps were removed on 2026-08-19 with the LTD
+    # approach-override they configured. Only contact_loss_threshold_default_s
+    # above is still read — it is the sole disengage threshold now.)
 
     # ------------ Velocity feedforward to OSC (bounded re-enable) ---------
     # `v_ee_desired` was set to None at commit 02c48e9 (2026-05-20). Reason
@@ -1235,45 +1105,39 @@ class SamplingC3Params:
     dt_mpc: float = 0.01   # CI-MPC re-solve period (sec); defaults to dt_ctrl
 
     # ------------ Lift-Traverse-Descend (LTD) override geometry -----------
-    # The contact-free override (wrapper.py face-picker block) used to aim
-    # a direct line at the face centroid. From above-box starts that line
-    # was 67° below horizontal → EE descended onto the box top before
-    # reaching the side face. Stage-3 sweep with the directional picker
-    # but legacy direct-line target: 30/30 EE-BOX events landed on TOP
-    # face (nhat≈[0,0,+1]), 3.82 mm box motion across the one seed of 20
-    # that completed.
-    #
-    # LTD routes the override's approach through a beside-box waypoint at
-    # face mid-height, with a lift-above-box-top traverse phase if needed.
-    # Three phases (stateless, decided per-tick from EE geometry):
-    #   A: lift-and-traverse — aim above-and-beside box at face-x/y
-    #   B: descend           — aim at W_side (beside box, face mid-height)
-    #   C: approach          — aim at face centroid (z rigidly clamped)
-    # Port-only lift-traverse-descend override for approach path. Reference
-    # relies on the PWL reposition trajectory (which itself does lift/traverse/
-    # descend via z_safe). Disabling to remove the redundant approach shaper.
-    use_lift_traverse_descend_override: bool = False
-    # PHASE B descent puts the sphere SURFACE at (clearance - PUSHER_RADIUS)
-    # from the face plane. Floor is PUSHER_RADIUS + LCS_THRESHOLD + 5 mm
-    # safety = 32 mm: smaller would admit contact mid-descent and re-
-    # introduce the very bypass that motivated LTD. Asserted at every
-    # override entry; never sweep below the floor.
-    ltd_clearance: float = 0.050
-    # PHASE A safe-traverse height above box top:
-    #   z_safe = box.z + box_half + PUSHER_RADIUS + ltd_z_margin
-    # Margin > LCS_THRESHOLD (2 mm) so accidental grazing doesn't admit.
-    ltd_z_margin: float = 0.010
-    # PHASE A → B transition: lateral distance to W_side below which the
-    # override switches from lift-and-traverse to descend. Sized above
-    # typical OSC steady-state xy error to prevent boundary ping-pong.
-    ltd_xy_tol: float = 0.020
-    # PHASE B → C transition: z above W_side at which the override
-    # switches from descend to approach. Orthogonal to ltd_xy_tol so the
-    # two boundaries cannot couple into a single oscillating state.
-    ltd_z_band: float = 0.005
+    # (The lift-traverse-descend override knobs — use_lift_traverse_descend_override,
+    # ltd_clearance, ltd_z_margin, ltd_xy_tol, ltd_z_band — were removed on
+    # 2026-08-19 together with the approach-override block they configured.
+    # That block had been unreachable since the 2026-07-28 defaults flip, and
+    # the reference has no counterpart: the PWL reposition trajectory owns the
+    # approach path.)
 
     @classmethod
     def from_dict(cls, raw: dict) -> "SamplingC3Params":
+        # INVARIANT: every `raw.get(key, FALLBACK)` fallback below MUST equal
+        # the field's declared default above. They are two hand-maintained
+        # copies of one value, and they had silently drifted apart on four
+        # flags (use_contact_entry_gate, use_surface_entry_gate,
+        # use_commit_face_gate, use_lift_traverse_descend_override): declared
+        # False, fallback True. Because production only ever builds params via
+        # from_yaml -> from_dict, True was the real behaviour and the declared
+        # False was fiction — a direct SamplingC3Params() (unit tests) got a
+        # different controller than any run.
+        #
+        # tests/test_sampling_c3_params.py::test_empty_yaml_uses_all_defaults
+        # asserts `from_yaml("") == SamplingC3Params()` and is the regression
+        # guard for exactly this; it was failing on those four fields.
+        #
+        # Unknown TOP-LEVEL keys were silently discarded until now: the nested
+        # sections go through _filter_kwargs (which warns), but this method
+        # reads `raw` with explicit .get() calls and never looked at what was
+        # left over. That is how `use_reference_pair_admission_planner_lcs`
+        # sat in three configs looking live while nothing parsed it. Warn, do
+        # not raise — a stale key should not stop a run.
+        _known = {f.name for f in fields(cls)}
+        for _k in sorted(set(raw) - _known):
+            print(f"[sampling_c3.params] warning: unknown SamplingC3Params "
+                  f"field {_k!r} ignored", flush=True)
         return cls(
             progress_params   = ProgressParams.from_dict(raw.get("progress_params", {}) or {}),
             sampling_params   = SamplingParams.from_dict(raw.get("sampling_params", {}) or {}),
@@ -1363,23 +1227,19 @@ class SamplingC3Params:
             **{f"{new}_s": _resolve_legacy_int_to_seconds(raw, old, new, default_ticks)
                for old, new, default_ticks in (
                    ("contact_loss_threshold_default",       "contact_loss_threshold_default",       5),
-                   ("contact_loss_threshold_with_override", "contact_loss_threshold_with_override", 12),
-                   ("contact_loss_threshold_phaseA_ltd",    "contact_loss_threshold_phaseA_ltd",    120),
-                   ("contact_loss_threshold_phaseB_ltd",    "contact_loss_threshold_phaseB_ltd",    300),
-                   ("phaseC_stall_threshold",               "phaseC_stall_threshold",               30),
-                   ("phaseC_hard_cap",                      "phaseC_hard_cap",                      100),
+                   # The five LTD/PHASE-C entries that used to follow
+                   # (_with_override, _phaseA_ltd, _phaseB_ltd,
+                   # phaseC_stall_threshold, phaseC_hard_cap) went with the
+                   # approach-override removal on 2026-08-19. An old yaml
+                   # still carrying them now warns as an unknown key and is
+                   # ignored, rather than converting into a field that no
+                   # longer exists.
                )},
-            phaseC_progress_eps    = float(raw.get("phaseC_progress_eps", 0.0002)),
             use_velocity_feedforward    = bool(raw.get("use_velocity_feedforward", False)),
             velocity_feedforward_alpha  = float(raw.get("velocity_feedforward_alpha", 0.5)),
             velocity_feedforward_v_max  = float(raw.get("velocity_feedforward_v_max", 1.5)),
             dt_osc = float(raw.get("dt_osc", 0.01)),
             dt_mpc = float(raw.get("dt_mpc", 0.01)),
-            use_lift_traverse_descend_override = bool(raw.get("use_lift_traverse_descend_override", True)),
-            ltd_clearance = float(raw.get("ltd_clearance", 0.050)),
-            ltd_z_margin  = float(raw.get("ltd_z_margin",  0.010)),
-            ltd_xy_tol    = float(raw.get("ltd_xy_tol",    0.020)),
-            ltd_z_band    = float(raw.get("ltd_z_band",    0.005)),
         )
 
     @classmethod

@@ -19,18 +19,17 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict
 
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, Circle, FancyArrow, RegularPolygon
+from matplotlib.patches import Rectangle, Circle
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 

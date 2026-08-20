@@ -217,17 +217,6 @@ def load_task(task_name: str) -> dict:
     return tasks[task_name]
 
 
-def _obj_size_from_cfg(task_cfg: dict) -> float:
-    if task_cfg["object_type"] == "sphere":
-        return float(task_cfg["radius"]) * 2.0
-    if task_cfg["object_type"] == "tshape":
-        # Rough T size: max linear extent (crossbar tip to stem back) = 0.20 m.
-        # Used only for meshcat camera framing / visual-only helpers, not
-        # dynamics — an approximation is fine.
-        return 0.20
-    return float(task_cfg["size"][0])
-
-
 def build_planner_workspace_bounds(sc3_params) -> list:
     """Planner workspace state rows (reference cc:995-1025) for the EE-space
     LCS: [(state_idx, lo, hi), ...] bounding the EE position AND object
@@ -272,12 +261,14 @@ def main():
     # override levers), --pitch-probe (pre-DIAG_* diagnostic),
     # --extra-log-path (superseded by scripts/sync_results_to_d.sh),
     # --ee-space (no-op; the ee_space ATTRIBUTE is still derived from
-    # --r7 below). Dead task choices (hard_pushing/shepherding/
-    # cube_turning) pruned; their tasks.yaml entries remain as inert data.
+    # --r7 below).
     # Task choices come from config/tasks.yaml so imported anything objects
     # (Fig 8 campaign 2026-08-15) are runnable without touching argparse.
-    # Dead tasks (hard_pushing/...) remain excluded via the legacy allowlist
-    # union.
+    # NOTE: that means ALL tasks.yaml keys are selectable — including the
+    # stale hard_pushing / shepherding / cube_turning entries. The comment
+    # here used to claim they "remain excluded via the legacy allowlist
+    # union"; no such union exists. The hardcoded list below is only the
+    # fallback for when tasks.yaml cannot be read.
     try:
         import yaml as _yaml_choices
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
