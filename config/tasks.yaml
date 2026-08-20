@@ -787,6 +787,12 @@ tasks:
     init_xyz: [0.5, 0.0, 0.02]
     goal_xy: [0.482, 0.187]
     goal_yaw: -0.7379
+    # Fig-8 block-T campaign (user directive 2026-08-20): under kRandom
+    # (PORT_GOAL_MODE=kRandom only — INERT on canonical flagless runs,
+    # which never construct the goal generator) draw goal #1 from the
+    # kRandom distribution at boot so every seeded trial gets its own
+    # random goal. Same directive class as push_jack's key.
+    krandom_draw_initial_goal: true
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     # Reference push_t sampling_params literals in port ground frame
     # (ref 0.005/0.06 above its z=-0.029 ground — see the push_t task's
