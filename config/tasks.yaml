@@ -855,6 +855,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1020
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.082043, 0.031524, -0.025781]
       - [-0.082043, -0.029964, -0.025781]
@@ -916,6 +937,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1039
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.080955, 0.064635, -0.027656]
       - [-0.080955, -0.055968, -0.027656]
@@ -977,6 +1019,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1029
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.077854, 0.056634, -0.026556]
       - [-0.077854, -0.052867, -0.026556]
@@ -1038,6 +1101,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1043
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.068272, 0.077709, -0.027044]
       - [-0.068272, -0.084372, -0.027044]
@@ -1099,6 +1183,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1000
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.061691, 0.064074, -0.024119]
       - [-0.061691, -0.094816, -0.024119]
@@ -1160,6 +1265,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1022
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.069857, 0.085586, -0.026314]
       - [-0.069857, -0.073224, -0.026314]
@@ -1221,6 +1347,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1029
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.081106, 0.059579, -0.026118]
       - [-0.081106, -0.051523, -0.026118]
@@ -1282,6 +1429,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1032
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.078869, 0.046289, -0.024539]
       - [-0.078869, -0.055748, -0.024539]
@@ -1343,6 +1511,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0974
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.059715, 0.076752, -0.023597]
       - [-0.059715, -0.081456, -0.023597]
@@ -1404,6 +1593,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1073
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.079472, 0.060112, -0.030900]
       - [-0.079472, -0.044026, -0.030900]
@@ -1465,6 +1675,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1718
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.063746, 0.065873, -0.062896]
       - [-0.063746, -0.071637, -0.062896]
@@ -1526,6 +1757,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0936
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.039172, 0.076389, -0.021594]
       - [-0.039172, -0.101197, -0.021594]
@@ -1587,6 +1839,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1854
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.049298, 0.050483, -0.068155]
       - [-0.049298, -0.053252, -0.068155]
@@ -1648,6 +1921,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1286
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.055459, 0.087707, -0.041906]
       - [-0.055459, -0.073075, -0.041906]
@@ -1709,6 +2003,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1380
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.052205, 0.126576, -0.039712]
       - [-0.052205, -0.125373, -0.039712]
@@ -1770,6 +2085,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1319
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.039753, 0.124147, -0.041170]
       - [-0.039753, -0.108533, -0.041170]
@@ -1831,6 +2167,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0997
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.108825, 0.075751, -0.024540]
       - [-0.108825, -0.079959, -0.024540]
@@ -1892,6 +2249,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1183
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.050525, 0.107220, -0.034256]
       - [-0.050525, -0.112505, -0.034256]
@@ -1953,6 +2331,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1287
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.098883, 0.156753, -0.043249]
       - [-0.098883, -0.150249, -0.043249]
@@ -2014,6 +2413,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0911
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.072740, 0.095957, -0.020722]
       - [-0.072740, -0.096789, -0.020722]
@@ -2075,6 +2495,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1051
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.097731, 0.107398, -0.028300]
       - [-0.097731, -0.108470, -0.028300]
@@ -2136,6 +2577,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.2061
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.071343, 0.101031, -0.077160]
       - [-0.071343, -0.153392, -0.077160]
@@ -2197,6 +2659,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1218
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.060143, 0.071554, -0.032591]
       - [-0.060143, -0.087103, -0.032591]
