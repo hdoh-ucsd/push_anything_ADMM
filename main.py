@@ -1156,7 +1156,17 @@ def main():
     if args.max_time is not None:
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
 
+    # PORT_EXIT_ON_TIGHT=1 (2026-08-20 Fig-8 block-T campaign): end the run
+    # at the first joint-tight achievement (_tight_ever_latched, the sticky
+    # record of 16f03ac) instead of running to max_time. Measurement-harness
+    # gate for time-to-goal campaigns — default OFF, byte-identical unset.
+    _exit_on_tight = os.environ.get("PORT_EXIT_ON_TIGHT", "0") == "1"
+
     while sim_time < max_time:
+        if _exit_on_tight and getattr(mpc, "_tight_ever_latched", False):
+            print(f"[EXIT-ON-TIGHT] step={step} t={sim_time:.3f}s — tight "
+                  f"goal achieved, ending run (PORT_EXIT_ON_TIGHT=1)")
+            break
         current_q = plant.GetPositions(plant_ctx)
         current_v = plant.GetVelocities(plant_ctx)
 
