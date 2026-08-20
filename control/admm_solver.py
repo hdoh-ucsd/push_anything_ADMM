@@ -688,7 +688,17 @@ class C3Solver:
                     z_var[ui : ui + n_u],
                 )
 
-            cost_bd = prog.AddQuadraticCost(P_sym, np.zeros(total_dim), z_var)
+            # Same PSD-verdict caching as the C3+ path below — Drake
+            # re-checks the Hessian on every call unless told.
+            _psd = getattr(self, "_hessian_psd_c3", None)
+            if _psd is None:
+                cost_bd = prog.AddQuadraticCost(
+                    P_sym, np.zeros(total_dim), z_var)
+                _psd = bool(cost_bd.evaluator().is_convex())
+                self._hessian_psd_c3 = _psd
+            else:
+                cost_bd = prog.AddQuadraticCost(
+                    P_sym, np.zeros(total_dim), z_var, is_convex=_psd)
 
         # ---- ADMM iterations (only q refreshed, no reallocations) -------
         delta      = np.zeros(total_dim)
@@ -720,7 +730,8 @@ class C3Solver:
 
             with timed("admm.qp_build"):
                 q_total = q_ref - rho * (delta - omega)
-                cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+                cost_bd.evaluator().UpdateCoefficients(
+                    P_sym, q_total, 0.0, _psd)
 
             with timed("admm.osqp_solve"):
                 res = self._solver.Solve(prog, None, self._osqp_solver_options)
@@ -775,18 +786,19 @@ class C3Solver:
 
                 # Adaptive ρ (Boyd §3.4.1) — every 10 iterations
                 if (it + 1) % 10 == 0:
+                    # ρ-scaled P_sym is pushed by the next iteration's
+                    # qp_build immediately before it solves, so no push
+                    # here (see the C3+ path for the same reasoning).
                     if pr > 10.0 * dr and rho < 1000.0:
                         rho   *= 2.0
                         omega /= 2.0
                         P_total2 = P + rho * _eye_total
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
-                        cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
                     elif dr > 10.0 * pr and rho > 0.1:
                         rho   /= 2.0
                         omega *= 2.0
                         P_total2 = P + rho * _eye_total
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
-                        cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
                 # Early termination
                 if pr < tol and dr < tol:
@@ -1496,8 +1508,23 @@ class C3Solver:
                     z_var[np.array(_ev_idx) + _base_terminal],
                 )
 
-            cost_bd = prog.AddQuadraticCost(
-                P_sym, np.zeros(total_dim), z_var)
+            # Drake re-derives the Hessian PSD verdict on every
+            # AddQuadraticCost / UpdateCoefficients call when `is_convex`
+            # is left unset — an O(total_dim³) check that dominated the
+            # solver (~42% of _solve_c3plus, 2026-08-20 line profile).
+            # The verdict is a property of the cost STRUCTURE (Q/R/QN
+            # blocks + a non-negative ρ·G diagonal + 1e-8·I), which does
+            # not vary across solves, so take Drake's own verdict once and
+            # pass it back on every subsequent call.
+            _psd = getattr(self, "_hessian_psd_c3p", None)
+            if _psd is None:
+                cost_bd = prog.AddQuadraticCost(
+                    P_sym, np.zeros(total_dim), z_var)
+                _psd = bool(cost_bd.evaluator().is_convex())
+                self._hessian_psd_c3p = _psd
+            else:
+                cost_bd = prog.AddQuadraticCost(
+                    P_sym, np.zeros(total_dim), z_var, is_convex=_psd)
 
         # ---------------------------------------------------------------
         # ADMM iterations
@@ -1702,7 +1729,7 @@ class C3Solver:
                         _q_total_final[_et_s : _et_s + 4] = (
                             -rho * _W * delta[_et_s : _et_s + 4])
                     cost_bd.evaluator().UpdateCoefficients(
-                        _P_sym_final, _q_total_final)
+                        _P_sym_final, _q_total_final, 0.0, _psd)
                     if not getattr(self, "_b1a_banner", False):
                         self._b1a_banner = True
                         _n_slots = 10 * N   # (λ_n + 4 λ_t + η_n + 4 η_t) · N
@@ -1730,7 +1757,8 @@ class C3Solver:
                               f"isolated_QP_min=-q/P={_dbg_iso:.5f} "
                               f"(pre-solve prediction)", flush=True)
                 else:
-                    cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+                    cost_bd.evaluator().UpdateCoefficients(
+                        P_sym, q_total, 0.0, _psd)
 
             with timed("admm.osqp_solve"):
                 res = self._solver.Solve(prog, None, self._osqp_solver_options)
@@ -2222,7 +2250,11 @@ class C3Solver:
                         np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_diag)
                     else:
                         np.fill_diagonal(P_sym, P_sym.diagonal() + _delta_rho)
-                    cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
+                    # No push to the Drake cost here: every consumer of the
+                    # binding re-pushes (P_sym, q_total) immediately before
+                    # it solves — the next iteration's qp_build, or the
+                    # final QP below — so a push at this point is written
+                    # and overwritten without ever being read.
                 elif (it + 1) % 10 == 0:
                     # Legacy Boyd §3.4.1 primal/dual balance step (rho_scale
                     # disabled → fall back to this).
@@ -2233,7 +2265,6 @@ class C3Solver:
                                 if _use_g else rho * _eye_total)
                         P_total2 = P + _aug
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
-                        cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
                     elif dr > 10.0 * pr and rho > 0.1:
                         rho   /= 2.0
                         omega *= 2.0
@@ -2241,7 +2272,6 @@ class C3Solver:
                                 if _use_g else rho * _eye_total)
                         P_total2 = P + _aug
                         P_sym    = 0.5 * (P_total2 + P_total2.T) + 1e-8 * _eye_total
-                        cost_bd.evaluator().UpdateCoefficients(P_sym, q_total)
 
                 if pr < tol and dr < tol:
                     actual_iters = it + 1
@@ -2458,7 +2488,8 @@ class C3Solver:
                 else:
                     _P_fin = P_sym
                     q_total = q_ref - _aug_vec * delta
-                cost_bd.evaluator().UpdateCoefficients(_P_fin, q_total)
+                cost_bd.evaluator().UpdateCoefficients(
+                    _P_fin, q_total, 0.0, _psd)
                 res = self._solver.Solve(prog, None,
                                          self._osqp_solver_options)
             if res.is_success():
