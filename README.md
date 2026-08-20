@@ -14,14 +14,18 @@ The project's organising principle is **reference conformance**: where the port 
 
 ## Status
 
-Active research port. The stack solves its canonical tasks to the paper's **tight goal** tolerance (position < 0.02 m **and** rotation < 0.1 rad), verified on 180 s canonical runs:
+Active research port, measured against the paper's **tight goal** tolerance (position < 0.02 m **and** rotation < 0.1 rad):
 
-| Task | Object | Result | Tight goal | Log |
+| Task | Window | Result | Tight goal | Log |
 | --- | --- | --- | --- | --- |
-| `push_t_mesh` | mesh T (non-convex, VHACD) | 0.0108 m / 0.0766 rad | **PASS(final)** | `meshT_meshnormal_canon180.log` |
-| `push_t_block` | rectangular Push-T | 0.0190 m / 0.0887 rad | **PASS(final)** | `blockT_retention_canon180.log` |
-| `push_t_block` (300 s) | rectangular Push-T | 0.0195 m / 0.0461 rad | **PASS(final)** | `blockT_muintent_ext300.log` |
-| `pushing` | box | 0.0196 m / 0.0053 rad | **PASS(final)** | `boxgate_sixleg.log` |
+| `push_t_mesh` | 180 s | 0.0108 m / 0.0766 rad | **PASS(final)** | `meshT_meshnormal_canon180.log` |
+| `pushing` (box) | 180 s | 0.0196 m / 0.0053 rad | **PASS(final)** | `boxgate_sixleg.log` |
+| `push_t_block` | 300 s | 0.0195 m / 0.0461 rad | **PASS(final)** | `blockT_muintent_ext300.log` |
+| `push_t_block` | 180 s | 0.0200–0.0217 m / 0.002–0.074 rad | **miss by 0–1.7 mm** | 3 consecutive runs, 2026-08-20 |
+
+**Block-T is clock-limited, not accuracy-limited.** At the current friction configuration its endgame latch lands at t ≈ 186 s — just past the 180 s canonical window. Three consecutive same-seed 180 s runs plateau at 0.0217 / 0.0207 / 0.0200 m with rotation already excellent (0.0024 / 0.0226 / 0.0736 rad): a loose PASS and a tight miss of at most 1.7 mm, purely on translation. Given a 300 s window the same configuration passes tight.
+
+> A previously-quoted block-T result of 0.0190 m / 0.0887 rad at 180 s (`blockT_retention_canon180.log`, commit `df337c9`) was produced under the **literal-μ** planner friction (`EE-BOX: 1.0`). HEAD ships **intent-μ** (`EE-BOX: 0.4615`, the effective-friction reading of the reference), so that number is not reproducible at HEAD and should not be quoted as a current result.
 
 For calibration: on the same T-pushing task, the **reference C++ stack never gets closer than 0.143 m in 1800 s** — it stalls in repositioning, completing only 6 repositions in 30 minutes, with 93% of planner loops never reaching the pushing phase. The port's advantage is not a better solver; it is conforming to the authors' `anything` pipeline lineage, whereas the shipped `push_t` demo configs are bit-rotted. Compare `results/reference_pusht_sidepanel.mp4` against `results/blockT_tight_sidepanel.mp4`.
 
