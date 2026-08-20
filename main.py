@@ -259,6 +259,17 @@ def build_planner_workspace_bounds(sc3_params) -> list:
 # ---------------------------------------------------------------------------
 
 def main():
+    # PORT_SECTION_TIMING=1: enable the existing profiling/section_timer
+    # accumulators (admm.qp_build / admm.osqp_solve / admm.z_update /
+    # admm.final_qp / lcs.*) on a normal run and print the report at exit.
+    # Default-off; zero per-call overhead when disabled.
+    if os.environ.get("PORT_SECTION_TIMING", "0") == "1":
+        import atexit
+
+        import profiling.section_timer as _ST
+        _ST.ENABLED = True
+        atexit.register(lambda: print(_ST.report(top_n=30), flush=True))
+
     parser = argparse.ArgumentParser(
         description="C3 Contact-Implicit MPC",
         formatter_class=argparse.RawTextHelpFormatter,
