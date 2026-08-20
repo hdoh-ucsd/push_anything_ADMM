@@ -50,10 +50,11 @@ import yaml
 from control.admm_solver import C3Solver
 from control.ci_mpc_c3 import C3MPC
 from control.lcs_formulator import LCSFormulator
-from control.sampling_c3 import SamplingC3MPC, SamplingC3Params
+from control.sampling_c3 import SamplingC3Controller, SamplingC3Params
 from control.sampling_c3.inner_solve import InnerSolver
 from control.task_costs import QuadraticManipulationCost
-from sim.env_builder import EE_BODY_NAME, INITIAL_ARM_Q, build_environment
+from sim.env_builder import EE_BODY_NAME, build_environment
+from sim.env_builder import _INITIAL_ARM_Q_SEED as INITIAL_ARM_Q  # IK seed, not the production start pose (7ff5a21)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -302,7 +303,7 @@ def _build_controller(task_cfg):
     )
 
     sc3_params = SamplingC3Params.from_yaml(str(PROJECT_ROOT / SAMPLING_YAML))
-    wrapper = SamplingC3MPC(
+    wrapper = SamplingC3Controller(
         base_mpc=base_mpc,
         plant=plant,
         ee_frame=ee_frame,

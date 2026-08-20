@@ -73,12 +73,12 @@ class LCSFormulator:
         # Mesh-T migration (2026-08-11): ground-witness table comes from the
         # reference T_shape_video mesh footprint instead of the box-T table.
         self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
-        # Fig 8 campaign (2026-08-15): per-task ground-witness table for
-        # generic imported anything objects — the 3 sphere positions from
-        # the object's reference *_controller.sdf, passed via the task's
-        # `ground_witness_points_body`. Takes precedence over the two
-        # hardcoded T tables when set; the push_t/push_t_mesh tasks don't
-        # set it, so their behavior is unchanged.
+        # Fig 8 campaign (2026-08-15): per-task ground-witness table — the
+        # 3 sphere positions from the object's reference *_controller.sdf,
+        # passed via the task's `ground_witness_points_body`. Takes
+        # precedence over the two hardcoded T tables when set. Set for all
+        # imported anything objects and (since 2026-08-17) push_t_mesh;
+        # push_t (box-T) keeps its analytic table.
         self._mesh_ground_witnesses_body = (
             None if mesh_ground_witnesses_body is None
             else np.asarray(mesh_ground_witnesses_body, dtype=float).reshape(3, 3).T)
@@ -162,6 +162,11 @@ class LCSFormulator:
         # flip). The tshape path supersedes it with exact top-K admission
         # (planner k=1, cost k=2 — matches reference [0,1,3]/[0,2,3]).
         self._always_on_ee_box = True
+        # Hard-wired ON, same as _always_on_ee_box above. The configs used to
+        # carry a `use_reference_pair_admission_planner_lcs: true` key that
+        # read as if it controlled this; nothing ever parsed it, so it was
+        # removed from the yamls rather than left looking live. Scoped to
+        # tshape/hshape at both use sites below, so the box path is unaffected.
         self._ref_pair_admission_planner_lcs = True
         self._box_drag_c = 0.0
         # 2026-08-15 step-3 verdict (memory
@@ -237,8 +242,26 @@ class LCSFormulator:
         self._ground_geom_ids: set = set()
 
         if obj_body is not None:
-            for gid in plant.GetCollisionGeometriesForBody(obj_body):
-                self._manipuland_geom_ids.add(gid)
+            # Collect from EVERY body of the object's model instance, not
+            # just obj_body. Reference-conformance fix (2026-08-17): the
+            # reference push_t plans EE contact against BOTH links —
+            # ee_contact_pairs = {(EE, HORIZONTAL_LINK), (EE,
+            # VERTICAL_LINK)} (franka_sampling_c3_controller.cc:229-232) —
+            # while the old obj_body-only loop dropped the welded stem, so
+            # the planner could never plan stem pushes (root cause of the
+            # block-T rot plateau: 17,721/17,721 sim contacts on the
+            # crossbar, all post-60 s bursts rot-adverse). Identical
+            # behavior for single-body objects (mesh-T, box, jack).
+            _obj_mi = obj_body.model_instance()
+            _obj_bodies = [plant.get_body(bi)
+                           for bi in plant.GetBodyIndices(_obj_mi)]
+            for _b in _obj_bodies:
+                for gid in plant.GetCollisionGeometriesForBody(_b):
+                    self._manipuland_geom_ids.add(gid)
+            print(f"[LCS-OBJ] manipuland model instance: "
+                  f"{len(_obj_bodies)} bodies "
+                  f"({', '.join(b.name() for b in _obj_bodies)}), "
+                  f"{len(self._manipuland_geom_ids)} collision geoms")
 
         # EE contact filter: dedicated spherical pusher only — no fallbacks.
         print("[FILTER INIT] Building EE geometry ID set:")
@@ -508,8 +531,11 @@ class LCSFormulator:
             # positions from the object's reference *_controller.sdf.
             return self._mesh_ground_witnesses_body
         if self._tshape_mesh_witnesses:
-            # Reference T_shape_video mesh bottom-face support extremities
-            # (computed from T_shape_video.obj: bottom ring at z=-0.0243).
+            # FALLBACK ONLY (superseded 2026-08-17 for push_t_mesh by the
+            # per-task `ground_witness_points_body` reference literal above):
+            # port-computed T_shape_video.obj bottom-slab support extremities.
+            # NOT the reference controller-SDF sphere triangle — kept as the
+            # fallback for an object_sdf task that lacks the per-task key.
             return np.array([
                 [+0.1168, +0.0069, -0.0243],   # crossbar +x tip
                 [-0.0620, +0.0691, -0.0243],   # arm +y tip
@@ -1390,7 +1416,6 @@ class LCSFormulator:
             return self._linearize_discrete_impl(context, *a, **kw)
 
     def _linearize_discrete_impl(self, context, dt: float, u_lin=None):
-        self._last_planner_dt = float(dt)
         """
         Linearize the Drake plant into a discrete-time LCS at (q*, v*, u*).
 
@@ -1447,6 +1472,7 @@ class LCSFormulator:
         phi    : (n_c,)
         mu     : float
         """
+        self._last_planner_dt = float(dt)
         if u_lin is None:
             u_lin = np.zeros(self.n_u)
         else:
@@ -1584,7 +1610,7 @@ class LCSFormulator:
             # gradient of phi wrt q). Port R^7 previously had only `dt·(J_n@J_q)`
             # — missing the pure phi(q_{k+1}) gradient. Same bug that was
             # fixed for EE-space at A2 (commit 5e5ec10). Env-gated
-            # REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+            # (was env-gate REFCONF_E_BLOCK_SPLIT=1; retired and unread).
             _use_e_block_split_r7 = True   # 2026-07-28 defaults flip
             vNqdot_full = None
             if _use_e_block_split_r7:
@@ -1869,23 +1895,6 @@ class LCSFormulator:
     def _linearize_discrete_ee_space_impl(self, context, dt: float, u_lin=None,
                                     n_ee_top_k: int = 1,
                                     force_top_k_ee_box: bool = False):
-        self._last_planner_dt = float(dt)
-        # d.1 — reference-conforming pair admission for the planner LCS.
-        # When the caller didn't already opt in (force_top_k_ee_box=False,
-        # the ci_mpc_c3plus.py planner default) AND the object is a tshape
-        # AND the class-level flag is on, promote to force_top_k=True with
-        # n_ee_top_k=1 (matches reference push_t planner's 1 EE-manipuland
-        # pair). Bypasses the 2 mm auto-discovery, keeping the pair in the
-        # LCS across the arm's off-face rise — the T-c3-chatter fix.
-        # Cost-LCS caller (inner_solve.py:593) sets force_top_k=True
-        # explicitly, so this override is a no-op there.
-        # Gated to tshape so the box planner path is byte-identical when the
-        # class flag is True.
-        if (not force_top_k_ee_box
-                and self._object_shape in ("tshape", "hshape")
-                and getattr(self, "_ref_pair_admission_planner_lcs", False)):
-            force_top_k_ee_box = True
-            n_ee_top_k = 1
         """
         Paper-aligned low-dim LCS at (q*, v*, u*).
 
@@ -1935,6 +1944,23 @@ class LCSFormulator:
             phi    : (n_c,)
             mu     : float
         """
+        self._last_planner_dt = float(dt)
+        # d.1 — reference-conforming pair admission for the planner LCS.
+        # When the caller didn't already opt in (force_top_k_ee_box=False,
+        # the ci_mpc_c3plus.py planner default) AND the object is a tshape
+        # AND the class-level flag is on, promote to force_top_k=True with
+        # n_ee_top_k=1 (matches reference push_t planner's 1 EE-manipuland
+        # pair). Bypasses the 2 mm auto-discovery, keeping the pair in the
+        # LCS across the arm's off-face rise — the T-c3-chatter fix.
+        # Cost-LCS caller (inner_solve.py:593) sets force_top_k=True
+        # explicitly, so this override is a no-op there.
+        # Gated to tshape so the box planner path is byte-identical when the
+        # class flag is True.
+        if (not force_top_k_ee_box
+                and self._object_shape in ("tshape", "hshape")
+                and getattr(self, "_ref_pair_admission_planner_lcs", False)):
+            force_top_k_ee_box = True
+            n_ee_top_k = 1
         if u_lin is None:
             u_lin = np.zeros(self.N_U_NEW)
         else:
@@ -2100,7 +2126,7 @@ class LCSFormulator:
         # via `plant_.MakeQDotToVelocityMap()`. Used below to add the missing
         # position-forcing gradient `E_tᵀ·Jn·vNqdot/dt` to E's q-column
         # (`lcs_factory.cc:533` in Anitescu, `:465` in Stewart-Trinkle).
-        # Env-gate REFCONF_E_BLOCK_SPLIT=1 (default ON = reference-conformant).
+        # (was env-gate REFCONF_E_BLOCK_SPLIT=1; retired and unread).
         # G-off calibration was previously validated without this gradient,
         # so the OFF path preserves p73 arc-1 baseline byte-identical.
         self._use_e_block_split = True   # 2026-07-28 defaults flip

@@ -51,3 +51,7 @@ docs/
 
 # Local Claude Code settings (developer-scoped hooks, permissions)
 .claude/settings.local.json
+
+# Per-run solver/tool leftovers that reappear on every launch.
+gurobi.log
+*.tmp.*

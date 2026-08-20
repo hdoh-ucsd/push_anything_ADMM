@@ -9,7 +9,6 @@ behavioral change to the controller. The probe prints one
 Run:
     python scripts/probe_yaw_xseq.py
 """
-import os
 import sys
 import numpy as np
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 from pydrake.trajectories import PiecewisePolynomial
@@ -84,7 +84,8 @@ class SamplingC3Controller:
                  start_in_c3_mode: bool = False,
                  *,
                  diagram=None,
-                 use_geometry_perimeter_sampling: bool = False):
+                 use_geometry_perimeter_sampling: bool = False,
+                 mesh_faces: dict | None = None):
         """Construct the outer sampling-C3 controller.
 
         Parameters
@@ -103,6 +104,10 @@ class SamplingC3Controller:
         # the analytic _POLY_SHAPES face tables. Per-tick projector closure
         # built in compute_control; None keeps the legacy face-table path.
         self._use_geometry_perimeter = bool(use_geometry_perimeter_sampling)
+        # kMeshNormal (anything lineage): preprocessed body-frame face set
+        # from the object's OBJ (sampling.load_mesh_faces); None for tasks
+        # on other strategies.
+        self._mesh_faces = mesh_faces
         self._perimeter_projector = None
         self._obj_z_now = None
         # C3Plus final-solve contact boost (c3_plus.cc:131-145): plumb the
@@ -250,21 +255,30 @@ class SamplingC3Controller:
         self._reconcile_feedforward_accel = (
             bool(int(_env_ffa)) if _env_ffa else False)
 
-        # §7.55 — PORT_DISABLE_CONTACT_LOSS_GATE (default-OFF) skips the
-        # CONTACT-LOSS-EXIT watchdog at _solve_plan() that forces c3→repos
-        # after `_no_ee_box_streak ≥ contact_loss_threshold_*_s/dt_ctrl`
-        # consecutive no-contact ticks. The reference (dairlib_sampling_c3
-        # @257e3ed, systems/controllers/sampling_based_c3_controller.cc:1150-
-        # 1184) has NO such watchdog — it exits c3 only via cost+hysteresis
-        # or the cost-based progress timeout. With PORT_DISABLE_C3_OVERRIDE=1
-        # (§7.51), the disengage threshold drops to contact_loss_threshold_
-        # default_s = 5 ticks at 100 Hz, which bounces c3 out before contact
-        # admits (§7.54 root-cause). This flag is SEPARATE from
-        # PORT_DISABLE_C3_OVERRIDE so the effect of the watchdog removal is cleanly
-        # attributable. Default-OFF byte-identical preserved.
-        # Default flipped to disable the port-only watchdog by default —
-        # the reference dispatcher has no such gate. Explicit re-enable
-        # via PORT_DISABLE_CONTACT_LOSS_GATE=0 for legacy runs.
+        # §7.55 — PORT_DISABLE_CONTACT_LOSS_GATE, DEFAULT-ON ("1" below), i.e.
+        # the watchdog it names is DISABLED unless you ask for it back.
+        #
+        # It skips the CONTACT-LOSS-EXIT watchdog at _solve_plan() that forces
+        # c3→repos after `_no_ee_box_streak ≥
+        # contact_loss_threshold_*_s/dt_ctrl` consecutive no-contact ticks.
+        # The reference (dairlib_sampling_c3 @257e3ed,
+        # systems/controllers/sampling_based_c3_controller.cc:1150-1184) has NO
+        # such watchdog — it exits c3 only via cost+hysteresis or the
+        # cost-based progress timeout — so skipping it is the conformant
+        # behaviour and that is why the default was flipped to on. Set
+        # PORT_DISABLE_CONTACT_LOSS_GATE=0 to restore the port-only watchdog
+        # for legacy runs.
+        #
+        # Historically the watchdog mattered because with
+        # PORT_DISABLE_C3_OVERRIDE=1 (§7.51) the disengage threshold dropped to
+        # contact_loss_threshold_default_s = 5 ticks at 100 Hz, bouncing c3 out
+        # before contact admitted (§7.54 root-cause). This flag is SEPARATE
+        # from PORT_DISABLE_C3_OVERRIDE so the watchdog removal stays cleanly
+        # attributable.
+        #
+        # (The three "default-OFF / byte-identical preserved" claims that used
+        # to head this comment predated the flip and contradicted the code
+        # directly below them.)
         self._disable_contact_loss_gate = (
             _os_rec.environ.get("PORT_DISABLE_CONTACT_LOSS_GATE", "1") == "1")
 
@@ -346,47 +360,11 @@ class SamplingC3Controller:
         # the LCS. When the streak exceeds DISENGAGE_THRESHOLD, the
         # mode decision is overridden from kStayInC3 to a forced exit.
         self._no_ee_box_streak:         int   = 0
-        # Override-grace flag. Set True at the end of the approach-closing
-        # override emit block on each tick the override actually commands
-        # an approach target; cleared otherwise. Read by the contact-loss
-        # gate on the NEXT tick (1-tick lag) to pick the extended grace
-        # threshold instead of the strict default.
-        self._approach_override_firing: bool  = False
-        # Phase the override was firing in last tick. One of:
-        #   'none'         — override did not fire
-        #   'A_lift_trav'  — LTD PHASE A (lift-and-traverse)
-        #   'B_descend'    — LTD PHASE B (descend beside box)
-        #   'C_approach'   — LTD PHASE C (push into face)
-        #   'fallback_ws'  — LTD workspace fallback (legacy direct-line)
-        #   'legacy'       — LTD disabled, legacy direct-line
-        # PHASE A gets an extended contact-loss-exit threshold because
-        # the traverse takes longer than the standard with_override grace
-        # (~80-110 ticks vs 12).
-        self._approach_override_phase:  str   = 'none'
-
-        # PHASE C progress trackers (Layer 2.5/2.6 progress-gated C exit).
-        # Updated in _solve_plan at the same site as the [CONTACT-RUN]
-        # streak (line ~1043) so the gate at line ~849 next tick reads a
-        # consistent end-of-prev-tick triple (_no_ee_box_streak,
-        # _phaseC_*_streak, _approach_override_phase). Reset on
-        #   (a) free→c3 edge at line 871 — UNCONDITIONAL, phase-agnostic
-        #       (load-bearing for C→free→C re-entry where 1710's
-        #       phase-change reset does NOT fire because _new_phase ==
-        #       _approach_override_phase == 'C_approach'),
-        #   (b) intra-c3 phase change at line 1710 (covers B→C, C→B/A
-        #       ping-pong inside a single c3 run),
-        #   (c) C gate's own fire path (line ~880 added below — bookkeeping
-        #       so the trackers reach the next entry already zeroed).
-        # Either (a) or (b) leaves trackers fresh on every C entry.
-        self._phaseC_stall_streak:      int   = 0
-        self._phaseC_active_streak:     int   = 0
-        self._phaseC_surf_dist_min:     float = float('inf')
-        # surf_dist cached by _run_osc's LTD override at end of each
-        # PHASE C tick (None on non-C ticks and on every free tick via
-        # the unconditional reset). Read by the PHASE C tracker update
-        # in _solve_plan next tick — end-of-prev-tick geometry, matches
-        # the gate's end-of-prev-tick read pattern, no cross-half lag.
-        self._last_C_surf_dist:         "float | None" = None
+        # (The LTD approach-override state — _approach_override_firing,
+        # _approach_override_phase — and the PHASE C progress trackers
+        # — _phaseC_stall_streak, _phaseC_active_streak,
+        # _phaseC_surf_dist_min, _last_C_surf_dist — were removed with the
+        # override itself on 2026-08-19. Nothing could advance them.)
 
         # λ_planned per-step trace — writes audit_output/lambda_trace.csv
         # at the project root. Captures every rich-mode step (definitive)
@@ -524,6 +502,7 @@ class SamplingC3Controller:
             yaw_delta = yaw_delta,
             obj_z     = getattr(self, "_obj_z_now", None),
             projector = getattr(self, "_perimeter_projector", None),
+            mesh_faces = self._mesh_faces,
         )
         # Log ALL raw samples emitted by generate_samples before any
         # filtering — deep-log addition for direction-commit debugging.
@@ -635,40 +614,6 @@ class SamplingC3Controller:
             np.asarray(buf_entry.position, dtype=float)
             - np.asarray(ee_pos_now, dtype=float)))
         return float(buf_entry.cost) + w_travel * dist
-
-    # ----------------------------------------------------------------------
-    def _reconcile_surface_target(self,
-                                  default_p_ee_des: np.ndarray,
-                                  obj_xy: np.ndarray) -> np.ndarray:
-        """§7.31 — Override the EE desired-state to the SAMPLED FACE POINT
-        (~zero buffer, surface). Formerly gated by REF_RECONCILE_APPROACH;
-        now always active.
-
-        Matches the reference's `x_desired = c3_object->GetDesiredState()`
-        (sampling_based_c3_controller.cc:500): the OSC tracks the sampled
-        face point in BOTH modes. The port stores the sample at
-        `sampling_setback` (≈30 mm) OUTSIDE the face; this method projects
-        it back along the outward face normal so the target is at the
-        surface itself (buffer_distance ≈ 0, matching the reference's
-        push_t parameter).
-
-        Returns the original `default_p_ee_des` unchanged when:
-          * the flag is OFF, or
-          * `_current_repos_target` is None (no active sample), or
-          * the sample is at the box centre (degenerate normal).
-        """
-        sample = self._current_repos_target
-        if sample is None or obj_xy is None:
-            return default_p_ee_des
-        sp = self.params.sampling_params
-        setback = float(getattr(sp, "sampling_setback", 0.030))
-        delta_xy = np.asarray(sample[:2], dtype=float) - np.asarray(obj_xy, dtype=float)
-        norm = float(np.linalg.norm(delta_xy))
-        if norm < 1e-6:
-            return default_p_ee_des
-        n_outward_xy = delta_xy / norm
-        surface_xy = np.asarray(sample[:2], dtype=float) - setback * n_outward_xy
-        return np.array([surface_xy[0], surface_xy[1], float(sample[2])])
 
     def _derive_force_command(self,
                               lambda_n: Optional[np.ndarray],
@@ -1183,6 +1128,29 @@ class SamplingC3Controller:
                   f"unsucc_buffer={len(self.unsuccessful_buffer)}="
                   f"[{_ub_entries}]",
                   flush=True)
+
+    def reset_for_new_goal(self) -> None:
+        """Reference goal-change reset (sampling_based_c3_controller.cc
+        :827-845): when the final goal changes, drop back to the position
+        regime (crossed flag false -> dt/costs/hysteresis revert via the
+        per-tick flag sync), clear the achieved latch, reset the progress
+        tracker, and empty BOTH sample buffers ('Reset the sample buffers
+        now that the costs have changed')."""
+        self._crossed_switching_threshold = False
+        self._achieved_fixed_goal = False
+        self._off_target_streak = 0
+        try:
+            self.progress.reset()
+        except AttributeError:
+            pass
+        try:
+            self.buffer.clear()
+        except AttributeError:
+            pass
+        try:
+            self.unsuccessful_buffer.clear()
+        except AttributeError:
+            pass
 
     # ------------------------------------------------------------------
     # Main control entry
@@ -1960,7 +1928,8 @@ class SamplingC3Controller:
         # Unify by seeding c_samples from `c_C3_raw` when the env-gate is on.
         # Downstream inflations (finished_reposition_cost, buffer append) then
         # apply UNIFORMLY to both progress and gate signals — no split.
-        # Env: REFCONF_MODE_SWITCH_USE_C3_RAW=1 (default ON = reference-conformant).
+        # (Was env-gated REFCONF_MODE_SWITCH_USE_C3_RAW=1; that gate is retired
+        # and unread — the seeding below is unconditional.)
         # In current push_t config (w_align=w_travel=w_rot=0) c_C3_raw equals
         # r.c_sample so this is a no-op; the change is defensive.
         c_samples = [float(r.c_C3_raw) for r in results]
@@ -2746,16 +2715,12 @@ class SamplingC3Controller:
         # in ticks, preserving the wall-time interval.
         def _ticks(s_val: float) -> int:
             return int(round(float(s_val) / self._dt_ctrl))
-        if self._approach_override_phase == 'A_lift_trav':
-            disengage_threshold = _ticks(self.params.contact_loss_threshold_phaseA_ltd_s)
-        elif self._approach_override_phase == 'B_descend':
-            disengage_threshold = _ticks(self.params.contact_loss_threshold_phaseB_ltd_s)
-        elif self._approach_override_phase == 'C_approach':
-            disengage_threshold = _ticks(self.params.phaseC_hard_cap_s)
-        elif self._approach_override_firing:
-            disengage_threshold = _ticks(self.params.contact_loss_threshold_with_override_s)
-        else:
-            disengage_threshold = _ticks(self.params.contact_loss_threshold_default_s)
+        # This used to be a 5-way chain on the LTD approach-override phase
+        # (A_lift_trav / B_descend / C_approach / firing / default). The
+        # override was unreachable, so _approach_override_phase was always
+        # 'none' and _approach_override_firing always False — every tick took
+        # the default branch. Collapsed to that branch; behaviour identical.
+        disengage_threshold = _ticks(self.params.contact_loss_threshold_default_s)
         if (self._prev_mode == "c3"
                 and mode == "c3"
                 and self._no_ee_box_streak >= disengage_threshold):
@@ -2768,7 +2733,7 @@ class SamplingC3Controller:
                           f"CONTACT-LOSS-EXIT skipped at step={self._step} "
                           f"(streak={self._no_ee_box_streak} "
                           f"threshold={disengage_threshold} "
-                          f"phase={self._approach_override_phase}); "
+                          f"); "
                           f"c3 held by cost+progress only",
                           flush=True)
                     self._755_skip_logged = True
@@ -2779,72 +2744,19 @@ class SamplingC3Controller:
                     print(f"[CONTACT-LOSS-EXIT] step={self._step} "
                           f"no EE-BOX for {self._no_ee_box_streak} "
                           f"steps threshold={disengage_threshold} "
-                          f"override_phase={self._approach_override_phase} "
                           f"-> exit to repos", flush=True)
                 self._no_ee_box_streak = 0
         if self._prev_mode == "free":
-            # Fresh start when re-entering c3 from free. Phase-agnostic
-            # by design: zeroes BOTH the LCS contact-loss counter and
-            # the PHASE C tracker triple, regardless of what
-            # _approach_override_phase carried across the free
-            # interlude (it's stale for the whole interlude — the
-            # override block in _run_osc only runs when mode=='c3').
-            # Load-bearing for C→free→C re-entry: 1710's phase-change
-            # reset does NOT fire when _new_phase ('C_approach') ==
-            # _approach_override_phase ('C_approach', stale from the
-            # tick before the free interlude began). Without this
-            # block the C trackers would carry stale active_streak /
-            # surf_dist_min into the second C run and the C gate could
-            # fire on the first tick.
+            # Fresh start for the LCS contact-loss counter when re-entering
+            # c3 from free. (The PHASE C tracker triple that was also reset
+            # here went with the LTD approach-override removal — those
+            # trackers could never advance.)
             self._no_ee_box_streak = 0
-            self._phaseC_stall_streak = 0
-            self._phaseC_active_streak = 0
-            self._phaseC_surf_dist_min = float('inf')
-            self._last_C_surf_dist = None
 
-        # 6a-bis. PHASE C progress-gated exit. When prev tick was in
-        # PHASE C (_approach_override_phase=='C_approach', set at the
-        # end of last tick's override block in _run_osc), evaluate
-        # whether C is still productively closing surf_dist. Two
-        # independent fire conditions:
-        #   * stall: _phaseC_stall_streak ≥ phaseC_stall_threshold —
-        #     no surf_dist improvement ≥ phaseC_progress_eps for that
-        #     many consecutive C ticks. Catches asymptotic non-closure.
-        #   * hard_cap: _phaseC_active_streak ≥ phaseC_hard_cap —
-        #     absolute time budget. Bounds worst case even when
-        #     surf_dist is creeping in but never quite admits.
-        # Reads end-of-prev-tick (_phaseC_stall_streak,
-        # _phaseC_active_streak, _approach_override_phase) — same
-        # temporal pattern as the contact-loss gate above. Update
-        # site is the [CONTACT-RUN] block at line ~1043 (consistent
-        # within _solve_plan; no cross-half lag).
-        if (self._prev_mode == "c3"
-                and mode == "c3"
-                and self._approach_override_phase == 'C_approach'):
-            # 2026-06-25 reconciliation: sim-time _s fields → integer ticks.
-            _stall_thr = int(round(self.params.phaseC_stall_threshold_s / self._dt_ctrl))
-            _hard_cap  = int(round(self.params.phaseC_hard_cap_s / self._dt_ctrl))
-            _stall_fire = (self._phaseC_stall_streak >= _stall_thr)
-            _cap_fire = (self._phaseC_active_streak  >= _hard_cap)
-            if _stall_fire or _cap_fire:
-                mode = "free"
-                reason = SwitchReason.kToReposUnproductive
-                if self.log_diag:
-                    _tag = "PHASEC-STALL" if _stall_fire else "PHASEC-HARDCAP"
-                    _smin = (float('nan')
-                             if not np.isfinite(self._phaseC_surf_dist_min)
-                             else self._phaseC_surf_dist_min)
-                    print(f"[{_tag}] step={self._step} "
-                          f"stall_streak={self._phaseC_stall_streak} "
-                          f"active_streak={self._phaseC_active_streak} "
-                          f"stall_thr={_stall_thr} "
-                          f"hard_cap={_hard_cap} "
-                          f"surf_dist_min={_smin*1000:.2f}mm "
-                          f"-> exit to repos", flush=True)
-                self._phaseC_stall_streak = 0
-                self._phaseC_active_streak = 0
-                self._phaseC_surf_dist_min = float('inf')
-                self._last_C_surf_dist = None
+        # (The 6a-bis PHASE C progress-gated exit block lived here. Its guard
+        # required _approach_override_phase == "C_approach", which the
+        # unreachable LTD override could never set, so neither the stall nor
+        # the hard-cap condition could ever fire.)
 
         # 6a. 1d watchdog override (9.4.7 Option A re-test). When the
         # configured threshold is > 0 and steps_since_improve has reached it
@@ -2941,19 +2853,14 @@ class SamplingC3Controller:
                       f"← Total reach error to box face")
                 print(f"  φ (Drake signed distance)      = {1000*_phi:7.2f} mm")
                 print(f"  φ < 20 mm threshold?           = {_admits}")
-                # [IK-SOLVE] / [BODY-VS-CONTACT] — H1/H2/H3/H4 disambiguation.
-                _qk=getattr(self.tracker,"last_q_knots",None); _ek=getattr(self.tracker,"last_ee_knots",None)
-                _ft=getattr(self.tracker,"last_feasible",None); _pt=getattr(self.tracker,"_prev_target_pos",None)
-                if _qk is not None and _ek is not None and _pt is not None:
-                    _ee_q=_ek[:,0]; _qa=_qk[:,0]
-                    _stat="success" if (_ft and _ft[0]) else "failed"
-                    print(f"[IK-SOLVE] step={self._step}")
-                    print(f"  IK target body name:    {self.ee_frame.body().name()}")
-                    print(f"  IK target position:     [{_pt[0]:+.4f}, {_pt[1]:+.4f}, {_pt[2]:+.4f}]")
-                    print(f"  IK solver status:       {_stat}")
-                    print(f"  Solved q*:              {np.round(_qa,4).tolist()}")
-                    print(f"  Cartesian position of target body at q*: [{_ee_q[0]:+.4f}, {_ee_q[1]:+.4f}, {_ee_q[2]:+.4f}]")
-                    print(f"  ||target_body_position - p_target||: {1000*float(np.linalg.norm(_ee_q-_pt)):7.2f} mm")
+                # [BODY-VS-CONTACT] — H1/H2/H3/H4 disambiguation.
+                #
+                # The [IK-SOLVE] block that stood here was unreachable: its
+                # guard required self.tracker.last_q_knots / .last_ee_knots,
+                # which only reposition_ik's RepositionIKTracker ever set.
+                # With that tracker deleted, self.tracker is always a
+                # PiecewiseLinearTracker (which defines neither), so both
+                # getattrs returned None and the body never ran.
                 _pairs_local = locals().get("_pairs", None)
                 if _pairs_local:
                     _s=_pairs_local[0]; _ee_ids_l=self.base_mpc.formulator._ee_geom_ids
@@ -3136,29 +3043,10 @@ class SamplingC3Controller:
                           f"lam_n={_lam:+9.4f}N "
                           f"state={_state}", flush=True)
 
-            # PHASE C progress tracker update. Co-located with the
-            # contact-loss streak update so the gate next tick reads a
-            # consistent end-of-prev-tick triple (no cross-half lag).
-            # Conditional on _approach_override_phase=='C_approach' —
-            # this is the END-OF-PREV-TICK phase (set last tick at
-            # line 1711 in _run_osc), so the update only fires when
-            # the previous tick was actually in C.
-            # surf_dist source: self._last_C_surf_dist cached at end
-            # of prev tick by _run_osc's override block (line ~1716
-            # below). On the first C tick after entry, prev tick's
-            # phase was not C, so this block is skipped; the cache
-            # gets populated this tick in _run_osc, and the next C
-            # tick begins consuming it.
-            if (self._approach_override_phase == 'C_approach'
-                    and self._last_C_surf_dist is not None):
-                self._phaseC_active_streak += 1
-                _prev_surf = float(self._last_C_surf_dist)
-                if _prev_surf < (self._phaseC_surf_dist_min
-                                 - self.params.phaseC_progress_eps):
-                    self._phaseC_surf_dist_min = _prev_surf
-                    self._phaseC_stall_streak = 0
-                else:
-                    self._phaseC_stall_streak += 1
+            # (The PHASE C progress-tracker update lived here. It was guarded
+            # on _approach_override_phase == "C_approach", which the
+            # unreachable LTD override never set, so the streaks it maintained
+            # could never advance past their initial values.)
             # One-shot full LCS matrix dump at first rich-mode entry.
             # Triggers exactly once (any step) for the LCS matrix audit.
             if not self._did_lcs_dump:
@@ -3496,11 +3384,12 @@ class SamplingC3Controller:
                 self._last_held_existed = (_held_idx is not None)
                 self._last_held_cost_logged = _held_cost
 
-                self.tracker._diag_step = self._step  # [IK-CONVERGE] plumb
                 # Contact-admit guard (Stage 2 of 2026-06-01 contact-duration fix):
-                # signal the IK tracker that LCS has admitted an EE-BOX pair
-                # so it can suspend its Phase 1 lift while contact is forming.
-                # Debouncing happens inside the tracker (ADMIT_LATCH_TICKS).
+                # signal the tracker that LCS has admitted an EE-BOX pair so it
+                # can suspend its Phase 1 lift while contact is forming.
+                # (The `self.tracker._diag_step = ...` plumb that stood here fed
+                # an [IK-CONVERGE] emitter that no longer exists — it wrote an
+                # attribute PiecewiseLinearTracker never reads.)
                 _ee_box_pairs = getattr(self.base_mpc.formulator,
                                         "_last_ee_box_contacts", [])
                 _admit_active = bool(_ee_box_pairs)
@@ -3517,49 +3406,26 @@ class SamplingC3Controller:
                     dt_osc=self._dt_osc,
                     admit_active=_admit_active,
                 ))
-                # Diagnostic: emit one-line [ADMIT-GUARD] per step the latch
-                # is decrementing or active so post-fix logs can verify SC1
-                # (target_z holds) and SC6 (no chatter at boundary).
+                # Diagnostic: emit one-line [ADMIT-GUARD] per step so post-fix
+                # logs can verify SC1 (target_z holds) and SC6 (no chatter at
+                # the boundary). ee_z comes from free_diag (the tracker
+                # already computed FK).
+                #
+                # The former latch=/gate_cap= fields and the [ALT-GATE] /
+                # [TGT-CHANGE] lines were dropped with the reposition_ik
+                # tracker: every one of them read an IK-tracker-only attribute
+                # (_admit_latch, ADMIT_LATCH_TICKS, _last_cap_z_safe,
+                # _target_stable_ticks, TARGET_STABLE_TICKS,
+                # _target_changed_this_tick) that PiecewiseLinearTracker — now
+                # the only tracker — does not define, so each getattr fell to
+                # its default and the lines reported constants (latch=0/0,
+                # gate_cap=0, allow_descent=1) regardless of what the arm did.
                 if self.log_diag:
-                    # Q2c (2026-06-04): extended with ee_z + gate_cap so the
-                    # parser at scripts/parse_admit_guard_gate.py can verify
-                    # SC-collision-gone (pass-through at high ee_z) and the
-                    # gate's per-tick decision history. ee_z comes from
-                    # free_diag (the tracker already computed FK).
                     _ee_z_log = float(free_diag.get("ee_now", [0.0, 0.0, 0.0])[2])
-                    _latch = int(getattr(self.tracker, "_admit_latch", 0))
-                    _latch_ticks = int(getattr(self.tracker,
-                                               "ADMIT_LATCH_TICKS", 0))
                     print(f"[ADMIT-GUARD] step={self._step} "
                           f"admit_active={int(_admit_active)} "
-                          f"latch={_latch}/{_latch_ticks} "
-                          f"ee_z={_ee_z_log:.3f} "
-                          f"gate_cap={int(getattr(self.tracker, '_last_cap_z_safe', False))}",
+                          f"ee_z={_ee_z_log:.3f}",
                           flush=True)
-                    # Stage 1 (2026-06-01 wrong-face race-fix): emit the
-                    # descent-gate state and a one-shot [TGT-CHANGE] event
-                    # when p_target jumped > TARGET_STABLE_TOL this tick.
-                    # The change-interval distribution disambiguates Stage-1
-                    # deadlock cause (real oscillation vs mistuned constant).
-                    _stable_ticks = int(getattr(self.tracker,
-                                                "_target_stable_ticks", 0))
-                    _stable_req = int(getattr(self.tracker,
-                                              "TARGET_STABLE_TICKS", 0))
-                    _allow_desc = int(_stable_ticks >= _stable_req
-                                      if _stable_req > 0 else 1)
-                    print(f"[ALT-GATE] step={self._step} "
-                          f"target_stable={_stable_ticks}/{_stable_req} "
-                          f"allow_descent={_allow_desc}",
-                          flush=True)
-                    if bool(getattr(self.tracker,
-                                    "_target_changed_this_tick", False)):
-                        _intervals = getattr(self.tracker,
-                                             "_target_change_intervals", [])
-                        _last_int = (_intervals[-1] if _intervals else -1)
-                        print(f"[TGT-CHANGE] step={self._step} "
-                              f"interval_ticks={_last_int} "
-                              f"n_changes={len(_intervals)}",
-                              flush=True)
                 # Capture trajectory-finished signal for the next loop's
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(
@@ -4218,256 +4084,14 @@ class SamplingC3Controller:
             # ground), so lam_n.size >= 1 even with no EE-BOX pair.
             _ee_box_pairs = getattr(self.base_mpc.formulator,
                                     "_last_ee_box_contacts", [])
-            # §7.51 — PORT_DISABLE_C3_OVERRIDE (default-OFF) skips the LTD
-            # APPROACH-OVERRIDE block entirely, leaving _p_ee_des at the FK
-            # source (_x_seq[1][7:10] at line 2263). Validated as load-bearing
-            # for the first box closure in §7.51 (with PORT_EE_APPROACH_FACE_TARGET=1
-            # + w_ee_approach=8000 + W_force=1). Default-OFF
-            # byte-identical preserved. One-shot log on first c3 tick.
-            # 2026-07-28 defaults flip: the LTD approach-override is a
-            # port-only divergence with no reference analog — skipping it
-            # is now unconditional (was PORT_DISABLE_C3_OVERRIDE=1,
-            # canonical since the p10x series).
-            _disable_c3_override = True
-            _no_admitted_pair = ((len(_ee_box_pairs) == 0)
-                                 and not _disable_c3_override)
-            _override_fired_this_tick = False
-            if _no_admitted_pair:
-                _box_xyz = np.array([
-                    current_q[self._obj_x_idx],
-                    current_q[self._obj_y_idx],
-                    current_q[self._obj_z_idx],
-                ])
-                # Lever 3.1: aim the approach at the centroid of the box
-                # face the EE must contact to push the box toward goal.
-                # Selection rule (directional): among the four SIDE faces
-                # (body axes 0, 1; both signs — exclude top/bottom z), pick
-                # the face whose outward normal in world frame best aligns
-                # with -g_hat. Score = sign * (R_box.T @ (-g_hat))[axis];
-                # the argmax is the face the EE should push from to send
-                # the box toward goal.
-                #
-                # Replaces argmax(|ee_in_box_local|), which picked the
-                # nearest face geometrically. That logic picked face_axis=2
-                # (TOP) whenever |z_local| dominated — i.e. whenever the EE
-                # was above the box footprint — and aimed Lever-3 at the
-                # top centroid. Result on canonical baseline (20 seeds,
-                # commit 38dbf18): 192/192 top-face picks, surf_dist grew
-                # 7.5 cm → 33 cm as EE chased the target upward, 0/20
-                # seeds formed any EE-BOX contact.
-                #
-                # Box-local rotation kept (handles in-run box yaw — we saw
-                # nhat tilt 1.000 → 0.986 across a contact burst).
-                _qw = float(current_q[self._obj_qw])
-                _qx = float(current_q[self._obj_qx])
-                _qy = float(current_q[self._obj_qy])
-                _qz = float(current_q[self._obj_qz])
-                _R_box = np.array([
-                    [1 - 2*(_qy*_qy + _qz*_qz),     2*(_qx*_qy - _qz*_qw),     2*(_qx*_qz + _qy*_qw)],
-                    [    2*(_qx*_qy + _qz*_qw), 1 - 2*(_qx*_qx + _qz*_qz),     2*(_qy*_qz - _qx*_qw)],
-                    [    2*(_qx*_qz - _qy*_qw),     2*(_qy*_qz + _qx*_qw), 1 - 2*(_qx*_qx + _qy*_qy)],
-                ])
-                _ee_from_box_W = ee_pos_now - _box_xyz
-                _dist_com = float(np.linalg.norm(_ee_from_box_W))
-                _push_dir_W = -np.asarray(g_hat_3d, dtype=float).reshape(3)
-                _push_dir_L = _R_box.T @ _push_dir_W
-                _best_score = -np.inf
-                _face_axis = 0
-                _face_sign = 1
-                for _a in (0, 1):
-                    for _s in (1, -1):
-                        _sc = _s * float(_push_dir_L[_a])
-                        if _sc > _best_score:
-                            _best_score = _sc
-                            _face_axis = _a
-                            _face_sign = _s
-                if _dist_com > 1e-9 and _best_score > 1e-6:
-                    _box_half = float(self.params.sampling_params.box_half_extent)
-                    _face_centroid_local = np.zeros(3)
-                    _face_centroid_local[_face_axis] = _face_sign * _box_half
-                    _face_centroid_W = _box_xyz + _R_box @ _face_centroid_local
-
-                    _ee_to_face = _face_centroid_W - ee_pos_now
-                    _dist_face = float(np.linalg.norm(_ee_to_face))
-                    if _dist_face > 1e-9:
-                        # The face centroid IS the surface — no box_half
-                        # subtraction; only the sphere radius separates
-                        # EE-center from face-plane at contact.
-                        _surf_dist = _dist_face - PUSHER_RADIUS
-
-                        # Pick the per-tick aim target: lift-traverse-descend
-                        # waypoints, or legacy direct-to-face-centroid line.
-                        if self.params.use_lift_traverse_descend_override:
-                            # Clearance is a CORRECTNESS FLOOR, not a knob.
-                            # During PHASE B descent the sphere SURFACE sits
-                            # at (clearance - PUSHER_RADIUS) from the face
-                            # plane. Below the floor the sphere admits
-                            # contact mid-descent, re-introducing the same
-                            # bypass LTD exists to fix.
-                            _clearance = float(self.params.ltd_clearance)
-                            _min_clearance = (PUSHER_RADIUS
-                                              + LCS_DISTANCE_THRESHOLD
-                                              + 0.005)
-                            assert _clearance >= _min_clearance, (
-                                f"ltd_clearance={_clearance:.4f} m < floor "
-                                f"{_min_clearance:.4f} m (PUSHER_RADIUS + "
-                                f"LCS_DISTANCE_THRESHOLD + 5 mm safety); "
-                                f"PHASE B descent would admit contact "
-                                f"before reaching the face."
-                            )
-
-                            # W_side: sphere center beside box at face mid-
-                            # height. n̂_face is purely lateral for face_axis
-                            # ∈ {0,1}, so W_side.z equals box_xyz.z for an
-                            # upright box — clamp z explicitly so the spec
-                            # holds independent of R_box rounding.
-                            _face_centroid_z = float(_box_xyz[2])
-                            _n_face_W = _R_box[:, _face_axis] * _face_sign
-                            _W_side = (_box_xyz
-                                       + _n_face_W * (_box_half + _clearance))
-                            _W_side[2] = _face_centroid_z
-
-                            # Workspace bounds: assert + log + fall back to
-                            # legacy direct-line if W_side is outside the
-                            # planner's workspace. Silent clipping would
-                            # aim the EE at a geometrically wrong point.
-                            _ws_min = np.asarray(
-                                self.params.sampling_params.workspace_xy_min,
-                                dtype=float)
-                            _ws_max = np.asarray(
-                                self.params.sampling_params.workspace_xy_max,
-                                dtype=float)
-                            _W_side_in_ws = (
-                                _ws_min[0] <= _W_side[0] <= _ws_max[0]
-                                and _ws_min[1] <= _W_side[1] <= _ws_max[1]
-                            )
-
-                            if not _W_side_in_ws:
-                                if self.log_diag:
-                                    print(
-                                        f"[LTD-WORKSPACE-FALLBACK] "
-                                        f"step={self._step} "
-                                        f"W_side=({_W_side[0]:+.4f},"
-                                        f"{_W_side[1]:+.4f}) outside "
-                                        f"workspace_xy="
-                                        f"[{_ws_min[0]:+.3f},"
-                                        f"{_ws_max[0]:+.3f}]x"
-                                        f"[{_ws_min[1]:+.3f},"
-                                        f"{_ws_max[1]:+.3f}]; "
-                                        f"falling back to direct-line",
-                                        flush=True)
-                                _target = _face_centroid_W
-                                _phase = 'fallback_ws'
-                            else:
-                                _z_margin = float(self.params.ltd_z_margin)
-                                _z_safe = (_box_xyz[2] + _box_half
-                                           + PUSHER_RADIUS + _z_margin)
-                                _W_lift_trav = _W_side.copy()
-                                _W_lift_trav[2] = max(float(ee_pos_now[2]),
-                                                      _z_safe)
-
-                                # Stateless phase decision from EE
-                                # position alone (no persisted state,
-                                # no contact-pair input, no dispatcher
-                                # mode coupling).
-                                _xy_dist_to_W_side = float(np.linalg.norm(
-                                    (ee_pos_now - _W_side)[:2]))
-                                _z_above_W_side = float(
-                                    ee_pos_now[2] - _W_side[2])
-                                _xy_tol = float(self.params.ltd_xy_tol)
-                                _z_band = float(self.params.ltd_z_band)
-
-                                if _xy_dist_to_W_side > _xy_tol:
-                                    _target = _W_lift_trav
-                                    _phase = 'A_lift_trav'
-                                elif _z_above_W_side > _z_band:
-                                    _target = _W_side
-                                    _phase = 'B_descend'
-                                else:
-                                    # PHASE C: rigid z clamp to face mid-
-                                    # height. Per-tick command never aims
-                                    # above face_centroid_z regardless of
-                                    # where the sphere has drifted. The
-                                    # OSC's Kp_z provides the restoring
-                                    # force toward face center; if shear
-                                    # creeps EE upward despite that, the
-                                    # verification surfaces it cleanly.
-                                    _target = np.array([
-                                        float(_face_centroid_W[0]),
-                                        float(_face_centroid_W[1]),
-                                        _face_centroid_z,
-                                    ])
-                                    _phase = 'C_approach'
-                        else:
-                            _target = _face_centroid_W
-                            _phase = 'legacy'
-
-                        _ee_to_target = _target - ee_pos_now
-                        _dist_target = float(np.linalg.norm(_ee_to_target))
-                        # Cap advance to avoid (a) overshooting the chosen
-                        # target and (b) penetrating LCS_DISTANCE_THRESHOLD
-                        # against the chosen face plane.
-                        _advance_target = max(
-                            _dist_target - LCS_DISTANCE_THRESHOLD, 0.0)
-                        _advance_face = max(
-                            _surf_dist - LCS_DISTANCE_THRESHOLD, 0.0)
-                        _advance = min(MAX_APPROACH_STEP,
-                                       _advance_target, _advance_face)
-                        if _advance > 0 and _dist_target > 1e-9:
-                            _p_ee_des = (ee_pos_now
-                                         + _advance * (_ee_to_target
-                                                       / _dist_target))
-                            _override_fired_this_tick = True
-                            if self.log_diag:
-                                print(f"[APPROACH-OVERRIDE] step={self._step} "
-                                      f"phase={_phase} "
-                                      f"face_axis={_face_axis} face_sign={_face_sign:+d} "
-                                      f"face_score={_best_score:+.3f} "
-                                      f"surf_dist={_surf_dist:.4f}m "
-                                      f"advance={_advance:.4f}m "
-                                      f"target=({_target[0]:+.4f},"
-                                      f"{_target[1]:+.4f},"
-                                      f"{_target[2]:+.4f}) "
-                                      f"p_ee_des=({_p_ee_des[0]:+.4f},"
-                                      f"{_p_ee_des[1]:+.4f},"
-                                      f"{_p_ee_des[2]:+.4f})",
-                                      flush=True)
-            # Expose override firing state to the contact-loss gate (read
-            # on the next tick). Phase is needed too because PHASE A gets
-            # an extended grace threshold (longer traverse).
-            self._approach_override_firing = _override_fired_this_tick
-            _new_phase = _phase if _override_fired_this_tick else 'none'
-            if _new_phase != self._approach_override_phase:
-                # On any LTD phase transition (A→B, B→C, override on/off),
-                # reset the contact-loss streak so each phase gets its own
-                # grace budget. Without this, an inherited streak from
-                # PHASE B's extended threshold (300) immediately fires the
-                # gate as soon as PHASE C's stricter default (12) takes
-                # effect (see audit_output/ltd_diag_phaseB).
-                self._no_ee_box_streak = 0
-                # PHASE C tracker triple: reset on any intra-c3 phase
-                # transition (B→C entry, C→B/A ping-pong). Belt-and-braces
-                # with the free→c3 reset at line 871 — that reset handles
-                # C→free→C re-entry (where this block does NOT fire because
-                # _new_phase == _approach_override_phase == 'C_approach'),
-                # this reset handles in-c3 transitions (where the free
-                # reset does NOT fire because prev_mode is still 'c3').
-                self._phaseC_stall_streak = 0
-                self._phaseC_active_streak = 0
-                self._phaseC_surf_dist_min = float('inf')
-                self._last_C_surf_dist = None
-            self._approach_override_phase = _new_phase
-            # Cache surf_dist for the PHASE C tracker update next tick
-            # (read at line ~1043 in _solve_plan). Only set when the
-            # override fired in PHASE C this tick — _surf_dist exists
-            # in scope because 'C_approach' is only reachable via the
-            # LTD path that sets _surf_dist at line ~1559. None on all
-            # other phases / non-firing ticks so the tracker update
-            # next tick skips silently when prev tick wasn't C.
-            if _override_fired_this_tick and _phase == 'C_approach':
-                self._last_C_surf_dist = float(_surf_dist)
-            else:
-                self._last_C_surf_dist = None
+            # (LTD APPROACH-OVERRIDE removed 2026-08-19 — dead since the
+            # 2026-07-28 defaults flip hard-wired _disable_c3_override = True,
+            # which made its `if _no_admitted_pair:` guard permanently False.
+            # ~200 lines of phase A/B/C approach shaping plus the state
+            # machine that fed _approach_override_firing / _phase. The
+            # reference has no counterpart: the PWL reposition trajectory
+            # owns the approach. _p_ee_des therefore stays at the FK source
+            # set above, which is what every run since the flip already did.)
 
             _v_ee_des = self._velocity_feedforward_from_xseq(
                 plant_ctx, current_q, current_v
