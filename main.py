@@ -1613,7 +1613,13 @@ def main():
     # this "reached." Port previously required both criteria at
     # end-of-sim, which failed by physics settling drift (2 mm typical)
     # after the retreat fix (commit 17efb4e) parks the arm.
-    _tight_latched = bool(getattr(mpc, "_achieved_fixed_goal", False))
+    # _tight_ever_latched is the sticky achievement RECORD (reference
+    # cc:887-897): set the instant both criteria hold, never cleared by the
+    # authorized achieved-goal-release deviation (which clears only the
+    # dispatch pin _achieved_fixed_goal to re-engage on post-latch drift).
+    # Fall back to the pin for controllers predating the record.
+    _tight_latched = bool(getattr(mpc, "_tight_ever_latched", False)
+                          or getattr(mpc, "_achieved_fixed_goal", False))
     _tight = _tight_final or _tight_latched
     _tight_reason = ("final" if _tight_final
                      else ("latched" if _tight_latched else "-"))

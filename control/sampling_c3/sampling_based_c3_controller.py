@@ -1139,6 +1139,9 @@ class SamplingC3Controller:
         self._crossed_switching_threshold = False
         self._achieved_fixed_goal = False
         self._off_target_streak = 0
+        # New goal = new round: the sticky achievement record restarts too
+        # (it records "this goal was reached", not "some goal was reached").
+        self._tight_ever_latched = False
         try:
             self.progress.reset()
         except AttributeError:
@@ -2156,6 +2159,15 @@ class SamplingC3Controller:
         if not hasattr(self, "_achieved_fixed_goal"):
             self._achieved_fixed_goal = False
             self._off_target_streak = 0
+            # Sticky achievement RECORD (reference cc:887-897 semantics:
+            # once achieved, achieved forever for this goal). Distinct from
+            # the dispatch pin above: the authorized release deviation may
+            # clear _achieved_fixed_goal to re-engage and correct post-latch
+            # drift, but it must not erase the fact that the goal WAS
+            # reached — 2026-08-20 blockT x3 run3 latched joint-tight at
+            # t=122.4s, was released twice on a 0.4mm settle, and reported
+            # FAIL(-). Cleared only by reset_for_new_goal().
+            self._tight_ever_latched = False
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
         # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
@@ -2193,6 +2205,7 @@ class SamplingC3Controller:
                                or rot_error_now < _rot_thr))
             if _on_target:
                 self._achieved_fixed_goal = True
+                self._tight_ever_latched = True
                 if self.log_diag:
                     print(f"[ACHIEVED-FIXED-GOAL] step={self._step} "
                           f"final_goal_dist={_final_goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "
