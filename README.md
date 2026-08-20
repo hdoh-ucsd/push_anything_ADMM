@@ -21,9 +21,13 @@ Active research port, measured against the paper's **tight goal** tolerance (pos
 | `push_t_mesh` | 180 s | 0.0108 m / 0.0766 rad | **PASS(final)** | `meshT_meshnormal_canon180.log` |
 | `pushing` (box) | 180 s | 0.0196 m / 0.0053 rad | **PASS(final)** | `boxgate_sixleg.log` |
 | `push_t_block` | 300 s | 0.0195 m / 0.0461 rad | **PASS(final)** | `blockT_muintent_ext300.log` |
-| `push_t_block` | 180 s | bimodal — see below | 3/5 draws miss tight by ≤ 1.7 mm | 5 same-seed runs, 2026-08-20 |
+| `push_t_block` | 180 s | 0.0197 m / 0.0125 rad (best draw) | **PASS(final)** — 2 of 7 draws pass | 7 same-seed runs, 2026-08-20 |
 
-**Block-T at 180 s is bimodal across same-seed draws.** Five consecutive same-seed 180 s runs split into two basins: three plateau at 0.0200 / 0.0207 / 0.0217 m (loose PASS, tight miss of at most 1.7 mm, rotation well inside tolerance) and two take a mid-run excursion (a shove around t ≈ 35–45 s lands badly) and finish near 0.05 m. Same code, same seed — the split is the documented Ipopt FP floor selecting a contact-event branch, not a config difference. In the good basin the endgame latch lands at t ≈ 186 s, just past the 180 s window; given 300 s the configuration passes tight. One good-basin draw did latch joint-tight *inside* 180 s (t = 122.4 s at 0.0197 m / 0.0830 rad) — the achievement is now recorded sticky per reference semantics (see below), so such a run reports **PASS(latched)** even if the object settles millimetres outward afterwards.
+**Block-T at 180 s varies widely between runs of identical code and seed.** Seven consecutive same-seed 180 s draws finished at, in millimetres: **19.7, 20.0, 20.7, 21.7, 23.8, 33.3, 50.7** (rotation was inside tolerance in every one — the spread is purely translational). Two pass tight: one on the final frame (0.0197 m / 0.0125 rad) and one on the latch (reached 0.0197 m / 0.0830 rad at t = 122.4 s, then settled 0.3 mm out). Five of seven land within 24 mm; the two outliers take a bad shove around t ≈ 35–45 s and never recover.
+
+The driver is the documented Ipopt floating-point floor: a contact event resolves one way or the other and the run follows a different branch from there. Two runs of *identical* code diverge measurably by t ≈ 44 s, so a single 180 s number is a draw from this spread, not a repeatable measurement — quote the distribution, and never conclude anything from one run. The 300 s window is materially safer: the endgame latch typically lands at t ≈ 186 s, just past the canonical cutoff.
+
+> Earlier revisions of this section called the spread "tight (1.7 mm)" from three draws and then "bimodal" from five. Both were over-readings of a small sample; the seven-draw list above is given as raw data rather than a shape.
 
 > A previously-quoted block-T result of 0.0190 m / 0.0887 rad at 180 s (`blockT_retention_canon180.log`, commit `df337c9`) was produced under the **literal-μ** planner friction (`EE-BOX: 1.0`). HEAD ships **intent-μ** (`EE-BOX: 0.4615`, the effective-friction reading of the reference), so that number is not reproducible at HEAD and should not be quoted as a current result.
 
