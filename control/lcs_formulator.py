@@ -335,6 +335,37 @@ class LCSFormulator:
         n_q, n_v, n_u = self.n_q, self.n_v, self.n_u
         n_dec = n_q + n_v + n_u
 
+        # Dedupe cache (2026-08-19 profiling: evaluate_sample builds TWO
+        # LCSes per sample — planner + cost-resolution — at the SAME
+        # (q, v, u_lin); this tuple is dt-independent, so the second build
+        # recomputed the identical float+AutoDiff dynamics pass, ~22% of
+        # planner wall). Key = exact bytes of (q, v, u); values are
+        # deterministic Drake outputs, so hits are bit-identical to
+        # recomputation. Copies returned/stored to guard caller mutation.
+        # Single call site (linearize_discrete_ee_space_impl:1418, inside
+        # _controller_inertia_scope) keeps the key scope-consistent. LRU
+        # cap 8 — per-tick locality only.
+        _q_key = self.plant.GetPositions(context)
+        _v_key = self.plant.GetVelocities(context)
+        _cache = None
+        _key = None
+        if os.environ.get("PORT_DYNJAC_CACHE", "0") == "1":
+            _u_key = np.asarray(u_lin, dtype=float)
+            _key = (_q_key.tobytes(), _v_key.tobytes(), _u_key.tobytes())
+            _cache = getattr(self, "_dynjac_cache", None)
+            if _cache is None:
+                _cache = self._dynjac_cache = {}
+                self._dynjac_lru = []
+                self._dynjac_hits = 0
+            _hit = _cache.get(_key)
+            if _hit is not None:
+                self._dynjac_hits += 1
+                if (self._dynjac_hits in (1, 500)
+                        or self._dynjac_hits % 2000 == 0):
+                    print(f"[DYNJAC-CACHE] hits={self._dynjac_hits} "
+                          f"entries={len(_cache)}", flush=True)
+                return tuple(v.copy() for v in _hit)
+
         # 1. Float values at the linearization point
         M, Cv, tau_g, B = self.extract_dynamics(context)
         rhs_d = B @ u_lin - Cv + tau_g
@@ -343,8 +374,8 @@ class LCSFormulator:
 
         # 2. Seed AD on (q, v, u_lin) and evaluate dynamics on the AD plant.
         with timed("lcs.extract_dynamics"):
-            q_star = self.plant.GetPositions(context)
-            v_star = self.plant.GetVelocities(context)
+            q_star = _q_key
+            v_star = _v_key
             decvar = np.concatenate([q_star, v_star, u_lin])
             decvar_ad = InitializeAutoDiff(decvar)
             decvar_ad = decvar_ad.flatten() if decvar_ad.ndim > 1 else decvar_ad
@@ -368,6 +399,13 @@ class LCSFormulator:
         J_f   = np.empty((n_v, n_dec))
         for k in range(n_dec):
             J_f[:, k] = M_inv @ (J_rhs[:, k] - J_M[:, :, k] @ f_eval)
+
+        if _cache is not None:
+            _cache[_key] = tuple(v.copy() for v in
+                                 (M, Cv, tau_g, B, J_f, f_eval))
+            self._dynjac_lru.append(_key)
+            if len(self._dynjac_lru) > 8:
+                _cache.pop(self._dynjac_lru.pop(0), None)
 
         return M, Cv, tau_g, B, J_f, f_eval
 
@@ -1956,16 +1994,63 @@ class LCSFormulator:
         #    fixed-base arm + free-floating box (independent kinematic
         #    trees), M is block-diagonal between arm and box, so the box
         #    slice is INDEPENDENT of arm q. Verified by Stage A test.
+        #
+        # Dedupe cache (2026-08-19 profiling): evaluate_sample builds TWO
+        # LCSes per sample (planner + cost-resolution) at the SAME (q, v);
+        # the float triple here, the AD-derived df_box_dxfull (§4a), and
+        # the N_box MapVelocityToQDot loop are state-only functions, so the
+        # second build recomputed them identically (~22% of planner wall
+        # in lcs.extract_dynamics + the uncounted N_box loop). Keys are
+        # exact state bytes; values are deterministic Drake outputs, so
+        # hits are bit-identical to recomputation; copies stored/returned.
+        # All builds run inside _controller_inertia_scope, keeping entries
+        # scope-consistent. LRU cap 8 (per-tick locality).
         # -----------------------------------------------------------------
-        with timed("lcs.extract_dynamics"):
-            M_full     = self.plant.CalcMassMatrixViaInverseDynamics(context)
-            Cv_full    = self.plant.CalcBiasTerm(context)
-            tau_g_full = self.plant.CalcGravityGeneralizedForces(context)
+        # Key on the BOX state only: every consumed quantity is the box
+        # block (M/Cv/tau_g box slices, N_box, box rows+cols of the AD
+        # gradient) — arm-independent by the block-diagonality this impl
+        # already asserts and Stage A verifies. The per-sample cost-LCS
+        # build IKs the ARM to the sample config, so a full-state key
+        # would miss every planner/cost pair.
         BS = BOX_V_START
         BE = BS + BOX_N_V
-        M_box     = M_full[BS:BE, BS:BE]                  # (6, 6)
-        Cv_box    = Cv_full[BS:BE]                        # (6,)
-        tau_g_box = tau_g_full[BS:BE]                     # (6,)
+        # DEFAULT-OFF (PORT_DYNJAC_CACHE=1 to enable): the cache is
+        # mechanically verified (85% hit rate, planner tick 123->94 ms,
+        # 60 s gate byte-equivalent cycle structure) but ANY speedup is
+        # behavior-coupled through filtered_solve_time (wall-derived clamp
+        # band + x_pred index), and the 180 s canonical drew a
+        # collapsed-entry run (4 entries vs 11) on top of the still-open
+        # post-reset repos-phase slowdown — noregress not cleared, so the
+        # default path stays bit-identical to pre-cache.
+        _dc = None
+        _ent = None
+        _dyn_key = None
+        if os.environ.get("PORT_DYNJAC_CACHE", "0") == "1":
+            _dyn_key = (box_q.tobytes(), box_v.tobytes())
+            _dc = getattr(self, "_eespace_dyn_cache", None)
+            if _dc is None:
+                _dc = self._eespace_dyn_cache = {}
+                self._eespace_dyn_lru = []
+                self._eespace_dyn_hits = 0
+            _ent = _dc.get(_dyn_key)
+        if _ent is not None:
+            self._eespace_dyn_hits += 1
+            if (self._eespace_dyn_hits in (1, 500)
+                    or self._eespace_dyn_hits % 2000 == 0):
+                print(f"[DYNJAC-CACHE] ee-space hits="
+                      f"{self._eespace_dyn_hits} entries={len(_dc)}",
+                      flush=True)
+            M_box     = _ent["M_box"].copy()
+            Cv_box    = _ent["Cv_box"].copy()
+            tau_g_box = _ent["tau_g_box"].copy()
+        else:
+            with timed("lcs.extract_dynamics"):
+                M_full     = self.plant.CalcMassMatrixViaInverseDynamics(context)
+                Cv_full    = self.plant.CalcBiasTerm(context)
+                tau_g_full = self.plant.CalcGravityGeneralizedForces(context)
+            M_box     = M_full[BS:BE, BS:BE]                  # (6, 6)
+            Cv_box    = Cv_full[BS:BE]                        # (6,)
+            tau_g_box = tau_g_full[BS:BE]                     # (6,)
         M_box_inv = np.linalg.inv(M_box)
 
         # EE inertia in the LCS = the REFERENCE's free-floating point mass.
@@ -1998,13 +2083,17 @@ class LCSFormulator:
                   f"(end_effector_simple_model.urdf; arm operational-space "
                   f"inertia removed 2026-08-08)", flush=True)
 
-        # Box's N(q) sub-block: q_dot_box = N_box · box_v.
-        N_box = np.zeros((BOX_N_Q, BOX_N_V))
-        for i in range(BOX_N_V):
-            e_full = np.zeros(self.n_v)
-            e_full[BS + i] = 1.0
-            qdot_full = self.plant.MapVelocityToQDot(context, e_full)
-            N_box[:, i] = qdot_full[BOX_Q_START : BOX_Q_START + BOX_N_Q]
+        # Box's N(q) sub-block: q_dot_box = N_box · box_v. State-only —
+        # served from the dedupe cache on a hit (bit-identical).
+        if _ent is not None:
+            N_box = _ent["N_box"].copy()
+        else:
+            N_box = np.zeros((BOX_N_Q, BOX_N_V))
+            for i in range(BOX_N_V):
+                e_full = np.zeros(self.n_v)
+                e_full[BS + i] = 1.0
+                qdot_full = self.plant.MapVelocityToQDot(context, e_full)
+                N_box[:, i] = qdot_full[BOX_Q_START : BOX_Q_START + BOX_N_Q]
 
         # 2026-07-26 arc-2 A2 fix: box's N⁺(q) sub-block (qdot→v map, reverse
         # of N_box). Reference `lcs_factory.cc:387` builds full-plant vNqdot
@@ -2126,43 +2215,61 @@ class LCSFormulator:
         # 4a. Exact linearization of box autonomous dynamics ∂f_box/∂(box_q,
         # box_v) via Drake autodiff. f_box = M^-1 (−Cv + tau_g) is computed
         # on the full plant; we read out only the box rows and box columns.
-        with timed("lcs.extract_dynamics"):
-            q_star_full = q_full.copy()
-            v_star_full = v_full.copy()
-            decvar = np.concatenate([q_star_full, v_star_full])
-            decvar_ad = InitializeAutoDiff(decvar)
-            decvar_ad = (decvar_ad.flatten()
-                         if decvar_ad.ndim > 1 else decvar_ad)
-            q_ad = decvar_ad[:self.n_q]
-            v_ad = decvar_ad[self.n_q:self.n_q + self.n_v]
-            self.plant_ad.SetPositions(self.context_ad, q_ad)
-            self.plant_ad.SetVelocities(self.context_ad, v_ad)
-            M_full_ad     = self.plant_ad.CalcMassMatrixViaInverseDynamics(
-                self.context_ad)
-            Cv_full_ad    = self.plant_ad.CalcBiasTerm(self.context_ad)
-            tau_g_full_ad = self.plant_ad.CalcGravityGeneralizedForces(
-                self.context_ad)
-            rhs_box_ad    = (- Cv_full_ad[BS:BE] + tau_g_full_ad[BS:BE])
-        # Extract box-block of M and gradient.
-        # df_box/d(q, v) = M_box^-1 [ d(rhs_box)/d(q,v) - (dM_box/d(q,v)) f_box ]
-        J_rhs_box_full = ExtractGradient(rhs_box_ad)     # (6, n_q + n_v)
-        J_M_full = ExtractGradient(M_full_ad).reshape(
-            self.n_v, self.n_v, self.n_q + self.n_v)
-        # Slice box-block: M_box is M_full[BS:BE, BS:BE]; its gradient wrt
-        # each (q,v) variable is J_M_full[BS:BE, BS:BE, k].
-        df_box_dxfull = np.zeros((BOX_N_V, self.n_q + self.n_v))
-        for k in range(self.n_q + self.n_v):
-            dM_box_k = J_M_full[BS:BE, BS:BE, k]
-            df_box_dxfull[:, k] = M_box_inv @ (
-                J_rhs_box_full[:, k] - dM_box_k @ f_box
-            )
-        # Project to new state coords. Only the box-q columns of df_box/dq
-        # and box-v columns of df_box/dv are non-trivial (in principle the
-        # arm columns could be nonzero from CalcMassMatrix's full-plant
-        # numerics, but for an independent kinematic tree they're zero
-        # within autodiff noise; Stage A verifies this empirically).
-        df_box_dboxq = df_box_dxfull[:, BOX_Q_START : BOX_Q_START + BOX_N_Q]
-        df_box_dboxv = df_box_dxfull[:, self.n_q + BS : self.n_q + BE]
+        # State-only (df_box_dxfull derives from the same (q, v) via
+        # deterministic Drake AD + the float-block f_box) — served from the
+        # dedupe cache on a hit; the miss path stores the full bundle.
+        if _ent is not None:
+            df_box_dboxq = _ent["df_box_dboxq"].copy()
+            df_box_dboxv = _ent["df_box_dboxv"].copy()
+        else:
+            with timed("lcs.extract_dynamics"):
+                q_star_full = q_full.copy()
+                v_star_full = v_full.copy()
+                decvar = np.concatenate([q_star_full, v_star_full])
+                decvar_ad = InitializeAutoDiff(decvar)
+                decvar_ad = (decvar_ad.flatten()
+                             if decvar_ad.ndim > 1 else decvar_ad)
+                q_ad = decvar_ad[:self.n_q]
+                v_ad = decvar_ad[self.n_q:self.n_q + self.n_v]
+                self.plant_ad.SetPositions(self.context_ad, q_ad)
+                self.plant_ad.SetVelocities(self.context_ad, v_ad)
+                M_full_ad     = self.plant_ad.CalcMassMatrixViaInverseDynamics(
+                    self.context_ad)
+                Cv_full_ad    = self.plant_ad.CalcBiasTerm(self.context_ad)
+                tau_g_full_ad = self.plant_ad.CalcGravityGeneralizedForces(
+                    self.context_ad)
+                rhs_box_ad    = (- Cv_full_ad[BS:BE] + tau_g_full_ad[BS:BE])
+            # Extract box-block of M and gradient.
+            # df_box/d(q, v) = M_box^-1 [ d(rhs_box)/d(q,v) - (dM_box/d(q,v)) f_box ]
+            J_rhs_box_full = ExtractGradient(rhs_box_ad)     # (6, n_q + n_v)
+            J_M_full = ExtractGradient(M_full_ad).reshape(
+                self.n_v, self.n_v, self.n_q + self.n_v)
+            # Slice box-block: M_box is M_full[BS:BE, BS:BE]; its gradient wrt
+            # each (q,v) variable is J_M_full[BS:BE, BS:BE, k].
+            df_box_dxfull = np.zeros((BOX_N_V, self.n_q + self.n_v))
+            for k in range(self.n_q + self.n_v):
+                dM_box_k = J_M_full[BS:BE, BS:BE, k]
+                df_box_dxfull[:, k] = M_box_inv @ (
+                    J_rhs_box_full[:, k] - dM_box_k @ f_box
+                )
+            df_box_dboxq = df_box_dxfull[
+                :, BOX_Q_START : BOX_Q_START + BOX_N_Q]
+            df_box_dboxv = df_box_dxfull[:, self.n_q + BS : self.n_q + BE]
+            if _dc is not None:
+                _dc[_dyn_key] = dict(
+                    M_box=M_box.copy(), Cv_box=Cv_box.copy(),
+                    tau_g_box=tau_g_box.copy(), N_box=N_box.copy(),
+                    df_box_dboxq=df_box_dboxq.copy(),
+                    df_box_dboxv=df_box_dboxv.copy(),
+                )
+                self._eespace_dyn_lru.append(_dyn_key)
+                if len(self._eespace_dyn_lru) > 8:
+                    _dc.pop(self._eespace_dyn_lru.pop(0), None)
+        # Projection to new state coords happens inside the miss branch
+        # above (only the box-q / box-v columns are consumed — the arm
+        # columns are zero for an independent kinematic tree within
+        # autodiff noise; Stage A verifies this empirically). On a cache
+        # hit df_box_dboxq/dboxv come from the stored slices directly.
 
         # 4b. Assemble A.
         A = np.zeros((N_X, N_X))
