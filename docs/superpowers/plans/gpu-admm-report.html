@@ -1,0 +1,449 @@
+<title>GPU ADMM Verdict</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --ground:#FAFAFC; --surface:#FFFFFF; --surface-2:#F2F3F7;
+  --ink:#15171F; --ink-2:#3C4152; --muted:#5F6478;
+  --rule:#DFE1EA; --rule-strong:#C6C9D6;
+  --accent:#3B4CA0; --accent-soft:#E7E9F6;
+  --slow:#A8442C; --slow-soft:#F7E7E2;
+  --fast:#2C7357; --fast-soft:#E2F0EA;
+  --cell:#3B4CA0; --cell-bg:#E9EBF4;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --col:68ch;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1016; --surface:#171A22; --surface-2:#1E212B;
+    --ink:#E7E9F1; --ink-2:#BFC4D4; --muted:#949AAF;
+    --rule:#2A2E3A; --rule-strong:#3A3F4E;
+    --accent:#8B98E8; --accent-soft:#20243A;
+    --slow:#E08a6E; --slow-soft:#2E2019;
+    --fast:#63BC96; --fast-soft:#16261F;
+    --cell:#8B98E8; --cell-bg:#222634;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1016; --surface:#171A22; --surface-2:#1E212B;
+  --ink:#E7E9F1; --ink-2:#BFC4D4; --muted:#949AAF;
+  --rule:#2A2E3A; --rule-strong:#3A3F4E;
+  --accent:#8B98E8; --accent-soft:#20243A;
+  --slow:#E08A6E; --slow-soft:#2E2019;
+  --fast:#63BC96; --fast-soft:#16261F;
+  --cell:#8B98E8; --cell-bg:#222634;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--serif); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:var(--col); margin:0 auto; padding:0 24px}
+.bleed{max-width:96ch; margin:0 auto; padding:0 24px}
+
+h1,h2,h3,.label,.stat-v,.tag,th{font-family:var(--sans)}
+h1{
+  font-size:clamp(2rem,5vw,2.9rem); line-height:1.1; font-weight:700;
+  letter-spacing:-.02em; text-wrap:balance; margin:0 0 .5rem;
+}
+h2{
+  font-size:1.45rem; font-weight:700; letter-spacing:-.01em;
+  text-wrap:balance; margin:0 0 .1rem;
+}
+h3{font-size:1.02rem; font-weight:600; margin:0 0 .35rem; letter-spacing:-.005em}
+p{margin:0 0 1rem}
+a{color:var(--accent)}
+strong{font-weight:600; color:var(--ink)}
+code,.mono{font-family:var(--mono); font-size:.87em; font-variant-numeric:tabular-nums}
+code{background:var(--surface-2); padding:.1em .35em; border-radius:3px}
+
+.label{
+  font-size:.72rem; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+
+/* ---- masthead ---- */
+header{border-bottom:1px solid var(--rule-strong); padding:56px 0 28px; margin-bottom:40px}
+.kicker{display:flex; gap:10px; align-items:center; margin-bottom:18px; flex-wrap:wrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--slow);flex:none}
+.deck{
+  font-size:1.12rem; color:var(--ink-2); margin:0 0 22px;
+  font-family:var(--serif);
+}
+.meta{
+  display:flex; flex-wrap:wrap; gap:6px 26px;
+  font-family:var(--mono); font-size:.76rem; color:var(--muted);
+}
+.meta b{font-weight:400; color:var(--ink-2)}
+
+/* ---- section rhythm ---- */
+section{margin-bottom:46px}
+.sec-head{margin-bottom:18px}
+.sec-head .label{display:block; margin-bottom:6px}
+
+/* ---- headline stat ---- */
+.verdict{
+  background:var(--surface); border:1px solid var(--rule-strong);
+  border-left:3px solid var(--slow); border-radius:2px;
+  padding:26px 28px; margin:0 auto 34px;
+}
+.verdict-grid{display:flex; gap:34px; align-items:baseline; flex-wrap:wrap}
+.stat-v{
+  font-size:3.4rem; font-weight:700; line-height:1; color:var(--slow);
+  font-variant-numeric:tabular-nums; letter-spacing:-.03em;
+}
+.verdict p{margin:14px 0 0; color:var(--ink-2); font-size:1.02rem}
+
+/* ---- bar comparison ---- */
+.bars{display:flex; flex-direction:column; gap:14px; margin:22px 0 8px}
+.bar-row{display:grid; grid-template-columns:12ch 1fr auto; gap:14px; align-items:center}
+.bar-name{font-family:var(--sans); font-size:.82rem; font-weight:600; color:var(--ink-2)}
+.bar-track{background:var(--surface-2); height:26px; border-radius:2px; overflow:hidden}
+.bar-fill{height:100%; border-radius:2px}
+.bar-val{
+  font-family:var(--mono); font-size:.86rem; font-variant-numeric:tabular-nums;
+  color:var(--ink); white-space:nowrap;
+}
+
+/* ---- tables ---- */
+.tbl-wrap{overflow-x:auto; margin:18px 0 10px}
+table{border-collapse:collapse; width:100%; font-size:.88rem}
+th,td{
+  text-align:left; padding:9px 14px 9px 0; border-bottom:1px solid var(--rule);
+  vertical-align:baseline;
+}
+th{
+  font-size:.71rem; font-weight:600; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--rule-strong);
+  white-space:nowrap;
+}
+td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+tr.hi td{background:var(--slow-soft)}
+.win{color:var(--fast); font-weight:600}
+.lose{color:var(--slow); font-weight:600}
+
+/* ---- provenance tag ---- */
+.tag{
+  display:inline-block; font-family:var(--mono); font-size:.72rem;
+  color:var(--muted); background:var(--surface-2);
+  border:1px solid var(--rule); border-radius:2px;
+  padding:2px 7px; margin-top:10px;
+}
+
+/* ---- sparsity figure ---- */
+figure{margin:24px 0 8px}
+.mats{display:flex; gap:28px; flex-wrap:wrap; justify-content:flex-start}
+.mat{flex:1 1 240px; min-width:220px}
+.mat canvas{
+  width:100%; height:auto; display:block; image-rendering:pixelated;
+  border:1px solid var(--rule-strong); background:var(--cell-bg);
+}
+.mat-cap{
+  font-family:var(--mono); font-size:.75rem; color:var(--muted);
+  margin-top:8px; display:flex; justify-content:space-between; gap:10px;
+}
+.mat-cap b{color:var(--ink); font-weight:600}
+figcaption{
+  font-family:var(--sans); font-size:.82rem; color:var(--muted);
+  margin-top:16px; line-height:1.55;
+}
+
+/* ---- callout ---- */
+.note{
+  background:var(--surface); border:1px solid var(--rule);
+  border-left:3px solid var(--accent); border-radius:2px;
+  padding:18px 22px; margin:22px 0;
+}
+.note h3{color:var(--accent)}
+.note p:last-child{margin-bottom:0}
+
+/* ---- outcome list ---- */
+.kept{list-style:none; padding:0; margin:16px 0 0}
+.kept li{
+  border-top:1px solid var(--rule); padding:14px 0;
+  display:grid; grid-template-columns:1fr; gap:3px;
+}
+.kept li:last-child{border-bottom:1px solid var(--rule)}
+.kept .k-t{font-family:var(--sans); font-weight:600; font-size:.95rem}
+.kept .k-d{color:var(--ink-2); font-size:.93rem}
+
+footer{
+  border-top:1px solid var(--rule-strong); margin-top:56px; padding:24px 0 64px;
+  font-family:var(--mono); font-size:.76rem; color:var(--muted);
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header>
+  <div class="wrap">
+    <div class="kicker"><span class="dot"></span><span class="label">Measured result &middot; negative</span></div>
+    <h1>Does the GPU accelerate our ADMM?</h1>
+    <p class="deck">No. On the real C3+ hot loop the batched GPU solver runs
+      <strong>ten times slower</strong> than Drake's CPU OSQP. The reasons are structural,
+      not implementation polish &mdash; and they were only visible once the benchmark used
+      real matrices instead of random ones.</p>
+    <div class="meta">
+      <span><b>branch</b> worktree-gpu-admm-plan</span>
+      <span><b>gpu</b> RTX 5070 Ti (sm_120)</span>
+      <span><b>cpu</b> Ryzen 7 7800X3D</span>
+      <span><b>date</b> 2026-08-21</span>
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+  <div class="verdict">
+    <div class="verdict-grid">
+      <div>
+        <div class="label" style="margin-bottom:8px">Hot loop, one control tick</div>
+        <div class="stat-v">0.10&times;</div>
+      </div>
+      <div style="flex:1 1 260px">
+        <div class="bars">
+          <div class="bar-row">
+            <span class="bar-name">CPU &middot; Drake</span>
+            <span class="bar-track"><span class="bar-fill" style="width:10.4%;background:var(--fast)"></span></span>
+            <span class="bar-val">171.7 ms</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-name">GPU &middot; batched</span>
+            <span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--slow)"></span></span>
+            <span class="bar-val">1652.8 ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p>One tick evaluates 6 samples &times; 3 C3+ ADMM iterations on the real
+      corpus matrices (<span class="mono">n = 639</span>, <span class="mono">m = 439</span>).
+      Both legs solve identical problems.</p>
+    <span class="tag">scripts/gpu/hotloop_benchmark.py</span>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <span class="label">The reconciliation</span>
+      <h2>A 4.4&times; per-iteration win, erased by 133&times; more iterations</h2>
+    </div>
+    <p>Per <em>iteration</em>, the GPU really is faster. The problem is how many
+      iterations it needs. Drake's OSQP converges to <span class="mono">eps = 1e-5</span>
+      in 100&ndash;200 iterations. Our batched solver ran <strong>20,000 and still had not
+      converged</strong> &mdash; primal residual stuck at <span class="mono">2.1e-4</span>.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Solver</th><th>Iterations to 1e-5</th><th>Preconditioning</th><th>Adaptive &rho;</th></tr></thead>
+        <tbody>
+          <tr><td>Drake OSQP (CPU)</td><td class="num">100&ndash;200</td><td>Ruiz, <code>scaling=1</code></td><td>on</td></tr>
+          <tr class="hi"><td>Ours (GPU)</td><td class="num">&gt;20,000 &mdash; no convergence</td><td class="lose">none</td><td class="lose">none</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Our solver implements the plain OSQP iteration. I had scoped Ruiz equilibration
+      and adaptive &rho; out of the plan as <em>fidelity</em> details &mdash; things you'd
+      need to match OSQP's exact path, not its answer. That was wrong. On a problem with
+      <span class="mono">cond(K) &asymp; 1.2e7</span>, preconditioning <em>is</em> the
+      performance; without it a first-order method crawls.</p>
+    <span class="tag">scripts/gpu/iteration_count_probe.py</span>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="label">Structural reason 1</span>
+      <h2>The Hessian is diagonal</h2>
+    </div>
+    <p>This is the fact that decides the question. The C3+ cost Hessian is not
+      &ldquo;sparse-ish&rdquo; &mdash; at <span class="mono">659</span> nonzeros in
+      <span class="mono">639&times;639</span> it is <strong>0.16% dense</strong>, essentially
+      a diagonal. A dense batched GPU solve does <span class="mono">O(n²)</span> and
+      <span class="mono">O(n³)</span> work on it. Drake's sparse factorization does not.</p>
+  </section>
+</div>
+
+<div class="bleed">
+  <figure>
+    <div class="mats">
+      <div class="mat">
+        <canvas id="matP" width="48" height="48" role="img"
+                aria-label="Sparsity pattern of P_sym: a clean diagonal line, 0.16 percent dense"></canvas>
+        <div class="mat-cap"><span>P_sym &nbsp;639&times;639</span><span><b>0.16%</b> dense</span></div>
+      </div>
+      <div class="mat">
+        <canvas id="matK" width="48" height="48" role="img"
+                aria-label="Sparsity pattern of the reduced KKT matrix: banded, 8.98 percent dense"></canvas>
+        <div class="mat-cap"><span>reduced KKT &nbsp;639&times;639</span><span><b>8.98%</b> dense</span></div>
+      </div>
+    </div>
+    <figcaption>Measured occupancy of the real corpus matrices, coarsened to a
+      48&times;48 grid; a cell is filled if the block it covers holds any nonzero.
+      A sparse per-iteration matvec costs <span class="mono">0.07 MFLOP</span> against the
+      dense <span class="mono">0.82 MFLOP</span> the GPU pays &mdash; 11&times; fewer.</figcaption>
+  </figure>
+  <div class="wrap" style="padding:0"><span class="tag">scripts/gpu/sparsity_probe.py</span></div>
+</div>
+
+<div class="wrap">
+  <section style="margin-top:46px">
+    <div class="sec-head">
+      <span class="label">Structural reason 2</span>
+      <h2>This GPU has no fp64 headroom</h2>
+    </div>
+    <p>GeForce Blackwell runs float64 at <strong>1/64</strong> the float32 rate. The
+      RTX 5070 Ti delivers roughly <span class="mono">0.7 TFLOPS</span> fp64 &mdash; about
+      par with the 7800X3D's theoretical peak. So there is no raw throughput surplus to
+      pay for throwing away 11&times; sparsity. The conformance mission rules out dropping
+      to fp32, where the card would be 64&times; faster.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="label">Where my first number came from</span>
+      <h2>The benchmark that misled me</h2>
+    </div>
+    <p>An earlier measurement showed the GPU winning <strong>4.41&times;</strong> on a full
+      OSQP iteration, and it was that number that opened the gate to build the solver.
+      It was measured against the wrong opponent: <em>dense linear algebra on the CPU</em>,
+      not the sparse C++ solver the port actually runs.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Per sample-iteration</th><th>Cost</th><th>vs GPU</th></tr></thead>
+        <tbody>
+          <tr><td>GPU, batched dense</td><td class="num">0.042 ms</td><td class="num">&mdash;</td></tr>
+          <tr><td>torch CPU, dense &mdash; <em>the wrong baseline</em></td><td class="num">0.184 ms</td><td class="num win">4.41&times;</td></tr>
+          <tr class="hi"><td>Drake OSQP, sparse &mdash; <em>what we actually run</em></td><td class="num">0.064 ms</td><td class="num">1.5&times;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Against the real opponent the per-iteration edge is 1.5&times;, not 4.4&times; &mdash;
+      nowhere near enough to absorb a convergence penalty.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="label">The optimistic case</span>
+      <h2>Even fully fixed, it lands at parity</h2>
+    </div>
+    <p>Suppose we add Ruiz equilibration and adaptive &rho; so the GPU converges in the
+      same ~150 iterations Drake needs. Both are batchable, so this is real work but not
+      research. The arithmetic:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th></th><th>Per tick</th><th>Makeup</th></tr></thead>
+        <tbody>
+          <tr><td>GPU, gap closed</td><td class="num">~166 ms</td><td class="num">3 &times; (14 ms setup + 150 &times; 0.275 ms)</td></tr>
+          <tr><td>CPU, measured</td><td class="num">171.7 ms</td><td class="num">6 samples &times; 3 iters, sequential</td></tr>
+          <tr class="hi"><td><strong>Result</strong></td><td class="num lose">~1.03&times;</td><td>parity, not acceleration</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>That is the whole return on completing the GPU port: a few percent, for a
+      preconditioner, an adaptive-&rho; scheme, the assembly refactor, and a full
+      conformance re-validation.</p>
+  </section>
+
+  <div class="note">
+    <h3>Why cuNRTO's 25.9&times; doesn't carry over</h3>
+    <p>The paper's Franka speedup is real, and its architecture is sound &mdash; we adopted
+      it faithfully. It does not transfer because their subproblem is a different animal:
+      thousands of second-order-cone constraints and a dense feedback-gain block of
+      <span class="mono">2,940</span> variables. Ours is <span class="mono">n = 639</span>
+      at <strong>0.16%</strong> Hessian density. GPUs win on large and dense; this problem
+      is small and sparse. The paper also benchmarks against MOSEK interior-point at 40&ndash;80
+      ADMM iterations, where we benchmark against OSQP &mdash; same algorithm class as ours,
+      at 3.</p>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <span class="label">Not a wasted arc</span>
+      <h2>What the investigation did produce</h2>
+    </div>
+    <ul class="kept">
+      <li>
+        <span class="k-t">A repaired parallel sample-eval path</span>
+        <span class="k-d">Three independent defects. Worker plant contexts were built
+          standalone, so <span class="mono">geometry_query</span> was unconnected and every
+          worker LCS build threw &mdash; swallowed by a bare <span class="mono">except</span>,
+          producing NaN costs. Workers also ran a different physics model (4 unforwarded
+          constructor args, including <span class="mono">controller_inertia</span>).
+          <span class="mono">threads=4</span> went from total task failure to
+          <span class="mono">tight_goal=PASS(final)</span>.</span>
+      </li>
+      <li>
+        <span class="k-t">A hard answer on threading</span>
+        <span class="k-d">Drake's <span class="mono">Solve</span> does not release the GIL &mdash;
+          0.99&times; on 4 threads, against a 3.99&times; <span class="mono">sleep</span> control.
+          The reference's OpenMP parallel-for cannot translate to Python threads at any
+          thread count. That closes a lever your notes had listed as the biggest remaining
+          speedup.</span>
+      </li>
+      <li>
+        <span class="k-t">A reusable solver-level test corpus</span>
+        <span class="k-d">60 real ADMM instances with CPU golden outputs and the assembled
+          QP matrices &mdash; the substrate any future solver change can be validated
+          against without a sim run.</span>
+      </li>
+      <li>
+        <span class="k-t">A measured record of what the port's hot loop actually is</span>
+        <span class="k-d">Diagonal Hessian, 9% dense KKT, cond(K) &asymp; 1.2e7, 100&ndash;200
+          OSQP iterations, 150 &times; 6 &times; 3 solves per tick. Any future performance work
+          starts from these numbers instead of guesses.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="label">Recommendation</span>
+      <h2>Stop the GPU port; the profile points elsewhere</h2>
+    </div>
+    <p>Nothing about this hardware or this problem size rewards a batched dense GPU solver.
+      I'd stop at the current commit rather than build the preconditioner for a projected
+      3%.</p>
+    <p>If solve time is still the target, the honest next moves are ordered by the profile,
+      not by hardware appeal: cut the <em>number</em> of solves (6 samples &times; 3
+      iterations &times; ~150 OSQP iterations per tick is the real budget), or cut the cost
+      per solve by exploiting the diagonal Hessian directly &mdash; the structure the current
+      dense formulation discards. Both act on the 85% of wall time that is ADMM sample
+      evaluation. A GPU would become the right tool if the horizon or contact count grew
+      by an order of magnitude; at <span class="mono">n = 639</span> it is not.</p>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    Every figure here is reproducible from the named script on
+    <span class="mono">worktree-gpu-admm-plan</span>. Full measurement log:
+    <span class="mono">docs/superpowers/plans/gpu-admm-baseline.txt</span>.
+  </div>
+</footer>
+
+<script>
+const P_PAT = "100000000000000000000000000000000000000000000000,010000000000000000000000000000000000000000000000,001000000000000000000000000000000000000000000000,000100000000000000000000000000000000000000000000,000010000000000000000000000000000000000000000000,000001000000000000000000000000000000000000000000,000000100000000000000000000000000000000000000000,000000010000000000000000000000000000000000000000,000000001000000000000000000000000000000000000000,000000000100000000000000000000000000000000000000,000000000010000000000000000000000000000000000000,000000000001000000000000000000000000000000000000,000000000000100000000000000000000000000000000000,000000000000010000000000000000000000000000000000,000000000000001000000000000000000000000000000000,000000000000000100000000000000000000000000000000,000000000000000010000000000000000000000000000000,000000000000000001000000000000000000000000000000,000000000000000000100000000000000000000000000000,000000000000000000010000000000000000000000000000,000000000000000000001000000000000000000000000000,000000000000000000000100000000000000000000000000,000000000000000000000010000000000000000000000000,000000000000000000000001000000000000000000000000,000000000000000000000000100000000000000000000000,000000000000000000000000010000000000000000000000,000000000000000000000000001000000000000000000000,000000000000000000000000000100000000000000000000,000000000000000000000000000011000000000000000000,000000000000000000000000000011000000000000000000,000000000000000000000000000000100000000000000000,000000000000000000000000000000010000000000000000,000000000000000000000000000000001000000000000000,000000000000000000000000000000000100000000000000,000000000000000000000000000000000010000000000000,000000000000000000000000000000000001000000000000,000000000000000000000000000000000000100000000000,000000000000000000000000000000000000010000000000,000000000000000000000000000000000000001000000000,000000000000000000000000000000000000000100000000,000000000000000000000000000000000000000010000000,000000000000000000000000000000000000000001000000,000000000000000000000000000000000000000000110000,000000000000000000000000000000000000000000110000,000000000000000000000000000000000000000000001000,000000000000000000000000000000000000000000000100,000000000000000000000000000000000000000000000010,000000000000000000000000000000000000000000000001";
+const K_PAT = "111111000000000000000000000000000000000000000000,111111100000000000000000000000000000000000000000,111111000000000000000000000000000000000000000000,111101100000000000000000000000000000000000000000,111011111100000000000000000000000000000000000000,111111111110000000000000000000000000000000000000,010111111110000000000000000000000000000000000000,000011111110000000000000000000000000000000000000,000011111000000000000000000000000000000000000000,000011110111111000000000000000000000000000000000,000001110111111100000000000000000000000000000000,000000000111111100000000000000000000000000000000,000000000111111100000000000000000000000000000000,000000000111110000000000000000000000000000000000,000000000111101111110000000000000000000000000000,000000000011101111111000000000000000000000000000,000000000000001111110000000000000000000000000000,000000000000001111011000000000000000000000000000,000000000000001110111111000000000000000000000000,000000000000001111111111100000000000000000000000,000000000000000101111111100000000000000000000000,000000000000000000111111100000000000000000000000,000000000000000000111110000000000000000000000000,000000000000000000111101111110000000000000000000,000000000000000000011101111111000000000000000000,000000000000000000000001111111000000000000000000,000000000000000000000001111111000000000000000000,000000000000000000000001111100000000000000000000,000000000000000000000001111011111100000000000000,000000000000000000000000111011111110000000000000,000000000000000000000000000011111100000000000000,000000000000000000000000000011110110000000000000,000000000000000000000000000011101111110000000000,000000000000000000000000000011111111111000000000,000000000000000000000000000001011111111000000000,000000000000000000000000000000001111111000000000,000000000000000000000000000000001111100000000000,000000000000000000000000000000001111011111100000,000000000000000000000000000000000111011111110000,000000000000000000000000000000000000011111110000,000000000000000000000000000000000000011111110000,000000000000000000000000000000000000011111111110,000000000000000000000000000000000000011111111111,000000000000000000000000000000000000001111111111,000000000000000000000000000000000000000001111111,000000000000000000000000000000000000000001111101,000000000000000000000000000000000000000001111010,000000000000000000000000000000000000000000111101";
+function draw(id, pat){
+  const rows = pat.split(",");
+  const c = document.getElementById(id);
+  const g = c.getContext("2d");
+  const cs = getComputedStyle(document.documentElement);
+  g.fillStyle = cs.getPropertyValue("--cell-bg").trim() || "#EEE";
+  g.fillRect(0,0,c.width,c.height);
+  g.fillStyle = cs.getPropertyValue("--cell").trim() || "#333";
+  for(let i=0;i<rows.length;i++){
+    for(let j=0;j<rows[i].length;j++){
+      if(rows[i][j]==="1") g.fillRect(j,i,1,1);
+    }
+  }
+}
+function renderAll(){ draw("matP",P_PAT); draw("matK",K_PAT); }
+renderAll();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+</script>
