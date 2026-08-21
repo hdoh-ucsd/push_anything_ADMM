@@ -47,6 +47,44 @@ _OPTIONAL = ("phi", "u_lower", "u_upper", "ee_velocity_bounds",
 
 
 @dataclass(frozen=True)
+class C3PlusQPData:
+    """The assembled numeric QP for ONE C3+ instance.
+
+    This is the output of `C3Solver._assemble_c3plus_qp`, extracted so the
+    CPU path and any future batched/GPU backend consume one assembly rather
+    than maintaining two that can drift.
+
+    `box_blocks` is an ORDERED tuple of `(idx, lo, hi)` triples, one per
+    original `AddBoundingBoxConstraint` call, deliberately NOT merged into a
+    single selector. Drake/OSQP row ordering follows the order constraints
+    are added, and merging them would change the row layout and therefore
+    the arithmetic -- which would break the byte-identity this refactor is
+    required to preserve.
+
+    `P` is the un-augmented cost Hessian; `P_sym` is
+    `0.5 (P + rho*aug + transpose) + 1e-8 I` as the solver builds it. Both
+    are carried because the ADMM loop's rho ramp needs each.
+    """
+
+    P: np.ndarray
+    P_sym: np.ndarray
+    q_ref: np.ndarray
+    C_eq: np.ndarray
+    b_eq: np.ndarray
+    box_blocks: tuple
+    n_x: int
+    n_u: int
+    n_lambda: int
+    N: int
+    TOT: int
+    total_dim: int
+    SX: int
+    SL: int
+    SU: int
+    SE: int
+
+
+@dataclass(frozen=True)
 class C3PlusProblemBatch:
     """B independent C3+ problems that share shapes.
 
