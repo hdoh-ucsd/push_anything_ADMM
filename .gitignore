@@ -58,3 +58,4 @@ gurobi.log
 
 # GPU-ADMM validation corpus (regenerate with scripts/gpu/dump_admm_corpus.sh)
 audit_output/admm_corpus/
+audit_output/gpu_golden/

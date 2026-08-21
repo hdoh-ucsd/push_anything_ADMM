@@ -51,6 +51,7 @@ from control.admm_solver import C3Solver
 from control.lcs_formulator import LCSFormulator
 from control.sampling_c3.ik import ik_seed_one_step, solve_ik_to_ee_pos
 from control.sampling_c3.params import SamplingC3Params
+from control.solver_api import CandidateSemantics
 
 
 def _yaw_from_quat(qw: float, qx: float, qy: float, qz: float) -> float:
@@ -1518,20 +1519,24 @@ class InnerSolver:
         #   independent  -- every candidate sees the tick's ENTRY u_prev
         #   reset        -- every candidate starts from u_prev = None
         # Unset => "ordered" => byte-identical. Measurement only.
-        _ws_mode = os.environ.get("PORT_CANDIDATE_WARMSTART",
-                                  "ordered").strip().lower()
-        if _ws_mode not in ("ordered", "independent", "reset"):
-            raise ValueError(
-                f"PORT_CANDIDATE_WARMSTART={_ws_mode!r} not in "
-                f"(ordered, independent, reset)")
+        _sem = CandidateSemantics.coerce(
+            os.environ.get("PORT_CANDIDATE_WARMSTART", "legacy_ordered"))
         _slv = getattr(self, "solver", None)
+        # Captured ONCE, before any candidate is solved. Under
+        # INDEPENDENT_BATCH every candidate sees exactly this value, so no
+        # candidate can influence another's initialization.
         _u_prev_at_entry = getattr(_slv, "_u_prev_solve", None) \
             if _slv is not None else None
-        if _ws_mode != "ordered" and not getattr(self, "_ws_banner", False):
+        if (_sem is not CandidateSemantics.LEGACY_ORDERED
+                and not getattr(self, "_ws_banner", False)):
             self._ws_banner = True
-            print(f"[CAND-WARMSTART] *** OFF-REFERENCE *** mode={_ws_mode} "
-                  f"(default is 'ordered'); candidate-to-candidate "
-                  f"_u_prev_solve propagation is suppressed", flush=True)
+            _note = ("reproduces the C++ reference (fresh C3 per candidate, "
+                     "u_sol_=zeros)"
+                     if _sem is CandidateSemantics.REFERENCE_RESET else
+                     "one tick-entry u_prev broadcast to every candidate")
+            print(f"[CAND-SEMANTICS] mode={_sem.value} — {_note}; "
+                  f"candidate-to-candidate propagation is suppressed "
+                  f"(default is legacy_ordered)", flush=True)
 
         # Candidate ORDER sweep (measurement only): PORT_CANDIDATE_ORDER
         # permutes which candidate is solved when, WITHOUT changing which
@@ -1554,9 +1559,9 @@ class InnerSolver:
         for k in _order:
             p = samples[k]
             if _slv is not None:
-                if _ws_mode == "independent":
+                if _sem is CandidateSemantics.INDEPENDENT_BATCH:
                     _slv._u_prev_solve = _u_prev_at_entry
-                elif _ws_mode == "reset":
+                elif _sem is CandidateSemantics.REFERENCE_RESET:
                     _slv._u_prev_solve = None
             r = self.evaluate_sample(
                 sample_pos    = p,
