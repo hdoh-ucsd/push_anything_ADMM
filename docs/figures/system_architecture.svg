@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title desc">
+<title id="title">Push Anything reproduction architecture</title>
+<desc id="desc">Candidate sampling and local LCS models feed C3 or C3+ MPC; the selected contact-rich or reposition trajectory is executed by OSC on a Franka in PyDrake.</desc>
+<defs>
+<marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M0,0 L9,4.5 L0,9 Z" fill="#5f6b7a"/>
+</marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="600" y="42.0" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="24" font-weight="650" fill="#172033">
+<tspan x="600" dy="0">Push Anything reproduction: planning and execution</tspan>
+</text>
+<rect x="65" y="90" width="220" height="78" rx="9" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="175.0" y="124.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="175.0" dy="0">PyDrake scene</tspan>
+<tspan x="175.0" dy="21.2">object + Franka state</tspan>
+</text>
+<rect x="365" y="90" width="220" height="78" rx="9" fill="#dcfce7" stroke="#16803a" stroke-width="2"/>
+<text x="475.0" y="124.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="475.0" dy="0">Candidate contact /</tspan>
+<tspan x="475.0" dy="21.2">EE placements</tspan>
+</text>
+<rect x="665" y="90" width="220" height="78" rx="9" fill="#f3e8ff" stroke="#7e22ce" stroke-width="2"/>
+<text x="775.0" y="124.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="775.0" dy="0">Local contact geometry</tspan>
+<tspan x="775.0" dy="21.2">and LCS models</tspan>
+</text>
+<rect x="965" y="90" width="170" height="78" rx="9" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+<text x="1050.0" y="124.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="1050.0" dy="0">Candidate</tspan>
+<tspan x="1050.0" dy="21.2">objectives</tspan>
+</text>
+<path d="M285,129 L365,129" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M585,129 L665,129" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M885,129 L965,129" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="720" y="240" width="260" height="92" rx="9" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+<text x="850.0" y="271.38" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="850.0" dy="0">C3+ (default) / C3</tspan>
+<tspan x="850.0" dy="21.2">contact-implicit MPC</tspan>
+<tspan x="850.0" dy="21.2">ADMM inner solve</tspan>
+</text>
+<path d="M800,168 L800,240" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M1050,168 L940,240" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="330" y="240" width="260" height="92" rx="9" fill="#dcfce7" stroke="#16803a" stroke-width="2"/>
+<text x="460.0" y="281.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="460.0" dy="0">Sampling-C3 dispatcher</tspan>
+<tspan x="460.0" dy="21.2">select mode and target</tspan>
+</text>
+<path d="M720,315 L645,350 L540,332" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="160" y="405" width="260" height="82" rx="9" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+<text x="290.0" y="441.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="290.0" dy="0">Contact-free branch</tspan>
+<tspan x="290.0" dy="21.2">reposition trajectory</tspan>
+</text>
+<rect x="520" y="405" width="260" height="82" rx="9" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+<text x="650.0" y="441.58" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="650.0" dy="0">Contact-rich branch</tspan>
+<tspan x="650.0" dy="21.2">planned MPC trajectory</tspan>
+</text>
+<path d="M410,332 L290,405" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M510,332 L650,405" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="390" y="545" width="260" height="82" rx="9" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="520.0" y="581.5799999999999" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="520.0" dy="0">Operational-space control</tspan>
+<tspan x="520.0" dy="21.2">1 kHz Franka execution</tspan>
+</text>
+<path d="M290,487 L455,545" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M650,487 L585,545" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="760" y="545" width="260" height="82" rx="9" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="890.0" y="581.5799999999999" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="500" fill="#172033">
+<tspan x="890.0" dy="0">Apply first interval</tspan>
+<tspan x="890.0" dy="21.2">and advance simulation</tspan>
+</text>
+<path d="M650,586 L760,586" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M890,627 L890,660" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M890,660 L35,660 L35,129 L65,129" fill="none" stroke="#5f6b7a" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="250" y="650.0" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="500" fill="#5f6b7a">
+<tspan x="250" dy="0">receding-horizon feedback</tspan>
+</text>
+</svg>

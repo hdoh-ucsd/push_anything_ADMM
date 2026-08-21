@@ -1,0 +1,1708 @@
+Script started on 2026-08-21 12:49:05-07:00 [COMMAND="env PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider -ra tests --junitxml=audit_output/test_baseline_20260821/pytest.junit.xml" <not executed on terminal>]
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /root/push_anything_ADMM
+configfile: pyproject.toml
+collecting ... collected 344 items
+
+tests/control/sampling_c3/test_altitude_hold_gate.py .......             [  2%]
+tests/test_buffer_travel_normalization.py ...                            [  2%]
+tests/test_c3plus_projection_eq12.py .............                       [  6%]
+tests/test_c3plus_vs_c3_smoke.py .....                                   [  8%]
+tests/test_commit_face_gate.py ...............................F.         [ 17%]
+tests/test_commit_face_gate_post_decide.py .............                 [ 21%]
+tests/test_flip_goal_mode.py ..........                                  [ 24%]
+tests/test_inner_solve.py ......                                         [ 26%]
+tests/test_jack_goal_generator.py .............F                         [ 30%]
+tests/test_lcp_projection.py ......                                      [ 31%]
+tests/test_lcs_ee_space_ulin_consistency.py EE                           [ 32%]
+tests/test_lcs_efhc.py FFFFFF                                            [ 34%]
+tests/test_lcs_jacobian.py FFFF                                          [ 35%]
+tests/test_mesh_normal_sampling.py ....                                  [ 36%]
+tests/test_mode_switch.py FFF...FF..FF.F.....F                           [ 42%]
+tests/test_osc_default_gains.py F.                                       [ 43%]
+tests/test_osc_force_tracking.py .F.                                     [ 43%]
+tests/test_osc_joint2_posture.py ..                                      [ 44%]
+tests/test_osc_rot_task.py ......                                        [ 46%]
+tests/test_osc_tracking.py EEEEEEEE                                      [ 48%]
+tests/test_osc_trajectory_interface.py ..                                [ 49%]
+tests/test_osc_unit.py EEEEE                                             [ 50%]
+tests/test_perimeter_sample_clearance.py .                               [ 50%]
+tests/test_planner_workspace_bounds.py .F...                             [ 52%]
+tests/test_progress.py ...FF.FF.F.F.F..F....                             [ 58%]
+tests/test_projection.py ......                                          [ 60%]
+tests/test_repos_target_collision_gate.py ....                           [ 61%]
+tests/test_reposition.py ..............                                  [ 65%]
+tests/test_reposition_trajectory.py ........                             [ 67%]
+tests/test_reposition_trajectory_degenerate.py ...                       [ 68%]
+tests/test_sample_buffer.py ...................                          [ 74%]
+tests/test_sampling_c3_params.py F.............F.......                  [ 80%]
+tests/test_sampling_strategies.py .........F.....FF.                     [ 85%]
+tests/test_slerp_lookahead.py .........                                  [ 88%]
+tests/test_solver_scale_plumbing.py ...........                          [ 91%]
+tests/test_t_mesh_witness_conformance.py ..                              [ 92%]
+tests/test_task_costs_lateral.py ......                                  [ 93%]
+tests/test_tick_to_simtime_yaml_compat.py ......                         [ 95%]
+tests/test_topple_roll_plan.py ......                                    [ 97%]
+tests/test_update_buffer_no_reappend.py ..                               [ 97%]
+tests/test_workspace_radial_gate.py .......                              [100%]
+
+==================================== ERRORS ====================================
+________________ ERROR at setup of test_consistent_at_zero_ulin ________________
+
+    @pytest.fixture(scope="module")
+    def push_t_env():
+        cfg = yaml.safe_load(
+            open(os.path.join(_ROOT, "config", "tasks.yaml")))["tasks"]["push_t"]
+        diagram, plant, panda_model, object_model, _mc, plant_ad, ctx_ad, _vw = \
+>           build_environment(cfg, time_step=0.001)
+
+tests/test_lcs_ee_space_ulin_consistency.py:41:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+---------------------------- Captured stdout setup -----------------------------
+[ENV]  sim time_step = 0.001 s
+______________ ERROR at setup of test_consistent_at_nonzero_ulin _______________
+
+    @pytest.fixture(scope="module")
+    def push_t_env():
+        cfg = yaml.safe_load(
+            open(os.path.join(_ROOT, "config", "tasks.yaml")))["tasks"]["push_t"]
+        diagram, plant, panda_model, object_model, _mc, plant_ad, ctx_ad, _vw = \
+>           build_environment(cfg, time_step=0.001)
+
+tests/test_lcs_ee_space_ulin_consistency.py:41:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+_______________ ERROR at setup of test_single_step_closes_error ________________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+---------------------------- Captured stdout setup -----------------------------
+[ENV]  sim time_step = 0.001 s
+________ ERROR at setup of test_no_qp_failure_across_error_range[0.001] ________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+________ ERROR at setup of test_no_qp_failure_across_error_range[0.005] ________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+________ ERROR at setup of test_no_qp_failure_across_error_range[0.01] _________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+________ ERROR at setup of test_no_qp_failure_across_error_range[0.05] _________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+_________ ERROR at setup of test_no_qp_failure_across_error_range[0.1] _________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+_________ ERROR at setup of test_no_qp_failure_across_error_range[0.5] _________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+________________ ERROR at setup of test_torque_limits_respected ________________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_tracking.py:44:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+__________________ ERROR at setup of test_identity_no_contact __________________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        """Build the Franka + box environment once for the test module."""
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_unit.py:47:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+---------------------------- Captured stdout setup -----------------------------
+[ENV]  sim time_step = 0.001 s
+_________________ ERROR at setup of test_gravity_compensation __________________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        """Build the Franka + box environment once for the test module."""
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_unit.py:47:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+_______________ ERROR at setup of test_tracking_force_direction ________________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        """Build the Franka + box environment once for the test module."""
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_unit.py:47:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+__________________ ERROR at setup of test_saturation_graceful __________________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        """Build the Franka + box environment once for the test module."""
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_unit.py:47:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+____________ ERROR at setup of test_contact_feedforward_directions _____________
+
+    @pytest.fixture(scope="module")
+    def osc_env():
+        """Build the Franka + box environment once for the test module."""
+        with open(os.path.join(REPO_ROOT, "config/tasks.yaml")) as f:
+            task = yaml.safe_load(f)["tasks"]["pushing"]
+>       diagram, plant, panda_model, _, _, _, _, _ = build_environment(task)
+
+tests/test_osc_unit.py:47:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+=================================== FAILURES ===================================
+__________________ test_kToC3Cost_unaffected_by_gate_refusal ___________________
+
+    def test_kToC3Cost_unaffected_by_gate_refusal():
+        """``decide_mode`` is independent of the gate by design — the cost-gap
+        path (mode_switch.py:132-135) consults c3_cost vs best_other_cost,
+        not finished_repos. This test pins that contract.
+
+        Note: at the WRAPPER level (plan 2026-06-10), ``kToC3Cost`` IS gated
+        on the same commit-face discriminator via a post-decide override
+        site in wrapper.py — when the override refuses, mode is overridden
+        to ``"free"`` with ``reason = kStayInRepos``. See
+        tests/test_commit_face_gate_post_decide.py for the wrapper-level
+        contract. The decide_mode contract this test pins remains correct
+        and unchanged."""
+        p = _progress_params()
+
+        mode, reason = decide_mode(
+            prev_mode="free",
+            c3_cost=5000.0,
+            best_other_cost=8000.0,    # repos cost 8000; c3 + 500 = 5500 < 8000
+            current_repos_cost=8000.0,
+            met_progress=True,
+            near_goal=False,
+            finished_repos=False,      # <-- gate just refused
+            params=p,
+        )
+
+>       assert mode == "c3"
+E       AssertionError: assert 'free' == 'c3'
+E
+E         - c3
+E         + free
+
+tests/test_commit_face_gate.py:485: AssertionError
+__________________ test_push_jack_task_config_enables_krandom __________________
+
+    def test_push_jack_task_config_enables_krandom():
+        import yaml
+        cfg = yaml.safe_load(open("config/tasks.yaml"))
+        assert cfg["tasks"]["push_jack"].get("goal_mode") == "kRandom"
+        # Parked to false with the 2026-08-19 canonical jack recipe (boot from
+        # the fixed reference target; draw on success only). Stale `is True`
+        # assertion corrected during the 2026-08-19 T+jack merge.
+>       assert cfg["tasks"]["push_jack"].get("krandom_draw_initial_goal") is False
+E       AssertionError: assert True is False
+E        +  where True = <built-in method get of dict object at 0x725ef0fe7580>('krandom_draw_initial_goal')
+E        +    where <built-in method get of dict object at 0x725ef0fe7580> = {'color_rgba': [0.9, 0.45, 0.1, 1.0], 'controller_mass': 0.99, 'cost': {'d_push': 0.05, 'ee_target_z_offset_above_obje...rnion_dependent_regularizer_fraction': 0.0, 'q_quaternion_dependent_weight': 2500.0, ...}, 'flip_primitive': True, ...}.get
+
+tests/test_jack_goal_generator.py:218: AssertionError
+_______________________________ test_efhc_shapes _______________________________
+
+    def test_efhc_shapes():
+        """λ has dimension 6·n_c; E/F/H/c shapes match."""
+>       _, plant_ctx, f, _ = _build()
+
+tests/test_lcs_efhc.py:78:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_efhc.py:62: in _build
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+__________________ test_gamma_row_block_matches_hand_assembly __________________
+
+    def test_gamma_row_block_matches_hand_assembly():
+        """γ rows: F[γ, λ_n] = μ·I, F[γ, λ_t] = -E_t, all other slots zero."""
+>       _, plant_ctx, f, _ = _build()
+
+tests/test_lcs_efhc.py:94:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_efhc.py:62: in _build
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+____________________ test_lambda_n_rows_match_hand_assembly ____________________
+
+    def test_lambda_n_rows_match_hand_assembly():
+        """λ_n rows: E v-block, F λ_n / λ_t blocks, H, and c match the
+        autodiff-derived reference exactly."""
+>       _, plant_ctx, f, _ = _build()
+
+tests/test_lcs_efhc.py:123:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_efhc.py:62: in _build
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+____________________ test_lambda_t_rows_match_hand_assembly ____________________
+
+    def test_lambda_t_rows_match_hand_assembly():
+        """λ_t rows: F[λ_t, γ] = E_t^T (couples slack to tangents), and the
+        F[λ_t, λ_*] / E / H / c blocks match the autodiff reference."""
+>       _, plant_ctx, f, _ = _build()
+
+tests/test_lcs_efhc.py:168:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_efhc.py:62: in _build
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+__________________________ test_D_gamma_columns_zero ___________________________
+
+    def test_D_gamma_columns_zero():
+        """γ does not enter dynamics — D's first n_c columns are exactly zero."""
+>       _, plant_ctx, f, _ = _build()
+
+tests/test_lcs_efhc.py:214:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_efhc.py:62: in _build
+    diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+___________________ test_no_contacts_returns_zero_lcp_blocks ___________________
+
+    def test_no_contacts_returns_zero_lcp_blocks():
+        """When no contacts are detected (gap > threshold), n_λ = 0 and the
+        LCP blocks have zero rows."""
+        cfg = {
+            "object_type": "box", "size": [0.1, 0.1, 0.1],
+            "mass": 0.2, "friction": 0.4, "color_rgba": [0.6, 0.3, 0.1, 1.0],
+            "init_xyz": [0, 0, 0.05], "goal_xy": [0.3, 0],
+            "link_name": "box_link", "cost": {},
+        }
+>       diagram, plant, panda_model, _, _, plant_ad, ctx_ad, _ = build_environment(cfg)
+
+tests/test_lcs_efhc.py:230:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+___________________ test_jacobian_matches_finite_differences ___________________
+
+    def test_jacobian_matches_finite_differences():
+>       plant, plant_ctx, formulator, _diag = _build_env()
+
+tests/test_lcs_jacobian.py:88:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_jacobian.py:56: in _build_env
+    _video_writer = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+_______________________ test_f_eval_matches_zeroth_order _______________________
+
+    def test_f_eval_matches_zeroth_order():
+>       plant, plant_ctx, formulator, _diag = _build_env()
+
+tests/test_lcs_jacobian.py:123:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_jacobian.py:56: in _build_env
+    _video_writer = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+___________________ test_linearization_is_exact_at_lin_point ___________________
+
+    def test_linearization_is_exact_at_lin_point():
+        """At (q*, v*, u*) with λ=0, the discrete LCS prediction should reproduce
+        the explicit forward-Euler step *exactly* — d_v_offset cancels J_f·[q*;v*;u*]
+        so x_{k+1} = forward_euler(q*, v*, u*).
+        """
+>       plant, plant_ctx, formulator, _diag = _build_env()
+
+tests/test_lcs_jacobian.py:148:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_jacobian.py:56: in _build_env
+    _video_writer = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+_____________ test_linearization_better_than_zeroth_order_off_lin ______________
+
+    def test_linearization_better_than_zeroth_order_off_lin():
+        """At a state OFF the linearization point, the first-order linearization
+        should be at least as accurate as the zeroth-order linearization in
+        predicting the true forward dynamics.
+        """
+>       plant, plant_ctx, formulator, _diag = _build_env()
+
+tests/test_lcs_jacobian.py:193:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_lcs_jacobian.py:56: in _build_env
+    _video_writer = build_environment(cfg)
+sim/env_builder.py:822: in build_environment
+    meshcat = ad.StartMeshcat()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def StartMeshcat():
+        """
+        Constructs a Meshcat instance, with extra support for Deepnote.
+
+        On most platforms, this function is equivalent to simply constructing a
+        ``pydrake.geometry.Meshcat`` object with default arguments.
+
+        On Deepnote, however, this does extra work to expose Meshcat to the public
+        internet by setting up a reverse proxy for the single available network
+        port. To access it, you must enable "Allow incoming connections" in the
+        Environment settings pane.
+        """
+        if "DEEPNOTE_PROJECT_ID" in os.environ:
+            return _start_meshcat_deepnote()
+>       return Meshcat()
+E       RuntimeError: Meshcat failed to open a websocket port.
+
+../miniconda3/envs/push_anything_ADMM/lib/python3.10/site-packages/pydrake/geometry/_geometry_extra.py:71: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ENV]  sim time_step = 0.001 s
+__________ test_hysteresis_absolute_uses_far_field_when_not_near_goal __________
+
+    def test_hysteresis_absolute_uses_far_field_when_not_near_goal():
+        p = _params(hyst_c3_to_repos=1234.0, hyst_c3_to_repos_position=9999.0)
+>       assert _hysteresis(p, "c3_to_repos", near_goal=False, ref_cost=0) == 1234.0
+E       AssertionError: assert 9999.0 == 1234.0
+E        +  where 9999.0 = _hysteresis(ProgressParams(track_c3_progress_via=<ProgressMetric.kPosOrRotCost: 2>, num_control_loops_to_wait_s=0.6, num_control_l...c3_frac=0.9, hyst_repos_to_c3_frac_position=0.9, hyst_repos_to_repos_frac=0.02, hyst_repos_to_repos_frac_position=0.05), 'c3_to_repos', near_goal=False, ref_cost=0)
+
+tests/test_mode_switch.py:25: AssertionError
+_________ test_hysteresis_absolute_uses_position_field_when_near_goal __________
+
+    def test_hysteresis_absolute_uses_position_field_when_near_goal():
+        p = _params(hyst_c3_to_repos=1234.0, hyst_c3_to_repos_position=9999.0)
+>       assert _hysteresis(p, "c3_to_repos", near_goal=True, ref_cost=0) == 9999.0
+E       AssertionError: assert 1234.0 == 9999.0
+E        +  where 1234.0 = _hysteresis(ProgressParams(track_c3_progress_via=<ProgressMetric.kPosOrRotCost: 2>, num_control_loops_to_wait_s=0.6, num_control_l...c3_frac=0.9, hyst_repos_to_c3_frac_position=0.9, hyst_repos_to_repos_frac=0.02, hyst_repos_to_repos_frac_position=0.05), 'c3_to_repos', near_goal=True, ref_cost=0)
+
+tests/test_mode_switch.py:30: AssertionError
+________________ test_hysteresis_relative_scales_with_ref_cost _________________
+
+    def test_hysteresis_relative_scales_with_ref_cost():
+        p = _params(use_relative_hysteresis=True,
+                    hyst_repos_to_c3_frac=0.10,
+                    hyst_repos_to_c3_frac_position=0.50)
+>       assert _hysteresis(p, "repos_to_c3", near_goal=False, ref_cost=10000.0) == 1000.0
+E       AssertionError: assert 5000.0 == 1000.0
+E        +  where 5000.0 = _hysteresis(ProgressParams(track_c3_progress_via=<ProgressMetric.kPosOrRotCost: 2>, num_control_loops_to_wait_s=0.6, num_control_l...c3_frac=0.1, hyst_repos_to_c3_frac_position=0.5, hyst_repos_to_repos_frac=0.02, hyst_repos_to_repos_frac_position=0.05), 'repos_to_c3', near_goal=False, ref_cost=10000.0)
+
+tests/test_mode_switch.py:37: AssertionError
+______________ test_c3_to_repos_when_cost_gap_exceeds_hysteresis _______________
+
+    def test_c3_to_repos_when_cost_gap_exceeds_hysteresis():
+        p = _params(hyst_c3_to_repos=1000.0)
+        mode, reason = decide_mode(
+            prev_mode="c3",
+            c3_cost=10000.0,
+            best_other_cost=8000.0,    # 2000 cheaper > 1000 gap
+            current_repos_cost=None,
+            met_progress=True,
+            near_goal=False,
+            finished_repos=False,
+            params=p,
+        )
+>       assert mode   == "free"
+E       AssertionError: assert 'c3' == 'free'
+E
+E         - free
+E         + c3
+
+tests/test_mode_switch.py:89: AssertionError
+___________________ test_position_hysteresis_used_near_goal ____________________
+
+    def test_position_hysteresis_used_near_goal():
+        """When near_goal, the larger _position field applies — same gap that
+        triggered a switch far from the goal must NOT trigger near it."""
+        p = _params(hyst_c3_to_repos=1000.0, hyst_c3_to_repos_position=5000.0)
+        args = dict(
+            prev_mode="c3",
+            c3_cost=10000.0,
+            best_other_cost=8000.0,    # gap 2000
+            current_repos_cost=None,
+            met_progress=True,
+            finished_repos=False,
+            params=p,
+        )
+        mode_far,  _ = decide_mode(near_goal=False, **args)
+        mode_near, _ = decide_mode(near_goal=True,  **args)
+>       assert mode_far  == "free"   # gap 2000 > hyst 1000
+E       AssertionError: assert 'c3' == 'free'
+E
+E         - free
+E         + c3
+
+tests/test_mode_switch.py:108: AssertionError
+______________ test_finished_repos_returns_to_c3_unconditionally _______________
+
+    def test_finished_repos_returns_to_c3_unconditionally():
+        p = _params(hyst_repos_to_c3=99999.0)   # huge — wouldn't switch on cost alone
+        mode, reason = decide_mode(
+            prev_mode="free",
+            c3_cost=20000.0,           # WORSE than current repos
+            best_other_cost=20000.0,
+            current_repos_cost=10000.0,
+            met_progress=True,
+            near_goal=False,
+            finished_repos=True,       # forces switch
+            params=p,
+        )
+>       assert mode   == "c3"
+E       AssertionError: assert 'free' == 'c3'
+E
+E         - c3
+E         + free
+
+tests/test_mode_switch.py:164: AssertionError
+______________ test_free_to_c3_when_c3_beats_repos_by_hysteresis _______________
+
+    def test_free_to_c3_when_c3_beats_repos_by_hysteresis():
+        p = _params(hyst_repos_to_c3=1000.0)
+        mode, reason = decide_mode(
+            prev_mode="free",
+            c3_cost=5000.0,
+            best_other_cost=8000.0,    # repos cost 8000; c3+gap=6000 < 8000 → switch
+            current_repos_cost=8000.0,
+            met_progress=True,
+            near_goal=False,
+            finished_repos=False,
+            params=p,
+        )
+>       assert mode   == "c3"
+E       AssertionError: assert 'free' == 'c3'
+E
+E         - c3
+E         + free
+
+tests/test_mode_switch.py:184: AssertionError
+________________ test_repos_retarget_when_better_repos_appears _________________
+
+    def test_repos_retarget_when_better_repos_appears():
+        p = _params(hyst_repos_to_c3=1e9,         # never re-enter C3 on cost
+                    hyst_repos_to_repos=500.0)
+        mode, reason = decide_mode(
+            prev_mode="free",
+            c3_cost=20000.0,
+            best_other_cost=5000.0,    # better than current repos by 1000
+            current_repos_cost=6000.0,
+            met_progress=True,
+            near_goal=False,
+            finished_repos=False,
+            params=p,
+        )
+        assert mode   == "free"
+>       assert reason == SwitchReason.kToBetterRepos
+E       assert <SwitchReason.kStayInRepos: 1> == <SwitchReason.kToBetterRepos: 6>
+E        +  where <SwitchReason.kToBetterRepos: 6> = SwitchReason.kToBetterRepos
+
+tests/test_mode_switch.py:221: AssertionError
+_____ test_free_to_c3_still_triggered_when_best_other_finite_and_c3_better _____
+
+    def test_free_to_c3_still_triggered_when_best_other_finite_and_c3_better():
+        """Sanity: the guard only blocks the inf case. When best_other is
+        finite and c3 is much cheaper, kToC3Cost must still fire (no
+        regression on the working path). Uses repos_to_c3_frac=0.9 so the
+        gate fires only when c3_cost*(1+0.9) < best_other_cost, i.e.,
+        best_other >= 1.9*c3."""
+        p = _params(use_relative_hysteresis=True, hyst_repos_to_c3_frac=0.9)
+        mode, reason = decide_mode(
+            prev_mode="free",
+            c3_cost=10000.0,
+            best_other_cost=25000.0,   # 25000 > 1.9 * 10000 = 19000 ✓
+            current_repos_cost=None,
+            met_progress=False,
+            near_goal=False,
+            finished_repos=False,
+            params=p,
+        )
+>       assert mode == "c3", f"expected c3, got mode={mode}"
+E       AssertionError: expected c3, got mode=free
+E       assert 'free' == 'c3'
+E
+E         - c3
+E         + free
+
+tests/test_mode_switch.py:324: AssertionError
+____________ test_default_yaml_provides_joint2_gains_but_weight_off ____________
+
+    def test_default_yaml_provides_joint2_gains_but_weight_off():
+        """Joint-2 scaffolding kept reference-valued, W=0 per Option A."""
+        gains, _ = _load_osc_gains(Path("config/osc_franka.yaml"), n_arm=7)
+        assert gains.Kp_joint2 == 200.0
+        assert gains.Kd_joint2 == 10.0
+>       assert gains.W_joint2 == 0.0     # Option A: port-frame decision
+E       assert 1.0 == 0.0
+E        +  where 1.0 = OscGains(Kp_cart=array([200., 200., 200.]), Kd_cart=array([20., 20., 20.]), Kp_null=array([10., 10., 10., 10., 10., 10...rget_rad=1.1, joint2_idx=1, Kp_rot=array([800., 800., 800.]), Kd_rot=array([40., 40., 40.]), W_rot=10.0, a_ee_cap=10.0).W_joint2
+
+tests/test_osc_default_gains.py:27: AssertionError
+_______________ test_lambda_ext_implies_consistent_joint_torque ________________
+
+    def test_lambda_ext_implies_consistent_joint_torque():
+        """The dynamics constraint M v̇ + bias = B u + J_v^T λ_ext must hold
+        exactly. Verify the equality numerically."""
+        inputs = _make_synthetic_qp_inputs(W_force=100.0)
+        lam_des = np.array([-5.0, 0.0, 0.0])
+        u_opt, vdot_opt, success, result_str, lam_ext_opt = build_and_solve_qp(
+            **inputs,
+            use_force_tracking=True,
+            lambda_des=lam_des,
+        )
+        assert success, result_str
+        lhs = inputs["M"] @ vdot_opt + inputs["bias"]
+        rhs = inputs["B"] @ u_opt + inputs["J_v"].T @ lam_ext_opt
+>       np.testing.assert_allclose(lhs, rhs, atol=1e-4)
+E       AssertionError:
+E       Not equal to tolerance rtol=1e-07, atol=0.0001
+E
+E       Mismatched elements: 1 / 7 (14.3%)
+E       Max absolute difference among violations: 5.
+E       Max relative difference among violations: 1.
+E        ACTUAL: array([0., 0., 0., 0., 0., 0., 0.])
+E        DESIRED: array([-5.,  0.,  0.,  0.,  0.,  0.,  0.])
+
+tests/test_osc_force_tracking.py:85: AssertionError
+__________________ test_bounded_plan_respects_position_limit ___________________
+
+    def test_bounded_plan_respects_position_limit():
+        """With a state bound pos ∈ [-0.1, 0.15], every knot (incl. terminal)
+        stays within the bound (QP-feasible tolerance)."""
+        x_seq = _solve([(0, -0.1, 0.15)])
+        for k, x in enumerate(x_seq):
+>           assert x[0] <= 0.15 + 1e-6, f"knot {k}: pos {x[0]:.4f} > bound"
+E           AssertionError: knot 6: pos 0.1500 > bound
+E           assert np.float64(0.15002550673505122) <= (0.15 + 1e-06)
+
+tests/test_planner_workspace_bounds.py:64: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): polishing=0 scaling=1 check_term=100 sigma=1e-5 eps=1e-5 max_iter=2000
+[DEBUG-C3+] n_contacts=1, n_lambda=6, TOT=15, total_dim=122
+[DEBUG-C3+] per-step slots:  x=[0:2)  λ=[2:8)  u=[8:9)  η=[9:15)
+[G-MATRIX] active: w_G=0.18 g_x=0.0 g_λ=2.0 g_u=0.0 g_η=1.0  → per-slot: x=0.0 λ=0.36 u=0.0 η=0.18  (effective at rho=100: x=0 λ=2.0 η=1.0)
+[LCS-SCALE] solver-side (sole site, ref C3::ScaleLCS): scale=5.6604 — λ published in Newtons via ×5.6604 un-scale (c3.cc:350-353)
+[CONSENSUS-BIND] x=z_sol[i*TOT+SX:i*TOT+SL]  lam=z_sol[i*TOT+SL:i*TOT+SU]  u=z_sol[i*TOT+SU:i*TOT+SE]  eta=z_sol[i*TOT+SE:(i+1)*TOT]  delta_*=delta[same slots]  w=omega[same slots]
+[CONSENSUS-DEF] eq(6): z_k = delta_k, for all k=0..N-1 ; z_k = [x, lam, u, eta] , delta_k = [dx, dlam, du, deta]
+[CONSENSUS-DEF] eq(9): w_k^{i+1} = w_k^i + ( z_k^{i+1} - delta_k^{i+1} )
+[CONSENSUS-DEF] eq(10) penalty term: rho * || z_k - delta_k^i + w_k^i ||^2_G ,  G(ee-obj lam,eta)=1000.0 , else=1  [current rho=1.0 N=8 n_x=2 n_lambda=6 n_u=1]
+[CONSENSUS] i=0 k=0
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 0.000000e+00
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 4.292337e-01
+  r_prim_k = || z_k - delta_k || = 4.292337e-01 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 0.000e+00 0.000e+00 4.292e-01]
+  w_after  = w_before + delta_w = [0.000e+00 0.000e+00 0.000e+00 4.292e-01]
+[CONSENSUS] i=0 k=1
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 1.169430e+00
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 1.545562e-01
+  r_prim_k = || z_k - delta_k || = 1.179599e+00 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 1.169e+00 0.000e+00 1.546e-01]
+  w_after  = w_before + delta_w = [0.000e+00 1.169e+00 0.000e+00 1.546e-01]
+[CONSENSUS] i=0 k=2
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 4.724617e-01
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 6.244229e-02
+  r_prim_k = || z_k - delta_k || = 4.765701e-01 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 4.725e-01 0.000e+00 6.244e-02]
+  w_after  = w_before + delta_w = [0.000e+00 4.725e-01 0.000e+00 6.244e-02]
+[CONSENSUS] i=0 k=3
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 5.155168e-06
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 6.813290e-07
+  r_prim_k = || z_k - delta_k || = 5.199997e-06 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 5.155e-06 0.000e+00 6.813e-07]
+  w_after  = w_before + delta_w = [0.000e+00 5.155e-06 0.000e+00 6.813e-07]
+[CONSENSUS] i=0 k=4
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 2.054259e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 2.714986e-06
+  r_prim_k = || z_k - delta_k || = 2.072123e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 2.054e-05 0.000e+00 2.715e-06]
+  w_after  = w_before + delta_w = [0.000e+00 2.054e-05 0.000e+00 2.715e-06]
+[CONSENSUS] i=0 k=5
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 5.551135e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 0.000000e+00
+  r_prim_k = || z_k - delta_k || = 5.551135e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 5.551e-05 0.000e+00 0.000e+00]
+  w_after  = w_before + delta_w = [0.000e+00 5.551e-05 0.000e+00 0.000e+00]
+[CONSENSUS] i=0 k=6
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 8.207899e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 1.084788e-05
+  r_prim_k = || z_k - delta_k || = 8.279273e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 8.208e-05 0.000e+00 1.085e-05]
+  w_after  = w_before + delta_w = [0.000e+00 8.208e-05 0.000e+00 1.085e-05]
+[CONSENSUS] i=0 k=7
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 2.103805e-03
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 2.780467e-04
+  r_prim_k = || z_k - delta_k || = 2.122099e-03 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 2.104e-03 0.000e+00 2.780e-04]
+  w_after  = w_before + delta_w = [0.000e+00 2.104e-03 0.000e+00 2.780e-04]
+[CONSENSUS] i=0 mode=c3plus proj=C3+ SUM:  r_prim_stacked = sqrt(Σ r_prim_k²) = 1.342691e+00  r_dual = rho·||δ-δ_prev|| = 1.662315e+00  proj_case_hist(1,2,3)=(33,15,0)/48  # r_prim must equal Tier-1 [ADMM-C3+] primal for this iter
+[CONSENSUS] i=1 k=0
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 0.000000e+00
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 3.768899e-01
+  r_prim_k = || z_k - delta_k || = 3.768899e-01 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=1.431e-01]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 0.000e+00 0.000e+00 3.769e-01]
+  w_after  = w_before + delta_w = [0.000e+00 0.000e+00 0.000e+00 5.200e-01]
+[CONSENSUS] i=1 k=1
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 7.219761e-01
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 9.541905e-02
+  r_prim_k = || z_k - delta_k || = 7.282543e-01 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=3.898e-01 wu=0.000e+00 weta=5.152e-02]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 7.220e-01 0.000e+00 9.542e-02]
+  w_after  = w_before + delta_w = [0.000e+00 1.112e+00 0.000e+00 1.469e-01]
+[CONSENSUS] i=1 k=2
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 6.608635e-01
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 8.734218e-02
+  r_prim_k = || z_k - delta_k || = 6.666103e-01 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.575e-01 wu=0.000e+00 weta=2.081e-02]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 6.609e-01 0.000e+00 8.734e-02]
+  w_after  = w_before + delta_w = [0.000e+00 8.184e-01 0.000e+00 1.082e-01]
+[CONSENSUS] i=1 k=3
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 5.587873e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 2.271097e-07
+  r_prim_k = || z_k - delta_k || = 5.587919e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.718e-06 wu=0.000e+00 weta=2.271e-07]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 5.588e-05 0.000e+00 2.271e-07]
+  w_after  = w_before + delta_w = [0.000e+00 5.417e-05 0.000e+00 3.441e-22]
+[CONSENSUS] i=1 k=4
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 6.674278e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 8.820974e-06
+  r_prim_k = || z_k - delta_k || = 6.732316e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=6.848e-06 wu=0.000e+00 weta=9.050e-07]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 6.674e-05 0.000e+00 8.821e-06]
+  w_after  = w_before + delta_w = [0.000e+00 7.359e-05 0.000e+00 9.726e-06]
+[CONSENSUS] i=1 k=5
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 7.475693e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 0.000000e+00
+  r_prim_k = || z_k - delta_k || = 7.475693e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.850e-05 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 7.476e-05 0.000e+00 0.000e+00]
+  w_after  = w_before + delta_w = [0.000e+00 9.326e-05 0.000e+00 0.000e+00]
+[CONSENSUS] i=1 k=6
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 7.854018e-05
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 1.038016e-05
+  r_prim_k = || z_k - delta_k || = 7.922315e-05 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=2.736e-05 wu=0.000e+00 weta=3.616e-06]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 7.854e-05 0.000e+00 1.038e-05]
+  w_after  = w_before + delta_w = [0.000e+00 1.059e-04 0.000e+00 1.400e-05]
+[CONSENSUS] i=1 k=7
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 6.175991e-04
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 8.162419e-05
+  r_prim_k = || z_k - delta_k || = 6.229696e-04 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=7.013e-04 wu=0.000e+00 weta=9.268e-05]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 6.176e-04 0.000e+00 8.162e-05]
+  w_after  = w_before + delta_w = [0.000e+00 8.367e-05 0.000e+00 1.106e-05]
+[CONSENSUS] i=1 mode=c3plus proj=C3+ SUM:  r_prim_stacked = sqrt(Σ r_prim_k²) = 1.056773e+00  r_dual = rho·||δ-δ_prev|| = 5.839334e-01  proj_case_hist(1,2,3)=(30,18,0)/48  # r_prim must equal Tier-1 [ADMM-C3+] primal for this iter
+[CONSENSUS] i=4 k=0
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 0.000000e+00
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 2.165385e-01
+  r_prim_k = || z_k - delta_k || = 2.165385e-01 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=0.000e+00 wu=0.000e+00 weta=1.339e-01]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 0.000e+00 0.000e+00 2.165e-01]
+  w_after  = w_before + delta_w = [0.000e+00 0.000e+00 0.000e+00 3.504e-01]
+[CONSENSUS] i=4 k=1
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 2.499580e-02
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 3.303537e-03
+  r_prim_k = || z_k - delta_k || = 2.521315e-02 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.142e-01 wu=0.000e+00 weta=1.509e-02]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 2.500e-02 0.000e+00 3.304e-03]
+  w_after  = w_before + delta_w = [0.000e+00 1.392e-01 0.000e+00 1.840e-02]
+[CONSENSUS] i=4 k=2
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 4.720751e-02
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 6.239120e-03
+  r_prim_k = || z_k - delta_k || = 4.761802e-02 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.289e-01 wu=0.000e+00 weta=1.703e-02]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 4.721e-02 0.000e+00 6.239e-03]
+  w_after  = w_before + delta_w = [0.000e+00 1.761e-01 0.000e+00 2.327e-02]
+[CONSENSUS] i=4 k=3
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 6.599202e-02
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 8.721751e-03
+  r_prim_k = || z_k - delta_k || = 6.656588e-02 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=9.739e-02 wu=0.000e+00 weta=1.287e-02]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 6.599e-02 0.000e+00 8.722e-03]
+  w_after  = w_before + delta_w = [0.000e+00 1.634e-01 0.000e+00 2.159e-02]
+[CONSENSUS] i=4 k=4
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 7.983209e-02
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 1.055091e-02
+  r_prim_k = || z_k - delta_k || = 8.052629e-02 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=2.841e-02 wu=0.000e+00 weta=3.760e-03]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 7.983e-02 0.000e+00 1.055e-02]
+  w_after  = w_before + delta_w = [0.000e+00 1.082e-01 0.000e+00 1.431e-02]
+[CONSENSUS] i=4 k=5
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 1.870537e-02
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 2.472171e-03
+  r_prim_k = || z_k - delta_k || = 1.886803e-02 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.455e-04 wu=0.000e+00 weta=1.968e-05]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 1.871e-02 0.000e+00 2.472e-03]
+  w_after  = w_before + delta_w = [0.000e+00 1.885e-02 0.000e+00 2.492e-03]
+[CONSENSUS] i=4 k=6
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 1.701787e-04
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 0.000000e+00
+  r_prim_k = || z_k - delta_k || = 1.701787e-04 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=1.277e-04 wu=0.000e+00 weta=0.000e+00]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 1.702e-04 0.000e+00 0.000e+00]
+  w_after  = w_before + delta_w = [0.000e+00 2.979e-04 0.000e+00 0.000e+00]
+[CONSENSUS] i=4 k=7
+  # eq(6) agreement, per sub-block:
+  gap_x   = || x   - dx   || = 0.000000e+00
+  gap_lam = || lam - dlam || = 1.817235e-06
+  gap_u   = || u   - du   || = 0.000000e+00
+  gap_eta = || eta - deta || = 2.401727e-07
+  r_prim_k = || z_k - delta_k || = 1.833037e-06 # stacked; sums to r_prim in Tier-1 [ADMM-C3+]
+  # eq(9) dual update, substituted:
+  w_before = [wx=0.000e+00 wlam=3.040e-07 wu=0.000e+00 weta=1.411e-07]
+  delta_w  = ( z_k - delta_k ) = [0.000e+00 1.817e-06 0.000e+00 2.402e-07]
+  w_after  = w_before + delta_w = [0.000e+00 1.579e-06 0.000e+00 3.813e-07]
+[CONSENSUS] i=4 mode=c3plus proj=C3+ SUM:  r_prim_stacked = sqrt(Σ r_prim_k²) = 2.471105e-01  r_dual = rho·||δ-δ_prev|| = 7.674043e+00  proj_case_hist(1,2,3)=(33,15,0)/48  # r_prim must equal Tier-1 [ADMM-C3+] primal for this iter
+[ADMM-C3+] step=0 primal: 1.3427->0.2471  dual: 1.6623->7.6740  mono=True  iters=5/5  rho_start=1.0 rho_end=243.0
+[CONSENSUS-STEP] step=0 mode=c3plus proj=C3+ rho_start=1.0 rho_end=243.0 iters=5/5 primal=1.3427e+00->2.4711e-01 dual=1.6623e+00->7.6740e+00 mono=True gap=[x=0.00e+00 lam=1.18e-01 u=0.00e+00 eta=2.17e-01] proj_case_N=[7,1,0] proj_case_T=[24,8,0]
+[ADMM-C3+] WARNING non-converged: pr=0.2471 dr=7.6740 tol=1e-03
+[FINAL-QP] active (c3.cc:332 conformance): post-loop QP at rho=243.0 (= rho_start·rho_scale^5); published x_seq/u_seq switch to the reference z_sol_ copy (c3.cc:336-347 half-step + CalcCost x_N append)
+[C3+] step=1 |u[0]|=0.47Nm u_axis=(-0.47)Nm λ_n_max=0.851 η_n_max=0.211 primal=0.247 iters=5/5
+__________________ test_kC3Cost_timeout_after_no_improvement ___________________
+
+    def test_kC3Cost_timeout_after_no_improvement():
+        t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kC3Cost,
+                                    num_control_loops_to_wait=3))
+        t.update(_step(c3=100.0))   # initial best
+        # 4 consecutive non-improvements → counter = 4 ≥ wait=3 → timeout
+        for _ in range(4):
+            t.update(_step(c3=200.0))
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef126b6a0>.met_progress
+
+tests/test_progress.py:55: AssertionError
+_____________________ test_improvement_resets_the_counter ______________________
+
+    def test_improvement_resets_the_counter():
+        t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kC3Cost,
+                                    num_control_loops_to_wait=3))
+        t.update(_step(c3=100.0))
+        for _ in range(5):
+            t.update(_step(c3=200.0))
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef102c8e0>.met_progress
+
+tests/test_progress.py:64: AssertionError
+________________ test_kPosOrRotCost_timeout_when_both_stagnate _________________
+
+    def test_kPosOrRotCost_timeout_when_both_stagnate():
+        t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOrRotCost,
+                                    num_control_loops_to_wait=3))
+        t.update(_step(pos=0.30, rot=0.10))
+        for _ in range(4):
+            t.update(_step(pos=0.40, rot=0.20))   # both worse
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef1281ba0>.met_progress
+
+tests/test_progress.py:90: AssertionError
+___________________ test_near_goal_uses_position_wait_length ___________________
+
+    def test_near_goal_uses_position_wait_length():
+        """When near_goal=True, num_control_loops_to_wait_position applies."""
+        t = ProgressTracker(_params(
+            track_c3_progress_via=ProgressMetric.kPosOrRotCost,
+            num_control_loops_to_wait=10,
+            num_control_loops_to_wait_position=2,
+        ))
+        t.update(_step(pos=0.10))
+        # 3 stalls > position-wait=2 BUT < normal-wait=10
+        for _ in range(3):
+            t.update(_step(pos=0.20))
+>       assert t.met_progress(near_goal=True)  is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=True)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef102db40>.met_progress
+
+tests/test_progress.py:108: AssertionError
+_____________ test_kConfigCostDrop_timeout_if_drop_below_threshold _____________
+
+    def test_kConfigCostDrop_timeout_if_drop_below_threshold():
+        t = ProgressTracker(_params(
+            track_c3_progress_via=ProgressMetric.kConfigCostDrop,
+            progress_enforced_over_n_loops=3,
+            progress_enforced_cost_drop=10.0,
+        ))
+        # drop only 2 over the window
+        for c in [100.0, 99.5, 99.0, 98.0]:
+            t.update(_step(cfg=c))
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef105f7c0>.met_progress
+
+tests/test_progress.py:137: AssertionError
+____________________________ test_reset_wipes_state ____________________________
+
+    def test_reset_wipes_state():
+        t = ProgressTracker(_params(num_control_loops_to_wait=2))
+        t.update(_step(pos=0.10))
+        for _ in range(5):
+            t.update(_step(pos=0.20))
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef12256f0>.met_progress
+
+tests/test_progress.py:161: AssertionError
+_________ test_kPosOnly_fires_on_pos_regression_with_rot_zero_constant _________
+
+    def test_kPosOnly_fires_on_pos_regression_with_rot_zero_constant():
+        """Latent-bug regression guard. Pushing-task trajectory has rot=0 constant.
+        kPosOrRotCost's OR keeps met_progress=True until pos catches up to wait;
+        kPosOnly fires when pos timer alone hits wait."""
+        t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOnly,
+                                    num_control_loops_to_wait=3))
+        t.update(_step(pos=0.10, rot=0.0))   # establishes pos best=0.10
+        for _ in range(4):
+            t.update(_step(pos=0.30, rot=0.0))
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef0fc13f0>.met_progress
+
+tests/test_progress.py:197: AssertionError
+___________________ test_kPosOnly_unchanged_by_rot_variation ___________________
+
+    def test_kPosOnly_unchanged_by_rot_variation():
+        """kPosOnly must ignore rot even when rot varies. Defensive guard for any
+        future task that emits rot_error != 0."""
+        t = ProgressTracker(_params(track_c3_progress_via=ProgressMetric.kPosOnly,
+                                    num_control_loops_to_wait=3))
+        t.update(_step(pos=0.10, rot=0.50))
+        for r in [0.40, 0.30, 0.20, 0.10]:
+            t.update(_step(pos=0.50, rot=r))
+>       assert t.met_progress(near_goal=False) is False
+E       assert True is False
+E        +  where True = met_progress(near_goal=False)
+E        +    where met_progress = <control.sampling_c3.progress.ProgressTracker object at 0x725ef11290f0>.met_progress
+
+tests/test_progress.py:227: AssertionError
+_______________________ test_defaults_match_seed_values ________________________
+
+    def test_defaults_match_seed_values():
+        """Constructed-with-defaults dataclass must match the seed values
+        promised in the prompt."""
+        p = ProgressParams()
+        assert p.track_c3_progress_via                == ProgressMetric.kPosOrRotCost
+>       assert p.num_control_loops_to_wait            == 60
+E       AttributeError: 'ProgressParams' object has no attribute 'num_control_loops_to_wait'. Did you mean: 'num_control_loops_to_wait_s'?
+
+tests/test_sampling_c3_params.py:37: AttributeError
+___________________________ test_default_yaml_loads ____________________________
+
+    def test_default_yaml_loads():
+        """The shipped config/sampling_c3_params.yaml must load and reflect
+        the on-disk values. Update this test when the YAML is intentionally
+        re-tuned so re-tunings can't pass silently."""
+        assert DEFAULT_YAML.exists(), f"missing {DEFAULT_YAML}"
+        p = SamplingC3Params.from_yaml(DEFAULT_YAML)
+
+        assert p.w_align == 30000.0
+        assert p.w_travel == 200.0
+>       assert p.progress_params.track_c3_progress_via == ProgressMetric.kPosOrRotCost
+E       assert <ProgressMetric.kConfigCostDrop: 3> == <ProgressMetric.kPosOrRotCost: 2>
+E        +  where <ProgressMetric.kConfigCostDrop: 3> = ProgressParams(track_c3_progress_via=<ProgressMetric.kConfigCostDrop: 3>, num_control_loops_to_wait_s=0.6, num_control...o_c3_frac=0.3, hyst_repos_to_c3_frac_position=0.5, hyst_repos_to_repos_frac=0.1, hyst_repos_to_repos_frac_position=0.1).track_c3_progress_via
+E        +    where ProgressParams(track_c3_progress_via=<ProgressMetric.kConfigCostDrop: 3>, num_control_loops_to_wait_s=0.6, num_control...o_c3_frac=0.3, hyst_repos_to_c3_frac_position=0.5, hyst_repos_to_repos_frac=0.1, hyst_repos_to_repos_frac_position=0.1) = SamplingC3Params(progress_params=ProgressParams(track_c3_progress_via=<ProgressMetric.kConfigCostDrop: 3>, num_control...e_velocity_feedforward=False, velocity_feedforward_alpha=0.5, velocity_feedforward_v_max=1.5, dt_osc=0.01, dt_mpc=0.01).progress_params
+E        +  and   <ProgressMetric.kPosOrRotCost: 2> = ProgressMetric.kPosOrRotCost
+
+tests/test_sampling_c3_params.py:140: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[YAML-COMPAT] num_control_loops_to_wait=60 (ticks @ 100 Hz) → num_control_loops_to_wait_s=0.6000 s
+[YAML-COMPAT] num_control_loops_to_wait_position=30 (ticks @ 100 Hz) → num_control_loops_to_wait_position_s=0.3000 s
+[YAML-COMPAT] progress_enforced_over_n_loops=30 (ticks @ 100 Hz) → progress_enforced_over_duration_s=0.3000 s
+__________ test_random_on_circle_proxy_seeded_first_when_g_hat_given ___________
+
+    def test_random_on_circle_proxy_seeded_first_when_g_hat_given():
+        s = _params(filter_samples_for_safety=False, sampling_radius=0.18,
+                    sampling_height=0.05)
+        rng = np.random.default_rng(seed=0)
+        obj   = np.array([0.0, 0.0])
+        g_hat = np.array([1.0, 0.0])   # push east
+        out = generate_samples(SamplingStrategy.kRandomOnCircle, n_samples=4,
+                               obj_xy=obj, params=s, rng=rng, g_hat=g_hat)
+        # proxy = obj - r*g_hat = (-0.18, 0, 0.05)
+>       assert out[0][0] == pytest.approx(-0.18, abs=1e-9)
+E       assert np.float64(-0...6292744518591) == -0.18 ± 1.0e-09
+E
+E         comparison failed
+E         Obtained: -0.11736292744518591
+E         Expected: -0.18 ± 1.0e-09
+
+tests/test_sampling_strategies.py:98: AssertionError
+_____ test_unimplemented_strategy_raises[SamplingStrategy.kRandomOnSphere] _____
+
+strat = <SamplingStrategy.kRandomOnSphere: 2>
+
+    @pytest.mark.parametrize("strat", [
+        SamplingStrategy.kRandomOnSphere,
+        SamplingStrategy.kRandomOnPerimeter,
+        SamplingStrategy.kRandomOnShell,
+        # kMeshNormal removed 2026-08-19: implemented at 7f7fa39 (the anything
+        # lineage's sampler); its no-mesh contract (ValueError) is covered by
+        # tests/test_mesh_normal_sampling.py::test_dispatch_requires_mesh_faces.
+    ])
+    def test_unimplemented_strategy_raises(strat):
+>       with pytest.raises(NotImplementedError):
+E       Failed: DID NOT RAISE <class 'NotImplementedError'>
+
+tests/test_sampling_strategies.py:179: Failed
+___ test_unimplemented_strategy_raises[SamplingStrategy.kRandomOnPerimeter] ____
+
+strat = <SamplingStrategy.kRandomOnPerimeter: 4>
+
+    @pytest.mark.parametrize("strat", [
+        SamplingStrategy.kRandomOnSphere,
+        SamplingStrategy.kRandomOnPerimeter,
+        SamplingStrategy.kRandomOnShell,
+        # kMeshNormal removed 2026-08-19: implemented at 7f7fa39 (the anything
+        # lineage's sampler); its no-mesh contract (ValueError) is covered by
+        # tests/test_mesh_normal_sampling.py::test_dispatch_requires_mesh_faces.
+    ])
+    def test_unimplemented_strategy_raises(strat):
+>       with pytest.raises(NotImplementedError):
+E       Failed: DID NOT RAISE <class 'NotImplementedError'>
+
+tests/test_sampling_strategies.py:179: Failed
+- generated xml file: /root/push_anything_ADMM/audit_output/test_baseline_20260821/pytest.junit.xml -
+=========================== short test summary info ============================
+ERROR tests/test_lcs_ee_space_ulin_consistency.py::test_consistent_at_zero_ulin
+ERROR tests/test_lcs_ee_space_ulin_consistency.py::test_consistent_at_nonzero_ulin
+ERROR tests/test_osc_tracking.py::test_single_step_closes_error - RuntimeErro...
+ERROR tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.001]
+ERROR tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.005]
+ERROR tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.01]
+ERROR tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.05]
+ERROR tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.1]
+ERROR tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.5]
+ERROR tests/test_osc_tracking.py::test_torque_limits_respected - RuntimeError...
+ERROR tests/test_osc_unit.py::test_identity_no_contact - RuntimeError: Meshca...
+ERROR tests/test_osc_unit.py::test_gravity_compensation - RuntimeError: Meshc...
+ERROR tests/test_osc_unit.py::test_tracking_force_direction - RuntimeError: M...
+ERROR tests/test_osc_unit.py::test_saturation_graceful - RuntimeError: Meshca...
+ERROR tests/test_osc_unit.py::test_contact_feedforward_directions - RuntimeEr...
+FAILED tests/test_commit_face_gate.py::test_kToC3Cost_unaffected_by_gate_refusal
+FAILED tests/test_jack_goal_generator.py::test_push_jack_task_config_enables_krandom
+FAILED tests/test_lcs_efhc.py::test_efhc_shapes - RuntimeError: Meshcat faile...
+FAILED tests/test_lcs_efhc.py::test_gamma_row_block_matches_hand_assembly - R...
+FAILED tests/test_lcs_efhc.py::test_lambda_n_rows_match_hand_assembly - Runti...
+FAILED tests/test_lcs_efhc.py::test_lambda_t_rows_match_hand_assembly - Runti...
+FAILED tests/test_lcs_efhc.py::test_D_gamma_columns_zero - RuntimeError: Mesh...
+FAILED tests/test_lcs_efhc.py::test_no_contacts_returns_zero_lcp_blocks - Run...
+FAILED tests/test_lcs_jacobian.py::test_jacobian_matches_finite_differences
+FAILED tests/test_lcs_jacobian.py::test_f_eval_matches_zeroth_order - Runtime...
+FAILED tests/test_lcs_jacobian.py::test_linearization_is_exact_at_lin_point
+FAILED tests/test_lcs_jacobian.py::test_linearization_better_than_zeroth_order_off_lin
+FAILED tests/test_mode_switch.py::test_hysteresis_absolute_uses_far_field_when_not_near_goal
+FAILED tests/test_mode_switch.py::test_hysteresis_absolute_uses_position_field_when_near_goal
+FAILED tests/test_mode_switch.py::test_hysteresis_relative_scales_with_ref_cost
+FAILED tests/test_mode_switch.py::test_c3_to_repos_when_cost_gap_exceeds_hysteresis
+FAILED tests/test_mode_switch.py::test_position_hysteresis_used_near_goal - A...
+FAILED tests/test_mode_switch.py::test_finished_repos_returns_to_c3_unconditionally
+FAILED tests/test_mode_switch.py::test_free_to_c3_when_c3_beats_repos_by_hysteresis
+FAILED tests/test_mode_switch.py::test_repos_retarget_when_better_repos_appears
+FAILED tests/test_mode_switch.py::test_free_to_c3_still_triggered_when_best_other_finite_and_c3_better
+FAILED tests/test_osc_default_gains.py::test_default_yaml_provides_joint2_gains_but_weight_off
+FAILED tests/test_osc_force_tracking.py::test_lambda_ext_implies_consistent_joint_torque
+FAILED tests/test_planner_workspace_bounds.py::test_bounded_plan_respects_position_limit
+FAILED tests/test_progress.py::test_kC3Cost_timeout_after_no_improvement - as...
+FAILED tests/test_progress.py::test_improvement_resets_the_counter - assert T...
+FAILED tests/test_progress.py::test_kPosOrRotCost_timeout_when_both_stagnate
+FAILED tests/test_progress.py::test_near_goal_uses_position_wait_length - ass...
+FAILED tests/test_progress.py::test_kConfigCostDrop_timeout_if_drop_below_threshold
+FAILED tests/test_progress.py::test_reset_wipes_state - assert True is False
+FAILED tests/test_progress.py::test_kPosOnly_fires_on_pos_regression_with_rot_zero_constant
+FAILED tests/test_progress.py::test_kPosOnly_unchanged_by_rot_variation - ass...
+FAILED tests/test_sampling_c3_params.py::test_defaults_match_seed_values - At...
+FAILED tests/test_sampling_c3_params.py::test_default_yaml_loads - assert <Pr...
+FAILED tests/test_sampling_strategies.py::test_random_on_circle_proxy_seeded_first_when_g_hat_given
+FAILED tests/test_sampling_strategies.py::test_unimplemented_strategy_raises[SamplingStrategy.kRandomOnSphere]
+FAILED tests/test_sampling_strategies.py::test_unimplemented_strategy_raises[SamplingStrategy.kRandomOnPerimeter]
+================== 37 failed, 292 passed, 15 errors in 2.60s ===================
+
+Script done on 2026-08-21 12:49:08-07:00 [COMMAND_EXIT_CODE="1"]

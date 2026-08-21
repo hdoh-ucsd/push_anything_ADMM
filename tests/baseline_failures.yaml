@@ -1,0 +1,359 @@
+schema_version: 1
+baseline:
+  date: "2026-08-21"
+  commit: "018dffb95c6457ab850ef62d49d80e2b7240f2d2"
+  collected: 344
+  passed: 292
+  failed: 37
+  errors: 15
+  command_file: audit_output/test_baseline_20260821/command.txt
+  transcript: audit_output/test_baseline_20260821/pytest.txt
+  junit_xml: audit_output/test_baseline_20260821/pytest.junit.xml
+  environment: audit_output/test_baseline_20260821/environment.txt
+
+templates:
+  meshcat_lcs: &meshcat_lcs
+    outcome: blocked
+    pytest_outcome: failure
+    classification: environment-only
+    root_exception: "RuntimeError: Meshcat failed to open a websocket port."
+    root_cause: "The test requires Drake model construction, but env_builder starts Meshcat unconditionally and this runner forbids socket creation."
+    reproducibility: "Deterministic in both suite runs; standalone socket creation fails with EPERM and standalone Meshcat construction also fails."
+    numerical_correctness: "Assertion never reached; no evidence of numerical failure, but LCS coverage is blocked."
+    subsystem: LCS
+    proposed_repair: "Use a shared headless Drake environment fixture; reserve a separately marked meshcat fixture for visualization tests."
+    repair_risk: low-medium
+  meshcat_osc: &meshcat_osc
+    outcome: blocked
+    pytest_outcome: error
+    classification: environment-only
+    root_exception: "RuntimeError: Meshcat failed to open a websocket port."
+    root_cause: "The OSC fixture needs the Drake plant but env_builder starts Meshcat unconditionally in a runner where socket creation is forbidden."
+    reproducibility: "Deterministic in both suite runs; standalone socket creation fails with EPERM and standalone Meshcat construction also fails."
+    numerical_correctness: "Assertion never reached; no evidence of numerical failure, but OSC/MPC coverage is blocked."
+    subsystem: MPC/OSC
+    proposed_repair: "Use a shared headless Drake plant fixture and mark actual visualization tests meshcat."
+    repair_risk: low-medium
+
+non_passing_tests:
+  # Environment-only: LCS (12)
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_ee_space_ulin_consistency.py::test_consistent_at_zero_ulin
+    file: tests/test_lcs_ee_space_ulin_consistency.py
+    line: 94
+    pytest_outcome: error
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_ee_space_ulin_consistency.py::test_consistent_at_nonzero_ulin
+    file: tests/test_lcs_ee_space_ulin_consistency.py
+    line: 99
+    pytest_outcome: error
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_efhc.py::test_efhc_shapes
+    file: tests/test_lcs_efhc.py
+    line: 76
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_efhc.py::test_gamma_row_block_matches_hand_assembly
+    file: tests/test_lcs_efhc.py
+    line: 92
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_efhc.py::test_lambda_n_rows_match_hand_assembly
+    file: tests/test_lcs_efhc.py
+    line: 120
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_efhc.py::test_lambda_t_rows_match_hand_assembly
+    file: tests/test_lcs_efhc.py
+    line: 165
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_efhc.py::test_D_gamma_columns_zero
+    file: tests/test_lcs_efhc.py
+    line: 212
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_efhc.py::test_no_contacts_returns_zero_lcp_blocks
+    file: tests/test_lcs_efhc.py
+    line: 221
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_jacobian.py::test_jacobian_matches_finite_differences
+    file: tests/test_lcs_jacobian.py
+    line: 87
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_jacobian.py::test_f_eval_matches_zeroth_order
+    file: tests/test_lcs_jacobian.py
+    line: 122
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_jacobian.py::test_linearization_is_exact_at_lin_point
+    file: tests/test_lcs_jacobian.py
+    line: 143
+  - <<: *meshcat_lcs
+    node_id: tests/test_lcs_jacobian.py::test_linearization_better_than_zeroth_order_off_lin
+    file: tests/test_lcs_jacobian.py
+    line: 188
+
+  # Environment-only: OSC (13)
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_tracking.py::test_single_step_closes_error
+    file: tests/test_osc_tracking.py
+    line: 68
+  - <<: *meshcat_osc
+    node_id: "tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.001]"
+    file: tests/test_osc_tracking.py
+    line: 99
+  - <<: *meshcat_osc
+    node_id: "tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.005]"
+    file: tests/test_osc_tracking.py
+    line: 99
+  - <<: *meshcat_osc
+    node_id: "tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.01]"
+    file: tests/test_osc_tracking.py
+    line: 99
+  - <<: *meshcat_osc
+    node_id: "tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.05]"
+    file: tests/test_osc_tracking.py
+    line: 99
+  - <<: *meshcat_osc
+    node_id: "tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.1]"
+    file: tests/test_osc_tracking.py
+    line: 99
+  - <<: *meshcat_osc
+    node_id: "tests/test_osc_tracking.py::test_no_qp_failure_across_error_range[0.5]"
+    file: tests/test_osc_tracking.py
+    line: 99
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_tracking.py::test_torque_limits_respected
+    file: tests/test_osc_tracking.py
+    line: 117
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_unit.py::test_identity_no_contact
+    file: tests/test_osc_unit.py
+    line: 75
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_unit.py::test_gravity_compensation
+    file: tests/test_osc_unit.py
+    line: 86
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_unit.py::test_tracking_force_direction
+    file: tests/test_osc_unit.py
+    line: 110
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_unit.py::test_saturation_graceful
+    file: tests/test_osc_unit.py
+    line: 143
+  - <<: *meshcat_osc
+    node_id: tests/test_osc_unit.py::test_contact_feedforward_directions
+    file: tests/test_osc_unit.py
+    line: 162
+
+  # Mode switching and gate behavior (10)
+  - node_id: tests/test_commit_face_gate.py::test_kToC3Cost_unaffected_by_gate_refusal
+    file: tests/test_commit_face_gate.py
+    line: 460
+    outcome: failed
+    classification: stale test
+    root_exception: "AssertionError: assert 'free' == 'c3'"
+    root_cause: "The test assumes the old repos-to-C3 decision ordering; current decide_mode inflates a better repos candidate before the C3-entry comparison."
+    reproducibility: deterministic
+    numerical_correctness: "No solver math; affects discrete candidate/mode selection."
+    subsystem: candidate scoring/mode switch
+    proposed_repair: "Confirm the reference-derived ordering, then rewrite the scenario/contract rather than changing costs."
+    repair_risk: medium
+  - &mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_hysteresis_absolute_uses_far_field_when_not_near_goal
+    file: tests/test_mode_switch.py
+    line: 23
+    outcome: failed
+    classification: stale test
+    root_exception: "AssertionError: assert 9999.0 == 1234.0"
+    root_cause: "Test encodes the old mapping; implementation documents that _position hysteresis applies far from the goal."
+    reproducibility: deterministic
+    numerical_correctness: "No solver math; changes dispatcher decisions and therefore rollout behavior."
+    subsystem: candidate scoring/mode switch
+    proposed_repair: "Validate mapping against the cited reference lines, then update semantic test names and cases."
+    repair_risk: medium
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_hysteresis_absolute_uses_position_field_when_near_goal
+    line: 28
+    root_exception: "AssertionError: assert 1234.0 == 9999.0"
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_hysteresis_relative_scales_with_ref_cost
+    line: 33
+    root_exception: "AssertionError: assert 5000.0 == 1000.0"
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_c3_to_repos_when_cost_gap_exceeds_hysteresis
+    line: 77
+    root_exception: "AssertionError: assert 'c3' == 'free'"
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_position_hysteresis_used_near_goal
+    line: 93
+    root_exception: "AssertionError: assert 'c3' == 'free' for the far-goal case"
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_finished_repos_returns_to_c3_unconditionally
+    line: 152
+    root_exception: "AssertionError: assert 'free' == 'c3'"
+    root_cause: "Current implementation does not make finished_repos unconditional; it labels a C3 transition only after the reordered cost/altitude gate passes."
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_free_to_c3_when_c3_beats_repos_by_hysteresis
+    line: 172
+    root_exception: "AssertionError: assert 'free' == 'c3'"
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_repos_retarget_when_better_repos_appears
+    line: 207
+    root_exception: "AssertionError: kStayInRepos != kToBetterRepos"
+    root_cause: "Near/far hysteresis mapping now chooses the larger position threshold in this far-goal test, so the retarget condition does not fire."
+  - <<: *mode_hyst_stale
+    node_id: tests/test_mode_switch.py::test_free_to_c3_still_triggered_when_best_other_finite_and_c3_better
+    line: 307
+    root_exception: "AssertionError: expected c3, got mode=free"
+
+  # Progress API/semantic drift (8)
+  - &progress_stale
+    node_id: tests/test_progress.py::test_kC3Cost_timeout_after_no_improvement
+    file: tests/test_progress.py
+    line: 48
+    outcome: failed
+    classification: stale test
+    root_exception: "AssertionError: assert True is False"
+    root_cause: "The test dynamically sets removed num_control_loops_to_wait; ProgressTracker reads num_control_loops_to_wait_s/_loops, so the override has no effect."
+    reproducibility: deterministic
+    numerical_correctness: "No solver arithmetic; affects MPC outer-loop timeout/mode selection."
+    subsystem: MPC progress/mode switch
+    proposed_repair: "After confirming seconds/explicit-loop fields are authoritative, construct ProgressParams with the current field and explicit dt_ctrl."
+    repair_risk: medium
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_improvement_resets_the_counter
+    line: 58
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_kPosOrRotCost_timeout_when_both_stagnate
+    line: 84
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_near_goal_uses_position_wait_length
+    line: 97
+    root_cause: "The test uses removed tick fields and the old near-goal mapping; implementation documents the position window as the far-goal reference regime."
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_kConfigCostDrop_timeout_if_drop_below_threshold
+    line: 128
+    root_cause: "The test uses a removed window field and interprets cost drop as absolute units; implementation now uses a fractional drop over seconds/explicit loops."
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_reset_wipes_state
+    line: 156
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_kPosOnly_fires_on_pos_regression_with_rot_zero_constant
+    line: 188
+  - <<: *progress_stale
+    node_id: tests/test_progress.py::test_kPosOnly_unchanged_by_rot_variation
+    line: 219
+
+  # Configuration authority disagreements (2)
+  - node_id: tests/test_jack_goal_generator.py::test_push_jack_task_config_enables_krandom
+    file: tests/test_jack_goal_generator.py
+    line: 211
+    outcome: failed
+    classification: configuration drift
+    root_exception: "AssertionError: config krandom_draw_initial_goal is True, expected False"
+    root_cause: "The test comment expects the parked fixed initial goal, while a later repository commit intentionally restored the YAML value to true."
+    reproducibility: deterministic
+    numerical_correctness: "Changes initial goal sampling and therefore benchmark definition/rollout."
+    subsystem: MPC experiment definition
+    proposed_repair: "Confirm the canonical jack protocol and reported-run provenance; then change only the non-authoritative side."
+    repair_risk: high
+  - node_id: tests/test_sampling_c3_params.py::test_default_yaml_loads
+    file: tests/test_sampling_c3_params.py
+    line: 131
+    outcome: failed
+    classification: configuration drift
+    root_exception: "AssertionError: kConfigCostDrop != expected kPosOrRotCost"
+    root_cause: "The shipped default YAML has been retuned to kConfigCostDrop while the regression assertion retains the older metric."
+    reproducibility: deterministic
+    numerical_correctness: "Changes progress detection and MPC outer-loop mode decisions."
+    subsystem: MPC configuration
+    proposed_repair: "Identify which metric produced canonical results and approve the authoritative default before changing YAML or test."
+    repair_risk: high
+
+  # Other stale contracts (5)
+  - node_id: tests/test_sampling_c3_params.py::test_defaults_match_seed_values
+    file: tests/test_sampling_c3_params.py
+    line: 32
+    outcome: failed
+    classification: stale test
+    root_exception: "AttributeError: ProgressParams has no attribute num_control_loops_to_wait"
+    root_cause: "The tick field was replaced by num_control_loops_to_wait_s and optional explicit-loop fields."
+    reproducibility: deterministic
+    numerical_correctness: "No immediate solver math; parameter units affect timeout behavior."
+    subsystem: MPC configuration API
+    proposed_repair: "Confirm the time-unit migration, then assert current fields and compatibility conversion separately."
+    repair_risk: medium
+  - node_id: tests/test_sampling_strategies.py::test_random_on_circle_proxy_seeded_first_when_g_hat_given
+    file: tests/test_sampling_strategies.py
+    line: 89
+    outcome: failed
+    classification: stale test
+    root_exception: "AssertionError: obtained -0.11736292744518591, expected -0.18 +/- 1e-9"
+    root_cause: "The random-circle implementation explicitly treats g_hat as unused/direction-agnostic; the test expects the former goal-directed first sample."
+    reproducibility: deterministic with seed 0
+    numerical_correctness: "Affects candidate generation and deterministic rollout, not solver arithmetic."
+    subsystem: candidate scoring/sampling
+    proposed_repair: "Confirm direction-agnostic sampling intent; then test seeded sequence determinism without restoring the old proxy expectation."
+    repair_risk: medium
+  - &implemented_strategy_stale
+    node_id: "tests/test_sampling_strategies.py::test_unimplemented_strategy_raises[SamplingStrategy.kRandomOnSphere]"
+    file: tests/test_sampling_strategies.py
+    line: 178
+    outcome: failed
+    classification: stale test
+    root_exception: "Failed: DID NOT RAISE NotImplementedError"
+    root_cause: "The strategy is now implemented and used by current jack configurations."
+    reproducibility: deterministic
+    numerical_correctness: "Affects candidate generation, not solver arithmetic."
+    subsystem: candidate scoring/sampling
+    proposed_repair: "Replace the obsolete not-implemented assertion with geometry, workspace, and seed-determinism tests after confirming implementation authority."
+    repair_risk: low-medium
+  - <<: *implemented_strategy_stale
+    node_id: "tests/test_sampling_strategies.py::test_unimplemented_strategy_raises[SamplingStrategy.kRandomOnPerimeter]"
+    root_cause: "The strategy is now implemented, used by current T/H configurations, and has a separate clearance test."
+  - node_id: tests/test_osc_default_gains.py::test_default_yaml_provides_joint2_gains_but_weight_off
+    file: tests/test_osc_default_gains.py
+    line: 22
+    outcome: failed
+    classification: stale test
+    root_exception: "AssertionError: W_joint2 is 1.0, expected 0.0"
+    root_cause: "The YAML documents an intentional restoration from 0.0 to 1.0 on 2026-08-14; the test still encodes Option A."
+    reproducibility: deterministic
+    numerical_correctness: "Changes OSC joint acceleration/torques and rollout behavior."
+    subsystem: MPC/OSC
+    proposed_repair: "Confirm the restored joint-2 policy against canonical runs before updating the test contract."
+    repair_risk: high
+  - node_id: tests/test_osc_force_tracking.py::test_lambda_ext_implies_consistent_joint_torque
+    file: tests/test_osc_force_tracking.py
+    line: 72
+    outcome: failed
+    classification: stale test
+    root_exception: "AssertionError: dynamics RHS including J_v^T lambda differs by 5.0 in one component"
+    root_cause: "The test assumes lambda_ext enters dynamics; current reference-alignment code explicitly defines it as a cost-only shadow variable excluded from dynamics."
+    reproducibility: deterministic
+    numerical_correctness: "The disagreement is an OSC dynamics contract and materially affects commanded torque if resolved the other way."
+    subsystem: MPC/OSC
+    proposed_repair: "Confirm the cited reference contract, then test shadow-variable tracking plus dynamics without J_v^T lambda; do not alter the QP from this failure alone."
+    repair_risk: high
+
+  # Numerical evidence required (1)
+  - node_id: tests/test_planner_workspace_bounds.py::test_bounded_plan_respects_position_limit
+    file: tests/test_planner_workspace_bounds.py
+    line: 59
+    outcome: failed
+    classification: numerical tolerance
+    root_exception: "AssertionError: knot 6 position 0.15002550673505122 > 0.150001"
+    root_cause: "The solved C3+ trajectory violates the requested upper state bound by 2.5506735e-5 m, larger than the test allowance of 1e-6 m."
+    reproducibility: deterministic in both suite runs
+    numerical_correctness: "Yes; this measures hard-constraint feasibility in ADMM/MPC output."
+    subsystem: C3+/ADMM/MPC
+    proposed_repair: "Capture solver status and every bound residual, repeat across solver settings without changing them, and compare against OSQP feasibility guarantees before proposing either solver enforcement or a justified assertion tolerance."
+    repair_risk: high
+
+classification_counts:
+  environment-only: 25
+  dependency_drift: 0
+  configuration_drift: 2
+  stale_test: 24
+  numerical_tolerance: 1
+  genuine_implementation_defect: 0
+  flaky_non_deterministic: 0
+  missing_asset: 0
+  unknown: 0
