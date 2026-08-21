@@ -1,0 +1,616 @@
+<title>The GPU ADMM Investigation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --ground:#F6F7F9; --surface:#FFFFFF; --sunk:#EDEFF3;
+  --ink:#10141A; --ink-2:#333B47; --muted:#616B7A;
+  --rule:#DDE1E8; --rule-2:#C3C9D3;
+  --accent:#3B5FBD; --accent-bg:#EAEEF9;
+  --loss:#D2601A; --loss-bg:#FBEDE4;
+  --win:#0089AD;  --win-bg:#E3F2F7;
+  --mid:#C7CCD4;
+  --sans:"Archivo",ui-sans-serif,system-ui,sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1117; --surface:#161A21; --sunk:#1C212A;
+    --ink:#E8ECF1; --ink-2:#BDC5D1; --muted:#8B95A5;
+    --rule:#272D38; --rule-2:#39414F;
+    --accent:#6B8BD8; --accent-bg:#1A2136;
+    --loss:#D26B34; --loss-bg:#2B1D14;
+    --win:#2AA3C2;  --win-bg:#0F2630;
+    --mid:#3A424E;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1117; --surface:#161A21; --sunk:#1C212A;
+  --ink:#E8ECF1; --ink-2:#BDC5D1; --muted:#8B95A5;
+  --rule:#272D38; --rule-2:#39414F;
+  --accent:#6B8BD8; --accent-bg:#1A2136;
+  --loss:#D26B34; --loss-bg:#2B1D14;
+  --win:#2AA3C2;  --win-bg:#0F2630;
+  --mid:#3A424E;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--serif); font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.col{max-width:68ch; margin:0 auto; padding:0 24px}
+.wide{max-width:104ch; margin:0 auto; padding:0 24px}
+
+h1,h2,h3,h4,.eyebrow,.num,th,.chip,.k{font-family:var(--sans)}
+h1{font-size:clamp(2rem,5vw,3rem); line-height:1.06; font-weight:700;
+   letter-spacing:-.025em; text-wrap:balance; margin:0 0 .55rem}
+h2{font-size:1.5rem; font-weight:700; letter-spacing:-.015em;
+   text-wrap:balance; margin:0 0 .15rem}
+h3{font-size:1.03rem; font-weight:600; margin:0 0 .4rem}
+p{margin:0 0 1.05rem}
+strong{font-weight:600}
+a{color:var(--accent)}
+code,.mono{font-family:var(--mono); font-size:.86em; font-variant-numeric:tabular-nums}
+code{background:var(--sunk); padding:.08em .34em; border-radius:3px}
+.eyebrow{font-size:.7rem; font-weight:600; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted)}
+
+header{border-bottom:1px solid var(--rule-2); padding:60px 0 30px; margin-bottom:42px}
+.tagrow{display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap}
+.chip{font-size:.68rem; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; padding:3px 8px; border-radius:2px;
+  background:var(--loss-bg); color:var(--loss); border:1px solid var(--loss)}
+.deck{font-size:1.14rem; color:var(--ink-2); margin:0 0 24px}
+.meta{display:flex; flex-wrap:wrap; gap:5px 24px; font-family:var(--mono);
+  font-size:.75rem; color:var(--muted)}
+.meta b{font-weight:400; color:var(--ink-2)}
+
+/* instrument panel */
+.panel{display:grid; grid-template-columns:repeat(auto-fit,minmax(178px,1fr));
+  gap:1px; background:var(--rule-2); border:1px solid var(--rule-2);
+  border-radius:3px; overflow:hidden; margin:0 0 12px}
+.cellp{background:var(--surface); padding:16px 18px}
+.cellp .k{display:block; font-size:.68rem; font-weight:600; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:7px}
+.cellp .v{font-family:var(--sans); font-size:1.85rem; font-weight:700;
+  line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.cellp .s{display:block; margin-top:6px; font-size:.8rem; color:var(--muted);
+  font-family:var(--serif)}
+.v.bad{color:var(--loss)} .v.good{color:var(--win)} .v.neu{color:var(--ink)}
+.panel-note{font-size:.8rem; color:var(--muted); margin:0 0 44px}
+
+section{margin-bottom:48px}
+.sh{margin-bottom:16px}
+.sh .eyebrow{display:block; margin-bottom:5px}
+
+.tw{overflow-x:auto; margin:16px 0 8px}
+table{border-collapse:collapse; width:100%; font-size:.87rem}
+th,td{text-align:left; padding:8px 14px 8px 0; border-bottom:1px solid var(--rule);
+  vertical-align:baseline}
+th{font-size:.68rem; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--muted); border-bottom:1px solid var(--rule-2); white-space:nowrap}
+td.n{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+tr.mark td{background:var(--loss-bg)}
+.lose{color:var(--loss); font-weight:600}
+.winc{color:var(--win); font-weight:600}
+caption{caption-side:bottom; text-align:left; font-family:var(--sans);
+  font-size:.78rem; color:var(--muted); padding-top:10px; line-height:1.5}
+
+.src{display:inline-block; font-family:var(--mono); font-size:.71rem;
+  color:var(--muted); background:var(--sunk); border:1px solid var(--rule);
+  border-radius:2px; padding:2px 7px; margin-top:8px}
+
+.note{background:var(--surface); border:1px solid var(--rule);
+  border-left:3px solid var(--accent); border-radius:2px; padding:16px 20px; margin:20px 0}
+.note h3{color:var(--accent)}
+.note p:last-child{margin-bottom:0}
+.note.warn{border-left-color:var(--loss)}
+.note.warn h3{color:var(--loss)}
+
+/* heatmap */
+.hm{width:100%; border-collapse:separate; border-spacing:2px; font-size:.83rem}
+.hm th{border:0; padding:6px 8px}
+.hm td{border:0; padding:0}
+.hm .rh{font-family:var(--mono); color:var(--ink-2); font-size:.8rem;
+  white-space:nowrap; padding-right:10px; text-align:right}
+.cellh{border-radius:3px; padding:13px 8px; text-align:center;
+  font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:500;
+  font-size:.92rem; position:relative; cursor:default}
+.cellh.ours{outline:2px solid var(--ink); outline-offset:-2px}
+.cellh small{display:block; font-size:.66rem; opacity:.82; margin-top:3px;
+  font-family:var(--sans); letter-spacing:.02em}
+.legend{display:flex; align-items:center; gap:10px; margin:14px 0 0;
+  font-family:var(--sans); font-size:.75rem; color:var(--muted); flex-wrap:wrap}
+.ramp{display:flex; height:11px; width:230px; border-radius:2px; overflow:hidden;
+  border:1px solid var(--rule-2)}
+.ramp i{flex:1}
+
+ol.chron{list-style:none; counter-reset:c; padding:0; margin:16px 0 0}
+ol.chron li{counter-increment:c; border-top:1px solid var(--rule); padding:15px 0 15px 44px;
+  position:relative}
+ol.chron li:last-child{border-bottom:1px solid var(--rule)}
+ol.chron li::before{content:counter(c); position:absolute; left:0; top:15px;
+  font-family:var(--mono); font-size:.78rem; font-weight:700; color:var(--loss);
+  background:var(--loss-bg); border:1px solid var(--loss); border-radius:2px;
+  width:24px; height:24px; display:grid; place-items:center}
+ol.chron .t{font-family:var(--sans); font-weight:600; font-size:.96rem; display:block;
+  margin-bottom:3px}
+ol.chron .d{color:var(--ink-2); font-size:.93rem}
+
+ul.keep{list-style:none; padding:0; margin:14px 0 0}
+ul.keep li{border-top:1px solid var(--rule); padding:14px 0}
+ul.keep li:last-child{border-bottom:1px solid var(--rule)}
+ul.keep .t{font-family:var(--sans); font-weight:600; font-size:.95rem; display:block;
+  margin-bottom:3px}
+ul.keep .d{color:var(--ink-2); font-size:.93rem}
+
+footer{border-top:1px solid var(--rule-2); margin-top:52px; padding:22px 0 68px;
+  font-family:var(--mono); font-size:.75rem; color:var(--muted); line-height:1.7}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header>
+  <div class="col">
+    <div class="tagrow">
+      <span class="chip">Negative result</span>
+      <span class="eyebrow">push_anything_ADMM &middot; 2026-08-21</span>
+    </div>
+    <h1>The GPU ADMM Investigation</h1>
+    <p class="deck">We set out to move the C3+ ADMM inner loop onto an RTX 5070 Ti.
+      It does not work, and the reason is not implementation quality &mdash; it is that
+      our quadratic program is <em>small</em> and its Hessian is
+      <strong>0.16% dense</strong>. One ADMM iteration is less arithmetic than it costs
+      to launch a GPU kernel.</p>
+    <div class="meta">
+      <span><b>branch</b> worktree-gpu-admm-plan</span>
+      <span><b>gpu</b> RTX 5070 Ti · sm_120 · 16GB</span>
+      <span><b>cpu</b> Ryzen 7 7800X3D · 8c/16t</span>
+      <span><b>basis</b> cuNRTO arXiv:2603.02642</span>
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="col">
+
+  <div class="panel">
+    <div class="cellp">
+      <span class="k">Hot loop, per tick</span>
+      <span class="v bad">0.10&times;</span>
+      <span class="s">1652.8 ms GPU vs 171.7 ms CPU</span>
+    </div>
+    <div class="cellp">
+      <span class="k">Per ADMM iteration</span>
+      <span class="v bad">0.74&times;</span>
+      <span class="s">64.4 &micro;s GPU vs 47.5 &micro;s Drake</span>
+    </div>
+    <div class="cellp">
+      <span class="k">Kernel-launch floor</span>
+      <span class="v bad">0.63&times;</span>
+      <span class="s">74.8 &micro;s &mdash; dispatch alone</span>
+    </div>
+    <div class="cellp">
+      <span class="k">Best case, gap closed</span>
+      <span class="v neu">~1.03&times;</span>
+      <span class="s">parity, not acceleration</span>
+    </div>
+  </div>
+  <p class="panel-note">Four independent measurements, each on real corpus matrices at
+    <span class="mono">n = 639</span>, <span class="mono">m = 439</span>. Every figure in this
+    report names the script that produces it.</p>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Foundation</span>
+      <h2>Where the port's time actually goes</h2>
+    </div>
+    <p>Before asking whether a GPU helps, we need to know what it would be helping with.
+      A wall-clock section profile at HEAD covers <strong>455 of the measured
+      472&nbsp;ms/tick (96%)</strong>, so this is the whole budget rather than a sample.
+      (cProfile is useless here &mdash; it cannot see Drake's pybind11 instance methods,
+      so Drake's solve time gets folded into the caller's self time.)</p>
+    <div class="tw">
+      <table>
+        <caption>Per <span class="mono">_solve_c3plus</span> = 70.0 ms; 6.5 such calls per
+          control tick. Box task, 25 s gate, seed 0.</caption>
+        <thead><tr><th>Section</th><th>ms/solve</th><th>% solve</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td><code>admm.osqp_solve</code></td><td class="n">39.16</td><td class="n">56.0%</td><td>3 solves × 275 OSQP iterations</td></tr>
+          <tr><td><code>admm.final_qp</code></td><td class="n">19.50</td><td class="n">27.9%</td><td>1 solve × 409 OSQP iterations</td></tr>
+          <tr><td><code>admm.qp_build</code></td><td class="n">8.19</td><td class="n">11.7%</td><td>P/q assembly + UpdateCoefficients</td></tr>
+          <tr><td><code>lcs.*</code></td><td class="n">2.71</td><td class="n">3.9%</td><td>Drake linearization</td></tr>
+          <tr><td><code>admm.z_update</code></td><td class="n">0.41</td><td class="n">0.6%</td><td>Bui eq.(12) projection</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>That resolves to a single sentence: <strong>the port runs ~8,000 OSQP inner
+      iterations per control tick at 47.5&nbsp;&micro;s each, and that is 81% of all wall
+      time.</strong> The port is an iteration-count machine. Every optimization should be
+      scored on one question &mdash; does it reduce the <em>number</em> of OSQP iterations?
+      This is already the first hint that the GPU plan was aimed wrong: it attacked
+      per-iteration <em>cost</em>, the smaller of the two factors.</p>
+    <span class="src">PORT_SECTION_TIMING=1 &middot; scripts/gpu/time_budget.py</span>
+  </section>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Measurement 1</span>
+      <h2>The hot loop, end to end</h2>
+    </div>
+    <p>One control tick of real work &mdash; 6 samples × 3 C3+ ADMM iterations, on the
+      matrices the CPU actually solved, both legs given identical problems:</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Leg</th><th>ms / tick</th><th>Ratio</th></tr></thead>
+        <tbody>
+          <tr><td>CPU &mdash; Drake OSQP, sequential</td><td class="n">171.7</td><td class="n">&mdash;</td></tr>
+          <tr class="mark"><td>GPU &mdash; batched, fully on-device</td><td class="n">1652.8</td><td class="n lose">0.10&times;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The GPU is <strong>ten times slower</strong>. The reconciliation with the
+      per-iteration numbers is convergence: Drake reaches
+      <span class="mono">eps = 1e-5</span> in 100&ndash;200 iterations, while our batched
+      solver ran <strong>20,000 without converging</strong> (primal residual stuck at
+      <span class="mono">2.1e-4</span>).</p>
+    <p>Our solver implements the plain OSQP iteration. Drake runs with Ruiz equilibration
+      (<code>scaling=1</code>) and adaptive&nbsp;&rho;; ours has neither. I had scoped both
+      out of the plan as <em>fidelity</em> details &mdash; things needed to match OSQP's
+      exact path, not its answer. On a problem with
+      <span class="mono">cond(K) &asymp; 1.2e7</span> that was backwards: preconditioning
+      <em>is</em> the performance.</p>
+    <span class="src">scripts/gpu/hotloop_benchmark.py &middot; scripts/gpu/iteration_count_probe.py</span>
+  </section>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Measurement 2</span>
+      <h2>The floor no implementation can go below</h2>
+    </div>
+    <p>The convergence gap is fixable in principle, so the sharper question is what
+      happens to a <em>single iteration</em> once it is. Here the answer stops depending
+      on our code at all:</p>
+    <div class="tw">
+      <table>
+        <caption>&micro;s per sample-iteration, fp64, real dimensions. The launch floor is
+          the bare kernel dispatches an OSQP iteration needs &mdash; two matvecs, a clamp,
+          an axpy &mdash; with no solver logic, no preconditioner, no termination check.</caption>
+        <thead><tr><th>Configuration</th><th>&micro;s / iteration</th><th>vs Drake</th></tr></thead>
+        <tbody>
+          <tr><td>Drake CPU OSQP &mdash; measured in-run</td><td class="n">47.5</td><td class="n">&mdash;</td></tr>
+          <tr><td>our batched GPU, batch = 6</td><td class="n">64.4</td><td class="n lose">0.74&times;</td></tr>
+          <tr><td>our batched GPU, batch = 1</td><td class="n">356.2</td><td class="n lose">0.13&times;</td></tr>
+          <tr class="mark"><td><strong>bare GPU kernel-launch floor</strong></td><td class="n">74.8</td><td class="n lose">0.63&times;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>At 74.8&nbsp;&micro;s, <strong>merely dispatching the kernels costs 1.6× Drake's
+      entire iteration</strong>. Nothing can be built below that line. Our batched solver
+      beats it only because batching 6 samples amortizes the launches &mdash; and it still
+      loses to the CPU.</p>
+    <span class="src">scripts/gpu/gpu_osqp_ceiling.py</span>
+  </section>
+</div>
+
+<div class="wide">
+  <section>
+    <div class="col" style="padding:0">
+      <div class="sh">
+        <span class="eyebrow">Measurement 3</span>
+        <h2>The crossover: when a GPU <em>would</em> be right</h2>
+      </div>
+      <p>A verdict of &ldquo;no&rdquo; is only half an answer. Sweeping problem size against
+        Hessian density maps the plane, so the decision has a trigger instead of an opinion.</p>
+    </div>
+
+    <figure style="margin:22px 0 0">
+      <table class="hm" id="hm">
+        <caption>&micro;s per ADMM iteration per sample, GPU batch = 6, fp64. Each cell is the
+          CPU&nbsp;/&nbsp;GPU ratio &mdash; above 1.00× the GPU iteration is cheaper.
+          Our problem is the outlined cell, and the only losing cell in the plane.</caption>
+        <thead>
+          <tr><th></th><th colspan="4" style="text-align:center; color:var(--muted)">Hessian density</th></tr>
+          <tr><th></th><th style="text-align:center">0.16%</th><th style="text-align:center">5%</th><th style="text-align:center">50%</th><th style="text-align:center">100%</th></tr>
+        </thead>
+        <tbody id="hmbody"></tbody>
+      </table>
+      <div class="legend">
+        <span>GPU slower</span>
+        <span class="ramp" id="ramp" aria-hidden="true"></span>
+        <span>GPU faster</span>
+        <span style="margin-left:8px">&mdash; neutral is 1.00&times;; log-scaled</span>
+      </div>
+    </figure>
+
+    <div class="col" style="padding:0; margin-top:26px">
+      <p>Two crossings, both close by. At our size, moving the Hessian from 0.16% to 5%
+        dense flips <span class="mono">0.19&times; &rarr; 4.47&times;</span>. At our density,
+        doubling <span class="mono">n</span> from 639 to 1278 flips
+        <span class="mono">0.19&times; &rarr; 1.58&times;</span>. So roughly a doubling of
+        horizon or contact count, or any real coupling in the cost Hessian, and the GPU
+        becomes the right tool.</p>
+      <p>Note what the GPU column does <em>not</em> do: at
+        <span class="mono">n = 2556</span> its cost is 159.58 / 158.14 / 159.56 /
+        158.91&nbsp;&micro;s across all four densities &mdash; flat. The GPU pays the same
+        price whether the matrix is 0.16% or 100% full, because it does dense work either
+        way. The CPU meanwhile ranges from 9.66 to 21,849&nbsp;&micro;s across the plane.
+        That is the whole story in one row: <strong>sparsity is free on the CPU and
+        unavailable on the GPU.</strong></p>
+      <div class="note warn">
+        <h3>Read this map for shape, not for our margin</h3>
+        <p>These synthetic instances are numerically <em>easier</em> than ours &mdash; the
+          synthetic CPU leg at our cell is 9.66&nbsp;&micro;s/iteration against the
+          47.5&nbsp;&micro;s measured in-run (real <span class="mono">cond(K) &asymp; 1.2e7</span>,
+          real <span class="mono">m = 439</span> vs synthetic 304). So 0.19× is not our
+          margin; the authoritative figure for our problem is the direct measurement,
+          <strong>0.74×</strong>. Both agree on the sign.</p>
+      </div>
+      <span class="src">scripts/gpu/crossover_sweep.py</span>
+    </div>
+  </section>
+</div>
+
+<div class="col">
+  <section>
+    <div class="sh">
+      <span class="eyebrow">The follow-up question</span>
+      <h2>Could we just use a GPU OSQP instead?</h2>
+    </div>
+    <p>A fair challenge to all of the above: perhaps the problem is my solver, and a
+      production GPU OSQP would do better. OSQP&nbsp;1.x does ship a pluggable
+      <code>cuda</code> algebra backend &mdash; the productionized descendant of the cuOSQP
+      paper. Two findings:</p>
+    <p><strong>It is not reachable here.</strong>
+      <span class="mono">osqp.algebras_available()</span> returns
+      <span class="mono">['builtin']</span>; <span class="mono">algebra='cuda'</span> raises
+      <em>&ldquo;Algebra cuda not available&rdquo;</em>. The published wheel contains only
+      <span class="mono">ext_builtin</span> &mdash; <span class="mono">osqp/cuda.py</span> is
+      a four-line wrapper with no extension behind it, and
+      <span class="mono">pip install "osqp[cuda]"</span> fetches the same CPU wheel.
+      <span class="mono">cuosqp</span> has no installable distribution for this
+      Python/CUDA at all. Reaching it means building OSQP from source with
+      <span class="mono">-DOSQP_ALGEBRA_BACKEND=cuda</span>. Separately, Drake vendors its
+      own OSQP and always uses builtin, so even an installed GPU OSQP would require
+      bypassing Drake and feeding <span class="mono">P/q/A/l/u</span> ourselves.</p>
+    <p><strong>And it would not help.</strong> This is what Measurement&nbsp;2 settles
+      implementation-agnostically. A GPU OSQP solves one problem at a time, so unlike our
+      batched solver it cannot amortize launches across the 6 samples &mdash; it sits at or
+      above the 74.8&nbsp;&micro;s floor by construction, against Drake's complete
+      47.5&nbsp;&micro;s iteration.</p>
+    <span class="src">scripts/gpu/osqp_backend_probe.py</span>
+  </section>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Methodology</span>
+      <h2>Four benchmarks that pointed the wrong way</h2>
+    </div>
+    <p>This is the part worth keeping. Each of these was a real measurement that produced
+      a real number, and each pointed somewhere false. They are in the order they happened,
+      because each one set up the next.</p>
+    <ol class="chron">
+      <li>
+        <span class="t">Benchmarking one operation instead of the loop &mdash; said STOP</span>
+        <span class="d">Timing <span class="mono">cholesky_solve</span> alone gave 0.58× and
+          read as a clean kill. But a triangular solve is sequential back-substitution, the
+          most GPU-hostile kernel in the iteration, while everything around it is
+          embarrassingly parallel. Measuring the composite loop gave 4.41× with a
+          precomputed inverse. <em>Benchmark the loop, never its least-favourable
+          component.</em></span>
+      </li>
+      <li>
+        <span class="t">Benchmarking against the wrong opponent &mdash; said GO</span>
+        <span class="d">That 4.41× was measured against <em>dense linear algebra on the
+          CPU</em>, not against the sparse C++ solver the port actually runs. Against Drake
+          the per-iteration figure is 0.74×. This is the error that authorized building the
+          whole solver. <em>The baseline is what production runs, not the most convenient
+          stand-in.</em></span>
+      </li>
+      <li>
+        <span class="t">Benchmarking at the wrong dimensions</span>
+        <span class="d">An early figure used <span class="mono">m = 300</span> where the
+          real constraint count is <span class="mono">m = 439</span>. The GPU leg moved from
+          41.8 to 64.4&nbsp;&micro;s &mdash; from a slight win to a loss. <em>Take dimensions
+          from the corpus, not from a plausible round number.</em></span>
+      </li>
+      <li>
+        <span class="t">Scoping the wrong things out as &ldquo;fidelity&rdquo;</span>
+        <span class="d">Ruiz equilibration and adaptive&nbsp;&rho; were written into the
+          plan as out-of-scope conformance detail. They turned out to be worth 133× in
+          iteration count. <em>On ill-conditioned problems, preconditioning is not a
+          fidelity detail &mdash; it is the performance.</em></span>
+      </li>
+    </ol>
+    <p style="margin-top:20px">A fifth trap was avoided only by luck: my first GIL probe
+      showed 0.86× for both Drake and numpy and looked conclusive, until I noticed numpy's
+      BLAS was already saturating cores in the &ldquo;serial&rdquo; leg. Pinning
+      <span class="mono">OMP_NUM_THREADS=1</span> made the control valid and the real answer
+      appear. <strong>A control that agrees with your hypothesis is the one to distrust
+      most.</strong></p>
+  </section>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Outcome</span>
+      <h2>What the arc produced anyway</h2>
+    </div>
+    <ul class="keep">
+      <li>
+        <span class="t">A repaired parallel sample-evaluation path</span>
+        <span class="d">Three independent defects. Worker plant contexts were built
+          standalone, leaving <span class="mono">geometry_query</span> unconnected so every
+          worker LCS build threw &mdash; swallowed by a bare <span class="mono">except</span>,
+          yielding NaN costs and a dispatcher that silently never repositioned. Workers also
+          ran a different physics model (four unforwarded constructor arguments, including
+          <span class="mono">controller_inertia</span>). <span class="mono">threads=4</span>
+          went from total task failure to <span class="mono">tight_goal=PASS(final)</span>.</span>
+      </li>
+      <li>
+        <span class="t">A closed question on threading</span>
+        <span class="d">Drake's <span class="mono">Solve</span> does not release the GIL
+          &mdash; 0.99× on 4 threads against a 3.99× <span class="mono">sleep</span> control.
+          The reference's OpenMP parallel-for cannot translate to Python threads at any
+          count. That retires a lever the project notes had listed as the biggest remaining
+          speedup.</span>
+      </li>
+      <li>
+        <span class="t">A 60-instance solver-level corpus</span>
+        <span class="d">Real ADMM instances with CPU golden outputs <em>and</em> the
+          assembled QP matrices &mdash; any future solver change can be validated against it
+          without a simulation run. This is what made every number in this report
+          reproducible.</span>
+      </li>
+      <li>
+        <span class="t">A measured description of the hot loop</span>
+        <span class="d">Diagonal Hessian, 9% dense KKT,
+          <span class="mono">cond(K) &asymp; 1.2e7</span>, 100&ndash;200 OSQP iterations per
+          solve, ~8,000 per tick. Future performance work starts from these instead of
+          guesses.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Recommendation</span>
+      <h2>Stop here, and take the iteration-count lever instead</h2>
+    </div>
+    <p>Nothing about this hardware or this problem size rewards a batched dense GPU solver,
+      and completing it projects to ~1.03× for the cost of a preconditioner, an
+      adaptive-&rho; scheme, an assembly refactor and a full conformance re-validation.</p>
+    <p>The profile points somewhere specific instead. <strong>72% of every OSQP iteration
+      runs past convergence</strong>: on the real corpus the QPs converge at ~68 iterations
+      but <code>check_termination=100</code> makes them pay ~247. Dropping the check interval
+      to 25 takes a solve from 16.84 to 10.23&nbsp;ms &mdash; 1.65× on the 81% of wall time
+      that is QP solving, so roughly <strong>1.4× end-to-end</strong>. Set against the
+      finished GPU port's projected 1.03×, that is an order of magnitude more return
+      &mdash; from a one-line change.</p>
+    <div class="note">
+      <h3>It needs your authorization, not my judgement</h3>
+      <p><code>check_termination=100</code> is a reference value from
+        <span class="mono">shared_parameters/sampling_c3_qp_settings.yaml</span>, so changing
+        it is an off-reference change. It has been measured only &mdash; nothing was altered
+        &mdash; and any claim would still need the full two-tier eval. One caveat on the
+        probe: it solves each QP cold with <span class="mono">q_ref</span>, where the live
+        loop warm-starts and uses <span class="mono">q_total = q_ref &minus; 2&rho;G(&delta;&minus;&omega;)</span>.
+        The in-run mean of 275 sits close to the probe's 246.7, so it is representative but
+        not the identical problem.</p>
+    </div>
+    <p>Revisit the GPU when the crossover map says to: a horizon or contact count roughly
+      double today's, or a cost formulation whose Hessian is genuinely coupled rather than
+      diagonal. At <span class="mono">n = 639</span> and 0.16% density, it is the wrong
+      instrument.</p>
+  </section>
+
+  <section>
+    <div class="sh">
+      <span class="eyebrow">Provenance</span>
+      <h2>Every number, and what produced it</h2>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Claim</th><th>Script</th></tr></thead>
+        <tbody>
+          <tr><td>Time budget, 81% OSQP iterations</td><td class="n">time_budget.py + PORT_SECTION_TIMING=1</td></tr>
+          <tr><td>Hot loop 0.10×</td><td class="n">hotloop_benchmark.py</td></tr>
+          <tr><td>Iteration counts, 100&ndash;200 vs 20,000</td><td class="n">iteration_count_probe.py</td></tr>
+          <tr><td>Sparsity 0.16% / 8.98%</td><td class="n">sparsity_probe.py</td></tr>
+          <tr><td>Launch floor 74.8 &micro;s</td><td class="n">gpu_osqp_ceiling.py</td></tr>
+          <tr><td>Crossover map</td><td class="n">crossover_sweep.py</td></tr>
+          <tr><td>GPU OSQP availability</td><td class="n">osqp_backend_probe.py</td></tr>
+          <tr><td>GIL, 0.99× vs 3.99× control</td><td class="n">gil_probe.py</td></tr>
+          <tr><td>check_termination 246.7 vs 68.5</td><td class="n">check_termination_probe.py</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+</main>
+
+<footer>
+  <div class="col">
+    All scripts under <span class="mono">scripts/gpu/</span> on
+    <span class="mono">worktree-gpu-admm-plan</span>; full measurement log at
+    <span class="mono">docs/superpowers/plans/gpu-admm-baseline.txt</span>.<br>
+    Design basis cuNRTO (Wang, Taj Abdul, Theodorou &mdash; RSS 2026, arXiv:2603.02642).
+    Its 25.9× Franka result is real; it does not transfer because that subproblem is
+    thousands of cone constraints and a dense 2,940-variable gain block.
+  </div>
+</footer>
+
+<script>
+const DATA = [
+  {n:639,  cells:[{d:"0.16%",r:0.19,cpu:9.66,gpu:49.89,ours:true},
+                  {d:"5%",   r:4.47,cpu:317.62,gpu:71.02},
+                  {d:"50%",  r:5.18,cpu:495.10,gpu:95.56},
+                  {d:"100%", r:8.52,cpu:516.74,gpu:60.67}]},
+  {n:1278, cells:[{d:"0.16%",r:1.58,cpu:87.30,gpu:55.33},
+                  {d:"5%",   r:34.12,cpu:2141.86,gpu:62.77},
+                  {d:"50%",  r:52.44,cpu:3043.22,gpu:58.03},
+                  {d:"100%", r:32.80,cpu:3100.24,gpu:94.52}]},
+  {n:2556, cells:[{d:"0.16%",r:14.16,cpu:2259.29,gpu:159.58},
+                  {d:"5%",   r:125.14,cpu:19789.18,gpu:158.14},
+                  {d:"50%",  r:135.95,cpu:21691.97,gpu:159.56},
+                  {d:"100%", r:137.50,cpu:21849.49,gpu:158.91}]}
+];
+
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function hex2rgb(h){ h=h.replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join('');
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+function mix(a,b,t){ const A=hex2rgb(a),B=hex2rgb(b);
+  return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')})`; }
+
+// Diverging around ratio 1.00 (log-scaled): loss hue <- neutral -> win hue.
+const LOG_LO = Math.log10(0.19), LOG_HI = Math.log10(137.5);
+function fill(r){
+  const t = Math.log10(r);
+  if (t < 0) return mix(css('--mid'), css('--loss'), Math.min(t/LOG_LO,1));
+  return mix(css('--mid'), css('--win'), Math.min(t/LOG_HI,1));
+}
+function ink(r){
+  const t = Math.log10(r);
+  const strength = t < 0 ? Math.min(t/LOG_LO,1) : Math.min(t/LOG_HI,1);
+  return strength > 0.55 ? '#FFFFFF' : css('--ink');
+}
+
+function render(){
+  const body = document.getElementById('hmbody');
+  body.innerHTML = '';
+  DATA.forEach(row=>{
+    const tr = document.createElement('tr');
+    const rh = document.createElement('th');
+    rh.className = 'rh'; rh.scope = 'row'; rh.textContent = 'n = ' + row.n;
+    tr.appendChild(rh);
+    row.cells.forEach(c=>{
+      const td = document.createElement('td');
+      const div = document.createElement('div');
+      div.className = 'cellh' + (c.ours ? ' ours' : '');
+      div.style.background = fill(c.r);
+      div.style.color = ink(c.r);
+      div.innerHTML = c.r.toFixed(2) + '&times;' +
+        (c.ours ? '<small>our problem</small>' : '');
+      div.title = `n=${row.n}, density ${c.d}\nCPU ${c.cpu} us/iter · GPU ${c.gpu} us/iter\nratio ${c.r.toFixed(2)}x`;
+      td.appendChild(div);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  const ramp = document.getElementById('ramp');
+  ramp.innerHTML = '';
+  for(let i=0;i<24;i++){
+    const s = document.createElement('i');
+    const t = i/23;
+    s.style.background = t < 0.5
+      ? mix(css('--loss'), css('--mid'), t/0.5)
+      : mix(css('--mid'), css('--win'), (t-0.5)/0.5);
+    ramp.appendChild(s);
+  }
+}
+render();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+</script>
