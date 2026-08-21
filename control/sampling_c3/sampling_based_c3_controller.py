@@ -1142,6 +1142,7 @@ class SamplingC3Controller:
         # New goal = new round: the sticky achievement record restarts too
         # (it records "this goal was reached", not "some goal was reached").
         self._tight_ever_latched = False
+        self._tight_latch_count = 0
         try:
             self.progress.reset()
         except AttributeError:
@@ -2108,6 +2109,10 @@ class SamplingC3Controller:
         _qn = _qn / _nn if _nn > 1e-12 else np.array([1.0, 0.0, 0.0, 0.0])
         _dot = float(abs(np.dot(_qn, _q_goal)))
         rot_error_now = float(2.0 * np.arccos(np.clip(_dot, -1.0, 1.0)))
+        _gqw, _gqx, _gqy, _gqz = (float(v) for v in _q_goal)
+        _goal_yaw_now = float(np.arctan2(
+            2.0 * (_gqw * _gqz + _gqx * _gqy),
+            1.0 - 2.0 * (_gqy * _gqy + _gqz * _gqz)))
 
         # Include yaw component in config_cost (reference full Q_block covers
         # quat too). Uses the half-angle metric that w_yaw multiplies:
@@ -2168,6 +2173,7 @@ class SamplingC3Controller:
             # t=122.4s, was released twice on a 0.4mm settle, and reported
             # FAIL(-). Cleared only by reset_for_new_goal().
             self._tight_ever_latched = False
+            self._tight_latch_count = 0
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
         # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
@@ -2204,12 +2210,16 @@ class SamplingC3Controller:
                           and (not self._crossed_switching_threshold
                                or rot_error_now < _rot_thr))
             if _on_target:
+                _first_latch = not self._tight_ever_latched
                 self._achieved_fixed_goal = True
                 self._tight_ever_latched = True
+                self._tight_latch_count += 1
                 if self.log_diag:
                     print(f"[ACHIEVED-FIXED-GOAL] step={self._step} "
                           f"final_goal_dist={_final_goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "
                           f"crossed={self._crossed_switching_threshold} "
+                          f"event={'FIRST_LATCH' if _first_latch else 'RELATCH'} "
+                          f"latch_count={self._tight_latch_count} "
                           f"— pinning free mode to prevent overshoot",
                           flush=True)
 
@@ -5023,6 +5033,10 @@ class SamplingC3Controller:
                 obj_xy         = obj_xy,
                 current_q      = current_q,
                 goal_dist      = goal_dist,
+                final_goal_dist = _final_goal_dist,
+                rot_error      = rot_error_now,
+                obj_quat       = _qn,
+                goal_yaw       = _goal_yaw_now,
                 g_hat          = g_hat,
                 p_ee_des       = _p_ee_des,
                 free_diag      = free_diag,
@@ -5329,7 +5343,9 @@ class SamplingC3Controller:
     # ------------------------------------------------------------------
 
     def _print_unified_step(self, *, step, mode, switch_reason,
-                            ee_pos_now, obj_xy, current_q, goal_dist, g_hat,
+                            ee_pos_now, obj_xy, current_q, goal_dist,
+                            final_goal_dist, rot_error, obj_quat, goal_yaw,
+                            g_hat,
                             p_ee_des, free_diag,
                             curr_cost, lam_n, lam_t, lam_des):
         """One mode-aware [STEP] line per control loop.
@@ -5344,11 +5360,20 @@ class SamplingC3Controller:
         sim_t = (step - 1) * self._dt_ctrl
         # Object xyz (lift z from current_q for parity with [GS-tgt]).
         obj_z = float(current_q[self._obj_z_idx])
+        # Planar yaw is diagnostic only; the success gate continues to use
+        # the full quaternion geodesic ``rot_error`` computed by the caller.
+        _qw, _qx, _qy, _qz = (float(v) for v in obj_quat)
+        obj_yaw = float(np.arctan2(
+            2.0 * (_qw * _qz + _qx * _qy),
+            1.0 - 2.0 * (_qy * _qy + _qz * _qz)))
         prefix = (
             f"[STEP] step={step} mode={mode} t={sim_t:.3f}s "
             f"ee=({ee_pos_now[0]:+.3f},{ee_pos_now[1]:+.3f},{ee_pos_now[2]:+.3f}) "
             f"obj=({obj_xy[0]:+.3f},{obj_xy[1]:+.3f},{obj_z:+.3f}) "
             f"goal_dist={goal_dist:.3f}m "
+            f"final_goal_dist={final_goal_dist:.4f}m "
+            f"obj_yaw={obj_yaw:+.4f}rad goal_yaw={float(goal_yaw):+.4f}rad "
+            f"rot_err={rot_error:.4f}rad "
             f"switch={switch_reason.name}"
         )
 

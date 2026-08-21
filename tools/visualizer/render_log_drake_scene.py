@@ -392,7 +392,12 @@ def main():
             out_png = args.out_dir / f"frame_{fidx:06d}.png"
             Image.fromarray(arr, mode="RGBA").save(out_png, optimize=False)
 
-            _t = rec["sim_t"] + (0.1 * a if nxt is not None else 0.0)
+            # Timestamp interpolation follows the log's actual simulation
+            # times. The old hard-coded 0.1 s increment was wrong for the
+            # 0.075 s Block-T controller tick and for strided frames.
+            _t = (rec["sim_t"]
+                  if nxt is None else
+                  rec["sim_t"] + a * (nxt["sim_t"] - rec["sim_t"]))
             tl_fp.write(f"{fidx},{_t:.4f},{rec['mode']},{rec['switch']}\n")
 
             kept += 1
