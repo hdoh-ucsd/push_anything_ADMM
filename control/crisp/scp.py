@@ -75,6 +75,11 @@ class CrispParams:
     eps_p: float = 1e-3
     eps_r: float = 1e-3
     second_order_correction: bool = True
+    #: Reset the trust region to delta_0 after a penalty escalation. The
+    #: reference ships this line COMMENTED OUT (SolverInterface.h:554), leaving
+    #: the radius collapsed and only refreshing the merit/model under the new
+    #: penalties. See the module docstring.
+    reset_trust_region_on_escalation: bool = True
     osqp_eps_abs: float = 1e-9
     osqp_eps_rel: float = 1e-9
     osqp_max_iter: int = 20000
@@ -178,7 +183,8 @@ class CrispSolver:
                 if done:
                     status = verdict
                     break
-                delta = p.delta_0                  # INFERRED, see module docstring
+                if p.reset_trust_region_on_escalation:
+                    delta = p.delta_0              # see module docstring
 
         c_eq = prob.eq_constraints(z)
         c_in = prob.ineq_constraints(z)

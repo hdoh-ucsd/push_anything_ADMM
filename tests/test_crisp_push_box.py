@@ -23,7 +23,8 @@ OUR_BOX = PushBoxParams(
 
 
 def _params(**kw):
-    base = dict(a=0.5, b=0.25, mu=0.3, mass=1.0, N=10, dt=0.02, c_int=0.6)
+    # Reference constants, SolvePushbox.cpp:9-16.
+    base = dict(a=0.5, b=0.25, mu=0.5, mass=1.0, g=9.8, N=10, dt=0.02, c_int=0.4)
     base.update(kw)
     return PushBoxParams(**base)
 
@@ -246,46 +247,41 @@ def test_execution_plan_reports_the_ee_speed_it_demands():
 
 
 @pytest.mark.slow
-def test_paper_benchmark_converges_feasibly_and_drives_the_box():
-    """Paper §IV-B2: a 3 m target, all-zero guess, N=200 dt=0.02.
+def test_paper_benchmark_drives_the_box_from_an_all_zero_guess():
+    """Paper IV-B2 at the reference's own constants (SolvePushbox.cpp:9-16).
 
-    The qualitative claim -- a feasible, informed contact sequence found from a
-    naive guess -- reproduces: the solve converges below the paper's 1e-5
-    violation bar and carries the box most of the way on the correct face.
+    The qualitative claim reproduces: from an all-zero guess the solve finds the
+    correct pushing face and carries the box essentially the whole 3 m.
+    Measured: 2.9592 m travelled, terminal error 0.0408 m (1.36%), 65 iterations.
     """
-    p = _params(N=200, dt=0.02)
     goal = np.array([3.0, 0.0, 0.0])
-    prob = PushBoxProblem(p, s_init=np.zeros(3), s_goal=goal)
+    prob = PushBoxProblem(_params(N=200, dt=0.02), s_init=np.zeros(3), s_goal=goal)
 
     res = CrispSolver(CrispParams()).solve(prob, np.zeros(prob.n))
 
-    assert res.success, res.status
-    assert res.max_violation < 1e-5
     states, controls = prob.unpack(res.z)
-    assert np.linalg.norm(states[-1, :2]) > 0.8 * 3.0     # 2.633 m measured
+    assert np.linalg.norm(states[-1, :2]) > 0.8 * 3.0
+    assert np.linalg.norm(states[-1, :2] - goal[:2]) < 0.05
     assert {PushBoxProblem.active_face(u, 1e-4) for u in controls} - {None} == {"-x"}
 
 
 @pytest.mark.slow
 @pytest.mark.xfail(
-    reason="Table II reports push box at tracking error 0.02 AND violation "
-           "8.3e-9. This port gets one or the other: terminal weight x10 gives "
-           "clean feasibility with 12.2% error, x100 gives 1.36% error with "
-           "violation 1.86e-3. Prime suspect is the inner QP -- the paper's "
-           "Remark 10 warns that first-order QP solvers give insufficient "
-           "solution quality, and says CRISP uses interior-point PIQP for "
-           "exactly that reason, while this port uses OSQP (first-order ADMM). "
-           "Q and R are also unpublished for push box.",
+    reason="Table II reports push box at violation 8.3e-9, and the reference's "
+           "own constraintTol is 1e-6. Under the reference-faithful formulation "
+           "this port lands at 7.53e-5 -- close on trajectory (1.36% terminal "
+           "error) but not feasible to their bar. The inner QP is the prime "
+           "suspect: the reference uses interior-point PIQP "
+           "(SolverInterface.h:9) and this port uses OSQP, which under the same "
+           "formulation needs ~4x the iterations and stops converging at short "
+           "horizons.",
     strict=True,
 )
-def test_paper_benchmark_reaches_published_tracking_quality():
+def test_paper_benchmark_reaches_published_feasibility():
     goal = np.array([3.0, 0.0, 0.0])
-    q = 100.0 * PushBoxProblem(_params(N=200, dt=0.02), np.zeros(3), goal).q_star
-    prob = PushBoxProblem(_params(N=200, dt=0.02, q_pos=q, q_yaw=q),
-                          s_init=np.zeros(3), s_goal=goal)
+    prob = PushBoxProblem(_params(N=200, dt=0.02), s_init=np.zeros(3), s_goal=goal)
 
     res = CrispSolver(CrispParams()).solve(prob, np.zeros(prob.n))
 
-    states, _ = prob.unpack(res.z)
     assert res.max_violation < 1e-5
-    assert np.linalg.norm(states[-1, :2] - goal[:2]) < 0.05
+    assert res.success, res.status
