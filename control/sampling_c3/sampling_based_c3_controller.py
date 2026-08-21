@@ -1143,6 +1143,7 @@ class SamplingC3Controller:
         # (it records "this goal was reached", not "some goal was reached").
         self._tight_ever_latched = False
         self._tight_latch_count = 0
+        self._tight_first_latch_sim_t = None
         try:
             self.progress.reset()
         except AttributeError:
@@ -2174,6 +2175,7 @@ class SamplingC3Controller:
             # FAIL(-). Cleared only by reset_for_new_goal().
             self._tight_ever_latched = False
             self._tight_latch_count = 0
+            self._tight_first_latch_sim_t = None
         _pos_thr = 0.02  # reference position_success_threshold
         _rot_thr = 0.10  # reference orientation_success_threshold
         # OFF-REFERENCE DEVIATION (user-authorized 2026-08-11): achieved-goal
@@ -2214,6 +2216,10 @@ class SamplingC3Controller:
                 self._achieved_fixed_goal = True
                 self._tight_ever_latched = True
                 self._tight_latch_count += 1
+                if _first_latch:
+                    self._tight_first_latch_sim_t = float(
+                        plant_ctx.get_time()) if plant_ctx is not None else (
+                            float(self._step - 1) * float(self._dt_ctrl))
                 if self.log_diag:
                     print(f"[ACHIEVED-FIXED-GOAL] step={self._step} "
                           f"final_goal_dist={_final_goal_dist:.4f}m rot_err={rot_error_now:.4f}rad "

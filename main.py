@@ -1167,15 +1167,33 @@ def main():
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
 
     # PORT_EXIT_ON_TIGHT=1 (2026-08-20 Fig-8 block-T campaign): end the run
-    # at the first joint-tight achievement (_tight_ever_latched, the sticky
-    # record of 16f03ac) instead of running to max_time. Measurement-harness
-    # gate for time-to-goal campaigns — default OFF, byte-identical unset.
+    # after a one-second simulated-time settling hold following the first
+    # joint-tight achievement (_tight_ever_latched, the sticky record of
+    # 16f03ac), instead of running to max_time. Measurement-harness gate for
+    # time-to-goal campaigns — default OFF, byte-identical unset.
     _exit_on_tight = os.environ.get("PORT_EXIT_ON_TIGHT", "0") == "1"
+    _tight_hold_s = 1.0
+    _tight_exit_at = None
 
-    while sim_time < max_time:
+    while True:
         if _exit_on_tight and getattr(mpc, "_tight_ever_latched", False):
-            print(f"[EXIT-ON-TIGHT] step={step} t={sim_time:.3f}s — tight "
-                  f"goal achieved, ending run (PORT_EXIT_ON_TIGHT=1)")
+            if _tight_exit_at is None:
+                _latch_t = getattr(mpc, "_tight_first_latch_sim_t", None)
+                if _latch_t is None:
+                    _latch_t = sim_time
+                _tight_exit_at = float(_latch_t) + _tight_hold_s
+                print(f"[TIGHT-GOAL-HOLD] step={step} t={sim_time:.3f}s — "
+                      f"holding simulation through t={_tight_exit_at:.3f}s "
+                      f"(1.000s after first latch)", flush=True)
+            if sim_time + 1e-12 >= _tight_exit_at:
+                print(f"[EXIT-ON-TIGHT] step={step} t={sim_time:.3f}s — "
+                      f"1.000s post-goal hold complete, ending run "
+                      f"(PORT_EXIT_ON_TIGHT=1)", flush=True)
+                break
+        # A tight latch observed at the configured time limit is allowed to
+        # finish its settling hold. Without an active hold, max_time retains
+        # its existing meaning.
+        if sim_time >= max_time and _tight_exit_at is None:
             break
         current_q = plant.GetPositions(plant_ctx)
         current_v = plant.GetVelocities(plant_ctx)
