@@ -337,3 +337,63 @@ NOT read 0.19x as our margin. The authoritative figure for our problem is
 the direct measurement: GPU 64.4 us vs Drake 47.5 us = 0.74x. The sweep's
 value is the SHAPE of the crossover, not our own cell's absolute value.
 Both agree on the sign: the GPU loses at our cell.
+
+=== AUTHORIZED A/B: check_termination 100 -> 25 (2026-08-21) ===
+User authorized the A/B. Instrument: PORT_OSQP_CHECK_TERMINATION env gate @
+7350d4b (unset = reference 100, byte-identical). Both legs at the SAME
+commit, SAME seed 0, box `pushing --task-id 4`, run SEQUENTIALLY. Only the
+env var differs -- the tightest possible A/B.
+
+TIER 1, 60 s gate (iteration only, NEVER quotable):
+                       check=100 (REF)    check=25
+  avg_per_step_ms              480.1        250.5    1.92x
+  wall                        6m43s        3m48s
+  full_solves                   4429         4236
+  tight_goal              PASS(final)  PASS(final)
+
+MECHANISM confirmed in-run (DIAG_OSQP_ITERS=1, 15 s):
+  in-loop OSQP iters         276.6        107.0    2.58x fewer
+  final_boosted              413.2        138.8    2.98x fewer
+  final_plain                290.8        139.6    2.08x fewer
+Note the in-run drop (2.58x) EXCEEDS the cold corpus probe's prediction
+(246.7 -> 116.2 = 2.12x): the live loop warm-starts, so its QPs converge
+even earlier than a cold solve, and check=100 was wasting proportionally
+more than the probe showed. That is why end-to-end beat the 1.4x
+projection.
+
+TIER 2, 180 s CANONICAL (the quotable tier):
+                       check=100 (REF)    check=25
+  avg_per_step_ms              496.8        244.4    2.03x
+  wall                       20m47s       11m03s    1.88x
+  full_solves                  12502        12112    0.97x of reference
+  switches                        28            6
+  modes free/c3             2115/285      2332/68
+  goal_dist final             0.0110       0.0150
+  goal_dist min               0.0090       0.0108
+  trans err (m)               0.0114       0.0153   tight bar 0.02
+  rot err (rad)               0.0669       0.0403   tight bar 0.10
+  success                        YES          YES
+  tight_goal             PASS(final)  PASS(final)
+  loose_goal                    PASS         PASS
+
+VERDICT: 2.03x on the canonical tier, both legs tight PASS(final), and the
+work is genuinely done (97% of the reference solve count). This is NOT the
+threads=4 artifact, where the "2x" came from full_solves collapsing
+4504 -> 801 and the task failing outright.
+
+HONEST CAVEATS:
+1. OFF-REFERENCE. check_termination=100 is a reference literal
+   (shared_parameters/sampling_c3_qp_settings.yaml). Landing this is a
+   CONFORMANCE decision, not a perf decision. Not landed; gate defaults to
+   100.
+2. Real behavioural shift: c3 engagement 285 -> 68 ticks, switches 28 -> 6.
+   Both runs still latch tight and check=25's ROTATION error is BETTER
+   (0.0403 vs 0.0669). The mechanism is known and expected -- wall clock
+   feeds filtered_solve_time -> the x-pred clamp, so a faster solver
+   legitimately changes the trajectory the way faster hardware would.
+   But it IS a different trajectory, not just a faster one.
+3. BOX ONLY. The T task (push_t_mesh) has not been run at either setting.
+   A T confirm at both settings is a prerequisite before landing.
+4. Single draw per leg. Per the no-multi-seed rule these are single-seed
+   runs; the box tight-PASS is near the 0.02 m bar at 0.0153 m, so the
+   margin is real but not enormous.
