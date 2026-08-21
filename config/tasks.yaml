@@ -861,6 +861,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1020
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.082043, 0.031524, -0.025781]
       - [-0.082043, -0.029964, -0.025781]
@@ -922,6 +943,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1039
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.080955, 0.064635, -0.027656]
       - [-0.080955, -0.055968, -0.027656]
@@ -983,6 +1025,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1029
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.077854, 0.056634, -0.026556]
       - [-0.077854, -0.052867, -0.026556]
@@ -1044,6 +1107,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1043
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.068272, 0.077709, -0.027044]
       - [-0.068272, -0.084372, -0.027044]
@@ -1105,6 +1189,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1000
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.061691, 0.064074, -0.024119]
       - [-0.061691, -0.094816, -0.024119]
@@ -1166,6 +1271,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1022
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.069857, 0.085586, -0.026314]
       - [-0.069857, -0.073224, -0.026314]
@@ -1227,6 +1353,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1029
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.081106, 0.059579, -0.026118]
       - [-0.081106, -0.051523, -0.026118]
@@ -1288,6 +1435,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1032
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.078869, 0.046289, -0.024539]
       - [-0.078869, -0.055748, -0.024539]
@@ -1349,6 +1517,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0974
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.059715, 0.076752, -0.023597]
       - [-0.059715, -0.081456, -0.023597]
@@ -1410,6 +1599,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1073
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.079472, 0.060112, -0.030900]
       - [-0.079472, -0.044026, -0.030900]
@@ -1471,6 +1681,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1718
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.063746, 0.065873, -0.062896]
       - [-0.063746, -0.071637, -0.062896]
@@ -1532,6 +1763,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0936
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.039172, 0.076389, -0.021594]
       - [-0.039172, -0.101197, -0.021594]
@@ -1593,6 +1845,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1854
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.049298, 0.050483, -0.068155]
       - [-0.049298, -0.053252, -0.068155]
@@ -1654,6 +1927,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1286
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.055459, 0.087707, -0.041906]
       - [-0.055459, -0.073075, -0.041906]
@@ -1715,6 +2009,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1380
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.052205, 0.126576, -0.039712]
       - [-0.052205, -0.125373, -0.039712]
@@ -1776,6 +2091,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1319
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.039753, 0.124147, -0.041170]
       - [-0.039753, -0.108533, -0.041170]
@@ -1837,6 +2173,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0997
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.108825, 0.075751, -0.024540]
       - [-0.108825, -0.079959, -0.024540]
@@ -1898,6 +2255,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1183
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.050525, 0.107220, -0.034256]
       - [-0.050525, -0.112505, -0.034256]
@@ -1959,6 +2337,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1287
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.098883, 0.156753, -0.043249]
       - [-0.098883, -0.150249, -0.043249]
@@ -2020,6 +2419,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0911
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.072740, 0.095957, -0.020722]
       - [-0.072740, -0.096789, -0.020722]
@@ -2081,6 +2501,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1051
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.097731, 0.107398, -0.028300]
       - [-0.097731, -0.108470, -0.028300]
@@ -2142,6 +2583,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.2061
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.071343, 0.101031, -0.077160]
       - [-0.071343, -0.153392, -0.077160]
@@ -2203,6 +2665,27 @@ tasks:
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1218
+    # ANYTHING-lineage sampler (2026-08-20). These objects come from the
+    # reference `anything` demo, whose parameters/sampling_params.yaml:14
+    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
+    # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
+    # buffer_distance along the face normal (generate_samples.cc:445-551).
+    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # where PerimeterSampling was identified as the push_t demo's mechanism
+    # = wrong lineage = the spin class. The imported Fig 8 objects were left
+    # behind on the geometry-generic projection perimeter sampler. Values
+    # below are the anything yaml literals, verbatim from push_t_mesh.
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    # anything grid literal (kept for reference/fallback if the strategy is
+    # ever flipped back to kRandomOnPerimeter). Without this these tasks
+    # silently inherited the push_t demo grid [-0.12,0.08]x[-0.08,0.08]
+    # from sampling_c3_kik_t.yaml (dc40d1e), which is not their lineage.
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
     ground_witness_points_body:
       - [-0.060143, 0.071554, -0.032591]
       - [-0.060143, -0.087103, -0.032591]
@@ -2247,3 +2730,2117 @@ tasks:
       com: [0.0, 0.0, 0.0]
       moments: [0.003, 0.003, 0.006]
       products: [0.0, 0.0, 0.0]
+
+  # =====================================================================
+  # BLOCK OBJECT VARIANTS (2026-08-20)
+  # Box-primitive counterparts of the low-CoM Fig 8 objects.
+  # =====================================================================
+
+  # BLOCK variant of `book` (1 <box> primitive, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `book` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  book_block:
+    object_type: tshape
+    link_name: book
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.02075
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0911
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.07274
+      - 0.095957
+      - -0.020722
+    - - -0.07274
+      - -0.096789
+      - -0.020722
+    - - 0.074246
+      - -0.000416
+      - -0.020722
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0207
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/book_block/book.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `lotion` (2 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `lotion` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  lotion_block:
+    object_type: tshape
+    link_name: lotion
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.021594
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0936
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.039172
+      - 0.076389
+      - -0.021594
+    - - -0.039172
+      - -0.101197
+      - -0.021594
+    - - 0.040963
+      - -0.012404
+      - -0.021594
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0216
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/lotion_block/lotion.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `baby_toy` (3 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `baby_toy` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  baby_toy_block:
+    object_type: tshape
+    link_name: baby_toy
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.02835
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1051
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.097731
+      - 0.107398
+      - -0.0283
+    - - -0.097731
+      - -0.10847
+      - -0.0283
+    - - 0.098644
+      - -0.000536
+      - -0.0283
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0283
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/baby_toy_block/baby_toy.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `I_shape_texture` (3 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `I_shape_texture` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  I_shape_texture_block:
+    object_type: tshape
+    link_name: I_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.025785
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.102
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.082043
+      - 0.031524
+      - -0.025781
+    - - -0.082043
+      - -0.029964
+      - -0.025781
+    - - 0.079604
+      - 0.00078
+      - -0.025781
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0258
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/I_shape_texture_block/I_shape_texture.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `H_shape_texture` (3 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `H_shape_texture` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  H_shape_texture_block:
+    object_type: tshape
+    link_name: H_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.0236
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.85
+    - 0.38
+    - 0.1
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0974
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.059715
+      - 0.076752
+      - -0.023597
+    - - -0.059715
+      - -0.081456
+      - -0.023597
+    - - 0.064094
+      - -0.002352
+      - -0.023597
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0236
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/H_shape_texture_block/H_shape_texture.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `E_shape_video` (4 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `E_shape_video` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  E_shape_video_block:
+    object_type: tshape
+    link_name: E_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.0309
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1073
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.079472
+      - 0.060112
+      - -0.0309
+    - - -0.079472
+      - -0.044026
+      - -0.0309
+    - - 0.083349
+      - 0.008043
+      - -0.0309
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0309
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/E_shape_video_block/E_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `clamp` (5 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `clamp` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  clamp_block:
+    object_type: tshape
+    link_name: clamp
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.024539
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0997
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.108825
+      - 0.075751
+      - -0.02454
+    - - -0.108825
+      - -0.079959
+      - -0.02454
+    - - 0.117827
+      - -0.002104
+      - -0.02454
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0245
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/clamp_block/clamp.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `Y_shape_video` (3 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `Y_shape_video` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  Y_shape_video_block:
+    object_type: tshape
+    link_name: Y_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.02412
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.061691
+      - 0.064074
+      - -0.024119
+    - - -0.061691
+      - -0.094816
+      - -0.024119
+    - - 0.055935
+      - -0.015371
+      - -0.024119
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0241
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/Y_shape_video_block/Y_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `3_shape_video` (5 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `3_shape_video` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  3_shape_video_block:
+    object_type: tshape
+    link_name: 3_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.024538
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1032
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.078869
+      - 0.046289
+      - -0.024539
+    - - -0.078869
+      - -0.055748
+      - -0.024539
+    - - 0.079597
+      - -0.00473
+      - -0.024539
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0245
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/3_shape_video_block/3_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `C_shape_texture` (5 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `C_shape_texture` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  C_shape_texture_block:
+    object_type: tshape
+    link_name: C_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.027655
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1039
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.080955
+      - 0.064635
+      - -0.027656
+    - - -0.080955
+      - -0.055968
+      - -0.027656
+    - - 0.079531
+      - 0.004334
+      - -0.027656
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0277
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/C_shape_texture_block/C_shape_texture.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `G_shape_video` (5 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `G_shape_video` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  G_shape_video_block:
+    object_type: tshape
+    link_name: G_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.026315
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1022
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.069857
+      - 0.085586
+      - -0.026314
+    - - -0.069857
+      - -0.073224
+      - -0.026314
+    - - 0.063228
+      - 0.006181
+      - -0.026314
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0263
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/G_shape_video_block/G_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `A_shape_video` (3 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `A_shape_video` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  A_shape_video_block:
+    object_type: tshape
+    link_name: A_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.02704
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1043
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.068272
+      - 0.077709
+      - -0.027044
+    - - -0.068272
+      - -0.084372
+      - -0.027044
+    - - 0.067329
+      - -0.003332
+      - -0.027044
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.027
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/A_shape_video_block/A_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `B_shape_video` (5 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `B_shape_video` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  B_shape_video_block:
+    object_type: tshape
+    link_name: B_shape_video
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.026115
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1029
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.081106
+      - 0.059579
+      - -0.026118
+    - - -0.081106
+      - -0.051523
+      - -0.026118
+    - - 0.075366
+      - 0.004028
+      - -0.026118
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0261
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/B_shape_video_block/B_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # BLOCK variant of `R_shape_texture` (5 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `R_shape_texture` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  R_shape_texture_block:
+    object_type: tshape
+    link_name: R_shape_texture
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.026555
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.75
+    - 0.75
+    - 0.75
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.1029
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.077854
+      - 0.056634
+      - -0.026556
+    - - -0.077854
+      - -0.052867
+      - -0.026556
+    - - 0.085599
+      - 0.001884
+      - -0.026556
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0266
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/R_shape_texture_block/R_shape_texture.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      moments:
+      - 0.003
+      - 0.003
+      - 0.006
+      products:
+      - 0.0
+      - 0.0
+      - 0.0
+
+  # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
+  push_t_white:
+    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
+    # Fig 8 campaign 2026-08-15). mesh z: [-0.0200, 0.0200].
+    object_type: tshape
+    link_name: push_t_white
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0200]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0900
+    # ANYTHING-lineage sampler (see the 23 imported objects above).
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
+    ground_witness_points_body:
+      - [-0.120000, 0.080000, -0.020000]
+      - [-0.120000, -0.080000, -0.020000]
+      - [0.080000, 0.000000, -0.020000]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.0310
+      z_obj_target: 0.0200
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/push_t_white/push_t_white.sdf
+    controller_mass: 1.0
+
+  # =====================================================================
+  # BLOCK OBJECT VARIANTS (2026-08-20)
+  # Box-primitive counterparts of the low-CoM Fig 8 objects.
+  # =====================================================================
+
+  # BLOCK variant of `push_t_white` (2 <box> primitives, hand-authored decomposition of that
+  # object's mesh silhouette, in the style of push_t_block).
+  # Identical to `push_t_white` in EVERY field except object_sdf and
+  # init_xyz.z -- same mass, friction, cost block, controller
+  # inertia, kMeshNormal sampler literals, goal and ground
+  # witnesses -- so the only variable is the collision shape.
+  push_t_white_block:
+    object_type: tshape
+    link_name: push_t_white
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type:
+      EE-BOX: 0.42
+      BOX-GND: 0.46
+      EE-GND: 0.823
+    q_init_franka:
+    - 2.191
+    - 1.1
+    - -1.33
+    - -2.22
+    - 1.3
+    - 2.02
+    - 0.08
+    init_xyz:
+    - 0.5
+    - 0.0
+    - 0.02
+    goal_xy:
+    - 0.482
+    - 0.187
+    goal_yaw: -0.7379
+    color_rgba:
+    - 0.13
+    - 0.42
+    - 0.78
+    - 1.0
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.09
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits:
+    - -0.11
+    - 0.11
+    grid_y_limits:
+    - -0.11
+    - 0.11
+    ground_witness_points_body:
+    - - -0.12
+      - 0.08
+      - -0.02
+    - - -0.12
+      - -0.08
+      - -0.02
+    - - 0.08
+      - 0.0
+      - -0.02
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos:
+      - 0.01
+      - 0.01
+      - 0.01
+      q_vector_obj_quat:
+      - 0.1
+      - 0.1
+      - 0.1
+      - 0.1
+      q_vector_obj_pos:
+      - 150.0
+      - 150.0
+      - 120.0
+      q_vector_position_obj_quat:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      q_vector_position_obj_pos:
+      - 200.0
+      - 200.0
+      - 120.0
+      q_vector_ee_vel:
+      - 15.0
+      - 15.0
+      - 10.0
+      q_vector_obj_ang_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      q_vector_obj_lin_vel:
+      - 0.05
+      - 0.05
+      - 0.05
+      w_R: 6.0
+      r_vector:
+      - 0.01
+      - 0.01
+      - 1.0
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.02
+      d_push: 0.05
+      w_ee_approach: 8000.0
+      w_torque: 0.01
+    object_sdf: sim/models/push_t_white_block/push_t_white.sdf
+    controller_mass: 1.0
