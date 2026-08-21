@@ -18,9 +18,12 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 
 # Media artifacts
 *.mp4
+*.gif
 *.html
 
 # Milestones
@@ -29,7 +32,9 @@ milestones/
 # Run outputs
 results/
 profiling/results/
-experiments/
+# Render and profiler intermediates
+*.prof
+frames/
 # Per-run diagnostic streams the controller rewrites every launch.
 audit_output/lambda_trace.csv
 audit_output/lambda_horizon_trace.csv
@@ -42,12 +47,15 @@ scripts/probe_e_inspect.py
 scripts/probe_ik_lock.py
 scripts/verify_deck_numbers.py
 
-# docs/ are local working notes for the project author.
+# docs/ are local working notes for the project author, except for the
+# reproducible README figures and their generator.
 # Not tracked because they are session-scratch (investigation receipts,
 # design drafts) that clutter diffs without serving collaborators.
 # The author keeps them locally and pastes relevant ones into Claude
 # conversations as needed.
-docs/
+docs/*
+!docs/figures/
+!docs/figures/**
 
 # Local Claude Code settings (developer-scoped hooks, permissions)
 .claude/settings.local.json

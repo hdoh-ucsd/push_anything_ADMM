@@ -1,0 +1,10 @@
+Working directory: /root/push_anything_ADMM
+Timestamp: 2026-08-21T12:49:05-07:00
+
+Exact command executed through a transcript recorder:
+
+script -q -e -c 'env PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider -ra tests --junitxml=audit_output/test_baseline_20260821/pytest.junit.xml' audit_output/test_baseline_20260821/pytest.txt
+
+Inner pytest command:
+
+env PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider -ra tests --junitxml=audit_output/test_baseline_20260821/pytest.junit.xml
