@@ -306,3 +306,34 @@ Ceiling (scripts/gpu/gpu_osqp_ceiling.py, n=639 m=439 fp64):
 
   Supersedes the earlier 41.8 us/sample-iteration figure (measured at m=300);
   at the real m=439 batched GPU is 64.4 us, a loss rather than a slight win.
+
+=== CROSSOVER MAP: WHEN WOULD A GPU WIN? (2026-08-21) ===
+scripts/gpu/crossover_sweep.py — us per ADMM iteration per sample, GPU
+batch=6, fp64. Ratio > 1.00x means the GPU iteration is cheaper than Drake's.
+
+              0.16%     5.00%    50.00%   100.00%   <- Hessian density
+    n= 639     0.19x     4.47x     5.18x     8.52x
+    n=1278     1.58x    34.12x    52.44x    32.80x
+    n=2556    14.16x   125.14x   135.95x   137.50x
+
+OUR PROBLEM IS THE TOP-LEFT CELL — the only losing cell in the entire plane.
+
+Two crossings, both close by:
+  density: at n=639, 0.16% -> 5% flips 0.19x -> 4.47x
+  size   : at 0.16% density, n=639 -> n=1278 flips 0.19x -> 1.58x
+So roughly a 2x horizon/contact growth, or any real Hessian coupling, and the
+GPU becomes the right tool.
+
+GPU time is nearly INDEPENDENT of density (n=2556 row: 159.58 / 158.14 /
+159.56 / 158.91 us) and depends only on n. That is the launch/dense-work
+signature: the GPU pays the same cost whether the matrix is 0.16% or 100%
+full, because it does dense work regardless. The CPU meanwhile scales
+steeply with both n and density (9.66 -> 21849 us across the plane).
+
+CAVEAT — these synthetic instances are numerically EASIER than ours: the
+synthetic CPU leg at our cell is 9.66 us/iter versus the 47.5 us/iter
+measured in-run (real cond(K) ~ 1.2e7, real m=439 vs synthetic 304). So do
+NOT read 0.19x as our margin. The authoritative figure for our problem is
+the direct measurement: GPU 64.4 us vs Drake 47.5 us = 0.74x. The sweep's
+value is the SHAPE of the crossover, not our own cell's absolute value.
+Both agree on the sign: the GPU loses at our cell.
