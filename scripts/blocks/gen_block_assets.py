@@ -77,8 +77,14 @@ def box_obj(boxes):
         for k in corners:
             V.append(c + R @ (k * half))
         for q in quads:
-            F.append([base + q[0] + 1, base + q[1] + 1, base + q[2] + 1])
-            F.append([base + q[0] + 1, base + q[2] + 1, base + q[3] + 1])
+            # REVERSED winding: load_mesh_faces derives the face normal from
+            # vertex order, and kMeshNormal offsets a sample by
+            # +buffer_distance ALONG that normal. With the forward winding the
+            # normals pointed INWARD, so every sample landed inside the body,
+            # failed the clearance test, and the sampler returned only the EE's
+            # current position -- n=1 on 100% of ticks, never entering C3+.
+            F.append([base + q[0] + 1, base + q[2] + 1, base + q[1] + 1])
+            F.append([base + q[0] + 1, base + q[3] + 1, base + q[2] + 1])
     lines = ["# block object, generated from the hand-authored decomposition"]
     lines += [f"v {p[0]:.6f} {p[1]:.6f} {p[2]:.6f}" for p in V]
     lines += [f"f {a} {b_} {c_}" for a, b_, c_ in F]
