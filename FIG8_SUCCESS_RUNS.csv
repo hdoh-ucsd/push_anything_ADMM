@@ -1,0 +1,5 @@
+object,task,log,commit,seed,first_goal_step,time_to_goal_s
+Milk Bottle,milk,milk_seed0.v4standoff.log,a4afd78,0,728,54.600
+Clamp,clamp,clamp_seed0.v4standoff.log,a4afd78,0,1748,131.100
+Chicken Broth,chicken_broth,chicken_broth_projfix_seed0.log,5c82410,0,366,27.450
+Chicken Broth,chicken_broth,chicken_broth_seed0.badclearance.log,5c82410,0,366,27.450
