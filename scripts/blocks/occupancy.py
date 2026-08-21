@@ -35,9 +35,16 @@ def load_obj(path):
     return np.array(V), np.array(F)
 
 
-def silhouette(V, F, res=RES):
-    xmin, ymin = V[:, 0].min(), V[:, 1].min()
-    xmax, ymax = V[:, 0].max(), V[:, 1].max()
+def silhouette(V, F, res=RES, bounds=None):
+    if bounds is None:
+        xmin, ymin = V[:, 0].min(), V[:, 1].min()
+        xmax, ymax = V[:, 0].max(), V[:, 1].max()
+    else:
+        # Explicit bounds let a caller pad the grid to cover box material that
+        # sticks out PAST the mesh AABB. Without this the grid is sized from the
+        # mesh alone and any overshoot is silently clipped -- it never appears
+        # as spill, which hid a 58 mm overshoot on lotion_block.
+        xmin, ymin, xmax, ymax = bounds
     nx = int(np.ceil((xmax - xmin) / res)) + 1
     ny = int(np.ceil((ymax - ymin) / res)) + 1
     occ = np.zeros((ny, nx), dtype=bool)

@@ -57,8 +57,25 @@ def main():
         objp = os.path.join(REPO, os.path.dirname(t["object_sdf"]),
                             f"{t['link_name']}.obj")
         V, F = load_obj(objp)
-        mesh, xmin, ymin, xmax, ymax = silhouette(V, F)
         boxes = spec[name]["boxes"]
+        # Pad the raster to the UNION of mesh and box extents. Sizing it from
+        # the mesh alone clips box overshoot out of existence, so spill reads
+        # far too low for a decomposition that sticks out past the mesh AABB.
+        import numpy as _np
+        _bx = []
+        for _b in boxes:
+            _R = _np.array([[_np.cos(_b.get("yaw", 0.0)), -_np.sin(_b.get("yaw", 0.0))],
+                            [_np.sin(_b.get("yaw", 0.0)),  _np.cos(_b.get("yaw", 0.0))]])
+            for _sx in (-0.5, 0.5):
+                for _sy in (-0.5, 0.5):
+                    _bx.append(_np.asarray(_b["c"][:2]) +
+                               _R @ _np.array([_sx * _b["s"][0], _sy * _b["s"][1]]))
+        _bx = _np.array(_bx)
+        _bounds = (min(V[:, 0].min(), _bx[:, 0].min()),
+                   min(V[:, 1].min(), _bx[:, 1].min()),
+                   max(V[:, 0].max(), _bx[:, 0].max()),
+                   max(V[:, 1].max(), _bx[:, 1].max()))
+        mesh, xmin, ymin, xmax, ymax = silhouette(V, F, bounds=_bounds)
         bocc = box_footprint(boxes, xmin, ymin, mesh.shape)
 
         inter = (mesh & bocc).sum()

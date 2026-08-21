@@ -5,30 +5,30 @@
   <model name="lotion">
     <link name="lotion">
       <inertial>
-        <pose>-0.000054 -0.011490 0.000200 0 0 0</pose>
+        <pose>0.000830 -0.002751 0.000184 0 0 0</pose>
         <mass>0.05</mass>
         <inertia>
-          <ixx>0.000173153798</ixx>
-          <iyy>3.03256185e-05</iyy>
-          <izz>0.000187634083</izz>
-          <ixy>-7.60214307e-06</ixy>
-          <ixz>5.38993773e-10</ixz>
-          <iyz>1.14896412e-07</iyz>
+          <ixx>0.000121664172</ixx>
+          <iyy>3.17866168e-05</iyy>
+          <izz>0.000137638753</izz>
+          <ixy>1.14178205e-07</ixy>
+          <ixz>-7.636e-09</ixz>
+          <iyz>2.53117949e-08</iyz>
         </inertia>
       </inertial>
       <visual name="box_0">
-        <pose>-0.002800 0.008700 0.000200 0 0 0.036600</pose>
+        <pose>0.000830 0.009800 0.000184 0 0 0.000000</pose>
         <geometry>
-          <box><size>0.084600 0.129800 0.043600</size></box>
+          <box><size>0.080000 0.134000 0.043555</size></box>
         </geometry>
         <material>
           <diffuse>0.75 0.75 0.75 1</diffuse>
         </material>
       </visual>
       <collision name="box_0_volume">
-        <pose>-0.002800 0.008700 0.000200 0 0 0.036600</pose>
+        <pose>0.000830 0.009800 0.000184 0 0 0.000000</pose>
         <geometry>
-          <box><size>0.084600 0.129800 0.043600</size></box>
+          <box><size>0.080000 0.134000 0.043555</size></box>
         </geometry>
         <drake:proximity_properties>
           <drake:compliant_hydroelastic/>
@@ -39,18 +39,18 @@
         </drake:proximity_properties>
       </collision>
       <visual name="box_1">
-        <pose>0.004300 -0.043500 0.000200 0 0 -0.156000</pose>
+        <pose>0.000830 -0.079200 0.000184 0 0 0.000000</pose>
         <geometry>
-          <box><size>0.030100 0.230100 0.043600</size></box>
+          <box><size>0.040000 0.044000 0.043555</size></box>
         </geometry>
         <material>
           <diffuse>0.75 0.75 0.75 1</diffuse>
         </material>
       </visual>
       <collision name="box_1_volume">
-        <pose>0.004300 -0.043500 0.000200 0 0 -0.156000</pose>
+        <pose>0.000830 -0.079200 0.000184 0 0 0.000000</pose>
         <geometry>
-          <box><size>0.030100 0.230100 0.043600</size></box>
+          <box><size>0.040000 0.044000 0.043555</size></box>
         </geometry>
         <drake:proximity_properties>
           <drake:compliant_hydroelastic/>
