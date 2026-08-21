@@ -189,3 +189,11 @@ BUT THREADING STILL CANNOT SPEED THIS UP -- Drake's solve holds the GIL.
   multiprocessing (Drake objects are not trivially picklable) or moving the
   solve out of Python -- which is exactly what the batched GPU path does:
   one Python call performing B solves sidesteps the GIL by construction.
+
+--- serial no-regress at HEAD (4409eed), 60 s box gate, seed 0 ---
+  threads=1 @0ea8fed (pre-fix) : free=517 c3=284  466->472 ms/step  trans 0.0109 rot 0.0503  PASS(final)
+  threads=1 @HEAD   (post-fix) : free=588 c3=213  466.3 ms/step     trans 0.0129 rot 0.0503  PASS(final)
+  threads=4 @HEAD   (post-fix) : free=679 c3=122  457.2 ms/step     trans 0.0188 rot 0.0824  PASS(final)
+  EVAL-EXC = 0 in all three -> the new loud logging is quiet when healthy.
+  Serial PASS class unchanged; metric shifts are inside the run-to-run band
+  already established by the control experiment (identical code diverges).
