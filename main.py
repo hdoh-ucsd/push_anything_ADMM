@@ -535,6 +535,16 @@ def main():
             task_cfg["goal_xy"] = [float(_goal_gen.goal_xy[0]),
                                    float(_goal_gen.goal_xy[1])]
             task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
+            if _gg_planar:
+                # Planar tasks consume goal_yaw (target_yaw path — keeps
+                # the reference yaw-lookahead machinery active). Mirror
+                # the re-goal planar conversion for the drawn boot goal;
+                # without this the drawn quat would be ignored and the
+                # boot yaw would silently stay at the task literal.
+                _q0 = _goal_gen.goal_quat
+                task_cfg["goal_yaw"] = float(np.arctan2(
+                    2.0 * (_q0[0] * _q0[3] + _q0[1] * _q0[2]),
+                    1.0 - 2.0 * (_q0[2] ** 2 + _q0[3] ** 2)))
             _initial_goal_drawn = True
             _gq0 = _goal_gen.goal_quat
             print(f"[GOAL-GEN] initial goal DRAWN "
@@ -1156,7 +1166,17 @@ def main():
     if args.max_time is not None:
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
 
+    # PORT_EXIT_ON_TIGHT=1 (2026-08-20 Fig-8 block-T campaign): end the run
+    # at the first joint-tight achievement (_tight_ever_latched, the sticky
+    # record of 16f03ac) instead of running to max_time. Measurement-harness
+    # gate for time-to-goal campaigns — default OFF, byte-identical unset.
+    _exit_on_tight = os.environ.get("PORT_EXIT_ON_TIGHT", "0") == "1"
+
     while sim_time < max_time:
+        if _exit_on_tight and getattr(mpc, "_tight_ever_latched", False):
+            print(f"[EXIT-ON-TIGHT] step={step} t={sim_time:.3f}s — tight "
+                  f"goal achieved, ending run (PORT_EXIT_ON_TIGHT=1)")
+            break
         current_q = plant.GetPositions(plant_ctx)
         current_v = plant.GetVelocities(plant_ctx)
 
@@ -1613,7 +1633,13 @@ def main():
     # this "reached." Port previously required both criteria at
     # end-of-sim, which failed by physics settling drift (2 mm typical)
     # after the retreat fix (commit 17efb4e) parks the arm.
-    _tight_latched = bool(getattr(mpc, "_achieved_fixed_goal", False))
+    # _tight_ever_latched is the sticky achievement RECORD (reference
+    # cc:887-897): set the instant both criteria hold, never cleared by the
+    # authorized achieved-goal-release deviation (which clears only the
+    # dispatch pin _achieved_fixed_goal to re-engage on post-latch drift).
+    # Fall back to the pin for controllers predating the record.
+    _tight_latched = bool(getattr(mpc, "_tight_ever_latched", False)
+                          or getattr(mpc, "_achieved_fixed_goal", False))
     _tight = _tight_final or _tight_latched
     _tight_reason = ("final" if _tight_final
                      else ("latched" if _tight_latched else "-"))
