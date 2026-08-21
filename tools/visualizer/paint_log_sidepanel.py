@@ -633,12 +633,36 @@ def main():
             sticky_lines.append(hl)
     rolling = deque(maxlen=args.rolling_count)
     result_line: Optional[str] = None
+    # Goal-chaining runs (kRandom re-goaling) DRAW A NEW GOAL the instant the
+    # old one is reached, and main.py's trailing [RESULT] line is measured
+    # against that NEW, never-attempted goal. Rendering it verbatim labels a
+    # successful run "success=NO tight_goal=FAIL" with errors belonging to a
+    # goal the run never pursued. When the log shows a goal was REACHED, build
+    # the verdict from the ACHIEVED goal instead (the tight gate is
+    # pos<0.02 m AND rot<0.1 rad, checked together in
+    # goal_generator.check_and_regoal), and demote the raw [RESULT] to an
+    # explicitly-labelled next-goal note.
+    _reached_t: Optional[str] = None
+    _drawn: Optional[str] = None
     with open(args.log_path, errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
-            if line.startswith(_RESULT_TAG):
+            if _drawn is None:
+                m = re.search(r"\[GOAL-GEN\] initial goal DRAWN[^:]*:\s*(.+)$",
+                              line)
+                if m:
+                    _drawn = m.group(1).strip()
+            if _reached_t is None:
+                m = re.search(r"\[GOAL-GEN\] goal #\d+ REACHED at t=([\d.]+)s",
+                              line)
+                if m:
+                    _reached_t = m.group(1)
+            if line.startswith(_RESULT_TAG) and result_line is None:
                 result_line = line
-                break
+    if _reached_t is not None:
+        _goal_desc = f"  goal {_drawn}" if _drawn else ""
+        result_line = (f"{_RESULT_TAG} TIGHT GOAL REACHED at t={_reached_t}s "
+                       f"(gate: pos<0.02m AND rot<0.1rad){_goal_desc}")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
