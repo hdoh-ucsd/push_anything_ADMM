@@ -103,6 +103,12 @@ class SamplingC3Controller:
         # mechanism (interior draw + signed-distance projection) instead of
         # the analytic _POLY_SHAPES face tables. Per-tick projector closure
         # built in compute_control; None keeps the legacy face-table path.
+        # Also required for PARALLEL sample evaluation: worker plant
+        # contexts must be extracted from a diagram context so the
+        # SceneGraph `geometry_query` port is connected (2026-08-21 defect
+        # -- see inner_solve.make_worker_plant_context). Stored so it can be
+        # handed to InnerSolver below.
+        self._diagram = diagram
         self._use_geometry_perimeter = bool(use_geometry_perimeter_sampling)
         # kMeshNormal (anything lineage): preprocessed body-frame face set
         # from the object's OBJ (sampling.load_mesh_faces); None for tasks
@@ -193,6 +199,9 @@ class SamplingC3Controller:
             torque_limit=self._tlim,
             base_admm_iter=self._admm_iter,
             params=params,
+            # Parallel sample evaluation only: worker plant contexts need
+            # geometry_query connected, which requires a diagram context.
+            diagram=diagram,
         )
         # SE(3) goal orientation [w,x,y,z]; None => planar yaw-only task.
         # See set_goal_quat -- switches rot_error onto the geodesic angle.
