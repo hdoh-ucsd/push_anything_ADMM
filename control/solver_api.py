@@ -30,9 +30,89 @@ transports problems, it does not decide anything.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Optional, Sequence
 
 import numpy as np
+
+
+class CandidateSemantics(str, Enum):
+    """How the input-change warm start (`u_prev`) reaches each candidate.
+
+    This is a SEMANTIC choice, not a tuning knob: it decides whether the
+    candidate loop is order-dependent, and therefore whether a batched or
+    GPU backend can reproduce it at all.
+
+    LEGACY_ORDERED
+        Candidate k is warm-started by candidate k-1's solution, because one
+        solver instance is reused down the loop and `_u_prev_solve` is
+        rewritten at the end of every solve. This is the Python port's
+        historical behaviour. It is ORDER-DEPENDENT and cannot be reproduced
+        by a parallel batch. It is **not** reference behaviour.
+
+    REFERENCE_RESET
+        Every candidate starts from zero input history. This reproduces the
+        C++ reference exactly: `sampling_based_c3_controller.cc:998-1099`
+        constructs a fresh `C3` per candidate inside the OpenMP loop and
+        `c3.cc:91-97` initialises `u_sol_` to zeros, while `c3.cc:340`
+        rebuilds the input cost once per `Solve` from that `u_sol_` -- so the
+        `-2*R*u_prev` term is identically zero and `penalize_input_change` is
+        a no-op for sampled candidates. Verified numerically: `u_prev=None`
+        and `u_prev=zeros` produce bit-identical output.
+
+    INDEPENDENT_BATCH
+        Every candidate receives the SAME tick-entry `u_prev`, captured once
+        before any candidate is solved. Keeps the useful TEMPORAL warm start
+        (previous tick -> this tick) while removing candidate-to-candidate
+        propagation, so candidates are independent and may be solved in any
+        order or concurrently. This is the measured recommendation for the
+        GPU backend.
+
+    Measured 2026-08-21 (box 60 s gate / T 180 s canonical, seed 0; all six
+    runs reached tight PASS(final)):
+
+        semantics          box ms/step   T ms/step   argmin agree vs legacy
+        LEGACY_ORDERED         488.0       235.6      --
+        INDEPENDENT_BATCH      474.2       240.1      box 67.8% / T 94.2%
+        REFERENCE_RESET        485.5       416.3      box 70.5% / T 94.4%
+
+    REFERENCE_RESET is 77% slower on T, and the cause is a TAIL not a mean:
+    in-loop OSQP iterations go mean 100.0->101.4 but max 100->700, and the
+    final QP mean 226.9->264.1 but max 300->1200.
+    """
+
+    LEGACY_ORDERED = "legacy_ordered"
+    REFERENCE_RESET = "reference_reset"
+    INDEPENDENT_BATCH = "independent_batch"
+
+    @classmethod
+    def coerce(cls, value) -> "CandidateSemantics":
+        """Accept the enum, the canonical name, or the short aliases used by
+        the original measurement gate (`ordered`/`reset`/`independent`)."""
+        if isinstance(value, cls):
+            return value
+        key = str(value).strip().lower()
+        alias = {"ordered": cls.LEGACY_ORDERED,
+                 "legacy": cls.LEGACY_ORDERED,
+                 "reset": cls.REFERENCE_RESET,
+                 "reference": cls.REFERENCE_RESET,
+                 "independent": cls.INDEPENDENT_BATCH,
+                 "batch": cls.INDEPENDENT_BATCH}
+        if key in alias:
+            return alias[key]
+        try:
+            return cls(key)
+        except ValueError:
+            raise ValueError(
+                f"unknown candidate semantics {value!r}; expected one of "
+                f"{[m.value for m in cls]} or an alias "
+                f"{sorted(alias)}") from None
+
+    @property
+    def is_order_invariant(self) -> bool:
+        """True when candidate solve order cannot affect any candidate's
+        result -- the precondition for batched or concurrent evaluation."""
+        return self is not CandidateSemantics.LEGACY_ORDERED
 
 # The LCS + cost arrays one C3+ instance needs. These names match the
 # keyword arguments of C3Solver._solve_c3plus exactly, so an instance dict
