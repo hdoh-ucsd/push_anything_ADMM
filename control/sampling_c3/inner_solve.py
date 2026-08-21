@@ -261,6 +261,94 @@ def traj_cost_breakdown(x_seq, u_seq, Q, R, QN, x_ref,
 
 
 # ---------------------------------------------------------------------------
+# Worker plant contexts for parallel sample evaluation
+# ---------------------------------------------------------------------------
+
+def _assert_worker_clone_covers_ctor_args(parent, child, synced_attrs,
+                                          per_worker=()):
+    """Fail loudly if a worker clone could silently diverge from its parent.
+
+    Worker kits rebuild the LCSFormulator and C3Solver from a HAND-WRITTEN
+    argument list, then patch an allowlist of attributes on top. Both lists
+    are easy to forget to update. In 2026-08-21 four LCSFormulator ctor args
+    (`controller_object_mass`, `controller_inertia`, `tshape_mesh_witnesses`,
+    `mesh_ground_witnesses_body`) were never forwarded, so workers evaluated
+    samples against a different physics model than the parent -- identical
+    contact geometry, different mass/inertia, ~2.3x different costs, and no
+    error anywhere.
+
+    This checks the property that actually matters: for every constructor
+    parameter, the child ends up with the same value as the parent. It runs
+    once per pool build, not per sample, so the cost is irrelevant.
+    """
+    import inspect
+
+    import numpy as _np
+
+    mismatched = []
+    for name in inspect.signature(type(parent).__init__).parameters:
+        if name == "self" or name in per_worker:
+            # `per_worker` args are SUPPOSED to differ -- each worker owns
+            # its own autodiff context, which is the point of the pool.
+            continue
+        attr = "_" + name
+        if not hasattr(parent, attr):
+            attr = name
+            if not hasattr(parent, attr):
+                continue            # ctor arg isn't stored under either name
+        p_val, c_val = getattr(parent, attr), getattr(child, attr, None)
+        try:
+            same = bool(_np.all(p_val == c_val)) if not isinstance(
+                p_val, dict) else all(
+                    _np.all(p_val[k] == c_val[k]) for k in p_val
+                ) if isinstance(c_val, dict) and set(p_val) == set(c_val) else False
+        except Exception:
+            same = p_val is c_val
+        if not same:
+            mismatched.append((name, attr))
+    if mismatched:
+        raise RuntimeError(
+            f"worker clone of {type(parent).__name__} diverges from its "
+            f"parent on constructor-derived state: "
+            f"{[m[0] for m in mismatched]}. Forward it in "
+            f"_lazy_init_worker_kits or add the attribute to the sync list "
+            f"({sorted(synced_attrs)}).")
+
+
+def make_worker_plant_context(plant, diagram):
+    """Return a plant Context whose `geometry_query` port is CONNECTED.
+
+    `plant.CreateDefaultContext()` returns a STANDALONE LeafContext. The
+    plant lives inside a Diagram next to a SceneGraph, and every collision
+    or signed-distance query the LCS build performs reads the plant's
+    `geometry_query` input port -- which is only wired up for a plant
+    subcontext extracted from a DIAGRAM context. A standalone context
+    therefore raises
+
+        InputPort::Eval(): required InputPort[0] (geometry_query) of
+        System ::_::plant (MultibodyPlant<double>) is not connected
+
+    on the FIRST geometry query. That was the 2026-08-21 parallel-path
+    defect: every worker raised this, `evaluate_sample`'s bare
+    `except Exception: pass` swallowed it, the worker returned a
+    SampleResult with J_n=None and a NaN cost, and the dispatcher saw
+    best_other=nan on every tick -- so it never repositioned, never
+    entered c3, and the run failed while looking 2x faster because it did
+    no work. See tests/test_parallel_worker_context.py.
+
+    Note a plant subcontext cannot simply be cloned: Drake rejects
+    `Context::Clone()` on a non-root context. The root has to be created
+    (or cloned) and the subcontext re-extracted from it.
+    """
+    if diagram is None:
+        raise RuntimeError(
+            "parallel sample evaluation needs the diagram to build worker "
+            "plant contexts (geometry_query must be connected); got "
+            "diagram=None. Pass diagram= to InnerSolver, or run serially.")
+    return plant.GetMyContextFromRoot(diagram.CreateDefaultContext())
+
+
+# ---------------------------------------------------------------------------
 # InnerSolver
 # ---------------------------------------------------------------------------
 
@@ -284,7 +372,13 @@ class InnerSolver:
                  torque_limit:   float,
                  base_admm_iter: int,
                  params:         SamplingC3Params,
-                 dt_pose:        Optional[float] = None):
+                 dt_pose:        Optional[float] = None,
+                 diagram=None):
+        # Needed ONLY for parallel sample evaluation: worker plant contexts
+        # must be extracted from a diagram context so `geometry_query` is
+        # connected. See make_worker_plant_context. Serial evaluation uses
+        # the caller's plant_ctx and does not touch this.
+        self._diagram    = diagram
         self.plant       = plant
         self.world_frame = plant.world_frame()
         self.ee_frame    = ee_frame
@@ -950,11 +1044,34 @@ class InnerSolver:
             else:
                 self.cheap_solves += 1
         except Exception as _evexc:
-            # NOTE: silent swallow is a known hazard (it just confounded the
-            # first EE-space comparison run by hiding a dimension mismatch).
-            # Held follow-up: log _evexc when not feasible. For now we keep
-            # the swallow to avoid a behavioural change in this commit.
-            pass
+            # The control flow (swallow -> infeasible sample) is deliberate
+            # and unchanged: a single sample that fails to build must not
+            # take the run down. What IS new (2026-08-21) is that the
+            # failure is no longer SILENT.
+            #
+            # This swallow hid a 100%-failure bug for an entire run: with
+            # threads>1 every worker raised "geometry_query is not
+            # connected", every sample came back NaN, and the dispatcher
+            # quietly degraded to never repositioning. It had previously
+            # hidden a dimension mismatch too (noted in the original
+            # comment). Measured cost of speaking up: 0 occurrences over a
+            # healthy serial run, 164 over a broken parallel one -- so this
+            # is quiet unless something is actually wrong.
+            #
+            # stderr on purpose: the parallel dispatch wraps its pool in
+            # redirect_stdout, which would swallow a stdout print.
+            import sys as _sys_ev
+            InnerSolver._eval_exc_count = getattr(
+                InnerSolver, "_eval_exc_count", 0) + 1
+            _n_exc = InnerSolver._eval_exc_count
+            if _n_exc == 1 or _n_exc % 500 == 0:
+                print(f"[EVAL-EXC] sample evaluation failed "
+                      f"(count={_n_exc}, is_current={is_current_ee}): "
+                      f"{type(_evexc).__name__}: {_evexc}",
+                      file=_sys_ev.stderr, flush=True)
+                if os.environ.get("DIAG_EVAL_EXC", ""):
+                    import traceback as _tb_ev
+                    _tb_ev.print_exc(file=_sys_ev.stderr)
         finally:
             # Exception safety: guarantee plant_ctx is restored to (current_q,
             # current_v) regardless of solver outcome. Required because the
@@ -1147,16 +1264,48 @@ class InnerSolver:
             "_normal_compliance_k", "_normal_velocity_level",
             "_normal_phi_clamp_v_cap", "_ground_z", "_box_half_extents",
             "lcs_explicit_manipuland_ground_contacts",
+            # 2026-08-21: these four are LCSFormulator CONSTRUCTOR args that
+            # the clone below does not forward, so without syncing them a
+            # worker built the LCS with a DIFFERENT PHYSICS MODEL than the
+            # parent -- same contact geometry (J_n hashes matched) but
+            # different mass/inertia, hence different A/B/D and ~2.3x
+            # different sample costs. All four are load-bearing:
+            # `_controller_inertia` is one of the three legs of the
+            # 2026-08-15 hover root cause, and the witness attrs carry the
+            # T-mesh witness-triangle conformance.
+            # Synced as PROCESSED attributes, not re-passed to the
+            # constructor: `_mesh_ground_witnesses_body` is stored as
+            # `.reshape(3,3).T`, so round-tripping it would transpose twice.
+            "_controller_object_mass", "_controller_inertia",
+            "_tshape_mesh_witnesses", "_mesh_ground_witnesses_body",
         )
         _solver_attrs_to_sync = (
             "_u_lambda", "_u_eta", "_end_on_qp_step", "_rho_scale",
             "_use_g_matrix", "_w_G", "_g_lambda", "_g_eta", "_g_x", "_g_u",
             "_g_x_vector",
             "_w_G_ee_contact",
+            # 2026-08-21: the C3+ final-solve contact boost
+            # (c3_plus.cc:131-145, 1000 on the box lineage). The controller
+            # sets it on base_mpc.solver and its comment claims worker
+            # clones "inherit via _solver_attrs_to_sync" -- but it was never
+            # actually listed here, so workers ran without the boost.
+            "_final_aug_contact_scaling",
+            # Workspace position constraint rows (main.py sets this on the
+            # base solver for tasks that define a planner workspace). Absent
+            # on clones, their QPs were missing those constraints entirely.
+            "state_position_bounds",
         )
 
         for _ in range(n_workers):
-            ctx_i    = self.plant.CreateDefaultContext()
+            # MUST come from a diagram context: a standalone plant context
+            # has `geometry_query` unconnected and every LCS build in the
+            # worker raises. See make_worker_plant_context for the full
+            # story (this was the 2026-08-21 parallel-path defect).
+            ctx_i    = make_worker_plant_context(self.plant, self._diagram)
+            # The AUTODIFF context is deliberately NOT given the same
+            # treatment: sim/env_builder.py:932-933 builds the shared one
+            # with plant_ad.CreateDefaultContext() too, and the serial path
+            # works with it, so standalone is correct here.
             ctx_ad_i = self.formulator.plant_ad.CreateDefaultContext()
 
             formulator_i = LCSFormulator(
@@ -1197,6 +1346,17 @@ class InnerSolver:
             clone._worker_queue         = None
             clone._worker_lock          = threading.Lock()
 
+            # Guard against the defect class re-appearing: every
+            # LCSFormulator/C3Solver constructor arg must either be
+            # forwarded above or synced by name. A new ctor arg that is
+            # neither would silently give workers a different model, which
+            # is exactly how `controller_inertia` and friends diverged.
+            _assert_worker_clone_covers_ctor_args(
+                self.formulator, formulator_i, _formulator_attrs_to_sync,
+                per_worker=("context_ad",))
+            _assert_worker_clone_covers_ctor_args(
+                self.solver, solver_i, _solver_attrs_to_sync)
+
             self._worker_kits.append((clone, ctx_i))
             self._worker_queue.put((clone, ctx_i))
 
@@ -1230,6 +1390,22 @@ class InnerSolver:
         _resolved_threading = (use_threading
                                if use_threading is not None
                                else self._num_threads_to_use > 1)
+
+        # Parallel evaluation needs the diagram to build worker contexts with
+        # `geometry_query` connected. Without it every worker LCS build
+        # raises, evaluate_sample swallows it, and the samples come back with
+        # NaN costs -- which the dispatcher silently treats as "no better
+        # sample", failing the whole run while appearing fast. Refuse to run
+        # parallel in that state; fall back to serial and say so ONCE.
+        if _resolved_threading and self._diagram is None:
+            if not getattr(self, "_no_diagram_warned", False):
+                self._no_diagram_warned = True
+                print("[SAMP-PARALLEL] WARNING: threading requested "
+                      f"(num_threads_to_use={self._num_threads_to_use}) but "
+                      "InnerSolver has no diagram; worker plant contexts "
+                      "would have geometry_query unconnected. Falling back "
+                      "to SERIAL evaluation.", flush=True)
+            _resolved_threading = False
 
         # Delta-1 audit (read-only, default-OFF): when DIAG_SAMP_LCS_DUMP=1,
         # emit a [SAMP-LCS] line per sample with sample_idx, sample_pos, the

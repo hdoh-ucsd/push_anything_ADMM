@@ -124,3 +124,68 @@ End-to-end on a REAL assembled instance (n=639, m=439):
   is the achievable agreement scale. It is comfortably inside the plan's
   5e-3 acceptance bar on u_seq, and production OSQP itself runs at
   eps_abs = eps_rel = 1e-5.
+
+=== Parallel sample-eval path: FIXED, but threading cannot help (2026-08-21) ===
+
+THREE defects, found by systematic debugging from the repro in the Task 3
+section above.
+
+D1 (fatal) -- worker plant contexts had geometry_query unconnected.
+  _lazy_init_worker_kits built them with plant.CreateDefaultContext(), which
+  returns a STANDALONE LeafContext. The plant lives in a Diagram beside a
+  SceneGraph, and every collision query the LCS build performs reads the
+  plant's geometry_query input port, which is only wired for a subcontext
+  extracted from a DIAGRAM context. So every worker raised
+      InputPort::Eval(): required InputPort[0] (geometry_query) of
+      System ::_::plant (MultibodyPlant<double>) is not connected
+  and evaluate_sample's bare `except Exception: pass` swallowed it. Every
+  worker sample came back J_n=None with a NaN cost; the dispatcher read
+  best_other=nan every tick and silently degraded to never repositioning.
+  Verified: 0 swallowed exceptions on a healthy serial run vs 164 on a
+  broken parallel one. Fix: make_worker_plant_context() derives contexts
+  from the diagram. Note a subcontext CANNOT be cloned -- Drake rejects
+  Context::Clone() on a non-root context -- so the root must be created and
+  the subcontext re-extracted.
+
+D2 (silent wrong answers) -- worker LCSFormulators were built with the wrong
+  physics model. The clone forwards only 7 of 11 constructor args; missing
+  were controller_object_mass, controller_inertia, tshape_mesh_witnesses and
+  mesh_ground_witnesses_body. All four are load-bearing (controller_inertia
+  is one of the three legs of the 2026-08-15 hover root cause). Symptom
+  after D1 was fixed: identical samples and identical J_n hashes, but ~2.3x
+  different sample costs (best_other 896.14 vs serial 386.56 at tick 1).
+  Fixed by syncing the PROCESSED attributes -- mesh_ground_witnesses_body is
+  stored as .reshape(3,3).T, so re-passing it to the constructor would
+  transpose twice.
+
+D3 (latent) -- _final_aug_contact_scaling (the C3+ final-solve contact boost,
+  1000 on the box lineage) and state_position_bounds were not in
+  _solver_attrs_to_sync, though the controller's own comment claimed workers
+  "inherit via _solver_attrs_to_sync".
+
+  Guard added: _assert_worker_clone_covers_ctor_args() now runs once per pool
+  build and RAISES if any constructor-derived state differs between parent
+  and clone (context_ad exempted -- per-worker by design). This defect class
+  cannot silently recur.
+
+OUTCOME -- correctness restored, 60 s box gate, seed 0:
+  threads=1            modes free=517 c3=284  goal 0.150->0.011  PASS(final)
+  threads=4 BEFORE fix modes free=801 c3=0    goal 0.150->0.150  FAIL, success=NO
+  threads=4 AFTER fix  modes free=679 c3=122  goal 0.150->0.019  PASS(final), success=YES
+
+BUT THREADING STILL CANNOT SPEED THIS UP -- Drake's solve holds the GIL.
+  threads=1 : 6m45s, avg_per_step_ms=472.0
+  threads=4 : 6m28s, avg_per_step_ms=457.2   (~3%, and user ~= real)
+
+  scripts/gpu/gil_probe.py, BLAS pinned to 1 thread so the controls are valid:
+    control sleep     3.99x   (GIL released -- control valid)
+    control blas      3.67x   (GIL released -- control valid)
+    drake OsqpSolver  0.99x   (GIL NOT released)
+
+  The reference's `#pragma omp parallel for` over samples does not translate
+  to Python threads: pybind11 holds the GIL through Solve(), so the pool
+  serializes. num_outer_threads is therefore NOT a usable speedup lever in
+  the Python port at all, no matter how many threads. Real options are
+  multiprocessing (Drake objects are not trivially picklable) or moving the
+  solve out of Python -- which is exactly what the batched GPU path does:
+  one Python call performing B solves sidesteps the GIL by construction.
