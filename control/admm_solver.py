@@ -37,6 +37,8 @@ import os
 import numpy as np
 import pydrake.all as ad
 
+from control.solver_api import C3PlusQPData
+
 try:
     from profiling.section_timer import timed
 except ImportError:
@@ -1079,6 +1081,140 @@ class C3Solver:
         delta_eta = np.where(cond1, eta, 0.0)
         return delta_lam, delta_eta
 
+    def _assemble_c3plus_qp(self, *, A, B_ctrl, D, d, E, F, H, c_lcs,
+                            Q, R, QN, x_ref, x0, rho,
+                            n_x, n_u, n_lambda, N, TOT, total_dim,
+                            SX, SL, SU, SE, use_g, g_diag, eye_total,
+                            torque_limit, u_lower, u_upper,
+                            ee_velocity_bounds, ee_vel_state_indices):
+        """Assemble the numeric C3+ QP. Pure w.r.t. the LCS inputs.
+
+        Extracted from `_solve_c3plus` (GPU plan Phase 1) so the CPU path and
+        any future batched backend share ONE assembly instead of two that can
+        drift. Behaviour is unchanged: the caller feeds the returned arrays to
+        Drake exactly as before, and `box_blocks` preserves the original
+        per-call ordering of `AddBoundingBoxConstraint` because Drake/OSQP row
+        order follows insertion order.
+
+        Expects LCS matrices ALREADY scaled (C3::ScaleLCS runs in the caller,
+        since it also rescales published lambda) and `rho` already resolved
+        (the G-on override happens in the caller).
+        """
+        # ---- cost: 2Q on interior states, 2QN terminal, 2R on inputs ----
+        P     = np.zeros((total_dim, total_dim))
+        q_ref = np.zeros(total_dim)
+
+        for i in range(1, N):
+            xi = i * TOT
+            P[xi:xi+n_x, xi:xi+n_x] += 2.0 * Q
+            q_ref[xi:xi+n_x]          = -2.0 * (Q @ x_ref)
+
+        xN = N * TOT
+        P[xN:xN+n_x, xN:xN+n_x] += 2.0 * QN
+        q_ref[xN:xN+n_x]          = -2.0 * (QN @ x_ref)
+
+        for i in range(N):
+            ui = i * TOT + SU
+            P[ui:ui+n_u, ui:ui+n_u] += 2.0 * R
+
+        # 4.j — penalize_input_change adds the -2*R*u_prev linear term; the
+        # Hessian block stays 2R.
+        if self._penalize_input_change and self._u_prev_solve is not None:
+            _u_prev = self._u_prev_solve      # shape (N, n_u)
+            for i in range(N):
+                ui = i * TOT + SU
+                q_ref[ui:ui+n_u] += -2.0 * (R @ _u_prev[i])
+
+        # ---- ADMM augmentation (factor-of-2 under G-on, see caller note) --
+        if use_g:
+            _P_aug = 2.0 * rho * np.diag(g_diag)
+        else:
+            _P_aug = rho * eye_total
+        P_total = P + _P_aug
+        P_sym   = 0.5 * (P_total + P_total.T) + 1e-8 * eye_total
+
+        # ---- equalities: x0 fixation + N dynamics + N eta-slack ----------
+        n_eq_state = n_x + N * n_x
+        n_eq_eta   = N * n_lambda
+        n_eq       = n_eq_state + n_eq_eta
+
+        C_eq = np.zeros((n_eq, total_dim))
+        b_eq = np.zeros(n_eq)
+
+        C_eq[:n_x, :n_x] = self._eye_nx
+        b_eq[:n_x]        = x0
+
+        for i in range(N):
+            row  = n_x + i * n_x
+            xi   = i * TOT
+            li   = xi + SL
+            ui   = xi + SU
+            xnxt = (i + 1) * TOT if i < N - 1 else N * TOT
+
+            C_eq[row:row+n_x, xi:xi+n_x]                 = A
+            if n_lambda > 0:
+                C_eq[row:row+n_x, li:li+n_lambda]        = D
+            C_eq[row:row+n_x, ui:ui+n_u]                 = B_ctrl
+            C_eq[row:row+n_x, xnxt:xnxt+n_x]             = -self._eye_nx
+            b_eq[row:row+n_x]                             = -d
+
+        if n_lambda > 0:
+            for i in range(N):
+                row  = n_eq_state + i * n_lambda
+                xi   = i * TOT
+                li   = xi + SL
+                ui   = xi + SU
+                ei   = xi + SE
+
+                C_eq[row:row+n_lambda, xi:xi+n_x]        = -E
+                C_eq[row:row+n_lambda, li:li+n_lambda]   = -F
+                C_eq[row:row+n_lambda, ui:ui+n_u]        = -H
+                C_eq[row:row+n_lambda, ei:ei+n_lambda]   = np.eye(n_lambda)
+                b_eq[row:row+n_lambda]                    = c_lcs
+
+        # ---- box blocks, in ORIGINAL AddBoundingBoxConstraint order ------
+        _blocks = []
+
+        _u_lo = (np.full(n_u, -torque_limit)
+                 if u_lower is None else np.asarray(u_lower, dtype=float))
+        _u_hi = (np.full(n_u,  torque_limit)
+                 if u_upper is None else np.asarray(u_upper, dtype=float))
+        assert _u_lo.shape == (n_u,) and _u_hi.shape == (n_u,), (
+            f"u_lower/u_upper must be shape ({n_u},); got "
+            f"{_u_lo.shape}/{_u_hi.shape}"
+        )
+        for i in range(N):
+            ui = i * TOT + SU
+            _blocks.append((np.arange(ui, ui + n_u), _u_lo, _u_hi))
+
+        _spb = getattr(self, "state_position_bounds", None)
+        if _spb:
+            _spb_idx = np.array([int(b[0]) for b in _spb])
+            _spb_lo  = np.array([float(b[1]) for b in _spb])
+            _spb_hi  = np.array([float(b[2]) for b in _spb])
+            for i in range(N):
+                _base = i * TOT + SX
+                _blocks.append((_spb_idx + _base, _spb_lo, _spb_hi))
+            _blocks.append((_spb_idx + N * TOT, _spb_lo, _spb_hi))
+
+        if ee_velocity_bounds is not None:
+            _ev_lo, _ev_hi = (float(ee_velocity_bounds[0]),
+                              float(ee_velocity_bounds[1]))
+            _ev_idx = np.array(list(ee_vel_state_indices))
+            _n_ev = _ev_idx.size
+            _ev_lo_vec = np.full(_n_ev, _ev_lo)
+            _ev_hi_vec = np.full(_n_ev, _ev_hi)
+            for i in range(N):
+                _base = i * TOT + SX
+                _blocks.append((_ev_idx + _base, _ev_lo_vec, _ev_hi_vec))
+            _blocks.append((_ev_idx + N * TOT, _ev_lo_vec, _ev_hi_vec))
+
+        return C3PlusQPData(
+            P=P, P_sym=P_sym, q_ref=q_ref, C_eq=C_eq, b_eq=b_eq,
+            box_blocks=tuple(_blocks),
+            n_x=n_x, n_u=n_u, n_lambda=n_lambda, N=N, TOT=TOT,
+            total_dim=total_dim, SX=SX, SL=SL, SU=SU, SE=SE)
+
     def _solve_c3plus(self,
                       x0:     np.ndarray,
                       A:      np.ndarray,
@@ -1397,99 +1533,46 @@ class C3Solver:
         # QP cost: P = 2·diag(Q,_,_,_,_, R block, _,_,...)·etc + ρ·I
         # ---------------------------------------------------------------
         with timed("admm.qp_build"):
-            P     = np.zeros((total_dim, total_dim))
-            q_ref = np.zeros(total_dim)
+            # Assembly extracted to _assemble_c3plus_qp (GPU plan Phase 1) so
+            # a batched backend consumes the same assembly instead of a second
+            # copy that can drift. Byte-identical: same arithmetic, same order.
+            _qpd = self._assemble_c3plus_qp(
+                A=A, B_ctrl=B_ctrl, D=D, d=d, E=E, F=F, H=H, c_lcs=c_lcs,
+                Q=Q, R=R, QN=QN, x_ref=x_ref, x0=x0, rho=rho,
+                n_x=n_x, n_u=n_u, n_lambda=n_lambda, N=N, TOT=TOT,
+                total_dim=total_dim, SX=SX, SL=SL, SU=SU, SE=SE,
+                use_g=_use_g, g_diag=self._g_diag_c3p_cache,
+                eye_total=_eye_total, torque_limit=torque_limit,
+                u_lower=u_lower, u_upper=u_upper,
+                ee_velocity_bounds=ee_velocity_bounds,
+                ee_vel_state_indices=ee_vel_state_indices)
+            P     = _qpd.P
+            q_ref = _qpd.q_ref
+            P_sym = _qpd.P_sym
+            C_eq  = _qpd.C_eq
+            b_eq  = _qpd.b_eq
 
-            for i in range(1, N):
-                xi = i * TOT
-                P[xi:xi+n_x, xi:xi+n_x] += 2.0 * Q
-                q_ref[xi:xi+n_x]          = -2.0 * (Q @ x_ref)
-
-            xN = N * TOT
-            P[xN:xN+n_x, xN:xN+n_x] += 2.0 * QN
-            q_ref[xN:xN+n_x]          = -2.0 * (QN @ x_ref)
-
-            for i in range(N):
-                ui = i * TOT + SU
-                P[ui:ui+n_u, ui:ui+n_u] += 2.0 * R
-
-            # 4.j — penalize_input_change: cost becomes ‖u_k − u_prev_k‖²_R
-            # = u_k^T R u_k − 2·u_prev_k^T R u_k + const. Add the linear term
-            # (−2·R·u_prev_k) to q_ref for each u slot when a previous solve
-            # exists. The Hessian block above is unchanged (still 2·R).
-            if self._penalize_input_change and self._u_prev_solve is not None:
-                _u_prev = self._u_prev_solve      # shape (N, n_u)
-                for i in range(N):
-                    ui = i * TOT + SU
-                    q_ref[ui:ui+n_u] += -2.0 * (R @ _u_prev[i])
-
-            # ===== C3+ NEW: NO soft-complementarity penalty here =====
-            # The η = E x + F λ + H u + c equality below replaces the
-            # `q_ref[λ_n] += w_comp · phi_gap` hack used by C3.
-
-            # Reference-conformant G-matrix augmentation: replaces uniform
-            # rho*I with rho*diag(G) where G has per-slot weights (0 on
-            # state/input, w_G·g_λ on λ, w_G·g_η on η). Matches c3.cc AD
-            # step exactly. Falls back to uniform ρ if _use_g False.
-            # 2026-07-26 factor-of-2 fix (G-on path only): reference
-            # c3_plus.cc:157 uses AddQuadraticCost(2G, -2G·WD, ...) →
-            # Drake `0.5·H·z²+b·z` convention gives `G·z² - 2G·WD·z`,
-            # i.e., ADMM augmentation `(ρ/2)||z - WD||²_G` with effective
-            # penalty 2ρ. Previous port passed `rho·g_diag` — half the
-            # reference scale — so under G-on the port ran at half the
-            # intended penalty. G-off path preserved (port's tuned ρ=100
-            # baseline is calibrated against the half-scale convention;
-            # doubling would silently regress every G-off run).
-            if _use_g:
-                _P_aug = 2.0 * rho * np.diag(self._g_diag_c3p_cache)
-            else:
-                _P_aug = rho * _eye_total
-            P_total = P + _P_aug
-            P_sym   = 0.5 * (P_total + P_total.T) + 1e-8 * _eye_total
-
-            # ---------------------------------------------------------------
-            # Equality constraints: x_0 fixation + N dynamics + N η-slack
-            # ---------------------------------------------------------------
-            n_eq_state = n_x + N * n_x                        # x_0 + N dynamics
-            n_eq_eta   = N * n_lambda                         # ← C3+ NEW
-            n_eq       = n_eq_state + n_eq_eta
-            C_eq = np.zeros((n_eq, total_dim))
-            b_eq = np.zeros(n_eq)
-
-            # Row block 1: x_0 = x0
-            C_eq[:n_x, :n_x] = self._eye_nx
-            b_eq[:n_x]        = x0
-
-            # Row block 2: A x_i + D λ_i + B u_i − x_{i+1} = −d
-            for i in range(N):
-                row  = n_x + i * n_x
-                xi   = i * TOT
-                li   = xi + SL
-                ui   = xi + SU
-                xnxt = (i + 1) * TOT if i < N - 1 else N * TOT
-
-                C_eq[row:row+n_x, xi:xi+n_x]                 = A
-                if n_lambda > 0:
-                    C_eq[row:row+n_x, li:li+n_lambda]        = D
-                C_eq[row:row+n_x, ui:ui+n_u]                 = B_ctrl
-                C_eq[row:row+n_x, xnxt:xnxt+n_x]             = -self._eye_nx
-                b_eq[row:row+n_x]                             = -d
-
-            # ===== C3+ NEW: Row block 3 — slack equality =====
-            # η_i − E x_i − F λ_i − H u_i = c
-            if n_lambda > 0:
-                for i in range(N):
-                    row  = n_eq_state + i * n_lambda
-                    xi   = i * TOT
-                    li   = xi + SL
-                    ui   = xi + SU
-                    ei   = xi + SE
-
-                    C_eq[row:row+n_lambda, xi:xi+n_x]        = -E
-                    C_eq[row:row+n_lambda, li:li+n_lambda]   = -F
-                    C_eq[row:row+n_lambda, ui:ui+n_u]        = -H
-                    C_eq[row:row+n_lambda, ei:ei+n_lambda]   = np.eye(n_lambda)
-                    b_eq[row:row+n_lambda]                    = c_lcs
+            # NOTE: the cost/augmentation and equality-constraint assembly
+            # that used to live here now lives in _assemble_c3plus_qp above,
+            # including:
+            #   * the C3+ omission of any soft-complementarity penalty (the
+            #     η = E x + F λ + H u + c equality replaces C3's
+            #     `q_ref[λ_n] += w_comp · phi_gap` hack);
+            #   * the reference-conformant G-matrix augmentation, which
+            #     replaces uniform rho*I with rho*diag(G) (0 on state/input,
+            #     w_G·g_λ on λ, w_G·g_η on η), matching the c3.cc AD step,
+            #     and falls back to uniform ρ when _use_g is False;
+            #   * the 2026-07-26 factor-of-2 fix (G-on only): reference
+            #     c3_plus.cc:157 uses AddQuadraticCost(2G, -2G·WD, ...), so
+            #     Drake's `0.5·H·z²+b·z` convention gives `G·z² - 2G·WD·z`,
+            #     i.e. augmentation `(ρ/2)||z - WD||²_G` at effective penalty
+            #     2ρ. The port previously passed `rho·g_diag` — half the
+            #     reference scale. The G-off path is preserved because the
+            #     port's tuned ρ=100 baseline is calibrated against the
+            #     half-scale convention.
+            #   * the equality rows: x_0 fixation, the N dynamics rows
+            #     `A x_i + D λ_i + B u_i − x_{i+1} = −d`, and the C3+ slack
+            #     rows `η_i − E x_i − F λ_i − H u_i = c`.
 
             # ---------------------------------------------------------------
             # Build MathematicalProgram once
@@ -1505,69 +1588,15 @@ class C3Solver:
             # binds under G-on + rho=1, OSQP polishes off by default so the
             # active bound zeroes λ in z_sol and the projection over-corrects.
 
-            # Torque bounds per step (per-axis vectors when supplied;
-            # default-inert scalar torque_limit path when u_lower/u_upper None).
-            _u_lo = (np.full(n_u, -torque_limit)
-                     if u_lower is None else np.asarray(u_lower, dtype=float))
-            _u_hi = (np.full(n_u,  torque_limit)
-                     if u_upper is None else np.asarray(u_upper, dtype=float))
-            assert _u_lo.shape == (n_u,) and _u_hi.shape == (n_u,), (
-                f"u_lower/u_upper must be shape ({n_u},); got "
-                f"{_u_lo.shape}/{_u_hi.shape}"
-            )
-            for i in range(N):
-                ui = i * TOT + SU
-                prog.AddBoundingBoxConstraint(
-                    _u_lo, _u_hi, z_var[ui : ui + n_u],
-                )
-
-            # Workspace state constraints — reference cc:995-1025 adds, to
-            # EVERY per-sample C3 object, AddLinearConstraint(A·x ∈
-            # [lb − workspace_margins, ub + workspace_margins], STATE) rows
-            # selecting the EE position AND object position slots (push_t
-            # values sampling_c3_options.yaml:26-30). The port had carried
-            # over only the adjacent EE-velocity rows (cc:1027-1034, below);
-            # without the position rows the planner was free to plan EE
-            # excursions anywhere in R^3 (p140/p141: phantom stints walked
-            # the EE into the r=0.25 workspace abort). Instance attribute
-            # `state_position_bounds` = [(state_idx, lo, hi), ...] so the
-            # surrogate per-sample solves (inner_solve → this same solver)
-            # inherit the constraint exactly like the reference's per-sample
-            # C3 objects. None/empty → byte-identical legacy behavior.
-            _spb = getattr(self, "state_position_bounds", None)
-            if _spb:
-                _spb_idx = np.array([int(b[0]) for b in _spb])
-                _spb_lo  = np.array([float(b[1]) for b in _spb])
-                _spb_hi  = np.array([float(b[2]) for b in _spb])
-                for i in range(N):
-                    _base = i * TOT + SX
-                    prog.AddBoundingBoxConstraint(
-                        _spb_lo, _spb_hi, z_var[_spb_idx + _base])
-                prog.AddBoundingBoxConstraint(
-                    _spb_lo, _spb_hi, z_var[_spb_idx + N * TOT])
-
-            # State velocity bounds (ee_velocity_limits). Reference cc:1027-1034
-            # applies at each knot: A · x_k ∈ [lo, hi] where A selects the EE
-            # velocity slots. Port equivalent: BoundingBoxConstraint on the
-            # same state indices at each knot plus the terminal state.
-            if ee_velocity_bounds is not None:
-                _ev_lo, _ev_hi = float(ee_velocity_bounds[0]), float(ee_velocity_bounds[1])
-                _ev_idx = list(ee_vel_state_indices)
-                _n_ev = len(_ev_idx)
-                _ev_lo_vec = np.full(_n_ev, _ev_lo)
-                _ev_hi_vec = np.full(_n_ev, _ev_hi)
-                for i in range(N):
-                    _base = i * TOT + SX
-                    prog.AddBoundingBoxConstraint(
-                        _ev_lo_vec, _ev_hi_vec,
-                        z_var[np.array(_ev_idx) + _base],
-                    )
-                # Terminal state (position N*TOT + n_x slots)
-                _base_terminal = N * TOT
-                prog.AddBoundingBoxConstraint(
-                    _ev_lo_vec, _ev_hi_vec,
-                    z_var[np.array(_ev_idx) + _base_terminal],
-                )
+            # Bounding-box constraints, issued from the ordered block list
+            # built by _assemble_c3plus_qp. One AddBoundingBoxConstraint call
+            # per original block, in the original order (u bounds per knot,
+            # then workspace position bounds per knot + terminal, then
+            # EE-velocity bounds per knot + terminal) -- Drake/OSQP row order
+            # follows insertion order, so merging or reordering these would
+            # change the arithmetic.
+            for _bidx, _blo, _bhi in _qpd.box_blocks:
+                prog.AddBoundingBoxConstraint(_blo, _bhi, z_var[_bidx])
 
             # Drake re-derives the Hessian PSD verdict on every
             # AddQuadraticCost / UpdateCoefficients call when `is_convex`
@@ -2907,8 +2936,8 @@ class C3Solver:
             print(f"[MATH.QP-C3+] Minimizing: (1/2) z^T P z + q^T z  "
                   f"(z augmented with η)")
             print(f"[MATH.QP-C3+]   s.t. A_eq z = b_eq  "
-                  f"({n_eq} rows = x_0 fixation + {N} dynamics + "
-                  f"{n_eq_eta} η-slack rows; slack-equality block ADDED)")
+                  f"({C_eq.shape[0]} rows = x_0 fixation + {N} dynamics + "
+                  f"{N * n_lambda} η-slack rows; slack-equality block ADDED)")
             print(f"[MATH.QP-C3+]        bbox: λ_n ≥ 0, "
                   f"|u| ≤ {torque_limit:.1f} {self.u_unit_str} "
                   f"({self.u_unit_kind})  "
