@@ -131,7 +131,26 @@ class C3Solver:
             _so.SetOption(_osqp_id, "adaptive_rho_interval", 0)
             _so.SetOption(_osqp_id, "adaptive_rho_tolerance", 5)
             _so.SetOption(_osqp_id, "adaptive_rho_fraction", 0.4)
-            _so.SetOption(_osqp_id, "check_termination", 100)
+            # check_termination: REFERENCE value is 100
+            # (shared_parameters/sampling_c3_qp_settings.yaml). OSQP only
+            # tests convergence every N iterations, so a QP that truly
+            # converges at ~68 still pays ~247. Measured on 60 real corpus
+            # instances (scripts/gpu/check_termination_probe.py):
+            #     check=100  246.7 mean iters  16.84 ms/solve   <- reference
+            #     check=25   116.2 mean iters  10.23 ms/solve
+            #     check=1     68.5 mean iters  10.77 ms/solve
+            # Since 81% of wall time is OSQP inner iterations, this is the
+            # largest measured lever in the port.
+            #
+            # OFF-REFERENCE. Env override for the authorized A/B only; unset
+            # keeps the reference literal and is byte-identical.
+            _chk = int(os.environ.get("PORT_OSQP_CHECK_TERMINATION", "100"))
+            _so.SetOption(_osqp_id, "check_termination", _chk)
+            if _chk != 100:
+                print(f"[OSQP-REFOPTS] *** OFF-REFERENCE *** "
+                      f"check_termination={_chk} (reference is 100) — "
+                      f"authorized A/B via PORT_OSQP_CHECK_TERMINATION",
+                      flush=True)
             _so.SetOption(_osqp_id, "rho", 0.1)
             _so.SetOption(_osqp_id, "sigma", 1e-5)
             _so.SetOption(_osqp_id, "alpha", 1.6)
@@ -142,9 +161,9 @@ class C3Solver:
             _so.SetOption(_osqp_id, "eps_dual_inf", 1e-5)
             _so.SetOption(_osqp_id, "max_iter", 2000)
             self._osqp_solver_options = _so
-            print("[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): "
-                  "polishing=0 scaling=1 check_term=100 sigma=1e-5 "
-                  "eps=1e-5 max_iter=2000", flush=True)
+            print(f"[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): "
+                  f"polishing=0 scaling=1 check_term={_chk} sigma=1e-5 "
+                  f"eps=1e-5 max_iter=2000", flush=True)
         self._diag_step = 0
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
