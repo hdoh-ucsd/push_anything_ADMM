@@ -314,14 +314,17 @@ footer{
       <table>
         <thead><tr><th>Per sample-iteration</th><th>Cost</th><th>vs GPU</th></tr></thead>
         <tbody>
-          <tr><td>GPU, batched dense</td><td class="num">0.042 ms</td><td class="num">&mdash;</td></tr>
-          <tr><td>torch CPU, dense &mdash; <em>the wrong baseline</em></td><td class="num">0.184 ms</td><td class="num win">4.41&times;</td></tr>
-          <tr class="hi"><td>Drake OSQP, sparse &mdash; <em>what we actually run</em></td><td class="num">0.064 ms</td><td class="num">1.5&times;</td></tr>
+          <tr><td>GPU, batched dense</td><td class="num">64.4 &micro;s</td><td class="num">&mdash;</td></tr>
+          <tr><td>torch CPU, dense &mdash; <em>the wrong baseline</em></td><td class="num">184 &micro;s</td><td class="num win">4.41&times;</td></tr>
+          <tr class="hi"><td>Drake OSQP, sparse &mdash; <em>what we actually run</em></td><td class="num">47.5 &micro;s</td><td class="num lose">0.74&times;</td></tr>
         </tbody>
       </table>
     </div>
-    <p>Against the real opponent the per-iteration edge is 1.5&times;, not 4.4&times; &mdash;
-      nowhere near enough to absorb a convergence penalty.</p>
+    <p>Against the real opponent the GPU doesn't lead at all &mdash; it is
+      <strong>0.74&times;</strong>, already behind before convergence enters the picture.
+      (The 4.41&times; row was measured at <span class="mono">m = 300</span>; at the real
+      <span class="mono">m = 439</span> the GPU leg costs 64.4&nbsp;&micro;s, and Drake's
+      47.5&nbsp;&micro;s is the in-run figure from the section profile.)</p>
   </section>
 
   <section>
