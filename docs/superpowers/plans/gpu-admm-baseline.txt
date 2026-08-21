@@ -1,0 +1,47 @@
+=== GPU-ADMM Task 1 decision gate — 2026-08-21 ===
+commit: 6207558 (plan) / worktree-gpu-admm-plan
+GPU: RTX 5070 Ti (sm_120, 16 GB, driver 580.88)
+CPU: Ryzen 7 7800X3D, 8 cores / 16 threads
+torch 2.11.0+cu128, CUDA 12.8
+
+-- scripts/gpu/fp64_microbench.py  (isolated ops, batch=6 n=719, fp64) --
+  cholesky   : GPU  3.677 ms | CPU 7.558 ms | 2.06x
+  chol_solve : GPU  1.316 ms | CPU 0.767 ms | 0.58x   <- gate as written: STOP
+
+-- scripts/gpu/loop_microbench.py  (FULL OSQP iteration, batch=6 n=719 m=300) --
+  iteration [cholesky_solve]  : GPU 2.1317 ms | CPU 1.2651 ms | 0.59x
+  iteration [precomp inverse] : GPU 0.2508 ms | CPU 1.1067 ms | 4.41x
+  inverse-vs-cholesky rel err : 1.102e-14
+
+-- scripts/gpu/inverse_breakeven.py --
+  batched cholesky          :  3.853 ms  (baseline, needed anyway)
+  cholesky + chol_inverse   : 14.005 ms  -> extra 10.15 ms
+  linalg.inv                : 30.967 ms  -> extra 27.11 ms  (do NOT use)
+  saving per inner iteration :  1.0143 ms
+  BREAK-EVEN                : 10.0 inner iters (via chol_inverse)
+  cond(K) ~ 4.969e+00 ; chol_inverse vs chol_solve rel err 5.135e-16
+
+VERDICT: PROCEED, with design amendment A1.
+
+  Why the isolated gate said STOP and the loop says PROCEED: a triangular
+  solve is sequential back-substitution, the single most GPU-hostile kernel
+  in the iteration. Everything else in the OSQP step (two batched matvecs,
+  clamp, axpy) is embarrassingly parallel. Measuring the hostile op alone
+  mispredicted the composite loop.
+
+  A1 — replace cholesky_solve in the inner loop with cholesky_inverse
+  (computed once per C3+ ADMM iteration, reusing the Cholesky factor) plus
+  a batched GEMV. Same FLOPs, parallel instead of sequential, 4.41x over
+  CPU. Legitimate because correction C2 already establishes that K changes
+  only once per C3+ iteration while the RHS changes every inner iteration.
+
+  Amortization is guaranteed: OSQP runs with check_termination=100, so the
+  inner loop cannot stop before 100 iterations -- 10x the break-even.
+
+  Use torch.cholesky_inverse(L), NOT torch.linalg.inv: 14.0 ms vs 31.0 ms.
+
+OPEN RISK carried into Task 7: cond(K) = 5 was measured on RANDOM SPD
+matrices. Real LCS instances may be worse conditioned. Task 7 must re-check
+on the corpus, acceptance: explicit-inverse vs cholesky_solve relative
+error < 1e-9 on every corpus instance. If any instance fails, fall back to
+cholesky_solve for that (N, n_lambda) group and re-measure.
