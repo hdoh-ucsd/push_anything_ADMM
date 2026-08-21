@@ -26,6 +26,8 @@ Usage:
 """
 from __future__ import annotations
 import argparse
+import bisect
+import csv
 import os
 import re
 import subprocess
@@ -41,6 +43,7 @@ _STEP_RE = re.compile(r"^\[STEP\] step=(\d+) mode=(\w+) t=([\d.]+)s")
 
 _STICKY_TAGS = {
     "[ACHIEVED-FIXED-GOAL]",
+    "[ACHIEVED-GOAL-RELEASE]",
     "[CROSSED-COST-THRESHOLD]",
     "[MATH.setup]",
     "[LCS-MU-PER-PAIR]",
@@ -92,6 +95,7 @@ _RESULT_TAG = "[RESULT]"
 
 _TAG_COLORS = {
     "[ACHIEVED-FIXED-GOAL]":   (100, 255, 100),
+    "[ACHIEVED-GOAL-RELEASE]": (255, 200, 80),
     "[CROSSED-COST-THRESHOLD]": (255, 200, 100),
     "[RESULT]":                (100, 255, 255),
     "[C3+]":                   (200, 200, 255),
@@ -173,6 +177,10 @@ _G_FLOAT = r"[-+]?[\d.]+"
 _G_FIELD_RES = {
     # [STEP] fields (both modes)
     "goal_dist": re.compile(rf"goal_dist=({_G_FLOAT})m"),
+    "final_goal_dist": re.compile(rf"final_goal_dist=({_G_FLOAT})m"),
+    "rot_err": re.compile(rf"rot_err=({_G_FLOAT})rad"),
+    "obj_yaw": re.compile(rf"obj_yaw=({_G_FLOAT})rad"),
+    "goal_yaw": re.compile(rf"goal_yaw=({_G_FLOAT})rad"),
     "switch":    re.compile(r"switch=(\w+)"),
     # [STEP] free-mode
     "fin_val":   re.compile(rf"finished_val=({_G_FLOAT})m"),
@@ -390,12 +398,34 @@ def _draw_gauges(draw, x0: int, y: int, g: dict, font, line_h: int) -> int:
                   font=font, fill=color)
         y += line_h
 
-    # goal distance
-    gd = _gfloat(g.get("goal_dist", ""))
-    if gd is not None:
-        draw.text((x0, y), f"goal    dist {gd:.3f}m", font=font,
-                  fill=_GAUGE_OK)
+    # Tight-goal success margins. ``goal_dist`` is the moving lookahead
+    # sub-goal; ``final_goal_dist`` and ``rot_err`` are the actual joint gate.
+    fd = _gfloat(g.get("final_goal_dist", ""))
+    re_err = _gfloat(g.get("rot_err", ""))
+    if fd is not None and re_err is not None:
+        tight = fd < 0.020 and re_err < 0.100
+        near = fd < 0.030 and re_err < 0.150
+        color = _GAUGE_OK if tight else (_GAUGE_WARN if near else _GAUGE_TRIP)
+        tag = "PASS" if tight else "WAIT"
+        draw.text((x0, y),
+                  f"tight   pos {fd:.4f}/0.0200m  "
+                  f"rot {re_err:.4f}/0.1000rad  {tag}",
+                  font=font, fill=color)
         y += line_h
+        oy = _gfloat(g.get("obj_yaw", ""))
+        gy = _gfloat(g.get("goal_yaw", ""))
+        if oy is not None and gy is not None:
+            draw.text((x0, y),
+                      f"yaw     obj {oy:+.4f}rad  goal {gy:+.4f}rad",
+                      font=font, fill=_GAUGE_DIM)
+            y += line_h
+    else:
+        # Backward compatibility for historical logs.
+        gd = _gfloat(g.get("goal_dist", ""))
+        if gd is not None:
+            draw.text((x0, y), f"goal    dist {gd:.3f}m", font=font,
+                      fill=_GAUGE_OK)
+            y += line_h
     return y
 
 
@@ -469,6 +499,8 @@ def compose_frame(
     panel_max_chars: int,
     result_line: Optional[str],
     gauge: Optional[dict] = None,
+    playback_rate: Optional[float] = None,
+    raw_log: bool = False,
 ) -> Image.Image:
     """Left = scene, Right = log panel. Returns composite RGB image."""
     scene = scene_img.convert("RGB")
@@ -484,16 +516,25 @@ def compose_frame(
     #   [--- rolling section ---]
     #   [--- RESULT section (last 30 frames) ---]
     panel_x0 = W_scene + 12
-    line_h = 15
+    line_h = 18 if not raw_log else 15
     pad = 8
 
     # Header
     if step_info is not None:
-        hdr = [
-            f"step={step}",
-            f"t={step_info.get('t', 0.0):.2f}s",
-            f"mode={_mode_disp(step_info.get('mode', '?'))}",
-        ]
+        if raw_log:
+            hdr = [
+                f"step={step}",
+                f"t={step_info.get('t', 0.0):.2f}s",
+                f"mode={_mode_disp(step_info.get('mode', '?'))}",
+            ]
+        else:
+            rate = (f"{playback_rate:.2f}×" if playback_rate is not None
+                    else "?")
+            hdr = [
+                f"SIM {step_info.get('t', 0.0):7.2f} s    "
+                f"PLAYBACK {rate}",
+                f"CONTROL step {step:<6d} mode {_mode_disp(step_info.get('mode', '?'))}",
+            ]
     else:
         hdr = [f"step={step}"]
     y = 12
@@ -514,7 +555,35 @@ def compose_frame(
         draw.line((panel_x0, y, W_out - 12, y), fill=(60, 60, 60), width=1)
         y += pad
 
-    # Sticky milestone lines — height-aware cap so a long milestone list
+    if not raw_log:
+        # Compact presentation: gauges already own the live controller state.
+        # Keep only scientifically meaningful events and never show internal
+        # solver-call counters beside controller steps.
+        compact_sticky = [line for line in sticky_lines if line.startswith((
+            "[ACHIEVED-FIXED-GOAL]", "[ACHIEVED-GOAL-RELEASE]",
+            "[GOAL-GEN]", "[FLIP]", "[RESULT]"))]
+        draw.text((panel_x0, y), "── recent events ──", font=font_tiny,
+                  fill=(150, 150, 150))
+        y += line_h
+        events = compact_sticky[-4:]
+        if not events:
+            events = ["No goal milestone yet"]
+        y = _draw_lines(draw, panel_x0, y, events, font_tiny,
+                        panel_max_chars, line_h,
+                        shorten=_shorten_keep_tail)
+        if result_line is not None:
+            y_res = H - line_h * 3
+            draw.line((panel_x0, y_res, W_out - 12, y_res),
+                      fill=(60, 60, 60), width=1)
+            draw.text((panel_x0, y_res + pad), "── verdict ──",
+                      font=font_tiny, fill=(150, 150, 150))
+            draw.text((panel_x0, y_res + pad + line_h),
+                      _shorten_keep_tail(result_line, panel_max_chars),
+                      font=font_tiny, fill=_tag_color("[RESULT]"))
+        return canvas
+
+    # Raw diagnostic presentation: sticky milestone lines — height-aware cap
+    # so a long milestone list
     # (e.g. many [FLIP] events) can never push the rolling section into
     # the verdict band: keep the first few setup banners + the newest
     # milestones with an ellipsis row between.
@@ -572,6 +641,49 @@ def compose_frame(
     return canvas
 
 
+def load_frame_times(frames_dir: Path) -> Dict[int, float]:
+    """Load renderer-authored simulation timestamps by frame index."""
+    path = frames_dir / "mode_timeline.csv"
+    if not path.exists():
+        return {}
+    with open(path, newline="") as f:
+        return {int(row["step"]): float(row["sim_t"])
+                for row in csv.DictReader(f)}
+
+
+def playback_rate(frame_times: List[float], fps: float,
+                  realtime: bool) -> Optional[float]:
+    """Simulation seconds per video second for the encoded artifact."""
+    if realtime:
+        return 1.0
+    if len(frame_times) < 2 or fps <= 0.0:
+        return None
+    sim_span = frame_times[-1] - frame_times[0]
+    video_span = (len(frame_times) - 1) / fps
+    return sim_span / video_span if video_span > 0.0 else None
+
+
+def realtime_frame_indices(frame_times: List[float], fps: float) -> List[int]:
+    """Map constant-rate output frames to timestamped source frames.
+
+    The last source frame is held for the median positive source interval.
+    Consequently encoded duration matches the covered simulation interval to
+    within one output frame, independent of renderer stride.
+    """
+    if not frame_times or fps <= 0.0:
+        raise ValueError("frame_times must be non-empty and fps must be positive")
+    if any(b <= a for a, b in zip(frame_times, frame_times[1:])):
+        raise ValueError("frame_times must be strictly increasing")
+    deltas = [b - a for a, b in zip(frame_times, frame_times[1:])]
+    last_hold = (sorted(deltas)[len(deltas) // 2]
+                 if deltas else 1.0 / fps)
+    duration = frame_times[-1] - frame_times[0] + last_hold
+    count = max(1, round(duration * fps))
+    return [max(0, bisect.bisect_right(
+        frame_times, frame_times[0] + i / fps) - 1)
+            for i in range(count)]
+
+
 def find_frames(frames_dir: Path):
     entries = []
     for p in sorted(frames_dir.iterdir()):
@@ -593,6 +705,11 @@ def main():
                     help="Sub-frames per log step used at render time "
                          "(render_log_drake_scene.py --interp); frame "
                          "index // interp recovers the log step.")
+    ap.add_argument("--realtime", action="store_true",
+                    help="Encode frame durations from mode_timeline.csv so "
+                         "one second of video equals one second of simulation")
+    ap.add_argument("--raw-log", action="store_true",
+                    help="Use the legacy dense scrolling-log presentation")
     ap.add_argument("--panel-max-chars", type=int, default=None,
                     help="Chars per panel line (default: computed from "
                          "--panel-width and the mono font's advance; the "
@@ -614,8 +731,8 @@ def main():
     if not frames:
         raise SystemExit("no frames to annotate")
 
-    font_tiny = _load_mono_font(11)
-    font_small = _load_mono_font(14)
+    font_tiny = _load_mono_font(13 if not args.raw_log else 11)
+    font_small = _load_mono_font(17 if not args.raw_log else 14)
 
     if args.panel_max_chars is None:
         # Panel text spans panel_x0 (= scene_W + 12) to composite_W - 12,
@@ -632,6 +749,20 @@ def main():
         if _line_family(hl) == "sticky" and hl not in sticky_lines:
             sticky_lines.append(hl)
     rolling = deque(maxlen=args.rolling_count)
+    frame_time_map = load_frame_times(args.frames_dir)
+    frame_times = [frame_time_map.get(fidx) for fidx, _ in frames]
+    if any(t is None for t in frame_times):
+        # Historical frame directories lack the timeline or interpolated rows.
+        # Fall back to each frame's owning [STEP] timestamp.
+        frame_times = []
+        for fidx, _ in frames:
+            step = fidx // max(1, args.interp)
+            m = next((_STEP_RE.match(line) for line in by_step.get(step, [])
+                      if _STEP_RE.match(line)), None)
+            frame_times.append(float(m.group(3)) if m else float(step))
+    rate = playback_rate(frame_times, args.fps, args.realtime)
+    print(f"[sidepanel] playback rate: {rate:.3f}x" if rate is not None
+          else "[sidepanel] playback rate unavailable")
     result_line: Optional[str] = None
     # Goal-chaining runs (kRandom re-goaling) DRAW A NEW GOAL the instant the
     # old one is reached, and main.py's trailing [RESULT] line is measured
@@ -708,6 +839,9 @@ def main():
                     cur_gauge.update(gd)
             prev_step = step
             info = step_info_map.get(step)
+            if info is not None:
+                info = dict(info)
+                info["t"] = frame_times[i]
             cur_gauge["_c_age"] = step - cur_gauge.get("_c_step", -999)
             cur_gauge["_eg_age"] = step - cur_gauge.get("_eg_step", -999)
             img = Image.open(path)
@@ -717,19 +851,36 @@ def main():
                                 args.panel_width, args.panel_max_chars,
                                 result_line if i >= len(frames) - 30
                                 else None,
-                                gauge=dict(cur_gauge))
+                                gauge=dict(cur_gauge),
+                                playback_rate=rate,
+                                raw_log=args.raw_log)
             out.save(tmp_dir / f"annot_{i:06d}.png", optimize=False)
             if i % 200 == 0:
                 print(f"[sidepanel] painted {i}/{len(frames)}")
 
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            "ffmpeg", "-y", "-framerate", str(args.fps),
-            "-i", str(tmp_dir / "annot_%06d.png"),
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-preset", "veryfast", "-crf", "23",
-            str(args.output),
-        ]
+        if args.realtime:
+            images = [tmp_dir / f"annot_{i:06d}.png"
+                      for i in range(len(frames))]
+            rt_dir = tmp_dir / "realtime"
+            rt_dir.mkdir()
+            indices = realtime_frame_indices(frame_times, args.fps)
+            for out_i, src_i in enumerate(indices):
+                (rt_dir / f"frame_{out_i:06d}.png").symlink_to(images[src_i])
+            cmd = [
+                "ffmpeg", "-y", "-framerate", str(args.fps),
+                "-i", str(rt_dir / "frame_%06d.png"),
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-preset", "veryfast", "-crf", "23", str(args.output),
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-y", "-framerate", str(args.fps),
+                "-i", str(tmp_dir / "annot_%06d.png"),
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-preset", "veryfast", "-crf", "23",
+                str(args.output),
+            ]
         print(f"[sidepanel] encoding → {args.output}")
         subprocess.check_call(cmd)
     print(f"[sidepanel] done → {args.output}")

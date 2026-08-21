@@ -15,7 +15,8 @@
 #   --task       task name for scene geometry (default: push_t)
 #   --stride     sim-tick stride for frame rendering (default: 2)
 #   --fps        output mp4 fps (default: 10)
-#   --keep-frames  keep the intermediate frames dir (default: delete)
+#   --raw-log     use the legacy dense scrolling-log panel
+#   --keep-frames keep the intermediate frames dir (default: delete)
 #
 # Output: results/RUN_NAME_sidepanel.mp4, plus a copy to the D-drive sink
 # /d/projects/ERL/push_anything_ADMM/ when that mount exists.
@@ -36,12 +37,16 @@ STRIDE=2
 FPS=10
 KEEP_FRAMES=0
 REALTIME=0
+INTERP=1
+PANEL_REALTIME=()
+PANEL_RAW=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --task)   TASK="$2";   shift 2 ;;
     --stride) STRIDE="$2"; shift 2 ;;
     --fps)    FPS="$2";    shift 2 ;;
     --realtime) REALTIME=1; shift ;;
+    --raw-log) PANEL_RAW=(--raw-log); shift ;;
     --keep-frames) KEEP_FRAMES=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -55,13 +60,9 @@ LOG="results/${RUN_NAME}.txt"
 [ -f "$LOG" ] || { echo "no such log: $LOG" >&2; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ffmpeg not found" >&2; exit 1; }
 
-# --realtime: play back at 1:1 with simulated time (1 s of video == 1 s of sim).
-# One frame covers `stride` planner ticks of `dt_sim` seconds each, and is shown
-# for 1/fps seconds, so real time requires stride * dt_sim == 1/fps, i.e.
-#   stride = 1 / (dt_sim * fps)
-# dt_sim is read from the log rather than assumed, since it differs per task and
-# per regime (push_t is 0.1 s; the pose/position swap changes the LCS dt but not
-# the controller tick that [STEP] timestamps).
+# --realtime: frame PTS comes from logged simulation timestamps. Interpolate
+# enough visual subframes to approach the requested output FPS; unlike the old
+# integer-stride calculation, this remains truly 1:1 when fps * dt > 1.
 if [ "$REALTIME" = 1 ]; then
   DT_SIM=$(python3 - "$LOG" <<'PY'
 import re, sys, collections
@@ -74,16 +75,19 @@ d = collections.Counter(round((b[1]-a[1])/(b[0]-a[0]), 6)
 print(d.most_common(1)[0][0] if d else 0.1)
 PY
 )
-  STRIDE=$(python3 -c "print(max(1, round(1.0/($DT_SIM*$FPS))))")
-  echo "[make_run_video] --realtime: dt_sim=${DT_SIM}s fps=${FPS} -> stride=${STRIDE}" \
-       "(1 s video == 1 s sim)"
+  INTERP=$(python3 -c "print(max(1, round($FPS*$STRIDE*$DT_SIM)))")
+  PANEL_REALTIME=(--realtime)
+  echo "[make_run_video] --realtime: dt_sim=${DT_SIM}s fps=${FPS} " \
+       "stride=${STRIDE} interp=${INTERP} (timestamp-driven 1:1 playback)"
 fi
 
 # Stride is in the filename: renders at different strides are different
 # artifacts (stride 2 = frame-accurate detail, stride 24 = motion visible
 # over a long run). A stride-agnostic name silently clobbered the previous
 # render -- and its D-drive copy -- when re-rendering the same run.
-OUT="results/${RUN_NAME}_sidepanel_s${STRIDE}.mp4"
+TIMING_SUFFIX=""
+[ "$REALTIME" = 1 ] && TIMING_SUFFIX="_rt"
+OUT="results/${RUN_NAME}_sidepanel_s${STRIDE}${TIMING_SUFFIX}.mp4"
 
 FRAMES_DIR="$(mktemp -d /tmp/${RUN_NAME}_frames.XXXX)"
 cleanup() { [ "$KEEP_FRAMES" = 1 ] || rm -rf "$FRAMES_DIR"; }
@@ -95,11 +99,13 @@ export PORT_CAM_TARGET="${PORT_CAM_TARGET:-0.45,0.05,0.05}"
 
 echo "[make_run_video] 1/2 rendering scene frames (stride=$STRIDE) -> $FRAMES_DIR"
 python3 tools/visualizer/render_log_drake_scene.py "$LOG" \
-  --task "$TASK" --stride "$STRIDE" --out-dir "$FRAMES_DIR"
+  --task "$TASK" --stride "$STRIDE" --interp "$INTERP" \
+  --out-dir "$FRAMES_DIR"
 
 echo "[make_run_video] 2/2 compositing scene + log side panel -> $OUT"
 python3 tools/visualizer/paint_log_sidepanel.py \
-  --frames-dir "$FRAMES_DIR" --log-path "$LOG" --output "$OUT" --fps "$FPS"
+  --frames-dir "$FRAMES_DIR" --log-path "$LOG" --output "$OUT" --fps "$FPS" \
+  --interp "$INTERP" "${PANEL_REALTIME[@]}" "${PANEL_RAW[@]}"
 
 echo "[make_run_video] wrote $OUT ($(du -h "$OUT" | cut -f1))"
 
