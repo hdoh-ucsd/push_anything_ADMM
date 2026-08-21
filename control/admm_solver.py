@@ -1820,38 +1820,71 @@ class C3Solver:
                         _proj_case3 = 0
                         _N_lo_off = num_normals
                         _N_hi_off = 2 * num_normals
+                        # 2026-08-21 perf. This histogram used to be a
+                        # per-slot PYTHON scalar loop (`for _j in
+                        # range(n_lambda)`) nested inside the knot loop,
+                        # re-deriving one element at a time the very
+                        # cond1/cond2 that `_project_C3Plus` had already
+                        # computed vectorized.
+                        #
+                        # It is NOT diagnostic-only: `_last_proj_case_N/_T`
+                        # feed the [CONSENSUS-STEP] line, which prints on
+                        # EVERY solve, so it cannot simply be gated off --
+                        # the counts must stay exact.
+                        #
+                        # Measured (scripts/gpu/hist_speedup.py, N=10,
+                        # n_lambda=24): scalar per-knot 46.7 us/ADMM-iter;
+                        # numpy per-knot 64.5 us (0.72x -- SLOWER, numpy
+                        # per-call overhead beats a 24-element loop); numpy
+                        # over ALL knots at once 8.0 us (5.87x). So the
+                        # histogram is hoisted out of the knot loop entirely
+                        # and evaluated once per ADMM iteration below.
+                        # Semantics are unchanged: same case precedence
+                        # (c1 wins over c2), same G/N/T slot bucketing.
+                        _sqrt_ratio = float(np.sqrt(
+                            (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
+                            / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
+                        _lam_all = np.empty((N, n_lambda))
+                        _eta_all = np.empty((N, n_lambda))
                         for i in range(N):
                             li = i * TOT + SL
                             ei = i * TOT + SE
                             lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
                             eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
+                            _lam_all[i] = lam_blk
+                            _eta_all[i] = eta_blk
                             d_lam, d_eta = self._project_C3Plus(
                                 lam_blk, eta_blk, u_lam_w, u_eta_w)
-                            _sqrt_ratio = float(np.sqrt(
-                                (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
-                                / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
-                            for _j in range(n_lambda):
-                                _lo = float(lam_blk[_j])
-                                _eo = float(eta_blk[_j])
-                                _c1 = (_eo >= 0.0) and (_eo >= _sqrt_ratio * _lo)
-                                _c2 = (_lo >= 0.0) and (_eo <  _sqrt_ratio * _lo)
-                                if _c1:
-                                    _case_idx = 0
-                                elif _c2:
-                                    _case_idx = 1
-                                else:
-                                    _case_idx = 2
-                                if _j < _N_lo_off:
-                                    _proj_G[_case_idx] += 1
-                                elif _j < _N_hi_off:
-                                    _proj_N[_case_idx] += 1
-                                else:
-                                    _proj_T[_case_idx] += 1
-                            _proj_case1 = _proj_N[0]+_proj_T[0]+_proj_G[0]
-                            _proj_case2 = _proj_N[1]+_proj_T[1]+_proj_G[1]
-                            _proj_case3 = _proj_N[2]+_proj_T[2]+_proj_G[2]
                             delta[li:li+n_lambda] = d_lam
                             delta[ei:ei+n_lambda] = d_eta
+                        # One vectorized pass over every knot (0 = case 1
+                        # "η wins", 1 = case 2 "λ wins", 2 = apex).
+                        _c1_v = ((_eta_all >= 0.0)
+                                 & (_eta_all >= _sqrt_ratio * _lam_all))
+                        _c2_v = ((_lam_all >= 0.0)
+                                 & (_eta_all <  _sqrt_ratio * _lam_all))
+                        _case_v = np.where(_c1_v, 0, np.where(_c2_v, 1, 2))
+                        for _acc, _sl in ((_proj_G, slice(0, _N_lo_off)),
+                                          (_proj_N, slice(_N_lo_off, _N_hi_off)),
+                                          (_proj_T, slice(_N_hi_off, None))):
+                            _bc = np.bincount(_case_v[:, _sl].ravel(),
+                                              minlength=3)
+                            _acc[0] += int(_bc[0])
+                            _acc[1] += int(_bc[1])
+                            _acc[2] += int(_bc[2])
+                        # Equivalence to the removed scalar loop was verified
+                        # two ways (2026-08-21): a runtime differential
+                        # assertion over a full 10 s run (every c3plus solve,
+                        # zero mismatches) and
+                        # tests/test_proj_histogram_vectorization.py, which
+                        # carries BOTH implementations and pins them against
+                        # each other including exact ties. A sim log diff
+                        # CANNOT validate this: two runs of IDENTICAL code
+                        # diverge at the same line, because wall clock feeds
+                        # filtered_solve_time -> the x-pred clamp.
+                        _proj_case1 = _proj_N[0]+_proj_T[0]+_proj_G[0]
+                        _proj_case2 = _proj_N[1]+_proj_T[1]+_proj_G[1]
+                        _proj_case3 = _proj_N[2]+_proj_T[2]+_proj_G[2]
                         # Expose case counts + N/T split for the [CONSENSUS]
                         # emission below.
                         self._last_proj_case_hist = (
