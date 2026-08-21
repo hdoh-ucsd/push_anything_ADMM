@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Fig 8-style time-to-goal figure for all recorded successful runs.
 
-Every completed log under ``results/fig8_objects`` whose filename starts with a
-known task name is considered.  A run is recorded only when it contains an
+Every completed log in a task's configured Fig. 8 result directory whose
+filename starts with the task name is considered. A run is recorded only when
+it contains an
 ``ACHIEVED-FIXED-GOAL`` latch; unsuccessful runs are neither assigned a timeout
 value nor drawn as censored observations.  The y-axis expands to the measured
 success times, including successes later than 180 s.
@@ -19,21 +20,23 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO, "results", "fig8_objects")
+BLOCK_OUT_DIR = os.path.join(REPO, "results", "fig8_blocks")
 
 ORDER = [
-    ("I", "I_shape_texture"), ("C", "C_shape_texture"),
-    ("R", "R_shape_texture"), ("A", "A_shape_video"),
-    ("Y", "Y_shape_video"), ("G", "G_shape_video"),
-    ("B", "B_shape_video"), ("3", "3_shape_video"),
-    ("H", "H_shape_texture"), ("E", "E_shape_video"),
+    ("Letter I", "I_shape_texture"), ("Letter C", "C_shape_texture"),
+    ("Letter R", "R_shape_texture"), ("Letter A", "A_shape_video"),
+    ("Letter Y", "Y_shape_video"), ("Letter G", "G_shape_video"),
+    ("Letter B", "B_shape_video"), ("Letter 3", "3_shape_video"),
+    ("Letter H", "H_shape_texture"), ("Letter E", "E_shape_video"),
     ("Expo Box", "expo_box"), ("Lotion", "lotion"),
     ("Wood Block", "wood_block"), ("Tape", "tape"),
     ("Eraser", "eraser"), ("Milk Bottle", "milk"),
     ("Clamp", "clamp"), ("Chicken Broth", "chicken_broth"),
     ("Egg Carton", "egg_carton"), ("Book", "book"),
     ("Baby Toy", "baby_toy"), ("Gallon Milk", "gallon_milk"),
-    ("Xbox", "xbox"),
+    ("Xbox", "xbox"), ("Push T", "push_t_white_block"),
 ]
+TASK_LOG_DIR = {"push_t_white_block": BLOCK_OUT_DIR}
 STEP_DT = 0.075
 SUCCESS_CSV = os.path.join(REPO, "FIG8_SUCCESS_RUNS.csv")
 
@@ -50,10 +53,11 @@ def collect():
     records = []
     for disp, task in ORDER:
         times = []
-        for fn in sorted(os.listdir(OUT_DIR)):
+        log_dir = TASK_LOG_DIR.get(task, OUT_DIR)
+        for fn in sorted(os.listdir(log_dir)):
             if not (fn.startswith(f"{task}_") and fn.endswith(".log")):
                 continue
-            txt = open(os.path.join(OUT_DIR, fn), errors="replace").read()
+            txt = open(os.path.join(log_dir, fn), errors="replace").read()
             if "[RESULT]" not in txt:
                 continue          # incomplete/crashed run: not a trial
             m = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
@@ -65,7 +69,7 @@ def collect():
                 records.append({
                     "object": disp,
                     "task": task,
-                    "log": fn,
+                    "log": os.path.relpath(os.path.join(log_dir, fn), REPO),
                     "commit": meta.group(1) if meta else "",
                     "seed": meta.group(2) if meta else "",
                     "first_goal_step": step,
@@ -79,7 +83,7 @@ def write_success_records(records):
     fields = ["object", "task", "log", "commit", "seed",
               "first_goal_step", "time_to_goal_s"]
     with open(SUCCESS_CSV, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
+        writer = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(records)
 
