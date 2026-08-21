@@ -733,7 +733,75 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
     if add_camera:
         _goal_xy = task_cfg.get("goal_xy", [0.3, 0.0])
         _init_z  = task_cfg["init_xyz"][2]
-        if task_cfg["object_type"] == "box":
+        if (task_cfg.get("object_sdf") is not None
+                and task_cfg["object_type"] != "jack"):
+            # Mesh-backed object (imported `anything` objects + push_t_mesh):
+            # build the ghost from the object's OWN visual geometry.
+            #
+            # Every imported object carries object_type "tshape" -- that flag
+            # selects the planar-task code paths, NOT the shape -- so without
+            # this branch the analytic two-box T below was drawn as the target
+            # for a book, a lotion bottle, and every letter. Matching the
+            # object's actual silhouette is the whole point of a goal ghost.
+            #
+            # Uses the SDF's own <visual> pieces (the VHACD convex_*.obj set),
+            # which is exactly what the opaque manipuland renders as, so ghost
+            # and object are the same geometry at two different poses. The
+            # jack is excluded: its ghost is three per-axis TINTED capsules
+            # because a single-colour jack ghost cannot express which capsule
+            # goes where (see the jack branch below). push_jack ships no
+            # object_sdf today; the guard keeps that ghost safe if it ever does.
+            import os as _os
+            import re as _re
+            _sdf_path = str(task_cfg["object_sdf"])
+            _sdf_dir = _os.path.dirname(_sdf_path)
+            _sdf_txt = open(_sdf_path).read()
+            # (uri, pose) per <visual> block, in document order.
+            _pieces = []
+            for _vis in _re.findall(r"<visual\b.*?</visual>", _sdf_txt, _re.S):
+                _m_uri = _re.search(r"<uri>\s*([^<\s]+)\s*</uri>", _vis)
+                if not _m_uri:
+                    continue
+                _m_pose = _re.search(r"<pose>([^<]*)</pose>", _vis)
+                _pose = ([float(v) for v in _m_pose.group(1).split()]
+                         if _m_pose else [0.0] * 6)
+                _pieces.append((_m_uri.group(1), _pose))
+
+            # Goal attitude: full quaternion when the task declares one
+            # (SE(3)), else the planar goal yaw -- same precedence the object's
+            # own goal handling uses.
+            _gq = task_cfg.get("goal_quat")
+            if _gq is not None:
+                _gq = np.asarray(_gq, dtype=float)
+                _gq = _gq / float(np.linalg.norm(_gq))
+                _R_goal = ad.RotationMatrix(
+                    ad.Quaternion(_gq[0], _gq[1], _gq[2], _gq[3]))
+            else:
+                _R_goal = ad.RotationMatrix.MakeZRotation(
+                    float(task_cfg.get("goal_yaw", 0.0)))
+            _T_goal = ad.RigidTransform(
+                _R_goal,
+                [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
+
+            for _i, (_uri, _pose) in enumerate(_pieces):
+                _mesh_file = _os.path.join(_sdf_dir, _uri)
+                if not _os.path.exists(_mesh_file):
+                    print(f"[env] goal ghost: missing visual mesh {_mesh_file}")
+                    continue
+                _T_local = ad.RigidTransform(
+                    ad.RotationMatrix(ad.RollPitchYaw(*_pose[3:6])),
+                    list(_pose[0:3]))
+                plant.RegisterVisualGeometry(
+                    plant.world_body(),
+                    _T_goal.multiply(_T_local),
+                    ad.Mesh(_mesh_file),
+                    f"goal_ghost_{_i}",
+                    list(goal_ghost_rgba),
+                )
+            print(f"[env] goal ghost from object mesh: "
+                  f"{_os.path.basename(_sdf_path)} "
+                  f"({len(_pieces)} visual piece(s))")
+        elif task_cfg["object_type"] == "box":
             _sx, _sy, _sz = task_cfg["size"]
             _ghost_shape = ad.Box(_sx, _sy, _sz)
             plant.RegisterVisualGeometry(
