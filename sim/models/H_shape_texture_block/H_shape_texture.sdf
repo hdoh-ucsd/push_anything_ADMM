@@ -22,7 +22,7 @@
           <box><size>0.150500 0.022050 0.047360</size></box>
         </geometry>
         <material>
-          <diffuse>0.75 0.75 0.75 1</diffuse>
+          <diffuse>0.85 0.38 0.1 1</diffuse>
         </material>
       </visual>
       <collision name="box_0_volume">
@@ -44,7 +44,7 @@
           <box><size>0.155000 0.023000 0.047360</size></box>
         </geometry>
         <material>
-          <diffuse>0.75 0.75 0.75 1</diffuse>
+          <diffuse>0.85 0.38 0.1 1</diffuse>
         </material>
       </visual>
       <collision name="box_1_volume">
@@ -66,7 +66,7 @@
           <box><size>0.021500 0.096000 0.047360</size></box>
         </geometry>
         <material>
-          <diffuse>0.75 0.75 0.75 1</diffuse>
+          <diffuse>0.85 0.38 0.1 1</diffuse>
         </material>
       </visual>
       <collision name="box_2_volume">
