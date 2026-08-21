@@ -1507,8 +1507,57 @@ class InnerSolver:
             return results  # type: ignore[return-value]
 
         # --- Serial path (bit-identical to prior behavior) ---------------
-        results: list[SampleResult] = []
-        for k, p in enumerate(samples):
+        #
+        # CANDIDATE WARM-START SEMANTICS (measurement gate, 2026-08-21).
+        # `_u_prev_solve` is written at the end of EVERY C3+ solve and read
+        # by the next one via `q_ref[u] += -2*R@u_prev`, so in this serial
+        # loop candidate k warm-starts candidate k+1. The loop is therefore
+        # ORDER-DEPENDENT, and a fully parallel GPU batch cannot reproduce
+        # it by construction. PORT_CANDIDATE_WARMSTART selects:
+        #   ordered      (default) -- current behaviour, k warm-starts k+1
+        #   independent  -- every candidate sees the tick's ENTRY u_prev
+        #   reset        -- every candidate starts from u_prev = None
+        # Unset => "ordered" => byte-identical. Measurement only.
+        _ws_mode = os.environ.get("PORT_CANDIDATE_WARMSTART",
+                                  "ordered").strip().lower()
+        if _ws_mode not in ("ordered", "independent", "reset"):
+            raise ValueError(
+                f"PORT_CANDIDATE_WARMSTART={_ws_mode!r} not in "
+                f"(ordered, independent, reset)")
+        _slv = getattr(self, "solver", None)
+        _u_prev_at_entry = getattr(_slv, "_u_prev_solve", None) \
+            if _slv is not None else None
+        if _ws_mode != "ordered" and not getattr(self, "_ws_banner", False):
+            self._ws_banner = True
+            print(f"[CAND-WARMSTART] *** OFF-REFERENCE *** mode={_ws_mode} "
+                  f"(default is 'ordered'); candidate-to-candidate "
+                  f"_u_prev_solve propagation is suppressed", flush=True)
+
+        # Candidate ORDER sweep (measurement only): PORT_CANDIDATE_ORDER
+        # permutes which candidate is solved when, WITHOUT changing which
+        # candidates exist or how results are indexed -- results are written
+        # back into original positions, so the controller sees an unchanged
+        # list. Only the warm-start chain order changes. "as-is" = default.
+        _ord_mode = os.environ.get("PORT_CANDIDATE_ORDER",
+                                   "as-is").strip().lower()
+        _order = list(range(len(samples)))
+        if _ord_mode == "reversed":
+            _order = _order[::-1]
+        elif _ord_mode.startswith("rot"):
+            _sh = int(_ord_mode[3:] or 1) % max(len(_order), 1)
+            _order = _order[_sh:] + _order[:_sh]
+        elif _ord_mode != "as-is":
+            raise ValueError(f"PORT_CANDIDATE_ORDER={_ord_mode!r} not in "
+                             f"(as-is, reversed, rotN)")
+
+        results_by_k: dict = {}
+        for k in _order:
+            p = samples[k]
+            if _slv is not None:
+                if _ws_mode == "independent":
+                    _slv._u_prev_solve = _u_prev_at_entry
+                elif _ws_mode == "reset":
+                    _slv._u_prev_solve = None
             r = self.evaluate_sample(
                 sample_pos    = p,
                 current_q     = current_q,
@@ -1541,7 +1590,13 @@ class InnerSolver:
                     print(f"[SAMP-LCS] sample_idx={k} "
                           f"sample_pos=({p[0]:+.4f},{p[1]:+.4f},{p[2]:+.4f}) "
                           f"n_c=NULL (LCS not built)", flush=True)
-            results.append(r)
+            results_by_k[k] = r
+
+        # Restore ORIGINAL candidate order regardless of solve order, so the
+        # controller's positional indexing (mode switch, prev-repos
+        # inflation) is unaffected by the PORT_CANDIDATE_ORDER sweep.
+        results: list[SampleResult] = [results_by_k[k]
+                                       for k in range(len(samples))]
 
         # 2026-07-26 arc-2 diagnostic: per-sample cost-breakdown dump.
         # Purpose: understand why surrogate c_C3_raw for the current sample
