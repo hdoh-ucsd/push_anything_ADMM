@@ -281,3 +281,28 @@ FINDING 2 -- 72% of every OSQP iteration runs PAST convergence.
   Indicative ceiling if authorized: the QP solve is 81% of wall time and the
   probe shows 16.84 -> 10.23 ms/solve (1.65x) on that portion, i.e. roughly
   1.4x end-to-end by Amdahl. Would need the full two-tier eval to claim.
+
+=== CAN A GPU OSQP HELP? (2026-08-21) — NO, LAUNCH FLOOR EXCEEDS DRAKE ===
+Availability (scripts/gpu/osqp_backend_probe.py):
+  osqp 1.1.1 -> algebras_available() = ['builtin'] only; algebra='cuda'
+  raises "Algebra cuda not available". The published manylinux wheel ships
+  only ext_builtin; osqp/cuda.py is a 4-line wrapper. cuosqp (the paper's
+  package) has no installable distribution for this Python/CUDA.
+  CUDA algebra = build OSQP from source with -DOSQP_ALGEBRA_BACKEND=cuda.
+  Also: Drake vendors its own OSQP and always uses builtin, so a GPU OSQP
+  would mean bypassing Drake entirely and feeding P/q/A/l/u ourselves.
+
+Ceiling (scripts/gpu/gpu_osqp_ceiling.py, n=639 m=439 fp64):
+  Drake CPU OSQP, in-run                47.5 us / iteration
+  our batched GPU, batch=6              64.4 us   0.74x
+  our batched GPU, batch=1             356.2 us   0.13x
+  bare GPU kernel-launch floor          74.8 us   0.63x   <-- the hard limit
+
+  The floor is only the kernel dispatches an OSQP iteration needs (2 matvecs
+  + clamp + axpy), with no solver logic, preconditioner or termination check.
+  It already costs 1.6x Drake's ENTIRE iteration. A GPU OSQP solves one
+  problem at a time and so cannot amortise launches across samples; it sits
+  at or above that floor by construction.
+
+  Supersedes the earlier 41.8 us/sample-iteration figure (measured at m=300);
+  at the real m=439 batched GPU is 64.4 us, a loss rather than a slight win.
