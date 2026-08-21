@@ -220,11 +220,24 @@ constants and the encoding (§0.2) bought it. Sweeping `r_lambda` across two
 decades still changes nothing, so the binding trade remains the terminal cost
 against the l1 penalty on the complementarity residual, not the control cost.
 
-**But Table II is still not reproduced.** The paper reports push box at tracking
-error 0.02 with violation 8.3e-9, and the reference's own `constraintTol` is
-1e-6. This port sits at **7.53e-5** — trajectory essentially right, feasibility
-two to four orders short. The trade also persists in the same direction: pushing
-the weight higher improves the trajectory and degrades the violation.
+**But Table II is still not reproduced, and the failure is scale-dependent.**
+Sweeping the terminal weight at both scales:
+
+```
+bench 3 m   q x10    err 0.0408 m (1.36%)   viol 7.5e-05   inner QP failed
+            q x100   err 0.2449 m (8.16%)   viol 1.7e+00   penalty max out
+            q x1000  err 0.0000 m (0.00%)   viol 1.3e+00   inner QP failed
+our box     q x10    err 0.0046 m (3.05%)   viol 2.1e-14   converged
+            q x100   err 0.0006 m (0.43%)   viol 6.7e-02   penalty max out
+            q x1000  err 0.0000 m (0.00%)   viol 1.0e-12   converged
+```
+
+On **our** box the trade is escapable: q x1000 delivers a perfect trajectory
+*and* 1e-12 feasibility. At the reference's 3 m scale no weight tested delivers
+both, and the sweep is not even monotone — x100 is worse than x10 on *both*
+axes. The paper reports push box at tracking error 0.02 with violation 8.3e-9
+and its own `constraintTol` is 1e-6; our best feasible benchmark point is
+7.53e-5.
 
 The inner QP is now the prime suspect on evidence rather than inference. The
 reference uses interior-point PIQP (`SolverInterface.h:9`, README §Features);
