@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Fig 8-style time-to-goal figure across the anything object set.
+"""Fig 8-style time-to-goal figure for all recorded successful runs.
 
-Grammar (per the campaign spec): per-object boxplots showing median and
-IQR, orange dots for individual trial data points, y-axis truncated at
-the 180 s protocol cap, and a shaded region above the truncation marking
-trials that never reached the goal (right-censored, not measured values).
-With n=1 trials per object the boxes degenerate onto the single dot;
-the script draws real boxes automatically once more trials accumulate
-in results/fig8_objects/<task>_seed*.log.
+Every completed log under ``results/fig8_objects`` whose filename starts with a
+known task name is considered.  A run is recorded only when it contains an
+``ACHIEVED-FIXED-GOAL`` latch; unsuccessful runs are neither assigned a timeout
+value nor drawn as censored observations.  The y-axis expands to the measured
+success times, including successes later than 180 s.
 """
+import csv
 import os
 import re
 from collections import OrderedDict
@@ -35,7 +34,8 @@ ORDER = [
     ("Baby Toy", "baby_toy"), ("Gallon Milk", "gallon_milk"),
     ("Xbox", "xbox"),
 ]
-T_CAP = 180.0
+STEP_DT = 0.075
+SUCCESS_CSV = os.path.join(REPO, "FIG8_SUCCESS_RUNS.csv")
 
 # Neutral marks + one semantic accent (trial dots), text in ink tones.
 INK = "#1f2430"
@@ -43,40 +43,55 @@ MUTED = "#6b7280"
 GRID = "#e5e7eb"
 BOX = "#9aa2af"
 ORANGE = "#e8710a"
-BAND = "#eceef1"
 
 
 def collect():
     data = OrderedDict()
+    records = []
     for disp, task in ORDER:
-        times, censored = [], 0
+        times = []
         for fn in sorted(os.listdir(OUT_DIR)):
-            if not re.match(rf"{re.escape(task)}_seed\d+\.log$", fn):
+            if not (fn.startswith(f"{task}_") and fn.endswith(".log")):
                 continue
             txt = open(os.path.join(OUT_DIR, fn), errors="replace").read()
             if "[RESULT]" not in txt:
                 continue          # incomplete/crashed run: not a trial
             m = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
             if m:
-                times.append(int(m.group(1)) * 0.075)
-            else:
-                censored += 1
-        data[disp] = (times, censored)
-    return data
+                step = int(m.group(1))
+                time_s = step * STEP_DT
+                times.append(time_s)
+                meta = re.search(r"\[RUN-META\]\s+git=(\S+)\s+seed=(\S+)", txt)
+                records.append({
+                    "object": disp,
+                    "task": task,
+                    "log": fn,
+                    "commit": meta.group(1) if meta else "",
+                    "seed": meta.group(2) if meta else "",
+                    "first_goal_step": step,
+                    "time_to_goal_s": f"{time_s:.3f}",
+                })
+        data[disp] = times
+    return data, records
+
+
+def write_success_records(records):
+    fields = ["object", "task", "log", "commit", "seed",
+              "first_goal_step", "time_to_goal_s"]
+    with open(SUCCESS_CSV, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(records)
 
 
 def main():
-    data = collect()
+    data, records = collect()
+    write_success_records(records)
     n_obj = len(data)
     fig, ax = plt.subplots(figsize=(12.5, 5.2), dpi=200)
 
-    # Truncation band: trials with no goal reach within the cap live here.
-    band_lo, band_hi = T_CAP, T_CAP * 1.22
-    ax.axhspan(band_lo, band_hi, color=BAND, zorder=0)
-    ax.axhline(T_CAP, color=MUTED, lw=0.8, ls=(0, (4, 3)), zorder=1)
-
     rng = np.random.default_rng(0)
-    for i, (disp, (times, censored)) in enumerate(data.items(), start=1):
+    for i, (disp, times) in enumerate(data.items(), start=1):
         if times:
             bp = ax.boxplot(
                 [times], positions=[i], widths=0.55, patch_artist=True,
@@ -90,21 +105,13 @@ def main():
             ax.scatter(np.full(len(times), i) + jitter, times,
                        s=34, color=ORANGE, zorder=3, edgecolor="white",
                        linewidth=0.7)
-        if censored:
-            # Right-censored trials: presence markers in the band's lower
-            # third (the label owns the top edge).
-            ys = np.linspace(band_lo + 6, band_lo + (band_hi - band_lo) * 0.45,
-                             censored + 1)[:-1] if censored > 1 else \
-                np.array([band_lo + (band_hi - band_lo) * 0.30])
-            ax.scatter(np.full(censored, i), ys, s=30, facecolor="none",
-                       edgecolor=ORANGE, linewidth=1.3, zorder=3)
 
     ax.set_xlim(0.3, n_obj + 0.7)
-    ax.set_ylim(0, band_hi)
+    max_time = max((t for times in data.values() for t in times), default=1.0)
+    ax.set_ylim(0, max(30.0, max_time * 1.12))
     ax.set_xticks(range(1, n_obj + 1))
     ax.set_xticklabels(list(data.keys()), rotation=45, ha="right",
                        fontsize=8.5, color=INK)
-    ax.set_yticks([0, 30, 60, 90, 120, 150, 180])
     ax.set_ylabel("Time-to-goal (s)", fontsize=10, color=INK)
     ax.tick_params(colors=MUTED, labelsize=8.5)
     for s in ("top", "right"):
@@ -114,27 +121,22 @@ def main():
     ax.grid(axis="y", color=GRID, lw=0.7, zorder=0)
     ax.set_axisbelow(True)
 
-    ax.text(0.99, (band_hi - 3) / band_hi,
-            "no goal reach within 180 s (censored)",
-            transform=ax.transAxes, ha="right", va="top",
-            fontsize=8.5, color=MUTED, style="italic")
-
-    n_trials = sum(len(t) + c for t, c in data.values())
+    n_trials = len(records)
     ax.set_title(
-        "Time-to-goal by object — single-object pushing, port replication  "
-        f"(n={n_trials} trials, 1 per object; filled dot = goal reached, "
-        "open dot = censored at 180 s)",
+        "Time-to-goal by object — recorded successful runs only  "
+        f"(n={n_trials}; each dot is a fixed-goal success)",
         fontsize=9.5, color=INK, loc="left", pad=10)
     fig.text(0.005, 0.005,
-             "Protocol: canonical fixed goal (Δ=0.187 m, Δyaw=−0.74 rad) for "
-             "all objects; seed 0; time-to-goal = first achieved-goal latch "
-             "(geodesic). Paper protocol uses randomized goals.",
+             "Time-to-goal = first achieved-fixed-goal latch (geodesic). "
+             "Unsuccessful and incomplete runs are omitted, not censored at 180 s; "
+             "see fig8_success_runs.csv for run provenance.",
              fontsize=7, color=MUTED)
 
     fig.tight_layout(rect=(0, 0.03, 1, 1))
     out = os.path.join(OUT_DIR, "fig8_time_to_goal.png")
     fig.savefig(out, facecolor="white")
     print(f"wrote {out}")
+    print(f"wrote {SUCCESS_CSV} ({len(records)} successful runs)")
 
 
 if __name__ == "__main__":

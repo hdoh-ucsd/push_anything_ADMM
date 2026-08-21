@@ -84,20 +84,18 @@ contact model are refreshed. See `control/admm_solver.py`,
 
 ## Representative Stored Result
 
-![Time-to-goal across 23 stored fixed-goal object trials](docs/figures/fig8_fixed_goal_result.png)
+![Time-to-goal across recorded successful fixed-goal runs](docs/figures/fig8_fixed_goal_result.png)
 
-**Stored Fig. 8-style object campaign.** This is a README copy of
-`results/fig8_objects/fig8_time_to_goal.png`; the files are byte-identical. The
-campaign contains 23 seed-0 trials, one per object, with a 180 s protocol cap.
-The fixed goal was `Δ = 0.187 m`, `Δyaw = -0.74 rad`; time-to-goal is the first
-achieved-goal latch using the stored plotting rule. Two trials reached the goal:
-Milk Bottle at 54.6 s and Clamp at 131.1 s. The remaining 21 are shown as
-right-censored, not assigned fabricated 180 s completion times.
+**Stored Fig. 8-style object campaign.** The figure records every completed run
+under `results/fig8_objects/` that reached the fixed-goal latch. Unsuccessful and
+incomplete runs are omitted rather than censored at 180 s, and successful runs
+after 180 s remain eligible at their measured time-to-goal. Each dot represents
+one successful log; repeated task/seed combinations are retained as separate
+runs rather than silently deduplicated.
 
 This is a fixed-goal port-replication diagnostic—not the paper's randomized-goal
-protocol and not evidence of broad task completion. The source summary is
-`results/fig8_objects/fig8_summary.csv`; generation logic for the original plot
-is in `scripts/plot_fig8.py`.
+protocol and not a success-rate estimate. The tracked success-run manifest is
+`FIG8_SUCCESS_RUNS.csv`; generation logic is in `scripts/plot_fig8.py`.
 
 ## Quick Start
 
