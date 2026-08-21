@@ -87,11 +87,12 @@ contact model are refreshed. See `control/admm_solver.py`,
 ![Time-to-goal across recorded successful fixed-goal runs](docs/figures/fig8_fixed_goal_result.png)
 
 **Stored Fig. 8-style object campaign.** The figure records every completed run
-under `results/fig8_objects/` that reached the fixed-goal latch. Unsuccessful and
-incomplete runs are omitted rather than censored at 180 s, and successful runs
-after 180 s remain eligible at their measured time-to-goal. Each dot represents
-one successful log; repeated task/seed combinations are retained as separate
-runs rather than silently deduplicated.
+in the configured Fig. 8 result directories that reached the fixed-goal latch,
+including the Block-T experiment shown as Push T. Unsuccessful and incomplete
+runs are omitted rather than censored at 180 s, and successful runs after 180 s
+remain eligible at their measured time-to-goal. Each dot represents one
+successful log; repeated task/seed combinations are retained as separate runs
+rather than silently deduplicated.
 
 This is a fixed-goal port-replication diagnostic—not the paper's randomized-goal
 protocol and not a success-rate estimate. The tracked success-run manifest is
