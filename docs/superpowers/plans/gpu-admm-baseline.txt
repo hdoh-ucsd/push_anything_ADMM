@@ -45,3 +45,39 @@ matrices. Real LCS instances may be worse conditioned. Task 7 must re-check
 on the corpus, acceptance: explicit-inverse vs cholesky_solve relative
 error < 1e-9 on every corpus instance. If any instance fails, fall back to
 cholesky_solve for that (N, n_lambda) group and re-measure.
+
+=== GPU-ADMM Task 3 — thread lever + serial baseline (2026-08-21) ===
+commit 0ea8fed, box `pushing --task-id 4`, 60 s gate, seed 0, sequential runs.
+
+  threads=1 : 6m45s wall | avg_per_step_ms=472.0 | full_solves=4504 | switches=28
+  threads=4 : 3m17s wall | avg_per_step_ms=209.8 | full_solves=801  | switches=0
+
+THE threads=4 RUN IS NOT A SPEEDUP -- THE PARALLEL PATH IS BROKEN.
+
+  threads=1 : modes free=517 c3=284 ; goal_dist 0.150 -> 0.011 (min 0.0086)
+  threads=4 : modes free=801 c3=0   ; goal_dist 0.150 -> 0.150 (NO progress)
+
+  All 801 ticks in the threads=4 run read
+      exec_src=current_fallback  pursued=kNewSample  best_other=-
+  i.e. the controller asked for an alternative sample every tick and got
+  nothing usable back, so it never repositioned, never entered c3, never
+  touched the object. Final line: success=NO tight_goal=FAIL loose_goal=FAIL.
+  It is "2x faster" only because it does no work.
+
+  Also observed: curr_cost inflates from ~750 (threads=1) to ~1700 under
+  threads=4, which points at state corruption in the shared-plant /
+  per-worker-context dispatch (control/sampling_c3/inner_solve.py:1267-1291,
+  `_run_one` calls self.plant.SetPositions on a shared plant object) rather
+  than at the ranking logic. NOT root-caused further -- out of scope here.
+
+CONSEQUENCES
+  1. memory/project_admm_perf_psd_check_2026-08-20.md lists
+     `num_outer_threads: 4` as the open perf lever. It is NOT available:
+     the path exists but is defective. Corrected in memory 2026-08-21.
+  2. The GPU baseline is threads=1 (472.0 ms/step). The plan's Part 4
+     instruction to benchmark GPU against threads=4 is VOID -- there is no
+     valid 4-thread number to compare against until the parallel path is
+     fixed.
+  3. Fixing the parallel path is a separate work item with its own
+     two-tier eval. It is plausibly a cheaper route to the same throughput
+     than the GPU port, so it should be triaged before Phase 2 is finished.
