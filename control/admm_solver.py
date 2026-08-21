@@ -1706,6 +1706,38 @@ class C3Solver:
             print("[MATH.ADMM]   (9)  ω^{i+1}_k = ω^i_k + z^{i+1}_k − δ^{i+1}_k, ∀k — dual (ω-update)",
                   flush=True)
 
+        # Corpus mode: append the ASSEMBLED QP to this instance's npz, so a
+        # GPU replay is validated against the matrices the CPU actually
+        # solved rather than against a reimplementation of the assembly.
+        # (GPU-ADMM plan Task 4; closes the Task 1 / amendment-A1 open risk
+        # about conditioning on real instances.) Inert unless the env is set.
+        if getattr(self, "_corpus_pending", None):
+            _u_lo_d = (np.full(n_u, -torque_limit)
+                       if u_lower is None else np.asarray(u_lower, float))
+            _u_hi_d = (np.full(n_u, torque_limit)
+                       if u_upper is None else np.asarray(u_upper, float))
+            _spb_d = getattr(self, "state_position_bounds", None) or []
+            np.savez(
+                self._corpus_pending + "_qp.npz",
+                P_sym=P_sym, q_ref=q_ref, C_eq=C_eq, b_eq=b_eq,
+                g_diag=(self._g_diag_c3p_cache
+                        if self._g_diag_c3p_cache is not None
+                        else np.zeros(0)),
+                use_g=np.bool_(_use_g),
+                u_lo=_u_lo_d, u_hi=_u_hi_d,
+                spb=np.asarray(_spb_d, dtype=float) if _spb_d
+                    else np.zeros((0, 3)),
+                ee_vel_bounds=(np.asarray(ee_velocity_bounds, float)
+                               if ee_velocity_bounds is not None
+                               else np.zeros(0)),
+                ee_vel_idx=np.asarray(ee_vel_state_indices, dtype=np.int64),
+                TOT=np.int32(TOT), total_dim=np.int32(total_dim),
+                SX=np.int32(SX), SL=np.int32(SL),
+                SU=np.int32(SU), SE=np.int32(SE),
+                n_lambda=np.int32(n_lambda),
+                num_normals=np.int32(num_normals),
+            )
+
         for it in range(admm_iter):
             delta_prev = delta.copy()
             # Snapshot ω before the ω-update at end-of-iter so the cost
