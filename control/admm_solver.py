@@ -1127,6 +1127,48 @@ class C3Solver:
         _dump_path = _os_d.environ.get("DIAG_ADMM_DUMP", "")
         _dump_at   = int(_os_d.environ.get("DIAG_ADMM_DUMP_AT", "50"))
         _dump_min_iter = int(_os_d.environ.get("DIAG_ADMM_DUMP_MIN_ITER", "20"))
+
+        # ---- Corpus mode (GPU-ADMM plan Task 4) --------------------------
+        # DIAG_ADMM_DUMP_DIR=DIR writes MANY instances instead of one, so a
+        # GPU replay can be validated across contact regimes rather than a
+        # single lucky tick. Every DIAG_ADMM_DUMP_EVERY-th qualifying solve
+        # is written as inst_NNNN.npz, capped at DIAG_ADMM_DUMP_MAX.
+        # Unlike the single-shot path above this does NOT filter on
+        # admm_iter: the 3-iteration surrogate solves ARE the hot loop and
+        # must be represented. A paired inst_NNNN_out.npz with the solved
+        # (u_seq, x_seq) is written after the solve completes -- see the
+        # epilogue near the end of this method.
+        _dump_dir = _os_d.environ.get("DIAG_ADMM_DUMP_DIR", "")
+        self._corpus_pending = None
+        if _dump_dir:
+            _n_seen = getattr(self, "_corpus_seen", 0) + 1
+            self._corpus_seen = _n_seen
+            _every = int(_os_d.environ.get("DIAG_ADMM_DUMP_EVERY", "20"))
+            _cap   = int(_os_d.environ.get("DIAG_ADMM_DUMP_MAX", "60"))
+            _n_written = getattr(self, "_corpus_written", 0)
+            if _n_seen % _every == 0 and _n_written < _cap:
+                _os_d.makedirs(_dump_dir, exist_ok=True)
+                _stem = _os_d.path.join(_dump_dir, f"inst_{_n_written:04d}")
+                np.savez(
+                    _stem + ".npz",
+                    x0=x0, A=A, B_ctrl=B_ctrl, D=D, d=d,
+                    E=E, F=F, H=H, c_lcs=c_lcs, J_n=J_n, J_t=J_t,
+                    mu=np.asarray(mu, dtype=float),
+                    Q=Q, R=R, QN=QN, x_ref=x_ref,
+                    N=np.int32(N), admm_iter=np.int32(admm_iter),
+                    torque_limit=np.asarray(torque_limit, dtype=float),
+                    phi=(phi if phi is not None else np.zeros(0)),
+                    u_lower=(u_lower if u_lower is not None else np.zeros(0)),
+                    u_upper=(u_upper if u_upper is not None else np.zeros(0)),
+                    rho_initial=np.asarray(rho, dtype=float),
+                    n_x=np.int32(n_x), n_u=np.int32(n_u),
+                    u_lambda=np.asarray(self._u_lambda, dtype=float),
+                    u_eta=np.asarray(self._u_eta, dtype=float),
+                    rho_scale=np.asarray(self._rho_scale, dtype=float),
+                    solver_mode=np.array(["c3plus"], dtype=object),
+                )
+                self._corpus_written = _n_written + 1
+                self._corpus_pending = _stem
         # Filter: skip surrogate sample-eval calls (admm_iter < 20); count
         # only full c3-mode solves. The disambiguation needs the FULL path.
         if (_dump_path
@@ -2986,6 +3028,17 @@ class C3Solver:
         if self._lprobe_path is not None:
             self._lprobe_n_solves += 1
             self._lprobe_mpc_step  = self._diag_step
+
+        # Corpus mode epilogue (GPU-ADMM plan Task 4): pair the inputs dumped
+        # at the top of this call with the CPU solution, so a GPU replay has
+        # a golden reference per instance. Inert unless DIAG_ADMM_DUMP_DIR.
+        if getattr(self, "_corpus_pending", None):
+            np.savez(self._corpus_pending + "_out.npz",
+                     u_seq=u_seq, x_seq=x_seq, z_sol=z_sol,
+                     delta=delta, omega=omega,
+                     actual_iters=np.int32(actual_iters),
+                     rho_final=np.asarray(rho, dtype=float))
+            self._corpus_pending = None
 
         return u_seq, x_seq
 
