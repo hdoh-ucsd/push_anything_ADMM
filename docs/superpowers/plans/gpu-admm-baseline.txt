@@ -242,3 +242,42 @@ CONCLUSION: at this problem size, on this hardware, batched dense GPU ADMM
 does not accelerate the port. cuNRTO's 25.9x Franka result does not transfer
 because their subproblem is ~10-100x larger and dense (K_v in R^2940,
 thousands of SOC constraints); ours is n=639 at 0.16% Hessian density.
+
+=== WHERE THE PORT SPENDS ITS TIME (2026-08-21, HEAD, box 25 s gate) ===
+Wall-clock section profile, PORT_SECTION_TIMING=1. Sections cover 455 of the
+measured 472 ms/tick (96%) -- this is the whole picture, not a sample.
+cProfile cannot see Drake's pybind11 instance methods; these are wall clock.
+
+per _solve_c3plus = 70.0 ms, 6.5 calls per control tick:
+  inloop_osqp   39.16 ms  56.0%  3 solves x 275 OSQP iters
+  final_qp      19.50 ms  27.9%  1 solve  x 409 OSQP iters
+  qp_build       8.19 ms  11.7%  P/q assembly + UpdateCoefficients
+  lcs            2.71 ms   3.9%  Drake linearization
+  projection     0.41 ms   0.6%  Bui eq.12 delta-update
+
+  8023 OSQP inner iterations per control tick at 47.5 us each
+  => 81% OF WALL TIME IS OSQP INNER ITERATIONS.
+
+FINDING 1 -- the final QP is 1.5x an ADMM iteration, purely on iteration count:
+  time ratio 19.50/13.05 = 1.494 ; iteration ratio 409.3/275.0 = 1.488
+  The 1000x contact boost sits on a diagonal already ramped to rho=27.
+  Reference behaviour -- reported, not changed.
+
+FINDING 2 -- 72% of every OSQP iteration runs PAST convergence.
+  scripts/gpu/check_termination_probe.py on 60 real corpus QPs:
+    check_termination=100 (current)  246.7 iters  16.84 ms/solve
+    check_termination=25              116.2 iters  10.23 ms/solve
+    check_termination=1  (true)        68.5 iters  10.77 ms/solve
+  Converges at ~68, pays ~247. check=25 is the sweet spot (checking every
+  iteration has its own overhead). Solution spread across all three is
+  3.7e-3..5.2e-3 -- the same order as existing eps=1e-5 slop at
+  cond(K)~1.2e7, and check=100 is NOT closer to the tight answer.
+
+  check_termination=100 is a REFERENCE value (shared_parameters/
+  sampling_c3_qp_settings.yaml). Changing it is off-reference and needs
+  explicit authorization (feedback_no_off_reference_knob_probes).
+  MEASURED ONLY -- nothing changed.
+
+  Indicative ceiling if authorized: the QP solve is 81% of wall time and the
+  probe shows 16.84 -> 10.23 ms/solve (1.65x) on that portion, i.e. roughly
+  1.4x end-to-end by Amdahl. Would need the full two-tier eval to claim.
