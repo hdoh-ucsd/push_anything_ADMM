@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!-- Block object: hand-authored box decomposition of the imported
+     mesh of the same name. Single link, one <box> per piece. -->
+<sdf version="1.7">
+  <model name="lotion">
+    <link name="lotion">
+      <inertial>
+        <pose>0.000830 -0.002751 0.000184 0 0 0</pose>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.000121664172</ixx>
+          <iyy>3.17866168e-05</iyy>
+          <izz>0.000137638753</izz>
+          <ixy>1.14178205e-07</ixy>
+          <ixz>-7.636e-09</ixz>
+          <iyz>2.53117949e-08</iyz>
+        </inertia>
+      </inertial>
+      <visual name="box_0">
+        <pose>0.000830 0.009800 0.000184 0 0 0.000000</pose>
+        <geometry>
+          <box><size>0.080000 0.134000 0.043555</size></box>
+        </geometry>
+        <material>
+          <diffuse>0.75 0.75 0.75 1</diffuse>
+        </material>
+      </visual>
+      <collision name="box_0_volume">
+        <pose>0.000830 0.009800 0.000184 0 0 0.000000</pose>
+        <geometry>
+          <box><size>0.080000 0.134000 0.043555</size></box>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 3.0e7 </drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint> 0.02 </drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.3</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="box_1">
+        <pose>0.000830 -0.079200 0.000184 0 0 0.000000</pose>
+        <geometry>
+          <box><size>0.040000 0.044000 0.043555</size></box>
+        </geometry>
+        <material>
+          <diffuse>0.75 0.75 0.75 1</diffuse>
+        </material>
+      </visual>
+      <collision name="box_1_volume">
+        <pose>0.000830 -0.079200 0.000184 0 0 0.000000</pose>
+        <geometry>
+          <box><size>0.040000 0.044000 0.043555</size></box>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 3.0e7 </drake:hydroelastic_modulus>
+          <drake:mesh_resolution_hint> 0.02 </drake:mesh_resolution_hint>
+          <drake:hunt_crossley_dissipation>10</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.3</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+  </model>
+</sdf>
