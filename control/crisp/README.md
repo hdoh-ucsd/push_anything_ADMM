@@ -14,6 +14,11 @@ Code: `control/crisp/scp.py` (Algorithm 1), `control/crisp/push_box.py`
 (eqs 52–68 + execution bridge). Tests: `tests/test_crisp_scp.py`,
 `tests/test_crisp_push_box.py`. Repro: `tools/crisp/analyse_push_box.py`.
 
+A reader-facing version of this report is published at
+<https://claude.ai/code/artifact/3942579c-54ed-473e-bbd3-78d3a24b41b7>, source in
+`control/crisp/report.html`. To revise it, edit that file and republish **passing
+that URL as `url`** — republishing without it creates a second artifact.
+
 ---
 
 ## 1. What B-B actually models
