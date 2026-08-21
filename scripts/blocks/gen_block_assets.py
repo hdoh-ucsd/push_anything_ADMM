@@ -162,7 +162,11 @@ def main():
 
         mass = float(t["mass"])
         mu = t.get("friction", 0.3)
-        rgba = t.get("color_rgba", [0.6, 0.6, 0.6, 1.0])
+        # Prefer the BLOCK task's own colour when that task already
+        # exists, so a block can be tinted differently from its mesh
+        # twin (needed to tell two objects apart in one scene).
+        rgba = cfg.get(newname, {}).get(
+            "color_rgba", t.get("color_rgba", [0.6, 0.6, 0.6, 1.0]))
         I, com, rho = composite_inertia(boxes, mass)
         obj_txt, V = box_obj(boxes)
         open(os.path.join(d, f"{link}.obj"), "w").write(obj_txt)

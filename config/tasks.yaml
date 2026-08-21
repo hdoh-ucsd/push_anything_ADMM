@@ -3311,9 +3311,9 @@ tasks:
     - 0.187
     goal_yaw: -0.7379
     color_rgba:
-    - 0.75
-    - 0.75
-    - 0.75
+    - 0.85
+    - 0.38
+    - 0.1
     - 1.0
     sampling_height: 0.031
     pwl_waypoint_height: 0.0974
@@ -4749,9 +4749,9 @@ tasks:
     - 0.187
     goal_yaw: -0.7379
     color_rgba:
-    - 0.75
-    - 0.75
-    - 0.75
+    - 0.13
+    - 0.42
+    - 0.78
     - 1.0
     sampling_height: 0.031
     pwl_waypoint_height: 0.09
