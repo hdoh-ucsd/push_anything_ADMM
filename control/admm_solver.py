@@ -1837,6 +1837,19 @@ class C3Solver:
             with timed("admm.osqp_solve"):
                 res = self._solver.Solve(prog, None, self._osqp_solver_options)
 
+            if _os_g.environ.get("DIAG_OSQP_ITERS", ""):
+                _acc = getattr(C3Solver, "_osqp_iter_acc", None)
+                if _acc is None:
+                    _acc = C3Solver._osqp_iter_acc = {}
+                try:
+                    _it_n = int(res.get_solver_details().iter)
+                except Exception:
+                    _it_n = -1
+                _s = _acc.setdefault("inloop", [0, 0, 0])
+                _s[0] += 1
+                _s[1] += _it_n
+                _s[2] = max(_s[2], _it_n)
+
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
                 # DIAG_ZVEE=1 (2026-08-11 crawl probe): per-iter QP-optimum
@@ -2599,6 +2612,25 @@ class C3Solver:
                     _P_fin, q_total, 0.0, _psd)
                 res = self._solver.Solve(prog, None,
                                          self._osqp_solver_options)
+            if _os_g.environ.get("DIAG_OSQP_ITERS", ""):
+                _acc = getattr(C3Solver, "_osqp_iter_acc", None)
+                if _acc is None:
+                    _acc = C3Solver._osqp_iter_acc = {}
+                try:
+                    _it_n = int(res.get_solver_details().iter)
+                except Exception:
+                    _it_n = -1
+                _key = "final_boosted" if _boost_slots else "final_plain"
+                _s = _acc.setdefault(_key, [0, 0, 0])
+                _s[0] += 1
+                _s[1] += _it_n
+                _s[2] = max(_s[2], _it_n)
+                if _s[0] % 500 == 0:
+                    import sys as _sy
+                    print("[OSQP-ITERS] " + " | ".join(
+                        f"{k}: n={v[0]} mean={v[1]/max(v[0],1):.1f} max={v[2]}"
+                        for k, v in sorted(_acc.items())),
+                        file=_sy.stderr, flush=True)
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
             else:
