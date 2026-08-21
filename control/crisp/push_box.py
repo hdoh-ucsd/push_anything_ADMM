@@ -81,9 +81,21 @@ class PushBoxParams:
     # threshold; the paper does not publish Q or R for this problem.
     q_pos: float | None = None
     q_yaw: float | None = None
-    r_lambda: float = 1e-2         # running control weights, eq (68)
-    r_contact: float = 1e-3
+    # Running control weight, eq (68). The reference costs the four lambdas
+    # only (R = 0.001*I_4, SolvePushbox.cpp:132-137) and puts NO cost on the
+    # contact point; r_contact > 0 is a port-only addition that pulls the
+    # contact toward the box centre and so fights the face gates.
+    r_lambda: float = 1e-2
+    r_contact: float = 0.0
     penalty_mu_0: float = 10.0     # must match the CrispParams.mu_0 used to solve
+    #: Reference encodes the four face gates and six exclusivity products as
+    #: INEQUALITIES -- e.g. -(lam_1y)(c_y+b) >= 0 -- not equalities
+    #: (SolvePushbox.cpp:68-99, addInequalityConstraint). With lambda >= 0 and
+    #: the box bounds also enforced, the product is >= 0, so the two agree on
+    #: the true constraint value; they differ inside the QP, where the
+    #: inequality form leaves the LINEARISED product free to go negative while
+    #: the equality form penalises both sides.
+    complementarity_as_inequality: bool = True
 
     def __post_init__(self):
         if self.r_char is None:
@@ -101,8 +113,13 @@ class PushBoxProblem(NlpProblem):
         self.k_rot = 1.0 / (
             params.c_int * params.r_char * params.mu * params.mass * params.g
         )
-        self.m_eq = _NS + _NS * N + _N_COMP * N
-        self.m_ineq = _N_INEQ * N
+        self._comp_ineq = bool(params.complementarity_as_inequality)
+        if self._comp_ineq:
+            self.m_eq = _NS + _NS * N
+            self.m_ineq = (_N_INEQ + _N_COMP) * N
+        else:
+            self.m_eq = _NS + _NS * N + _N_COMP * N
+            self.m_ineq = _N_INEQ * N
         self.q_star = self._escape_threshold()
         q_pos = params.q_pos if params.q_pos is not None else (
             AUTO_WEIGHT_SAFETY * self.q_star)
@@ -112,6 +129,8 @@ class PushBoxProblem(NlpProblem):
                            [params.r_lambda] * 4)
         self._hess = self._build_hess()
         self._ineq_jac = self._build_ineq_jac()
+        self._comp_pattern = (self._build_comp_pattern() if self._comp_ineq
+                              else None)
 
     def _escape_threshold(self) -> float:
         """min_terminal_weight for this goal, with yaw-only goals folded in."""
@@ -192,9 +211,10 @@ class PushBoxProblem(NlpProblem):
             out[off:off + _NS] = (states[k + 1] - states[k]
                                   - p.dt * self.dynamics(states[k], controls[k]))
             off += _NS
-        for k in range(p.N):
-            out[off:off + _N_COMP] = self._complementarity(controls[k])
-            off += _N_COMP
+        if not self._comp_ineq:
+            for k in range(p.N):
+                out[off:off + _N_COMP] = self._complementarity(controls[k])
+                off += _N_COMP
         return out
 
     def _complementarity(self, u) -> np.ndarray:
@@ -217,12 +237,16 @@ class PushBoxProblem(NlpProblem):
         a, b = self.p.a, self.p.b
         _, controls = self.unpack(z)
         out = np.empty(self.m_ineq)
+        w = _N_INEQ + _N_COMP if self._comp_ineq else _N_INEQ
         for k in range(self.p.N):
             cx, cy, l1, l2, l3, l4 = controls[k]
-            out[_N_INEQ * k:_N_INEQ * (k + 1)] = [
+            row = [
                 l1, l2, -l3, -l4,               # unidirectional forces
                 cy + b, cx + a, b - cy, a - cx,  # contact point stays on the box
             ]
+            if self._comp_ineq:
+                row += list(-self._complementarity(controls[k]))
+            out[w * k:w * (k + 1)] = row
         return out
 
     def eq_jacobian(self, z) -> sp.spmatrix:
@@ -253,45 +277,96 @@ class PushBoxProblem(NlpProblem):
                         put(off + i, self._ui(k) + j, v)
             off += _NS
 
-        a, b = p.a, p.b
-        for k in range(p.N):
-            cx, cy, l1, l2, l3, l4 = controls[k]
-            u0 = self._ui(k)
-            #      row, (col offset in u, value) ...
-            terms = [
-                (0, [(1, l1), (2, cy + b)]),
-                (1, [(0, l2), (3, cx + a)]),
-                (2, [(1, l3), (4, cy - b)]),
-                (3, [(0, l4), (5, cx - a)]),
-                (4, [(2, l2), (3, l1)]),
-                (5, [(2, -l3), (4, -l1)]),
-                (6, [(2, -l4), (5, -l1)]),
-                (7, [(3, -l3), (4, -l2)]),
-                (8, [(3, -l4), (5, -l2)]),
-                (9, [(4, l4), (5, l3)]),
-            ]
-            for r, entries in terms:
-                for j, v in entries:
-                    if v:
-                        put(off + r, u0 + j, v)
-            off += _N_COMP
+        if not self._comp_ineq:
+            for k in range(p.N):
+                u0 = self._ui(k)
+                for r, entries in self._complementarity_terms(controls[k]):
+                    for j, v in entries:
+                        if v:
+                            put(off + r, u0 + j, v)
+                off += _N_COMP
 
         return sp.csc_matrix((vals, (rows, cols)), shape=(self.m_eq, self.n))
 
+    def _complementarity_terms(self, u):
+        """d(complementarity)/du as (row, [(u-slot, value), ...]) per row."""
+        a, b = self.p.a, self.p.b
+        cx, cy, l1, l2, l3, l4 = u
+        return [
+            (0, [(1, l1), (2, cy + b)]),
+            (1, [(0, l2), (3, cx + a)]),
+            (2, [(1, l3), (4, cy - b)]),
+            (3, [(0, l4), (5, cx - a)]),
+            (4, [(2, l2), (3, l1)]),
+            (5, [(2, -l3), (4, -l1)]),
+            (6, [(2, -l4), (5, -l1)]),
+            (7, [(3, -l3), (4, -l2)]),
+            (8, [(3, -l4), (5, -l2)]),
+            (9, [(4, l4), (5, l3)]),
+        ]
+
     def _build_ineq_jac(self) -> sp.spmatrix:
+        """The sign/bound block, which is constant. Complementarity is added
+        per-z by ineq_jacobian() when it lives on the inequality side."""
         rows, cols, vals = [], [], []
         # (row offset, u-slot, coefficient); constants drop out of the Jacobian.
         pattern = [(0, 2, 1.0), (1, 3, 1.0), (2, 4, -1.0), (3, 5, -1.0),
                    (4, 1, 1.0), (5, 0, 1.0), (6, 1, -1.0), (7, 0, -1.0)]
+        w = _N_INEQ + _N_COMP if self._comp_ineq else _N_INEQ
         for k in range(self.p.N):
             for r, j, v in pattern:
-                rows.append(_N_INEQ * k + r)
+                rows.append(w * k + r)
                 cols.append(self._ui(k) + j)
                 vals.append(v)
         return sp.csc_matrix((vals, (rows, cols)), shape=(self.m_ineq, self.n))
 
+    #: (row within the 10 complementarity rows, u-slot) for each nonzero.
+    #: The sparsity pattern is fixed; only the values depend on u.
+    _COMP_NZ = ((0, 1), (0, 2), (1, 0), (1, 3), (2, 1), (2, 4), (3, 0), (3, 5),
+                (4, 2), (4, 3), (5, 2), (5, 4), (6, 2), (6, 5), (7, 3), (7, 4),
+                (8, 3), (8, 5), (9, 4), (9, 5))
+
+    def _build_comp_pattern(self):
+        """Fixed (row, col) index arrays for the complementarity block."""
+        w = _N_INEQ + _N_COMP
+        rows = np.empty(self.p.N * len(self._COMP_NZ), dtype=np.int64)
+        cols = np.empty_like(rows)
+        for k in range(self.p.N):
+            base = k * len(self._COMP_NZ)
+            u0 = self._ui(k)
+            for i, (r, j) in enumerate(self._COMP_NZ):
+                rows[base + i] = w * k + _N_INEQ + r
+                cols[base + i] = u0 + j
+        return rows, cols
+
+    def _comp_values(self, controls) -> np.ndarray:
+        """d(-complementarity)/du for every knot, in _COMP_NZ order."""
+        a, b = self.p.a, self.p.b
+        cx, cy = controls[:, 0], controls[:, 1]
+        l1, l2, l3, l4 = (controls[:, 2], controls[:, 3],
+                          controls[:, 4], controls[:, 5])
+        v = np.stack([
+            l1, cy + b,          # row 0: lam1*(cy+b)
+            l2, cx + a,          # row 1: lam2*(cx+a)
+            l3, cy - b,          # row 2: (-lam3)*(b-cy)
+            l4, cx - a,          # row 3: (-lam4)*(a-cx)
+            l2, l1,              # row 4: lam1*lam2
+            -l3, -l1,            # row 5
+            -l4, -l1,            # row 6
+            -l3, -l2,            # row 7
+            -l4, -l2,            # row 8
+            l4, l3,              # row 9
+        ], axis=1)
+        return -v.reshape(-1)    # rows hold the NEGATED products
+
     def ineq_jacobian(self, z) -> sp.spmatrix:
-        return self._ineq_jac
+        if not self._comp_ineq:
+            return self._ineq_jac
+        _, controls = self.unpack(z)
+        comp = sp.csc_matrix(
+            (self._comp_values(controls), self._comp_pattern),
+            shape=(self.m_ineq, self.n))
+        return (self._ineq_jac + comp).tocsc()
 
     # -------------------------------------------------------------- objective
     def objective(self, z) -> float:
