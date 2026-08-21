@@ -756,16 +756,23 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
             _sdf_path = str(task_cfg["object_sdf"])
             _sdf_dir = _os.path.dirname(_sdf_path)
             _sdf_txt = open(_sdf_path).read()
-            # (uri, pose) per <visual> block, in document order.
+            # (shape, pose) per <visual> block, in document order. Mesh-backed
+            # tasks come in two flavours: the imported objects use <mesh><uri>
+            # VHACD pieces, the *_block variants use <box><size> primitives.
+            # Handle both, or the block objects render with no ghost at all.
             _pieces = []
             for _vis in _re.findall(r"<visual\b.*?</visual>", _sdf_txt, _re.S):
-                _m_uri = _re.search(r"<uri>\s*([^<\s]+)\s*</uri>", _vis)
-                if not _m_uri:
-                    continue
                 _m_pose = _re.search(r"<pose>([^<]*)</pose>", _vis)
                 _pose = ([float(v) for v in _m_pose.group(1).split()]
                          if _m_pose else [0.0] * 6)
-                _pieces.append((_m_uri.group(1), _pose))
+                _m_uri = _re.search(r"<uri>\s*([^<\s]+)\s*</uri>", _vis)
+                if _m_uri:
+                    _pieces.append((("mesh", _m_uri.group(1)), _pose))
+                    continue
+                _m_box = _re.search(r"<box>\s*<size>([^<]*)</size>", _vis, _re.S)
+                if _m_box:
+                    _sz = [float(v) for v in _m_box.group(1).split()]
+                    _pieces.append((("box", _sz), _pose))
 
             # Goal attitude: full quaternion when the task declares one
             # (SE(3)), else the planar goal yaw -- same precedence the object's
@@ -783,18 +790,23 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
                 _R_goal,
                 [float(_goal_xy[0]), float(_goal_xy[1]), float(_init_z)])
 
-            for _i, (_uri, _pose) in enumerate(_pieces):
-                _mesh_file = _os.path.join(_sdf_dir, _uri)
-                if not _os.path.exists(_mesh_file):
-                    print(f"[env] goal ghost: missing visual mesh {_mesh_file}")
-                    continue
+            for _i, (_shape, _pose) in enumerate(_pieces):
+                if _shape[0] == "mesh":
+                    _mesh_file = _os.path.join(_sdf_dir, _shape[1])
+                    if not _os.path.exists(_mesh_file):
+                        print(f"[env] goal ghost: missing visual mesh "
+                              f"{_mesh_file}")
+                        continue
+                    _ghost_geom = ad.Mesh(_mesh_file)
+                else:
+                    _ghost_geom = ad.Box(*_shape[1])
                 _T_local = ad.RigidTransform(
                     ad.RotationMatrix(ad.RollPitchYaw(*_pose[3:6])),
                     list(_pose[0:3]))
                 plant.RegisterVisualGeometry(
                     plant.world_body(),
                     _T_goal.multiply(_T_local),
-                    ad.Mesh(_mesh_file),
+                    _ghost_geom,
                     f"goal_ghost_{_i}",
                     list(goal_ghost_rgba),
                 )
