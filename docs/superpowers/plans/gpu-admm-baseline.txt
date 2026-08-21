@@ -197,3 +197,48 @@ BUT THREADING STILL CANNOT SPEED THIS UP -- Drake's solve holds the GIL.
   EVAL-EXC = 0 in all three -> the new loud logging is quiet when healthy.
   Serial PASS class unchanged; metric shifts are inside the run-to-run band
   already established by the control experiment (identical code diverges).
+
+=== HOT-LOOP HEAD-TO-HEAD ON REAL QPs (2026-08-21) — GPU LOSES 0.10x ===
+scripts/gpu/hotloop_benchmark.py, one control tick = 6 samples x 3 C3+ iters,
+real corpus matrices, n=639, m=439:
+
+  CPU (Drake OSQP, sequential) :   171.7 ms / tick
+  GPU (batched, on-device)     :  1652.8 ms / tick
+  speedup                      :     0.10x    <-- GPU is 10x SLOWER
+
+Why this contradicts the earlier 4.41x per-ITERATION result: iteration count.
+scripts/gpu/iteration_count_probe.py:
+
+  Drake OSQP : 100-200 iterations to reach eps=1e-5  (median 150)
+  our GPU QP : 20000 iterations, STILL NOT CONVERGED (primal resid 2.1e-4)
+               -> >133x more iterations
+
+control/gpu/batched_qp.py implements the PLAIN OSQP iteration. Drake runs
+with scaling=1 (Ruiz equilibration) and adaptive_rho=1; ours has neither.
+On cond(K) ~ 1.2e7 that is not a fidelity detail, it IS the performance.
+The earlier "out of scope: reproducing OSQP exactly" note was wrong about
+that.
+
+TWO FURTHER STRUCTURAL REASONS, both measured (scripts/gpu/sparsity_probe.py):
+
+1. THE PROBLEM IS TINY AND VERY SPARSE.
+     P_sym       639x639  nnz=  659  density 0.16%   (essentially diagonal)
+     A           439x639  nnz= 9759  density 3.48%
+     reduced KKT 639x639  nnz=36661  density 8.98%
+   A dense per-iteration matvec is 0.82 MFLOP; sparse is 0.07 MFLOP -- 11x
+   fewer. The batched dense GPU path THROWS AWAY that sparsity, while Drake
+   exploits it.
+
+2. fp64 ON THIS GPU IS 1/64 RATE. RTX 5070 Ti ~0.7 TFLOPS fp64, about par
+   with the 7800X3D. There is no raw-throughput headroom to pay for (1).
+
+PROJECTION IF THE ALGORITHMIC GAP WERE CLOSED (Ruiz + adaptive rho added, so
+the GPU also converges in ~150 iterations):
+  GPU = 3 outer x (14 ms setup + 150 iters x 0.275 ms) ~= 166 ms/tick
+  CPU measured                                          =  171.7 ms/tick
+  -> ~1.03x. PARITY, not acceleration.
+
+CONCLUSION: at this problem size, on this hardware, batched dense GPU ADMM
+does not accelerate the port. cuNRTO's 25.9x Franka result does not transfer
+because their subproblem is ~10-100x larger and dense (K_v in R^2940,
+thousands of SOC constraints); ours is n=639 at 0.16% Hessian density.
