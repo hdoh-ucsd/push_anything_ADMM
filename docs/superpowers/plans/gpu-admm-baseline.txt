@@ -81,3 +81,46 @@ CONSEQUENCES
   3. Fixing the parallel path is a separate work item with its own
      two-tier eval. It is plausibly a cheaper route to the same throughput
      than the GPU port, so it should be triaged before Phase 2 is finished.
+
+=== Tasks 4/6/7 — corpus + GPU projection + GPU QP (2026-08-21) ===
+
+Corpus (scripts/gpu/dump_admm_corpus.sh, 25 s box gate, seed 0):
+  60 instances, each with inputs (.npz), CPU golden output (_out.npz) and the
+  REAL assembled QP the CPU solved (_qp.npz). All (N=10, n_lambda=20),
+  total_dim=639, admm_iter=3 -- the box task has a structurally fixed
+  5-contact set, so batching needs no shape grouping here. Capture runs
+  themselves reached tight_goal=PASS(final).
+
+control/gpu/projection.py (Task 6): 16 tests, EXACT equality vs the numpy
+  _project_C3Plus across 4 (u_lambda, u_eta) weight pairs, a dense boundary
+  grid, batch independence, and the shipped project_C3Plus_eq12 helper.
+
+control/gpu/batched_qp.py (Task 7): 7 tests.
+  - matches OSQP on synthetic QPs to < 1e-4
+  - no batch coupling; neighbours do not affect an element's answer
+  - warm start reaches the same optimum
+  - equality rows satisfied to < 1e-5
+
+  Batch-vs-singleton is a TOLERANCE test (1e-10), not bit-equality, and
+  deliberately: torch.linalg.cholesky is not bit-identical across batch
+  sizes (cuSOLVER kernel selection; 3.5e-15 on K, 8.7e-18 on K^-1),
+  compounding to ~6e-14 over 3000 iterations. A bare torch.bmm IS
+  bit-identical across batch sizes, so this is the factorization kernel,
+  not problem coupling.
+
+AMENDMENT A1 OPEN RISK -- NOW CLOSED, and checking mattered:
+  worst relative error over all 60 REAL instances : 9.348e-16
+  worst cond(K) over all 60 REAL instances        : 1.229e+07
+
+  Real instances are SIX ORDERS more ill-conditioned than the random SPD
+  matrices (cond ~5) that originally justified A1. The explicit inverse
+  nonetheless holds to 9.3e-16, far inside the 1e-9 acceptance bar, so A1
+  stands. Had this been assumed rather than measured the design would have
+  rested on an unrepresentative proxy.
+
+End-to-end on a REAL assembled instance (n=639, m=439):
+  GPU BatchedBoxQP vs tightly-converged OSQP: max|dx| = 8.803e-05.
+  Note this is ~1e-4, not ~1e-9: the instances are ill-conditioned, so that
+  is the achievable agreement scale. It is comfortably inside the plan's
+  5e-3 acceptance bar on u_seq, and production OSQP itself runs at
+  eps_abs = eps_rel = 1e-5.
