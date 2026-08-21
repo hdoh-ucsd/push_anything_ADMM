@@ -56,6 +56,15 @@ OBJECTS = {
     "Baby Toy": "baby_toy",
     "Gallon Milk": "gallon_milk",
     "Xbox": "xbox",
+    # The reference's BLOCK T in anything-lineage packaging: same
+    # 0.200x0.160x0.040 envelope as urdf/push_t.sdf's two boxes (every
+    # vertex within 1.22 mm of that union; the residual is a CAD
+    # chamfer), and its controller witness triangle is byte-identical
+    # to push_t_control.sdf's. Unlike urdf/push_t.sdf it is a proper
+    # urdf/<name>/ dir with a <name>.obj and a single link named after
+    # the folder, so it is a legal anything base_name -- the reference
+    # ran it on hardware (base_names: [push_t_white] @ 76f6d822).
+    "Push-T White": "push_t_white",
 }
 
 
