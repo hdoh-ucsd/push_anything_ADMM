@@ -486,3 +486,44 @@ DIVERGENCE GROWS WITH CHAIN DEPTH (box, A vs B, by the candidate A picked):
   The deeper a candidate sits in the chain, the more its rank depends on the
   chain. So the effect GROWS with candidate count -- exactly the regime a GPU
   backend needs (batching only pays at larger B).
+
+T (push_t_mesh), 180 s CANONICAL, seed 0 -- all three tight PASS(final):
+                   ms/step  solves  switch  free/c3   trans    rot
+  A ordered          235.6   12312      14  2273/127  0.0133  0.0823
+  B independent      240.1   12267      10  2275/125  0.0164  0.0833
+  C reset            416.3   12234       8  2280/120  0.0128  0.0784
+  argmin agreement vs A:  B 94.2%   C 94.4%
+  (T agrees far more than box because k=0 wins 88% of T ticks.)
+
+C IS 77% SLOWER ON T -- root-caused, genuinely more solver work, TAIL not mean
+(DIAG_OSQP_ITERS, 20 s runs):
+                 ordered              reset
+  inloop      mean 100.0 max  100   mean 101.4 max  700
+  final_qp    mean 226.9 max  300   mean 264.1 max 1200
+  Means barely move; maxima blow up 7-12x. A p95/p99 effect, invisible in an
+  average. Box did NOT show this (C 485.5 vs A 488.0) -- it is task-dependent.
+
+REFERENCE penalize_input_change IS A NO-OP FOR SAMPLED CANDIDATES:
+  c3.cc:340 is inside C3::Solve (line 269) and rebuilds the input cost ONCE
+  per Solve from u_sol_. The sampling controller builds a FRESH C3 per
+  candidate per tick with u_sol_ = zeros, so the term is always -2*R*0 = 0.
+  Port mode C reproduces this exactly.
+
+ANSWERS
+ 1 order sensitivity: HIGH on box (selection differs on 32% of ticks vs
+   independent, diverging from tick 0), LOW-ish on T (5.8%) because k=0
+   dominates. Divergence grows monotonically with chain depth.
+ 2 performance from sequential warm starts: NONE from the CHAINING. Box: B is
+   2.8% faster than A. T: B is 1.9% slower. The real benefit is having a
+   NONZERO RECENT u_prev at all -- dropping to zero (C) costs 77% on T.
+ 3 does independent batching change the selected candidate: YES, materially
+   (box 32% of ticks, T 5.8%).
+ 4 does it change task success: NO. 6/6 runs tight PASS(final).
+ 5 does the effect grow with candidate count: YES, monotonically with chain
+   depth (24.5% at k=0 -> 86.7% at k=4). Worse exactly where GPU batching
+   pays.
+ 6 stable common warm-start: YES -- the tick-entry u_prev broadcast to all
+   candidates (mode B). Preserves the temporal warm start, removes the
+   ordering, costs nothing measurable.
+
+RECOMMENDED GPU SEMANTIC: INDEPENDENT-BATCH (mode B).
