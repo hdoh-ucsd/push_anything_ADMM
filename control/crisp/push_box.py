@@ -179,6 +179,16 @@ class PushBoxProblem(NlpProblem):
             self.k_rot * (cx * fy - cy * fx),
         ])
 
+    def dynamics_jacobian(self, s, u) -> np.ndarray:
+        """d(sdot)/dz at (s, u), where z = [q(3), c(2), lambda(4)].
+
+        This is the 3x9 block a C3+ adapter would linearise about a nominal
+        (q_bar, c_bar, lambda_bar). Columns are ordered
+        [p_x, p_y, theta, c_x, c_y, lam_1y, lam_2x, lam_3y, lam_4x].
+        """
+        df_ds, df_du = self._dynamics_jacobians(s, u)
+        return np.hstack([df_ds, df_du])
+
     def _dynamics_jacobians(self, s, u):
         """(d f / d s, d f / d u) at one knot."""
         theta = s[2]
