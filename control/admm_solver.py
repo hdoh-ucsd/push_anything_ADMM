@@ -37,6 +37,8 @@ import os
 import numpy as np
 import pydrake.all as ad
 
+from control.solver_api import C3PlusQPData
+
 try:
     from profiling.section_timer import timed
 except ImportError:
@@ -131,7 +133,26 @@ class C3Solver:
             _so.SetOption(_osqp_id, "adaptive_rho_interval", 0)
             _so.SetOption(_osqp_id, "adaptive_rho_tolerance", 5)
             _so.SetOption(_osqp_id, "adaptive_rho_fraction", 0.4)
-            _so.SetOption(_osqp_id, "check_termination", 100)
+            # check_termination: REFERENCE value is 100
+            # (shared_parameters/sampling_c3_qp_settings.yaml). OSQP only
+            # tests convergence every N iterations, so a QP that truly
+            # converges at ~68 still pays ~247. Measured on 60 real corpus
+            # instances (scripts/gpu/check_termination_probe.py):
+            #     check=100  246.7 mean iters  16.84 ms/solve   <- reference
+            #     check=25   116.2 mean iters  10.23 ms/solve
+            #     check=1     68.5 mean iters  10.77 ms/solve
+            # Since 81% of wall time is OSQP inner iterations, this is the
+            # largest measured lever in the port.
+            #
+            # OFF-REFERENCE. Env override for the authorized A/B only; unset
+            # keeps the reference literal and is byte-identical.
+            _chk = int(os.environ.get("PORT_OSQP_CHECK_TERMINATION", "100"))
+            _so.SetOption(_osqp_id, "check_termination", _chk)
+            if _chk != 100:
+                print(f"[OSQP-REFOPTS] *** OFF-REFERENCE *** "
+                      f"check_termination={_chk} (reference is 100) — "
+                      f"authorized A/B via PORT_OSQP_CHECK_TERMINATION",
+                      flush=True)
             _so.SetOption(_osqp_id, "rho", 0.1)
             _so.SetOption(_osqp_id, "sigma", 1e-5)
             _so.SetOption(_osqp_id, "alpha", 1.6)
@@ -142,9 +163,9 @@ class C3Solver:
             _so.SetOption(_osqp_id, "eps_dual_inf", 1e-5)
             _so.SetOption(_osqp_id, "max_iter", 2000)
             self._osqp_solver_options = _so
-            print("[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): "
-                  "polishing=0 scaling=1 check_term=100 sigma=1e-5 "
-                  "eps=1e-5 max_iter=2000", flush=True)
+            print(f"[OSQP-REFOPTS] active (sampling_c3_qp_settings.yaml): "
+                  f"polishing=0 scaling=1 check_term={_chk} sigma=1e-5 "
+                  f"eps=1e-5 max_iter=2000", flush=True)
         self._diag_step = 0
         # Pre-allocated identity matrices — n_x is fixed; total_dim is cached on first use
         self._eye_nx         = np.eye(n_x)
@@ -1060,6 +1081,140 @@ class C3Solver:
         delta_eta = np.where(cond1, eta, 0.0)
         return delta_lam, delta_eta
 
+    def _assemble_c3plus_qp(self, *, A, B_ctrl, D, d, E, F, H, c_lcs,
+                            Q, R, QN, x_ref, x0, rho,
+                            n_x, n_u, n_lambda, N, TOT, total_dim,
+                            SX, SL, SU, SE, use_g, g_diag, eye_total,
+                            torque_limit, u_lower, u_upper,
+                            ee_velocity_bounds, ee_vel_state_indices):
+        """Assemble the numeric C3+ QP. Pure w.r.t. the LCS inputs.
+
+        Extracted from `_solve_c3plus` (GPU plan Phase 1) so the CPU path and
+        any future batched backend share ONE assembly instead of two that can
+        drift. Behaviour is unchanged: the caller feeds the returned arrays to
+        Drake exactly as before, and `box_blocks` preserves the original
+        per-call ordering of `AddBoundingBoxConstraint` because Drake/OSQP row
+        order follows insertion order.
+
+        Expects LCS matrices ALREADY scaled (C3::ScaleLCS runs in the caller,
+        since it also rescales published lambda) and `rho` already resolved
+        (the G-on override happens in the caller).
+        """
+        # ---- cost: 2Q on interior states, 2QN terminal, 2R on inputs ----
+        P     = np.zeros((total_dim, total_dim))
+        q_ref = np.zeros(total_dim)
+
+        for i in range(1, N):
+            xi = i * TOT
+            P[xi:xi+n_x, xi:xi+n_x] += 2.0 * Q
+            q_ref[xi:xi+n_x]          = -2.0 * (Q @ x_ref)
+
+        xN = N * TOT
+        P[xN:xN+n_x, xN:xN+n_x] += 2.0 * QN
+        q_ref[xN:xN+n_x]          = -2.0 * (QN @ x_ref)
+
+        for i in range(N):
+            ui = i * TOT + SU
+            P[ui:ui+n_u, ui:ui+n_u] += 2.0 * R
+
+        # 4.j — penalize_input_change adds the -2*R*u_prev linear term; the
+        # Hessian block stays 2R.
+        if self._penalize_input_change and self._u_prev_solve is not None:
+            _u_prev = self._u_prev_solve      # shape (N, n_u)
+            for i in range(N):
+                ui = i * TOT + SU
+                q_ref[ui:ui+n_u] += -2.0 * (R @ _u_prev[i])
+
+        # ---- ADMM augmentation (factor-of-2 under G-on, see caller note) --
+        if use_g:
+            _P_aug = 2.0 * rho * np.diag(g_diag)
+        else:
+            _P_aug = rho * eye_total
+        P_total = P + _P_aug
+        P_sym   = 0.5 * (P_total + P_total.T) + 1e-8 * eye_total
+
+        # ---- equalities: x0 fixation + N dynamics + N eta-slack ----------
+        n_eq_state = n_x + N * n_x
+        n_eq_eta   = N * n_lambda
+        n_eq       = n_eq_state + n_eq_eta
+
+        C_eq = np.zeros((n_eq, total_dim))
+        b_eq = np.zeros(n_eq)
+
+        C_eq[:n_x, :n_x] = self._eye_nx
+        b_eq[:n_x]        = x0
+
+        for i in range(N):
+            row  = n_x + i * n_x
+            xi   = i * TOT
+            li   = xi + SL
+            ui   = xi + SU
+            xnxt = (i + 1) * TOT if i < N - 1 else N * TOT
+
+            C_eq[row:row+n_x, xi:xi+n_x]                 = A
+            if n_lambda > 0:
+                C_eq[row:row+n_x, li:li+n_lambda]        = D
+            C_eq[row:row+n_x, ui:ui+n_u]                 = B_ctrl
+            C_eq[row:row+n_x, xnxt:xnxt+n_x]             = -self._eye_nx
+            b_eq[row:row+n_x]                             = -d
+
+        if n_lambda > 0:
+            for i in range(N):
+                row  = n_eq_state + i * n_lambda
+                xi   = i * TOT
+                li   = xi + SL
+                ui   = xi + SU
+                ei   = xi + SE
+
+                C_eq[row:row+n_lambda, xi:xi+n_x]        = -E
+                C_eq[row:row+n_lambda, li:li+n_lambda]   = -F
+                C_eq[row:row+n_lambda, ui:ui+n_u]        = -H
+                C_eq[row:row+n_lambda, ei:ei+n_lambda]   = np.eye(n_lambda)
+                b_eq[row:row+n_lambda]                    = c_lcs
+
+        # ---- box blocks, in ORIGINAL AddBoundingBoxConstraint order ------
+        _blocks = []
+
+        _u_lo = (np.full(n_u, -torque_limit)
+                 if u_lower is None else np.asarray(u_lower, dtype=float))
+        _u_hi = (np.full(n_u,  torque_limit)
+                 if u_upper is None else np.asarray(u_upper, dtype=float))
+        assert _u_lo.shape == (n_u,) and _u_hi.shape == (n_u,), (
+            f"u_lower/u_upper must be shape ({n_u},); got "
+            f"{_u_lo.shape}/{_u_hi.shape}"
+        )
+        for i in range(N):
+            ui = i * TOT + SU
+            _blocks.append((np.arange(ui, ui + n_u), _u_lo, _u_hi))
+
+        _spb = getattr(self, "state_position_bounds", None)
+        if _spb:
+            _spb_idx = np.array([int(b[0]) for b in _spb])
+            _spb_lo  = np.array([float(b[1]) for b in _spb])
+            _spb_hi  = np.array([float(b[2]) for b in _spb])
+            for i in range(N):
+                _base = i * TOT + SX
+                _blocks.append((_spb_idx + _base, _spb_lo, _spb_hi))
+            _blocks.append((_spb_idx + N * TOT, _spb_lo, _spb_hi))
+
+        if ee_velocity_bounds is not None:
+            _ev_lo, _ev_hi = (float(ee_velocity_bounds[0]),
+                              float(ee_velocity_bounds[1]))
+            _ev_idx = np.array(list(ee_vel_state_indices))
+            _n_ev = _ev_idx.size
+            _ev_lo_vec = np.full(_n_ev, _ev_lo)
+            _ev_hi_vec = np.full(_n_ev, _ev_hi)
+            for i in range(N):
+                _base = i * TOT + SX
+                _blocks.append((_ev_idx + _base, _ev_lo_vec, _ev_hi_vec))
+            _blocks.append((_ev_idx + N * TOT, _ev_lo_vec, _ev_hi_vec))
+
+        return C3PlusQPData(
+            P=P, P_sym=P_sym, q_ref=q_ref, C_eq=C_eq, b_eq=b_eq,
+            box_blocks=tuple(_blocks),
+            n_x=n_x, n_u=n_u, n_lambda=n_lambda, N=N, TOT=TOT,
+            total_dim=total_dim, SX=SX, SL=SL, SU=SU, SE=SE)
+
     def _solve_c3plus(self,
                       x0:     np.ndarray,
                       A:      np.ndarray,
@@ -1127,6 +1282,48 @@ class C3Solver:
         _dump_path = _os_d.environ.get("DIAG_ADMM_DUMP", "")
         _dump_at   = int(_os_d.environ.get("DIAG_ADMM_DUMP_AT", "50"))
         _dump_min_iter = int(_os_d.environ.get("DIAG_ADMM_DUMP_MIN_ITER", "20"))
+
+        # ---- Corpus mode (GPU-ADMM plan Task 4) --------------------------
+        # DIAG_ADMM_DUMP_DIR=DIR writes MANY instances instead of one, so a
+        # GPU replay can be validated across contact regimes rather than a
+        # single lucky tick. Every DIAG_ADMM_DUMP_EVERY-th qualifying solve
+        # is written as inst_NNNN.npz, capped at DIAG_ADMM_DUMP_MAX.
+        # Unlike the single-shot path above this does NOT filter on
+        # admm_iter: the 3-iteration surrogate solves ARE the hot loop and
+        # must be represented. A paired inst_NNNN_out.npz with the solved
+        # (u_seq, x_seq) is written after the solve completes -- see the
+        # epilogue near the end of this method.
+        _dump_dir = _os_d.environ.get("DIAG_ADMM_DUMP_DIR", "")
+        self._corpus_pending = None
+        if _dump_dir:
+            _n_seen = getattr(self, "_corpus_seen", 0) + 1
+            self._corpus_seen = _n_seen
+            _every = int(_os_d.environ.get("DIAG_ADMM_DUMP_EVERY", "20"))
+            _cap   = int(_os_d.environ.get("DIAG_ADMM_DUMP_MAX", "60"))
+            _n_written = getattr(self, "_corpus_written", 0)
+            if _n_seen % _every == 0 and _n_written < _cap:
+                _os_d.makedirs(_dump_dir, exist_ok=True)
+                _stem = _os_d.path.join(_dump_dir, f"inst_{_n_written:04d}")
+                np.savez(
+                    _stem + ".npz",
+                    x0=x0, A=A, B_ctrl=B_ctrl, D=D, d=d,
+                    E=E, F=F, H=H, c_lcs=c_lcs, J_n=J_n, J_t=J_t,
+                    mu=np.asarray(mu, dtype=float),
+                    Q=Q, R=R, QN=QN, x_ref=x_ref,
+                    N=np.int32(N), admm_iter=np.int32(admm_iter),
+                    torque_limit=np.asarray(torque_limit, dtype=float),
+                    phi=(phi if phi is not None else np.zeros(0)),
+                    u_lower=(u_lower if u_lower is not None else np.zeros(0)),
+                    u_upper=(u_upper if u_upper is not None else np.zeros(0)),
+                    rho_initial=np.asarray(rho, dtype=float),
+                    n_x=np.int32(n_x), n_u=np.int32(n_u),
+                    u_lambda=np.asarray(self._u_lambda, dtype=float),
+                    u_eta=np.asarray(self._u_eta, dtype=float),
+                    rho_scale=np.asarray(self._rho_scale, dtype=float),
+                    solver_mode=np.array(["c3plus"], dtype=object),
+                )
+                self._corpus_written = _n_written + 1
+                self._corpus_pending = _stem
         # Filter: skip surrogate sample-eval calls (admm_iter < 20); count
         # only full c3-mode solves. The disambiguation needs the FULL path.
         if (_dump_path
@@ -1336,99 +1533,46 @@ class C3Solver:
         # QP cost: P = 2·diag(Q,_,_,_,_, R block, _,_,...)·etc + ρ·I
         # ---------------------------------------------------------------
         with timed("admm.qp_build"):
-            P     = np.zeros((total_dim, total_dim))
-            q_ref = np.zeros(total_dim)
+            # Assembly extracted to _assemble_c3plus_qp (GPU plan Phase 1) so
+            # a batched backend consumes the same assembly instead of a second
+            # copy that can drift. Byte-identical: same arithmetic, same order.
+            _qpd = self._assemble_c3plus_qp(
+                A=A, B_ctrl=B_ctrl, D=D, d=d, E=E, F=F, H=H, c_lcs=c_lcs,
+                Q=Q, R=R, QN=QN, x_ref=x_ref, x0=x0, rho=rho,
+                n_x=n_x, n_u=n_u, n_lambda=n_lambda, N=N, TOT=TOT,
+                total_dim=total_dim, SX=SX, SL=SL, SU=SU, SE=SE,
+                use_g=_use_g, g_diag=self._g_diag_c3p_cache,
+                eye_total=_eye_total, torque_limit=torque_limit,
+                u_lower=u_lower, u_upper=u_upper,
+                ee_velocity_bounds=ee_velocity_bounds,
+                ee_vel_state_indices=ee_vel_state_indices)
+            P     = _qpd.P
+            q_ref = _qpd.q_ref
+            P_sym = _qpd.P_sym
+            C_eq  = _qpd.C_eq
+            b_eq  = _qpd.b_eq
 
-            for i in range(1, N):
-                xi = i * TOT
-                P[xi:xi+n_x, xi:xi+n_x] += 2.0 * Q
-                q_ref[xi:xi+n_x]          = -2.0 * (Q @ x_ref)
-
-            xN = N * TOT
-            P[xN:xN+n_x, xN:xN+n_x] += 2.0 * QN
-            q_ref[xN:xN+n_x]          = -2.0 * (QN @ x_ref)
-
-            for i in range(N):
-                ui = i * TOT + SU
-                P[ui:ui+n_u, ui:ui+n_u] += 2.0 * R
-
-            # 4.j — penalize_input_change: cost becomes ‖u_k − u_prev_k‖²_R
-            # = u_k^T R u_k − 2·u_prev_k^T R u_k + const. Add the linear term
-            # (−2·R·u_prev_k) to q_ref for each u slot when a previous solve
-            # exists. The Hessian block above is unchanged (still 2·R).
-            if self._penalize_input_change and self._u_prev_solve is not None:
-                _u_prev = self._u_prev_solve      # shape (N, n_u)
-                for i in range(N):
-                    ui = i * TOT + SU
-                    q_ref[ui:ui+n_u] += -2.0 * (R @ _u_prev[i])
-
-            # ===== C3+ NEW: NO soft-complementarity penalty here =====
-            # The η = E x + F λ + H u + c equality below replaces the
-            # `q_ref[λ_n] += w_comp · phi_gap` hack used by C3.
-
-            # Reference-conformant G-matrix augmentation: replaces uniform
-            # rho*I with rho*diag(G) where G has per-slot weights (0 on
-            # state/input, w_G·g_λ on λ, w_G·g_η on η). Matches c3.cc AD
-            # step exactly. Falls back to uniform ρ if _use_g False.
-            # 2026-07-26 factor-of-2 fix (G-on path only): reference
-            # c3_plus.cc:157 uses AddQuadraticCost(2G, -2G·WD, ...) →
-            # Drake `0.5·H·z²+b·z` convention gives `G·z² - 2G·WD·z`,
-            # i.e., ADMM augmentation `(ρ/2)||z - WD||²_G` with effective
-            # penalty 2ρ. Previous port passed `rho·g_diag` — half the
-            # reference scale — so under G-on the port ran at half the
-            # intended penalty. G-off path preserved (port's tuned ρ=100
-            # baseline is calibrated against the half-scale convention;
-            # doubling would silently regress every G-off run).
-            if _use_g:
-                _P_aug = 2.0 * rho * np.diag(self._g_diag_c3p_cache)
-            else:
-                _P_aug = rho * _eye_total
-            P_total = P + _P_aug
-            P_sym   = 0.5 * (P_total + P_total.T) + 1e-8 * _eye_total
-
-            # ---------------------------------------------------------------
-            # Equality constraints: x_0 fixation + N dynamics + N η-slack
-            # ---------------------------------------------------------------
-            n_eq_state = n_x + N * n_x                        # x_0 + N dynamics
-            n_eq_eta   = N * n_lambda                         # ← C3+ NEW
-            n_eq       = n_eq_state + n_eq_eta
-            C_eq = np.zeros((n_eq, total_dim))
-            b_eq = np.zeros(n_eq)
-
-            # Row block 1: x_0 = x0
-            C_eq[:n_x, :n_x] = self._eye_nx
-            b_eq[:n_x]        = x0
-
-            # Row block 2: A x_i + D λ_i + B u_i − x_{i+1} = −d
-            for i in range(N):
-                row  = n_x + i * n_x
-                xi   = i * TOT
-                li   = xi + SL
-                ui   = xi + SU
-                xnxt = (i + 1) * TOT if i < N - 1 else N * TOT
-
-                C_eq[row:row+n_x, xi:xi+n_x]                 = A
-                if n_lambda > 0:
-                    C_eq[row:row+n_x, li:li+n_lambda]        = D
-                C_eq[row:row+n_x, ui:ui+n_u]                 = B_ctrl
-                C_eq[row:row+n_x, xnxt:xnxt+n_x]             = -self._eye_nx
-                b_eq[row:row+n_x]                             = -d
-
-            # ===== C3+ NEW: Row block 3 — slack equality =====
-            # η_i − E x_i − F λ_i − H u_i = c
-            if n_lambda > 0:
-                for i in range(N):
-                    row  = n_eq_state + i * n_lambda
-                    xi   = i * TOT
-                    li   = xi + SL
-                    ui   = xi + SU
-                    ei   = xi + SE
-
-                    C_eq[row:row+n_lambda, xi:xi+n_x]        = -E
-                    C_eq[row:row+n_lambda, li:li+n_lambda]   = -F
-                    C_eq[row:row+n_lambda, ui:ui+n_u]        = -H
-                    C_eq[row:row+n_lambda, ei:ei+n_lambda]   = np.eye(n_lambda)
-                    b_eq[row:row+n_lambda]                    = c_lcs
+            # NOTE: the cost/augmentation and equality-constraint assembly
+            # that used to live here now lives in _assemble_c3plus_qp above,
+            # including:
+            #   * the C3+ omission of any soft-complementarity penalty (the
+            #     η = E x + F λ + H u + c equality replaces C3's
+            #     `q_ref[λ_n] += w_comp · phi_gap` hack);
+            #   * the reference-conformant G-matrix augmentation, which
+            #     replaces uniform rho*I with rho*diag(G) (0 on state/input,
+            #     w_G·g_λ on λ, w_G·g_η on η), matching the c3.cc AD step,
+            #     and falls back to uniform ρ when _use_g is False;
+            #   * the 2026-07-26 factor-of-2 fix (G-on only): reference
+            #     c3_plus.cc:157 uses AddQuadraticCost(2G, -2G·WD, ...), so
+            #     Drake's `0.5·H·z²+b·z` convention gives `G·z² - 2G·WD·z`,
+            #     i.e. augmentation `(ρ/2)||z - WD||²_G` at effective penalty
+            #     2ρ. The port previously passed `rho·g_diag` — half the
+            #     reference scale. The G-off path is preserved because the
+            #     port's tuned ρ=100 baseline is calibrated against the
+            #     half-scale convention.
+            #   * the equality rows: x_0 fixation, the N dynamics rows
+            #     `A x_i + D λ_i + B u_i − x_{i+1} = −d`, and the C3+ slack
+            #     rows `η_i − E x_i − F λ_i − H u_i = c`.
 
             # ---------------------------------------------------------------
             # Build MathematicalProgram once
@@ -1444,69 +1588,15 @@ class C3Solver:
             # binds under G-on + rho=1, OSQP polishes off by default so the
             # active bound zeroes λ in z_sol and the projection over-corrects.
 
-            # Torque bounds per step (per-axis vectors when supplied;
-            # default-inert scalar torque_limit path when u_lower/u_upper None).
-            _u_lo = (np.full(n_u, -torque_limit)
-                     if u_lower is None else np.asarray(u_lower, dtype=float))
-            _u_hi = (np.full(n_u,  torque_limit)
-                     if u_upper is None else np.asarray(u_upper, dtype=float))
-            assert _u_lo.shape == (n_u,) and _u_hi.shape == (n_u,), (
-                f"u_lower/u_upper must be shape ({n_u},); got "
-                f"{_u_lo.shape}/{_u_hi.shape}"
-            )
-            for i in range(N):
-                ui = i * TOT + SU
-                prog.AddBoundingBoxConstraint(
-                    _u_lo, _u_hi, z_var[ui : ui + n_u],
-                )
-
-            # Workspace state constraints — reference cc:995-1025 adds, to
-            # EVERY per-sample C3 object, AddLinearConstraint(A·x ∈
-            # [lb − workspace_margins, ub + workspace_margins], STATE) rows
-            # selecting the EE position AND object position slots (push_t
-            # values sampling_c3_options.yaml:26-30). The port had carried
-            # over only the adjacent EE-velocity rows (cc:1027-1034, below);
-            # without the position rows the planner was free to plan EE
-            # excursions anywhere in R^3 (p140/p141: phantom stints walked
-            # the EE into the r=0.25 workspace abort). Instance attribute
-            # `state_position_bounds` = [(state_idx, lo, hi), ...] so the
-            # surrogate per-sample solves (inner_solve → this same solver)
-            # inherit the constraint exactly like the reference's per-sample
-            # C3 objects. None/empty → byte-identical legacy behavior.
-            _spb = getattr(self, "state_position_bounds", None)
-            if _spb:
-                _spb_idx = np.array([int(b[0]) for b in _spb])
-                _spb_lo  = np.array([float(b[1]) for b in _spb])
-                _spb_hi  = np.array([float(b[2]) for b in _spb])
-                for i in range(N):
-                    _base = i * TOT + SX
-                    prog.AddBoundingBoxConstraint(
-                        _spb_lo, _spb_hi, z_var[_spb_idx + _base])
-                prog.AddBoundingBoxConstraint(
-                    _spb_lo, _spb_hi, z_var[_spb_idx + N * TOT])
-
-            # State velocity bounds (ee_velocity_limits). Reference cc:1027-1034
-            # applies at each knot: A · x_k ∈ [lo, hi] where A selects the EE
-            # velocity slots. Port equivalent: BoundingBoxConstraint on the
-            # same state indices at each knot plus the terminal state.
-            if ee_velocity_bounds is not None:
-                _ev_lo, _ev_hi = float(ee_velocity_bounds[0]), float(ee_velocity_bounds[1])
-                _ev_idx = list(ee_vel_state_indices)
-                _n_ev = len(_ev_idx)
-                _ev_lo_vec = np.full(_n_ev, _ev_lo)
-                _ev_hi_vec = np.full(_n_ev, _ev_hi)
-                for i in range(N):
-                    _base = i * TOT + SX
-                    prog.AddBoundingBoxConstraint(
-                        _ev_lo_vec, _ev_hi_vec,
-                        z_var[np.array(_ev_idx) + _base],
-                    )
-                # Terminal state (position N*TOT + n_x slots)
-                _base_terminal = N * TOT
-                prog.AddBoundingBoxConstraint(
-                    _ev_lo_vec, _ev_hi_vec,
-                    z_var[np.array(_ev_idx) + _base_terminal],
-                )
+            # Bounding-box constraints, issued from the ordered block list
+            # built by _assemble_c3plus_qp. One AddBoundingBoxConstraint call
+            # per original block, in the original order (u bounds per knot,
+            # then workspace position bounds per knot + terminal, then
+            # EE-velocity bounds per knot + terminal) -- Drake/OSQP row order
+            # follows insertion order, so merging or reordering these would
+            # change the arithmetic.
+            for _bidx, _blo, _bhi in _qpd.box_blocks:
+                prog.AddBoundingBoxConstraint(_blo, _bhi, z_var[_bidx])
 
             # Drake re-derives the Hessian PSD verdict on every
             # AddQuadraticCost / UpdateCoefficients call when `is_convex`
@@ -1664,6 +1754,38 @@ class C3Solver:
             print("[MATH.ADMM]   (9)  ω^{i+1}_k = ω^i_k + z^{i+1}_k − δ^{i+1}_k, ∀k — dual (ω-update)",
                   flush=True)
 
+        # Corpus mode: append the ASSEMBLED QP to this instance's npz, so a
+        # GPU replay is validated against the matrices the CPU actually
+        # solved rather than against a reimplementation of the assembly.
+        # (GPU-ADMM plan Task 4; closes the Task 1 / amendment-A1 open risk
+        # about conditioning on real instances.) Inert unless the env is set.
+        if getattr(self, "_corpus_pending", None):
+            _u_lo_d = (np.full(n_u, -torque_limit)
+                       if u_lower is None else np.asarray(u_lower, float))
+            _u_hi_d = (np.full(n_u, torque_limit)
+                       if u_upper is None else np.asarray(u_upper, float))
+            _spb_d = getattr(self, "state_position_bounds", None) or []
+            np.savez(
+                self._corpus_pending + "_qp.npz",
+                P_sym=P_sym, q_ref=q_ref, C_eq=C_eq, b_eq=b_eq,
+                g_diag=(self._g_diag_c3p_cache
+                        if self._g_diag_c3p_cache is not None
+                        else np.zeros(0)),
+                use_g=np.bool_(_use_g),
+                u_lo=_u_lo_d, u_hi=_u_hi_d,
+                spb=np.asarray(_spb_d, dtype=float) if _spb_d
+                    else np.zeros((0, 3)),
+                ee_vel_bounds=(np.asarray(ee_velocity_bounds, float)
+                               if ee_velocity_bounds is not None
+                               else np.zeros(0)),
+                ee_vel_idx=np.asarray(ee_vel_state_indices, dtype=np.int64),
+                TOT=np.int32(TOT), total_dim=np.int32(total_dim),
+                SX=np.int32(SX), SL=np.int32(SL),
+                SU=np.int32(SU), SE=np.int32(SE),
+                n_lambda=np.int32(n_lambda),
+                num_normals=np.int32(num_normals),
+            )
+
         for it in range(admm_iter):
             delta_prev = delta.copy()
             # Snapshot ω before the ω-update at end-of-iter so the cost
@@ -1763,6 +1885,19 @@ class C3Solver:
             with timed("admm.osqp_solve"):
                 res = self._solver.Solve(prog, None, self._osqp_solver_options)
 
+            if _os_g.environ.get("DIAG_OSQP_ITERS", ""):
+                _acc = getattr(C3Solver, "_osqp_iter_acc", None)
+                if _acc is None:
+                    _acc = C3Solver._osqp_iter_acc = {}
+                try:
+                    _it_n = int(res.get_solver_details().iter)
+                except Exception:
+                    _it_n = -1
+                _s = _acc.setdefault("inloop", [0, 0, 0])
+                _s[0] += 1
+                _s[1] += _it_n
+                _s[2] = max(_s[2], _it_n)
+
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
                 # DIAG_ZVEE=1 (2026-08-11 crawl probe): per-iter QP-optimum
@@ -1820,38 +1955,71 @@ class C3Solver:
                         _proj_case3 = 0
                         _N_lo_off = num_normals
                         _N_hi_off = 2 * num_normals
+                        # 2026-08-21 perf. This histogram used to be a
+                        # per-slot PYTHON scalar loop (`for _j in
+                        # range(n_lambda)`) nested inside the knot loop,
+                        # re-deriving one element at a time the very
+                        # cond1/cond2 that `_project_C3Plus` had already
+                        # computed vectorized.
+                        #
+                        # It is NOT diagnostic-only: `_last_proj_case_N/_T`
+                        # feed the [CONSENSUS-STEP] line, which prints on
+                        # EVERY solve, so it cannot simply be gated off --
+                        # the counts must stay exact.
+                        #
+                        # Measured (scripts/gpu/hist_speedup.py, N=10,
+                        # n_lambda=24): scalar per-knot 46.7 us/ADMM-iter;
+                        # numpy per-knot 64.5 us (0.72x -- SLOWER, numpy
+                        # per-call overhead beats a 24-element loop); numpy
+                        # over ALL knots at once 8.0 us (5.87x). So the
+                        # histogram is hoisted out of the knot loop entirely
+                        # and evaluated once per ADMM iteration below.
+                        # Semantics are unchanged: same case precedence
+                        # (c1 wins over c2), same G/N/T slot bucketing.
+                        _sqrt_ratio = float(np.sqrt(
+                            (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
+                            / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
+                        _lam_all = np.empty((N, n_lambda))
+                        _eta_all = np.empty((N, n_lambda))
                         for i in range(N):
                             li = i * TOT + SL
                             ei = i * TOT + SE
                             lam_blk = z_sol[li:li+n_lambda] + omega[li:li+n_lambda]
                             eta_blk = z_sol[ei:ei+n_lambda] + omega[ei:ei+n_lambda]
+                            _lam_all[i] = lam_blk
+                            _eta_all[i] = eta_blk
                             d_lam, d_eta = self._project_C3Plus(
                                 lam_blk, eta_blk, u_lam_w, u_eta_w)
-                            _sqrt_ratio = float(np.sqrt(
-                                (u_lam_w if np.isscalar(u_lam_w) else float(u_lam_w))
-                                / (u_eta_w if np.isscalar(u_eta_w) else float(u_eta_w))))
-                            for _j in range(n_lambda):
-                                _lo = float(lam_blk[_j])
-                                _eo = float(eta_blk[_j])
-                                _c1 = (_eo >= 0.0) and (_eo >= _sqrt_ratio * _lo)
-                                _c2 = (_lo >= 0.0) and (_eo <  _sqrt_ratio * _lo)
-                                if _c1:
-                                    _case_idx = 0
-                                elif _c2:
-                                    _case_idx = 1
-                                else:
-                                    _case_idx = 2
-                                if _j < _N_lo_off:
-                                    _proj_G[_case_idx] += 1
-                                elif _j < _N_hi_off:
-                                    _proj_N[_case_idx] += 1
-                                else:
-                                    _proj_T[_case_idx] += 1
-                            _proj_case1 = _proj_N[0]+_proj_T[0]+_proj_G[0]
-                            _proj_case2 = _proj_N[1]+_proj_T[1]+_proj_G[1]
-                            _proj_case3 = _proj_N[2]+_proj_T[2]+_proj_G[2]
                             delta[li:li+n_lambda] = d_lam
                             delta[ei:ei+n_lambda] = d_eta
+                        # One vectorized pass over every knot (0 = case 1
+                        # "η wins", 1 = case 2 "λ wins", 2 = apex).
+                        _c1_v = ((_eta_all >= 0.0)
+                                 & (_eta_all >= _sqrt_ratio * _lam_all))
+                        _c2_v = ((_lam_all >= 0.0)
+                                 & (_eta_all <  _sqrt_ratio * _lam_all))
+                        _case_v = np.where(_c1_v, 0, np.where(_c2_v, 1, 2))
+                        for _acc, _sl in ((_proj_G, slice(0, _N_lo_off)),
+                                          (_proj_N, slice(_N_lo_off, _N_hi_off)),
+                                          (_proj_T, slice(_N_hi_off, None))):
+                            _bc = np.bincount(_case_v[:, _sl].ravel(),
+                                              minlength=3)
+                            _acc[0] += int(_bc[0])
+                            _acc[1] += int(_bc[1])
+                            _acc[2] += int(_bc[2])
+                        # Equivalence to the removed scalar loop was verified
+                        # two ways (2026-08-21): a runtime differential
+                        # assertion over a full 10 s run (every c3plus solve,
+                        # zero mismatches) and
+                        # tests/test_proj_histogram_vectorization.py, which
+                        # carries BOTH implementations and pins them against
+                        # each other including exact ties. A sim log diff
+                        # CANNOT validate this: two runs of IDENTICAL code
+                        # diverge at the same line, because wall clock feeds
+                        # filtered_solve_time -> the x-pred clamp.
+                        _proj_case1 = _proj_N[0]+_proj_T[0]+_proj_G[0]
+                        _proj_case2 = _proj_N[1]+_proj_T[1]+_proj_G[1]
+                        _proj_case3 = _proj_N[2]+_proj_T[2]+_proj_G[2]
                         # Expose case counts + N/T split for the [CONSENSUS]
                         # emission below.
                         self._last_proj_case_hist = (
@@ -2492,6 +2660,25 @@ class C3Solver:
                     _P_fin, q_total, 0.0, _psd)
                 res = self._solver.Solve(prog, None,
                                          self._osqp_solver_options)
+            if _os_g.environ.get("DIAG_OSQP_ITERS", ""):
+                _acc = getattr(C3Solver, "_osqp_iter_acc", None)
+                if _acc is None:
+                    _acc = C3Solver._osqp_iter_acc = {}
+                try:
+                    _it_n = int(res.get_solver_details().iter)
+                except Exception:
+                    _it_n = -1
+                _key = "final_boosted" if _boost_slots else "final_plain"
+                _s = _acc.setdefault(_key, [0, 0, 0])
+                _s[0] += 1
+                _s[1] += _it_n
+                _s[2] = max(_s[2], _it_n)
+                if _s[0] % 500 == 0:
+                    import sys as _sy
+                    print("[OSQP-ITERS] " + " | ".join(
+                        f"{k}: n={v[0]} mean={v[1]/max(v[0],1):.1f} max={v[2]}"
+                        for k, v in sorted(_acc.items())),
+                        file=_sy.stderr, flush=True)
             if res.is_success():
                 z_sol = res.GetSolution(z_var)
             else:
@@ -2749,8 +2936,8 @@ class C3Solver:
             print(f"[MATH.QP-C3+] Minimizing: (1/2) z^T P z + q^T z  "
                   f"(z augmented with η)")
             print(f"[MATH.QP-C3+]   s.t. A_eq z = b_eq  "
-                  f"({n_eq} rows = x_0 fixation + {N} dynamics + "
-                  f"{n_eq_eta} η-slack rows; slack-equality block ADDED)")
+                  f"({C_eq.shape[0]} rows = x_0 fixation + {N} dynamics + "
+                  f"{N * n_lambda} η-slack rows; slack-equality block ADDED)")
             print(f"[MATH.QP-C3+]        bbox: λ_n ≥ 0, "
                   f"|u| ≤ {torque_limit:.1f} {self.u_unit_str} "
                   f"({self.u_unit_kind})  "
@@ -2953,6 +3140,17 @@ class C3Solver:
         if self._lprobe_path is not None:
             self._lprobe_n_solves += 1
             self._lprobe_mpc_step  = self._diag_step
+
+        # Corpus mode epilogue (GPU-ADMM plan Task 4): pair the inputs dumped
+        # at the top of this call with the CPU solution, so a GPU replay has
+        # a golden reference per instance. Inert unless DIAG_ADMM_DUMP_DIR.
+        if getattr(self, "_corpus_pending", None):
+            np.savez(self._corpus_pending + "_out.npz",
+                     u_seq=u_seq, x_seq=x_seq, z_sol=z_sol,
+                     delta=delta, omega=omega,
+                     actual_iters=np.int32(actual_iters),
+                     rho_final=np.asarray(rho, dtype=float))
+            self._corpus_pending = None
 
         return u_seq, x_seq
 

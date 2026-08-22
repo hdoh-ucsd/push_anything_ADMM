@@ -63,3 +63,8 @@ docs/*
 # Per-run solver/tool leftovers that reappear on every launch.
 gurobi.log
 *.tmp.*
+
+# GPU-ADMM validation corpus (regenerate with scripts/gpu/dump_admm_corpus.sh)
+audit_output/admm_corpus/
+audit_output/gpu_golden/
+audit_output/perf_snapshots/

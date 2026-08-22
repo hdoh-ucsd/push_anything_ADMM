@@ -1,0 +1,529 @@
+=== GPU-ADMM Task 1 decision gate — 2026-08-21 ===
+commit: 6207558 (plan) / worktree-gpu-admm-plan
+GPU: RTX 5070 Ti (sm_120, 16 GB, driver 580.88)
+CPU: Ryzen 7 7800X3D, 8 cores / 16 threads
+torch 2.11.0+cu128, CUDA 12.8
+
+-- scripts/gpu/fp64_microbench.py  (isolated ops, batch=6 n=719, fp64) --
+  cholesky   : GPU  3.677 ms | CPU 7.558 ms | 2.06x
+  chol_solve : GPU  1.316 ms | CPU 0.767 ms | 0.58x   <- gate as written: STOP
+
+-- scripts/gpu/loop_microbench.py  (FULL OSQP iteration, batch=6 n=719 m=300) --
+  iteration [cholesky_solve]  : GPU 2.1317 ms | CPU 1.2651 ms | 0.59x
+  iteration [precomp inverse] : GPU 0.2508 ms | CPU 1.1067 ms | 4.41x
+  inverse-vs-cholesky rel err : 1.102e-14
+
+-- scripts/gpu/inverse_breakeven.py --
+  batched cholesky          :  3.853 ms  (baseline, needed anyway)
+  cholesky + chol_inverse   : 14.005 ms  -> extra 10.15 ms
+  linalg.inv                : 30.967 ms  -> extra 27.11 ms  (do NOT use)
+  saving per inner iteration :  1.0143 ms
+  BREAK-EVEN                : 10.0 inner iters (via chol_inverse)
+  cond(K) ~ 4.969e+00 ; chol_inverse vs chol_solve rel err 5.135e-16
+
+VERDICT: PROCEED, with design amendment A1.
+
+  Why the isolated gate said STOP and the loop says PROCEED: a triangular
+  solve is sequential back-substitution, the single most GPU-hostile kernel
+  in the iteration. Everything else in the OSQP step (two batched matvecs,
+  clamp, axpy) is embarrassingly parallel. Measuring the hostile op alone
+  mispredicted the composite loop.
+
+  A1 — replace cholesky_solve in the inner loop with cholesky_inverse
+  (computed once per C3+ ADMM iteration, reusing the Cholesky factor) plus
+  a batched GEMV. Same FLOPs, parallel instead of sequential, 4.41x over
+  CPU. Legitimate because correction C2 already establishes that K changes
+  only once per C3+ iteration while the RHS changes every inner iteration.
+
+  Amortization is guaranteed: OSQP runs with check_termination=100, so the
+  inner loop cannot stop before 100 iterations -- 10x the break-even.
+
+  Use torch.cholesky_inverse(L), NOT torch.linalg.inv: 14.0 ms vs 31.0 ms.
+
+OPEN RISK carried into Task 7: cond(K) = 5 was measured on RANDOM SPD
+matrices. Real LCS instances may be worse conditioned. Task 7 must re-check
+on the corpus, acceptance: explicit-inverse vs cholesky_solve relative
+error < 1e-9 on every corpus instance. If any instance fails, fall back to
+cholesky_solve for that (N, n_lambda) group and re-measure.
+
+=== GPU-ADMM Task 3 — thread lever + serial baseline (2026-08-21) ===
+commit 0ea8fed, box `pushing --task-id 4`, 60 s gate, seed 0, sequential runs.
+
+  threads=1 : 6m45s wall | avg_per_step_ms=472.0 | full_solves=4504 | switches=28
+  threads=4 : 3m17s wall | avg_per_step_ms=209.8 | full_solves=801  | switches=0
+
+THE threads=4 RUN IS NOT A SPEEDUP -- THE PARALLEL PATH IS BROKEN.
+
+  threads=1 : modes free=517 c3=284 ; goal_dist 0.150 -> 0.011 (min 0.0086)
+  threads=4 : modes free=801 c3=0   ; goal_dist 0.150 -> 0.150 (NO progress)
+
+  All 801 ticks in the threads=4 run read
+      exec_src=current_fallback  pursued=kNewSample  best_other=-
+  i.e. the controller asked for an alternative sample every tick and got
+  nothing usable back, so it never repositioned, never entered c3, never
+  touched the object. Final line: success=NO tight_goal=FAIL loose_goal=FAIL.
+  It is "2x faster" only because it does no work.
+
+  Also observed: curr_cost inflates from ~750 (threads=1) to ~1700 under
+  threads=4, which points at state corruption in the shared-plant /
+  per-worker-context dispatch (control/sampling_c3/inner_solve.py:1267-1291,
+  `_run_one` calls self.plant.SetPositions on a shared plant object) rather
+  than at the ranking logic. NOT root-caused further -- out of scope here.
+
+CONSEQUENCES
+  1. memory/project_admm_perf_psd_check_2026-08-20.md lists
+     `num_outer_threads: 4` as the open perf lever. It is NOT available:
+     the path exists but is defective. Corrected in memory 2026-08-21.
+  2. The GPU baseline is threads=1 (472.0 ms/step). The plan's Part 4
+     instruction to benchmark GPU against threads=4 is VOID -- there is no
+     valid 4-thread number to compare against until the parallel path is
+     fixed.
+  3. Fixing the parallel path is a separate work item with its own
+     two-tier eval. It is plausibly a cheaper route to the same throughput
+     than the GPU port, so it should be triaged before Phase 2 is finished.
+
+=== Tasks 4/6/7 — corpus + GPU projection + GPU QP (2026-08-21) ===
+
+Corpus (scripts/gpu/dump_admm_corpus.sh, 25 s box gate, seed 0):
+  60 instances, each with inputs (.npz), CPU golden output (_out.npz) and the
+  REAL assembled QP the CPU solved (_qp.npz). All (N=10, n_lambda=20),
+  total_dim=639, admm_iter=3 -- the box task has a structurally fixed
+  5-contact set, so batching needs no shape grouping here. Capture runs
+  themselves reached tight_goal=PASS(final).
+
+control/gpu/projection.py (Task 6): 16 tests, EXACT equality vs the numpy
+  _project_C3Plus across 4 (u_lambda, u_eta) weight pairs, a dense boundary
+  grid, batch independence, and the shipped project_C3Plus_eq12 helper.
+
+control/gpu/batched_qp.py (Task 7): 7 tests.
+  - matches OSQP on synthetic QPs to < 1e-4
+  - no batch coupling; neighbours do not affect an element's answer
+  - warm start reaches the same optimum
+  - equality rows satisfied to < 1e-5
+
+  Batch-vs-singleton is a TOLERANCE test (1e-10), not bit-equality, and
+  deliberately: torch.linalg.cholesky is not bit-identical across batch
+  sizes (cuSOLVER kernel selection; 3.5e-15 on K, 8.7e-18 on K^-1),
+  compounding to ~6e-14 over 3000 iterations. A bare torch.bmm IS
+  bit-identical across batch sizes, so this is the factorization kernel,
+  not problem coupling.
+
+AMENDMENT A1 OPEN RISK -- NOW CLOSED, and checking mattered:
+  worst relative error over all 60 REAL instances : 9.348e-16
+  worst cond(K) over all 60 REAL instances        : 1.229e+07
+
+  Real instances are SIX ORDERS more ill-conditioned than the random SPD
+  matrices (cond ~5) that originally justified A1. The explicit inverse
+  nonetheless holds to 9.3e-16, far inside the 1e-9 acceptance bar, so A1
+  stands. Had this been assumed rather than measured the design would have
+  rested on an unrepresentative proxy.
+
+End-to-end on a REAL assembled instance (n=639, m=439):
+  GPU BatchedBoxQP vs tightly-converged OSQP: max|dx| = 8.803e-05.
+  Note this is ~1e-4, not ~1e-9: the instances are ill-conditioned, so that
+  is the achievable agreement scale. It is comfortably inside the plan's
+  5e-3 acceptance bar on u_seq, and production OSQP itself runs at
+  eps_abs = eps_rel = 1e-5.
+
+=== Parallel sample-eval path: FIXED, but threading cannot help (2026-08-21) ===
+
+THREE defects, found by systematic debugging from the repro in the Task 3
+section above.
+
+D1 (fatal) -- worker plant contexts had geometry_query unconnected.
+  _lazy_init_worker_kits built them with plant.CreateDefaultContext(), which
+  returns a STANDALONE LeafContext. The plant lives in a Diagram beside a
+  SceneGraph, and every collision query the LCS build performs reads the
+  plant's geometry_query input port, which is only wired for a subcontext
+  extracted from a DIAGRAM context. So every worker raised
+      InputPort::Eval(): required InputPort[0] (geometry_query) of
+      System ::_::plant (MultibodyPlant<double>) is not connected
+  and evaluate_sample's bare `except Exception: pass` swallowed it. Every
+  worker sample came back J_n=None with a NaN cost; the dispatcher read
+  best_other=nan every tick and silently degraded to never repositioning.
+  Verified: 0 swallowed exceptions on a healthy serial run vs 164 on a
+  broken parallel one. Fix: make_worker_plant_context() derives contexts
+  from the diagram. Note a subcontext CANNOT be cloned -- Drake rejects
+  Context::Clone() on a non-root context -- so the root must be created and
+  the subcontext re-extracted.
+
+D2 (silent wrong answers) -- worker LCSFormulators were built with the wrong
+  physics model. The clone forwards only 7 of 11 constructor args; missing
+  were controller_object_mass, controller_inertia, tshape_mesh_witnesses and
+  mesh_ground_witnesses_body. All four are load-bearing (controller_inertia
+  is one of the three legs of the 2026-08-15 hover root cause). Symptom
+  after D1 was fixed: identical samples and identical J_n hashes, but ~2.3x
+  different sample costs (best_other 896.14 vs serial 386.56 at tick 1).
+  Fixed by syncing the PROCESSED attributes -- mesh_ground_witnesses_body is
+  stored as .reshape(3,3).T, so re-passing it to the constructor would
+  transpose twice.
+
+D3 (latent) -- _final_aug_contact_scaling (the C3+ final-solve contact boost,
+  1000 on the box lineage) and state_position_bounds were not in
+  _solver_attrs_to_sync, though the controller's own comment claimed workers
+  "inherit via _solver_attrs_to_sync".
+
+  Guard added: _assert_worker_clone_covers_ctor_args() now runs once per pool
+  build and RAISES if any constructor-derived state differs between parent
+  and clone (context_ad exempted -- per-worker by design). This defect class
+  cannot silently recur.
+
+OUTCOME -- correctness restored, 60 s box gate, seed 0:
+  threads=1            modes free=517 c3=284  goal 0.150->0.011  PASS(final)
+  threads=4 BEFORE fix modes free=801 c3=0    goal 0.150->0.150  FAIL, success=NO
+  threads=4 AFTER fix  modes free=679 c3=122  goal 0.150->0.019  PASS(final), success=YES
+
+BUT THREADING STILL CANNOT SPEED THIS UP -- Drake's solve holds the GIL.
+  threads=1 : 6m45s, avg_per_step_ms=472.0
+  threads=4 : 6m28s, avg_per_step_ms=457.2   (~3%, and user ~= real)
+
+  scripts/gpu/gil_probe.py, BLAS pinned to 1 thread so the controls are valid:
+    control sleep     3.99x   (GIL released -- control valid)
+    control blas      3.67x   (GIL released -- control valid)
+    drake OsqpSolver  0.99x   (GIL NOT released)
+
+  The reference's `#pragma omp parallel for` over samples does not translate
+  to Python threads: pybind11 holds the GIL through Solve(), so the pool
+  serializes. num_outer_threads is therefore NOT a usable speedup lever in
+  the Python port at all, no matter how many threads. Real options are
+  multiprocessing (Drake objects are not trivially picklable) or moving the
+  solve out of Python -- which is exactly what the batched GPU path does:
+  one Python call performing B solves sidesteps the GIL by construction.
+
+--- serial no-regress at HEAD (4409eed), 60 s box gate, seed 0 ---
+  threads=1 @0ea8fed (pre-fix) : free=517 c3=284  466->472 ms/step  trans 0.0109 rot 0.0503  PASS(final)
+  threads=1 @HEAD   (post-fix) : free=588 c3=213  466.3 ms/step     trans 0.0129 rot 0.0503  PASS(final)
+  threads=4 @HEAD   (post-fix) : free=679 c3=122  457.2 ms/step     trans 0.0188 rot 0.0824  PASS(final)
+  EVAL-EXC = 0 in all three -> the new loud logging is quiet when healthy.
+  Serial PASS class unchanged; metric shifts are inside the run-to-run band
+  already established by the control experiment (identical code diverges).
+
+=== HOT-LOOP HEAD-TO-HEAD ON REAL QPs (2026-08-21) — GPU LOSES 0.10x ===
+scripts/gpu/hotloop_benchmark.py, one control tick = 6 samples x 3 C3+ iters,
+real corpus matrices, n=639, m=439:
+
+  CPU (Drake OSQP, sequential) :   171.7 ms / tick
+  GPU (batched, on-device)     :  1652.8 ms / tick
+  speedup                      :     0.10x    <-- GPU is 10x SLOWER
+
+Why this contradicts the earlier 4.41x per-ITERATION result: iteration count.
+scripts/gpu/iteration_count_probe.py:
+
+  Drake OSQP : 100-200 iterations to reach eps=1e-5  (median 150)
+  our GPU QP : 20000 iterations, STILL NOT CONVERGED (primal resid 2.1e-4)
+               -> >133x more iterations
+
+control/gpu/batched_qp.py implements the PLAIN OSQP iteration. Drake runs
+with scaling=1 (Ruiz equilibration) and adaptive_rho=1; ours has neither.
+On cond(K) ~ 1.2e7 that is not a fidelity detail, it IS the performance.
+The earlier "out of scope: reproducing OSQP exactly" note was wrong about
+that.
+
+TWO FURTHER STRUCTURAL REASONS, both measured (scripts/gpu/sparsity_probe.py):
+
+1. THE PROBLEM IS TINY AND VERY SPARSE.
+     P_sym       639x639  nnz=  659  density 0.16%   (essentially diagonal)
+     A           439x639  nnz= 9759  density 3.48%
+     reduced KKT 639x639  nnz=36661  density 8.98%
+   A dense per-iteration matvec is 0.82 MFLOP; sparse is 0.07 MFLOP -- 11x
+   fewer. The batched dense GPU path THROWS AWAY that sparsity, while Drake
+   exploits it.
+
+2. fp64 ON THIS GPU IS 1/64 RATE. RTX 5070 Ti ~0.7 TFLOPS fp64, about par
+   with the 7800X3D. There is no raw-throughput headroom to pay for (1).
+
+PROJECTION IF THE ALGORITHMIC GAP WERE CLOSED (Ruiz + adaptive rho added, so
+the GPU also converges in ~150 iterations):
+  GPU = 3 outer x (14 ms setup + 150 iters x 0.275 ms) ~= 166 ms/tick
+  CPU measured                                          =  171.7 ms/tick
+  -> ~1.03x. PARITY, not acceleration.
+
+CONCLUSION: at this problem size, on this hardware, batched dense GPU ADMM
+does not accelerate the port. cuNRTO's 25.9x Franka result does not transfer
+because their subproblem is ~10-100x larger and dense (K_v in R^2940,
+thousands of SOC constraints); ours is n=639 at 0.16% Hessian density.
+
+=== WHERE THE PORT SPENDS ITS TIME (2026-08-21, HEAD, box 25 s gate) ===
+Wall-clock section profile, PORT_SECTION_TIMING=1. Sections cover 455 of the
+measured 472 ms/tick (96%) -- this is the whole picture, not a sample.
+cProfile cannot see Drake's pybind11 instance methods; these are wall clock.
+
+per _solve_c3plus = 70.0 ms, 6.5 calls per control tick:
+  inloop_osqp   39.16 ms  56.0%  3 solves x 275 OSQP iters
+  final_qp      19.50 ms  27.9%  1 solve  x 409 OSQP iters
+  qp_build       8.19 ms  11.7%  P/q assembly + UpdateCoefficients
+  lcs            2.71 ms   3.9%  Drake linearization
+  projection     0.41 ms   0.6%  Bui eq.12 delta-update
+
+  8023 OSQP inner iterations per control tick at 47.5 us each
+  => 81% OF WALL TIME IS OSQP INNER ITERATIONS.
+
+FINDING 1 -- the final QP is 1.5x an ADMM iteration, purely on iteration count:
+  time ratio 19.50/13.05 = 1.494 ; iteration ratio 409.3/275.0 = 1.488
+  The 1000x contact boost sits on a diagonal already ramped to rho=27.
+  Reference behaviour -- reported, not changed.
+
+FINDING 2 -- 72% of every OSQP iteration runs PAST convergence.
+  scripts/gpu/check_termination_probe.py on 60 real corpus QPs:
+    check_termination=100 (current)  246.7 iters  16.84 ms/solve
+    check_termination=25              116.2 iters  10.23 ms/solve
+    check_termination=1  (true)        68.5 iters  10.77 ms/solve
+  Converges at ~68, pays ~247. check=25 is the sweet spot (checking every
+  iteration has its own overhead). Solution spread across all three is
+  3.7e-3..5.2e-3 -- the same order as existing eps=1e-5 slop at
+  cond(K)~1.2e7, and check=100 is NOT closer to the tight answer.
+
+  check_termination=100 is a REFERENCE value (shared_parameters/
+  sampling_c3_qp_settings.yaml). Changing it is off-reference and needs
+  explicit authorization (feedback_no_off_reference_knob_probes).
+  MEASURED ONLY -- nothing changed.
+
+  Indicative ceiling if authorized: the QP solve is 81% of wall time and the
+  probe shows 16.84 -> 10.23 ms/solve (1.65x) on that portion, i.e. roughly
+  1.4x end-to-end by Amdahl. Would need the full two-tier eval to claim.
+
+=== CAN A GPU OSQP HELP? (2026-08-21) — NO, LAUNCH FLOOR EXCEEDS DRAKE ===
+Availability (scripts/gpu/osqp_backend_probe.py):
+  osqp 1.1.1 -> algebras_available() = ['builtin'] only; algebra='cuda'
+  raises "Algebra cuda not available". The published manylinux wheel ships
+  only ext_builtin; osqp/cuda.py is a 4-line wrapper. cuosqp (the paper's
+  package) has no installable distribution for this Python/CUDA.
+  CUDA algebra = build OSQP from source with -DOSQP_ALGEBRA_BACKEND=cuda.
+  Also: Drake vendors its own OSQP and always uses builtin, so a GPU OSQP
+  would mean bypassing Drake entirely and feeding P/q/A/l/u ourselves.
+
+Ceiling (scripts/gpu/gpu_osqp_ceiling.py, n=639 m=439 fp64):
+  Drake CPU OSQP, in-run                47.5 us / iteration
+  our batched GPU, batch=6              64.4 us   0.74x
+  our batched GPU, batch=1             356.2 us   0.13x
+  bare GPU kernel-launch floor          74.8 us   0.63x   <-- the hard limit
+
+  The floor is only the kernel dispatches an OSQP iteration needs (2 matvecs
+  + clamp + axpy), with no solver logic, preconditioner or termination check.
+  It already costs 1.6x Drake's ENTIRE iteration. A GPU OSQP solves one
+  problem at a time and so cannot amortise launches across samples; it sits
+  at or above that floor by construction.
+
+  Supersedes the earlier 41.8 us/sample-iteration figure (measured at m=300);
+  at the real m=439 batched GPU is 64.4 us, a loss rather than a slight win.
+
+=== CROSSOVER MAP: WHEN WOULD A GPU WIN? (2026-08-21) ===
+scripts/gpu/crossover_sweep.py — us per ADMM iteration per sample, GPU
+batch=6, fp64. Ratio > 1.00x means the GPU iteration is cheaper than Drake's.
+
+              0.16%     5.00%    50.00%   100.00%   <- Hessian density
+    n= 639     0.19x     4.47x     5.18x     8.52x
+    n=1278     1.58x    34.12x    52.44x    32.80x
+    n=2556    14.16x   125.14x   135.95x   137.50x
+
+OUR PROBLEM IS THE TOP-LEFT CELL — the only losing cell in the entire plane.
+
+Two crossings, both close by:
+  density: at n=639, 0.16% -> 5% flips 0.19x -> 4.47x
+  size   : at 0.16% density, n=639 -> n=1278 flips 0.19x -> 1.58x
+So roughly a 2x horizon/contact growth, or any real Hessian coupling, and the
+GPU becomes the right tool.
+
+GPU time is nearly INDEPENDENT of density (n=2556 row: 159.58 / 158.14 /
+159.56 / 158.91 us) and depends only on n. That is the launch/dense-work
+signature: the GPU pays the same cost whether the matrix is 0.16% or 100%
+full, because it does dense work regardless. The CPU meanwhile scales
+steeply with both n and density (9.66 -> 21849 us across the plane).
+
+CAVEAT — these synthetic instances are numerically EASIER than ours: the
+synthetic CPU leg at our cell is 9.66 us/iter versus the 47.5 us/iter
+measured in-run (real cond(K) ~ 1.2e7, real m=439 vs synthetic 304). So do
+NOT read 0.19x as our margin. The authoritative figure for our problem is
+the direct measurement: GPU 64.4 us vs Drake 47.5 us = 0.74x. The sweep's
+value is the SHAPE of the crossover, not our own cell's absolute value.
+Both agree on the sign: the GPU loses at our cell.
+
+=== AUTHORIZED A/B: check_termination 100 -> 25 (2026-08-21) ===
+User authorized the A/B. Instrument: PORT_OSQP_CHECK_TERMINATION env gate @
+7350d4b (unset = reference 100, byte-identical). Both legs at the SAME
+commit, SAME seed 0, box `pushing --task-id 4`, run SEQUENTIALLY. Only the
+env var differs -- the tightest possible A/B.
+
+TIER 1, 60 s gate (iteration only, NEVER quotable):
+                       check=100 (REF)    check=25
+  avg_per_step_ms              480.1        250.5    1.92x
+  wall                        6m43s        3m48s
+  full_solves                   4429         4236
+  tight_goal              PASS(final)  PASS(final)
+
+MECHANISM confirmed in-run (DIAG_OSQP_ITERS=1, 15 s):
+  in-loop OSQP iters         276.6        107.0    2.58x fewer
+  final_boosted              413.2        138.8    2.98x fewer
+  final_plain                290.8        139.6    2.08x fewer
+Note the in-run drop (2.58x) EXCEEDS the cold corpus probe's prediction
+(246.7 -> 116.2 = 2.12x): the live loop warm-starts, so its QPs converge
+even earlier than a cold solve, and check=100 was wasting proportionally
+more than the probe showed. That is why end-to-end beat the 1.4x
+projection.
+
+TIER 2, 180 s CANONICAL (the quotable tier):
+                       check=100 (REF)    check=25
+  avg_per_step_ms              496.8        244.4    2.03x
+  wall                       20m47s       11m03s    1.88x
+  full_solves                  12502        12112    0.97x of reference
+  switches                        28            6
+  modes free/c3             2115/285      2332/68
+  goal_dist final             0.0110       0.0150
+  goal_dist min               0.0090       0.0108
+  trans err (m)               0.0114       0.0153   tight bar 0.02
+  rot err (rad)               0.0669       0.0403   tight bar 0.10
+  success                        YES          YES
+  tight_goal             PASS(final)  PASS(final)
+  loose_goal                    PASS         PASS
+
+VERDICT: 2.03x on the canonical tier, both legs tight PASS(final), and the
+work is genuinely done (97% of the reference solve count). This is NOT the
+threads=4 artifact, where the "2x" came from full_solves collapsing
+4504 -> 801 and the task failing outright.
+
+HONEST CAVEATS:
+1. OFF-REFERENCE. check_termination=100 is a reference literal
+   (shared_parameters/sampling_c3_qp_settings.yaml). Landing this is a
+   CONFORMANCE decision, not a perf decision. Not landed; gate defaults to
+   100.
+2. Real behavioural shift: c3 engagement 285 -> 68 ticks, switches 28 -> 6.
+   Both runs still latch tight and check=25's ROTATION error is BETTER
+   (0.0403 vs 0.0669). The mechanism is known and expected -- wall clock
+   feeds filtered_solve_time -> the x-pred clamp, so a faster solver
+   legitimately changes the trajectory the way faster hardware would.
+   But it IS a different trajectory, not just a faster one.
+3. BOX ONLY. The T task (push_t_mesh) has not been run at either setting.
+   A T confirm at both settings is a prerequisite before landing.
+4. Single draw per leg. Per the no-multi-seed rule these are single-seed
+   runs; the box tight-PASS is near the 0.02 m bar at 0.0153 m, so the
+   margin is real but not enormous.
+
+=== T CONFIRM: check_termination 100 vs 25 (2026-08-21) ===
+push_t_mesh, config/sampling_c3_kik_t.yaml, seed 0, 180 s canonical, both
+legs at commit 952d288, run SEQUENTIALLY.
+
+                       check=100 (REF)    check=25
+  avg_per_step_ms              257.6        213.0    1.21x
+  full_solves                  12238        12243    1.00x of reference
+  switches                         8            8
+  modes free/c3             2276/124     2275/125
+  goal_dist final             0.0110       0.0100
+  goal_dist min               0.0050       0.0090
+  trans err (m)               0.0129       0.0117    bar 0.020
+  rot err (rad)               0.0930       0.0838    bar 0.100
+  tight_goal             PASS(final)  PASS(final)
+  loose_goal                    PASS         PASS
+
+BOTH PASS, and on T check=25 is BETTER on both error metrics. The rotation
+margin to the 0.1 rad bar roughly doubles: 0.0070 (reference) -> 0.0162.
+That matters because the reference T run sits close to the bar.
+
+T behaves very differently from box:
+  box : 2.03x, LARGE trajectory shift (c3 285 -> 68 ticks, switches 28 -> 6)
+  T   : 1.21x, essentially NO trajectory shift (2276/124 -> 2275/125,
+        switches 8 -> 8, solve count within 5)
+
+Why the smaller T speedup: T already runs at 257.6 ms/step versus box's
+496.8, i.e. its QPs converge in fewer iterations, so check=100 wastes
+proportionally less on T. The lever's size is task-dependent -- quoting a
+single "2x" for the port would be wrong.
+
+COMBINED VERDICT across both canonical tasks: safe (4/4 tight PASS(final)),
+speedup 1.21x-2.03x depending on task, and on T strictly better accuracy.
+Still OFF-REFERENCE; not adopted as default.
+
+=== CANDIDATE WARM-START COUPLING (2026-08-21) ===
+
+MECHANISM. `_u_prev_solve = u_seq.copy()` at the end of EVERY C3+ solve
+(admm_solver.py:2748), read by the next solve as
+`q_ref[u] += -2*R@u_prev` (admm_solver.py:1122). Gated on
+penalize_input_change, which is ON for both canonical tasks (off only for
+the legacy push_t). In the serial candidate loop this makes candidate k
+warm-start candidate k+1, so the loop is ORDER-DEPENDENT.
+
+REFERENCE GROUND TRUTH -- CHECKED IN THE C++ SOURCE, NOT INFERRED:
+  sampling_based_c3_controller.cc:989-1099 constructs a FRESH C3 object per
+  candidate INSIDE the omp parallel-for; c3.cc:91-97 initialises u_sol_ to
+  ZEROS. So every reference candidate solves with u_prev = 0, and there is
+  no chaining across candidates OR ticks.
+  Port equivalence verified numerically: _u_prev_solve = None and
+  = zeros are BIT-IDENTICAL (max abs diff 0.0).
+
+  => "reset-per-candidate" IS the reference semantics.
+  => the port's CURRENT DEFAULT (ordered chaining) is a DIVERGENCE.
+  (Exception: cc:2187 pushes the retained c3_buffer_plan_ as an extra
+  candidate, so the buffer candidate does carry state.)
+
+MAGNITUDE, solver level (corpus, cold vs warm-started by a neighbour):
+  max|d u_seq| median 1.18e-01 (15% relative); max|d u[0]| median 1.55e-02
+  against a 7.38e-01 scale, worst 1.48e-01. Not negligible.
+  Caveat: corpus instances span different ticks, so this over-states how
+  different real within-tick candidates are.
+
+BOX, 60 s gate, seed 0, commit 4e67062:
+                   ms/step  solves  switch  free/c3   trans    rot   tight
+  A ordered          488.0    4267      16  667/134  0.0156  0.0731  PASS(final)
+  B independent      474.2    4403      36  643/158  0.0179  0.0547  PASS(final)
+  C reset            485.5    4327      14  610/191  0.0156  0.0817  PASS(final)
+
+  candidate selection agreement vs A:
+    B independent  543/801 = 67.8%   first divergence at tick 0
+    C reset        565/801 = 70.5%   first divergence at tick 0
+
+  ALL THREE REACH tight PASS(final). Selection differs on ~1/3 of ticks.
+  Timing is flat (B is 2.8% FASTER than A) -- sequential warm-starting buys
+  NO performance.
+
+DIVERGENCE GROWS WITH CHAIN DEPTH (box, A vs B, by the candidate A picked):
+    k=0  604 ticks  24.5% disagree
+    k=1   57 ticks  47.4%
+    k=2   14 ticks  57.1%
+    k=3   16 ticks  75.0%
+    k=4   15 ticks  86.7%
+    k=5   12 ticks  83.3%
+    k=6   83 ticks  48.2%   <- augmented buffer sample, structurally different
+  k=0 (current EE): 24.5%   k>0 (sampled): 55.8%
+  The deeper a candidate sits in the chain, the more its rank depends on the
+  chain. So the effect GROWS with candidate count -- exactly the regime a GPU
+  backend needs (batching only pays at larger B).
+
+T (push_t_mesh), 180 s CANONICAL, seed 0 -- all three tight PASS(final):
+                   ms/step  solves  switch  free/c3   trans    rot
+  A ordered          235.6   12312      14  2273/127  0.0133  0.0823
+  B independent      240.1   12267      10  2275/125  0.0164  0.0833
+  C reset            416.3   12234       8  2280/120  0.0128  0.0784
+  argmin agreement vs A:  B 94.2%   C 94.4%
+  (T agrees far more than box because k=0 wins 88% of T ticks.)
+
+C IS 77% SLOWER ON T -- root-caused, genuinely more solver work, TAIL not mean
+(DIAG_OSQP_ITERS, 20 s runs):
+                 ordered              reset
+  inloop      mean 100.0 max  100   mean 101.4 max  700
+  final_qp    mean 226.9 max  300   mean 264.1 max 1200
+  Means barely move; maxima blow up 7-12x. A p95/p99 effect, invisible in an
+  average. Box did NOT show this (C 485.5 vs A 488.0) -- it is task-dependent.
+
+REFERENCE penalize_input_change IS A NO-OP FOR SAMPLED CANDIDATES:
+  c3.cc:340 is inside C3::Solve (line 269) and rebuilds the input cost ONCE
+  per Solve from u_sol_. The sampling controller builds a FRESH C3 per
+  candidate per tick with u_sol_ = zeros, so the term is always -2*R*0 = 0.
+  Port mode C reproduces this exactly.
+
+ANSWERS
+ 1 order sensitivity: HIGH on box (selection differs on 32% of ticks vs
+   independent, diverging from tick 0), LOW-ish on T (5.8%) because k=0
+   dominates. Divergence grows monotonically with chain depth.
+ 2 performance from sequential warm starts: NONE from the CHAINING. Box: B is
+   2.8% faster than A. T: B is 1.9% slower. The real benefit is having a
+   NONZERO RECENT u_prev at all -- dropping to zero (C) costs 77% on T.
+ 3 does independent batching change the selected candidate: YES, materially
+   (box 32% of ticks, T 5.8%).
+ 4 does it change task success: NO. 6/6 runs tight PASS(final).
+ 5 does the effect grow with candidate count: YES, monotonically with chain
+   depth (24.5% at k=0 -> 86.7% at k=4). Worse exactly where GPU batching
+   pays.
+ 6 stable common warm-start: YES -- the tick-entry u_prev broadcast to all
+   candidates (mode B). Preserves the temporal warm start, removes the
+   ordering, costs nothing measurable.
+
+RECOMMENDED GPU SEMANTIC: INDEPENDENT-BATCH (mode B).
