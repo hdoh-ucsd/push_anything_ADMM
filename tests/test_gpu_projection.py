@@ -10,7 +10,7 @@ torch = pytest.importorskip("torch")
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
                                 reason="no CUDA device")
 
-from control.gpu.projection import project_C3Plus_batch  # noqa: E402
+from control.gpu.legacy_torch.projection import project_C3Plus_batch  # noqa: E402
 
 
 def _numpy_ref(lam, eta, u_lambda, u_eta):

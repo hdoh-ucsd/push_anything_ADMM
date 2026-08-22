@@ -18,7 +18,7 @@ import time
 import numpy as np
 import torch
 
-from control.gpu.batched_qp import BatchedBoxQP
+from control.gpu.legacy_torch.batched_qp import BatchedBoxQP
 
 N, M = 639, 439
 REPS = 300
