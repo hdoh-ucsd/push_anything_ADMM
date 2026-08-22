@@ -8,7 +8,7 @@ For each (n, density) cell:
   CPU leg -- build the QP in Drake, solve with the port's exact OSQP options,
              divide wall time by the iteration count OSQP reports
              => microseconds per ADMM iteration
-  GPU leg -- same matrices through control/gpu/batched_qp.py at batch=6, with
+  GPU leg -- same matrices through control/gpu/legacy_torch/batched_qp.py at batch=6, with
              the convergence check disabled so it is pure per-iteration cost
              => microseconds per SAMPLE-iteration
 
@@ -21,7 +21,7 @@ import numpy as np
 import pydrake.all as ad
 import torch
 
-from control.gpu.batched_qp import BatchedBoxQP
+from control.gpu.legacy_torch.batched_qp import BatchedBoxQP
 
 BATCH = 6
 GPU_ITERS = 120

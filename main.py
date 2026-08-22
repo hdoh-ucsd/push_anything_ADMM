@@ -257,7 +257,15 @@ def main():
 
         import profiling.section_timer as _ST
         _ST.ENABLED = True
+        # PORT_SECTION_DISTRIBUTIONS=1 additionally retains every per-call
+        # sample so the exit report can show p50/p90/p95/p99/max. Totals
+        # alone hide tails, and tails are what matter for real-time MPC.
+        _ST.DISTRIBUTIONS = (
+            os.environ.get("PORT_SECTION_DISTRIBUTIONS", "0") == "1")
         atexit.register(lambda: print(_ST.report(top_n=30), flush=True))
+        if _ST.DISTRIBUTIONS:
+            atexit.register(
+                lambda: print(_ST.distribution_report(top_n=30), flush=True))
 
     parser = argparse.ArgumentParser(
         description="C3 Contact-Implicit MPC",

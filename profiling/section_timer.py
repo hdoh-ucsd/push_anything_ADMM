@@ -37,8 +37,16 @@ from typing import Generator
 
 ENABLED: bool = False
 
+# DISTRIBUTIONS: keep every per-call sample, not just the running total.
+# Totals alone hide tails, and tails are what matter for real-time MPC --
+# the reference_reset experiment moved a mean by 1% while blowing the
+# maximum OSQP iteration count up 7-12x. Off by default because retaining
+# ~10^5 floats per section costs memory a normal run should not pay.
+DISTRIBUTIONS: bool = False
+
 _totals: dict[str, float] = defaultdict(float)   # name -> cumulative seconds
 _counts: dict[str, int]   = defaultdict(int)      # name -> call count
+_samples: dict[str, list] = defaultdict(list)     # name -> per-call seconds
 
 # ---- Public API ----------------------------------------------------------
 
@@ -52,8 +60,55 @@ def timed(name: str) -> Generator[None, None, None]:
     try:
         yield
     finally:
-        _totals[name] += time.perf_counter() - t0
+        dt = time.perf_counter() - t0
+        _totals[name] += dt
         _counts[name] += 1
+        if DISTRIBUTIONS:
+            _samples[name].append(dt)
+
+
+def samples(name: str = None):
+    """Per-call durations in seconds. Empty unless DISTRIBUTIONS was on."""
+    return dict(_samples) if name is None else list(_samples.get(name, ()))
+
+
+def distribution_report(top_n: int = 20) -> str:
+    """Per-section latency distribution, in milliseconds.
+
+    Reports mean/p50/p90/p95/p99/max because a mean alone cannot show a
+    tail, and a tail is what breaks a real-time controller.
+    """
+    if not _samples:
+        msg = ("[SectionTimer] no distribution data "
+               "(set section_timer.DISTRIBUTIONS = True)")
+        print(msg)
+        return msg
+
+    def q(xs, p):
+        xs = sorted(xs)
+        if not xs:
+            return 0.0
+        k = (len(xs) - 1) * p
+        lo, hi = int(k), min(int(k) + 1, len(xs) - 1)
+        return xs[lo] + (xs[hi] - xs[lo]) * (k - lo)
+
+    rows = sorted(_samples.items(), key=lambda kv: -sum(kv[1]))[:top_n]
+    w = 78
+    lines = ["", "=" * w,
+             "  Section Latency Distribution (ms per call)", "=" * w,
+             f"  {'Section':<26}{'calls':>8}{'mean':>8}{'p50':>8}"
+             f"{'p90':>8}{'p95':>8}{'p99':>8}{'max':>8}",
+             "-" * w]
+    for name, xs in rows:
+        ms = [x * 1000.0 for x in xs]
+        lines.append(
+            f"  {name:<26}{len(ms):>8,}{sum(ms)/len(ms):>8.2f}"
+            f"{q(ms,0.50):>8.2f}{q(ms,0.90):>8.2f}{q(ms,0.95):>8.2f}"
+            f"{q(ms,0.99):>8.2f}{max(ms):>8.2f}")
+    lines += ["=" * w, ""]
+    out = "\n".join(lines)
+    print(out)
+    return out
 
 
 def report(top_n: int = 20) -> str:

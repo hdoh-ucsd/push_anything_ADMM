@@ -10,7 +10,7 @@ torch = pytest.importorskip("torch")
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(),
                                 reason="no CUDA device")
 
-from control.gpu.batched_qp import BatchedBoxQP  # noqa: E402
+from control.gpu.legacy_torch.batched_qp import BatchedBoxQP  # noqa: E402
 
 
 def make_qp(rng, n=40, m_eq=12, m_box=10):

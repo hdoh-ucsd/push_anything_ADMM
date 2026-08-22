@@ -5,7 +5,7 @@ measured 0.10x for the whole tick. The only way both are true is if the GPU
 solver needs far MORE iterations. This counts them on real corpus QPs.
 
 Drake's OsqpSolver runs with scaling=1 (Ruiz equilibration) and
-adaptive_rho=1. control/gpu/batched_qp.py implements the plain OSQP
+adaptive_rho=1. control/gpu/legacy_torch/batched_qp.py implements the plain OSQP
 iteration with neither. The corpus instances have cond(K) ~ 1.2e7, and
 preconditioning is exactly what makes first-order methods tolerable on
 ill-conditioned problems.
@@ -16,7 +16,7 @@ import numpy as np
 import pydrake.all as ad
 import torch
 
-from control.gpu.batched_qp import BatchedBoxQP
+from control.gpu.legacy_torch.batched_qp import BatchedBoxQP
 from scripts.gpu.hotloop_benchmark import load
 
 
@@ -48,7 +48,7 @@ def main():
         print(f"    n={d['total_dim']}  iters={it:5d}  "
               f"status={res.get_solution_result()}")
 
-    print("\nGPU: control/gpu/batched_qp.py iterations (same eps)")
+    print("\nGPU: control/gpu/legacy_torch/batched_qp.py iterations (same eps)")
     P = np.stack([d["P"] for d in insts])
     q = np.stack([d["q"] for d in insts])
     n_box = insts[0]["idx"].size

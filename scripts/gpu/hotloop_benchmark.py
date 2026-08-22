@@ -20,7 +20,7 @@ import numpy as np
 import pydrake.all as ad
 import torch
 
-from control.gpu.batched_qp import BatchedBoxQP
+from control.gpu.legacy_torch.batched_qp import BatchedBoxQP
 
 SAMPLES_PER_TICK = 6      # num_additional_samples_c3=5 + current
 ADMM_ITERS = 3            # surrogate_admm_iters / base_mpc.admm_iter
