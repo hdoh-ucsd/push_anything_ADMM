@@ -1,0 +1,422 @@
+<title>Box Push on CRISP B-B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --ground:#F6F7F8;
+  --panel:#FFFFFF;
+  --ink:#161A1D;
+  --ink-soft:#4A555C;
+  --ink-faint:#77848B;
+  --rule:#DDE3E6;
+  --rule-soft:#EAEEF0;
+  --accent:#0E6E72;
+  --accent-soft:#E2EFEF;
+  --pass:#4F6B32;
+  --pass-soft:#E9EFE0;
+  --fail:#9C4A34;
+  --fail-soft:#F6E7E2;
+  --shadow:0 1px 2px rgba(22,26,29,.05),0 8px 24px -16px rgba(22,26,29,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#10151A;
+    --panel:#171D23;
+    --ink:#E7ECEF;
+    --ink-soft:#A6B2BA;
+    --ink-faint:#7C8992;
+    --rule:#2A333B;
+    --rule-soft:#212A31;
+    --accent:#5FBEC0;
+    --accent-soft:#14312F;
+    --pass:#A3C06F;
+    --pass-soft:#1D2718;
+    --fail:#E08C71;
+    --fail-soft:#2E1B15;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#10151A;
+  --panel:#171D23;
+  --ink:#E7ECEF;
+  --ink-soft:#A6B2BA;
+  --ink-faint:#7C8992;
+  --rule:#2A333B;
+  --rule-soft:#212A31;
+  --accent:#5FBEC0;
+  --accent-soft:#14312F;
+  --pass:#A3C06F;
+  --pass-soft:#1D2718;
+  --fail:#E08C71;
+  --fail-soft:#2E1B15;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font:400 17px/1.62 "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:47rem;margin:0 auto;padding:clamp(2rem,5vw,4.5rem) clamp(1.1rem,4vw,2rem) 6rem;}
+
+/* ---- masthead ---- */
+.eyebrow{
+  font:500 11.5px/1 "IBM Plex Mono",ui-monospace,monospace;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  display:flex;gap:.6rem;flex-wrap:wrap;align-items:baseline;
+}
+.eyebrow span::before{content:"·";margin-right:.6rem;color:var(--ink-faint)}
+.eyebrow span:first-child::before{content:none;margin:0}
+h1{
+  font:600 clamp(2.1rem,6vw,3.1rem)/1.08 "IBM Plex Serif",Georgia,serif;
+  letter-spacing:-.018em;text-wrap:balance;margin:.85rem 0 0;
+}
+.standfirst{
+  font:400 clamp(1.06rem,2.4vw,1.2rem)/1.55 "IBM Plex Serif",Georgia,serif;
+  color:var(--ink-soft);margin:1rem 0 0;max-width:36rem;text-wrap:pretty;
+}
+.byline{
+  margin-top:1.4rem;padding-top:1.1rem;border-top:1px solid var(--rule);
+  font:400 13.5px/1.5 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-faint);
+}
+.byline a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent-soft)}
+.byline a:hover{border-bottom-color:var(--accent)}
+
+/* ---- sections ---- */
+section{margin-top:3.4rem}
+h2{
+  font:600 1.42rem/1.25 "IBM Plex Serif",Georgia,serif;
+  letter-spacing:-.01em;margin:0 0 .3rem;text-wrap:balance;
+}
+h3{
+  font:600 .95rem/1.4 "IBM Plex Sans",sans-serif;
+  letter-spacing:.005em;margin:2rem 0 .4rem;color:var(--ink);
+}
+.kicker{
+  font:500 11px/1 "IBM Plex Mono",ui-monospace,monospace;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);
+  margin-bottom:.75rem;
+}
+p{margin:.85rem 0;text-wrap:pretty}
+strong{font-weight:600}
+em{font-style:italic}
+code{
+  font:500 .88em/1.4 "IBM Plex Mono",ui-monospace,monospace;
+  background:var(--rule-soft);padding:.1em .34em;border-radius:3px;
+}
+
+/* ---- case strip ---- */
+.cases{
+  display:grid;gap:.7rem;margin:1.5rem 0 0;
+  grid-template-columns:repeat(auto-fit,minmax(8.6rem,1fr));
+}
+.case{
+  background:var(--panel);border:1px solid var(--rule);border-radius:5px;
+  padding:.85rem .8rem .8rem;display:flex;flex-direction:column;gap:.55rem;
+  box-shadow:var(--shadow);
+}
+.case svg{width:100%;height:52px;display:block}
+.case .nm{
+  font:500 12px/1.35 "IBM Plex Mono",ui-monospace,monospace;
+  color:var(--ink);letter-spacing:-.01em;
+}
+.case .vr{
+  font:600 10px/1 "IBM Plex Mono",ui-monospace,monospace;
+  letter-spacing:.1em;text-transform:uppercase;
+  padding:.3em .5em;border-radius:3px;align-self:flex-start;
+}
+.vr.ok{background:var(--pass-soft);color:var(--pass)}
+.vr.no{background:var(--fail-soft);color:var(--fail)}
+.case .dt{font:400 11.5px/1.45 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-faint)}
+.bx{fill:none;stroke:var(--rule);stroke-width:2.4}
+.bx.live{stroke:var(--accent);stroke-width:4.4}
+.bx.dead{stroke:var(--ink-faint);stroke-dasharray:3 3;stroke-width:2}
+.arw{stroke:var(--accent);stroke-width:2.2;fill:none}
+.arwh{fill:var(--accent)}
+.spin{stroke:var(--ink-faint);stroke-width:1.8;fill:none;stroke-dasharray:3 3}
+
+/* ---- tables ---- */
+.scroll{overflow-x:auto;margin:1.15rem 0;border:1px solid var(--rule);border-radius:5px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:34rem}
+th,td{padding:.62rem .85rem;text-align:left;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+thead th{
+  font:600 10.5px/1.3 "IBM Plex Mono",ui-monospace,monospace;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);
+  background:var(--rule-soft);border-bottom:1px solid var(--rule);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:none}
+td.num,th.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.lbl{font-weight:500}
+.ours{color:var(--ink-soft)}
+.bb{color:var(--accent);font-weight:500}
+
+/* ---- code block ---- */
+pre{
+  margin:1.15rem 0;padding:1rem 1.1rem;background:var(--panel);
+  border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:5px;
+  overflow-x:auto;font:400 13px/1.62 "IBM Plex Mono",ui-monospace,monospace;
+  color:var(--ink-soft);
+}
+pre b{color:var(--ink);font-weight:600}
+pre .g{color:var(--pass);font-weight:600}
+pre .r{color:var(--fail);font-weight:600}
+
+/* ---- callout ---- */
+.note{
+  margin:1.3rem 0;padding:1rem 1.15rem;border-radius:5px;
+  background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);
+}
+.note p{margin:.35rem 0}
+.note p:first-child{margin-top:0}
+.note p:last-child{margin-bottom:0}
+.note .kicker{color:var(--accent);margin-bottom:.4rem}
+
+/* ---- next steps ---- */
+ol.steps{margin:1.1rem 0 0;padding:0;list-style:none;counter-reset:s}
+ol.steps li{
+  counter-increment:s;position:relative;padding-left:2.4rem;margin-bottom:1.05rem;
+}
+ol.steps li::before{
+  content:counter(s);position:absolute;left:0;top:.08rem;
+  width:1.65rem;height:1.65rem;border-radius:50%;
+  background:var(--accent);color:var(--ground);
+  font:600 12px/1.65rem "IBM Plex Mono",ui-monospace,monospace;text-align:center;
+}
+footer{
+  margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+  font:400 13px/1.6 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-faint);
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow"><span>arXiv:2502.01055v3</span><span>Appendix B-B</span><span>off-reference arm</span></div>
+  <h1>Box push on CRISP&nbsp;B-B</h1>
+  <p class="standfirst">Implemented, measured, then audited line-by-line against the authors' released C++. Three of our divergences were real bugs; one headline finding had to be retracted; the rotation limit survived intact.</p>
+  <p class="byline">branch <a href="https://github.com/hdoh-ucsd/push_anything_ADMM/tree/worktree-crisp-bb-pushbox">worktree-crisp-bb-pushbox</a> · audited against <a href="https://github.com/ComputationalRobotics/CRISP">ComputationalRobotics/CRISP</a> · 18 tests green</p>
+</header>
+
+<section>
+  <div class="kicker">Five goals, one 0.1 m cube</div>
+  <h2>What it does and doesn't solve</h2>
+  <p>Each glyph is the box seen from above; the heavy edge is the face B‑B chose to push. Which face carries force is an <em>output</em> of the solve, not an input — that is the formulation's central idea, and the reason the first two cases are so clean.</p>
+
+  <div class="cases">
+    <div class="case">
+      <svg viewBox="0 0 100 60" role="img" aria-label="Push the minus-x face, arrow pointing right">
+        <rect class="bx" x="30" y="12" width="40" height="36"/>
+        <line class="bx live" x1="30" y1="12" x2="30" y2="48"/>
+        <line class="arw" x1="10" y1="30" x2="24" y2="30"/>
+        <polygon class="arwh" points="28,30 21,26.5 21,33.5"/>
+      </svg>
+      <span class="vr ok">solved</span>
+      <span class="nm">+x 0.15 m</span>
+      <span class="dt">4.57 mm · 17 iter</span>
+    </div>
+    <div class="case">
+      <svg viewBox="0 0 100 60" role="img" aria-label="Push the plus-x face, arrow pointing left">
+        <rect class="bx" x="30" y="12" width="40" height="36"/>
+        <line class="bx live" x1="70" y1="12" x2="70" y2="48"/>
+        <line class="arw" x1="90" y1="30" x2="76" y2="30"/>
+        <polygon class="arwh" points="72,30 79,26.5 79,33.5"/>
+      </svg>
+      <span class="vr ok">solved</span>
+      <span class="nm">−x 0.15 m</span>
+      <span class="dt">4.57 mm · face flips</span>
+    </div>
+    <div class="case">
+      <svg viewBox="0 0 100 60" role="img" aria-label="Two faces active, minus-x and minus-y">
+        <rect class="bx" x="30" y="12" width="40" height="36"/>
+        <line class="bx live" x1="30" y1="12" x2="30" y2="48"/>
+        <line class="bx live" x1="30" y1="48" x2="70" y2="48"/>
+      </svg>
+      <span class="vr no">no converge</span>
+      <span class="nm">diagonal</span>
+      <span class="dt">50 mm of 141 mm</span>
+    </div>
+    <div class="case">
+      <svg viewBox="0 0 100 60" role="img" aria-label="Rotated box, one face active">
+        <rect class="bx" x="32" y="14" width="36" height="32" transform="rotate(18 50 30)"/>
+        <line class="bx live" x1="26.3" y1="19.6" x2="36.2" y2="50.1"/>
+        <path class="spin" d="M74 18 A22 22 0 0 1 78 36"/>
+      </svg>
+      <span class="vr no">infeasible</span>
+      <span class="nm">move + spin 90°</span>
+      <span class="dt">wants 1.76 m/s</span>
+    </div>
+    <div class="case">
+      <svg viewBox="0 0 100 60" role="img" aria-label="Box with no face active">
+        <rect class="bx dead" x="30" y="12" width="40" height="36"/>
+        <path class="spin" d="M74 16 A24 24 0 0 1 79 34"/>
+        <polygon class="spin" style="fill:var(--ink-faint);stroke:none" points="79,38 75.5,31 82.5,31"/>
+      </svg>
+      <span class="vr no">silent</span>
+      <span class="nm">pure yaw 90°</span>
+      <span class="dt">0.00 mm moved</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Reference audit</div>
+  <h2>What the released C++ changed</h2>
+  <p>The official implementation — <a href="https://github.com/ComputationalRobotics/CRISP">ComputationalRobotics/CRISP</a>, RSS 2025 — was read after this port was written. It confirmed some inferences, contradicted others, and forced one retraction. Every number on this page was re-measured afterwards.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>we had</th><th>reference actually</th><th>outcome</th></tr></thead>
+      <tbody>
+        <tr><td class="lbl">complementarity as an equality</td><td><code>-(λ₁)(c_y+b) ≥ 0</code> via <code>addInequalityConstraint</code></td><td class="bb">fixed — biggest single lever</td></tr>
+        <tr><td class="lbl">a cost on the contact point</td><td><code>R</code> on the four λ only; none on <code>c</code></td><td class="bb">fixed — we had invented an extra barrier</td></tr>
+        <tr><td class="lbl">trust region reset after escalation</td><td>that line is <em>commented out</em> (<code>SolverInterface.h:554</code>)</td><td class="bb">now switchable</td></tr>
+        <tr><td class="lbl">μ=0.3, c=0.6, N=200 (guessed)</td><td>μ=0.5, c=0.4, g=9.8, <b>N=100</b></td><td class="bb">corrected</td></tr>
+        <tr><td class="lbl">ε_c = 1e-6 (inferred from a typo)</td><td><code>constraintTol = 1e-6</code></td><td class="ours">confirmed</td></tr>
+        <tr><td class="lbl">inner QP is the suspect</td><td>PIQP, interior point, named in the README</td><td class="ours">confirmed at code level</td></tr>
+        <tr><td class="lbl">no contact-point continuity</td><td>absent in push box <em>and</em> push T</td><td class="ours">confirmed</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <div class="kicker">Retracted</div>
+    <p>An earlier version of this page reported a clean escape-threshold bracket — q=290 parks at 0.0000&nbsp;m, q=310 reaches 0.1490&nbsp;m, against a predicted q*=300.8. That was measured with the wrong encoding. Under the reference formulation the transition is <strong>non-monotone</strong>: q=250 escapes and q=310 does not. The barrier is real — at q=150 and q=290 the box does not move at all and the solver still reports success — but it is a scale, not a switch.</p>
+  </div>
+
+  <p>Two further facts change how the paper reads. Its push-box benchmark goal is <code>[3cos θ, 3sin θ, <b>θ</b>]</code> with θ = 12·2π/18, so the benchmark demands 3 m of travel <em>and 240° of rotation</em> — it never tests pure rotation. And the shipped <code>main()</code> solves <strong>one</strong> of the 18 targets: the sweep loop has been deleted, leaving orphaned indentation and a stray brace, so the repository does not ship the code that produces Table II's 100% success rate.</p>
+</section>
+
+<section>
+  <div class="kicker">Model comparison</div>
+  <h2>B-B deletes the sampler by construction</h2>
+  <p>Our stack sends contact geometry into the planner as <em>sampled witness points on a mesh</em>. B-B sends it as four inequalities on a decision variable. That single change is what makes the whole sampler-and-witness apparatus unnecessary.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th></th><th>our stack — sampling-C3 / LCS / ADMM C3+</th><th>CRISP B-B</th></tr></thead>
+      <tbody>
+        <tr><td class="lbl">planner state</td><td class="ours num">19 — box_q(7), p_ee(3), box_v(6), v_ee(3)</td><td class="bb num">3 — p<sub>x</sub>, p<sub>y</sub>, θ</td></tr>
+        <tr><td class="lbl">planner control</td><td class="ours num">3 (EE-space)</td><td class="bb num">6 — c<sub>x</sub>, c<sub>y</sub> + 4 face forces</td></tr>
+        <tr><td class="lbl">contact geometry</td><td class="ours">witness points from mesh geometry, admitted by a 2 mm Drake signed-distance query</td><td class="bb">4 analytic face half-planes; the contact point is a decision variable</td></tr>
+        <tr><td class="lbl">ground friction</td><td class="ours">explicit ground-witness rows (4-corner box, 3-sphere mesh tables)</td><td class="bb">ellipsoidal limit surface — no witnesses at all</td></tr>
+        <tr><td class="lbl">face selection</td><td class="ours">chosen upstream by the sampler (kMeshNormal, face tables, projection)</td><td class="bb">an output of the solve</td></tr>
+        <tr><td class="lbl">pusher</td><td class="ours">in the model — EE state, μ 0.42, tangential Jacobians J<sub>t</sub></td><td class="bb">not in the model; normal force only</td></tr>
+        <tr><td class="lbl">arm</td><td class="ours">7-DoF, torque limits, null space</td><td class="bb">absent</td></tr>
+        <tr><td class="lbl">dynamics</td><td class="ours">second-order LCS with velocities</td><td class="bb">quasi-static, first-order, planar</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Everything that has cost us a root-cause arc in this subsystem lives on the left: the 3-sphere ground triangle falsification, the VHACD-bevel sampler starvation, the hardcoded face tables. None of it has an analogue on the right.</p>
+</section>
+
+<section>
+  <div class="kicker">Failure mode · provable</div>
+  <h2>Rotation is invisible to a naive guess</h2>
+  <p>Yaw enters the dynamics as <code>θ̇ = k_rot (c_x f_y − c_y f_x)</code> — a product of two variables that <em>both start at zero</em>. So at the all-zero guess the rotation row of the Jacobian is identically zero while translation is not:</p>
+
+<pre>d(ṡ)/du at the all-zero knot
+
+[ 0  0  0       <b>0.2216</b>  0       <b>0.2216</b> ]   translation — first order
+[ 0  0  <b>0.2216</b>  0       <b>0.2216</b>  0      ]
+[ 0  0  0       0       0       0      ]   <span class="r">rotation — identically zero</span></pre>
+
+  <p>Translation needs only a force; rotation needs a force <em>and</em> a moment arm. A <em>pure</em>-rotation goal therefore has no first-order descent direction, and the solver terminates at a genuine stationary point — reporting <strong>success</strong> having moved nothing, at every terminal weight tested (×10, ×100, ×1000). This is the one finding the reference audit left untouched: re-measured under the corrected formulation it is unchanged to four decimals, as it must be, since it is a property of dynamics both implementations share.</p>
+
+  <p>The audit did narrow it. The reference benchmark always couples rotation with travel, so it never enters this regime — once translation is present λ leaves zero, the moment arm acquires a gradient, and rotation is reachable: at the reference configuration this port turns the box 3.69 rad of a 4.19 rad goal.</p>
+
+  <div class="note">
+    <div class="kicker">Why our canonical task never noticed</div>
+    <p><code>pushing</code> sets <code>goal_yaw: 0</code>, so it never touches the rotation channel. Any orientation-carrying task — the T, the jack, most of Fig 8 — lands here immediately. In receding-horizon use the cold start only bites on the first tick, but a box at rest with a do-nothing plan never generates the motion that would warm-start the next one.</p>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Failure mode · calibration</div>
+  <h2>The all-zero guess can silently do nothing</h2>
+  <p>The all-zero point is <em>feasible</em>: no force, no motion, every complementarity product zero. Escaping it costs linearised face-gate violation, because at λ = 0 the gate's own contact-point gradient <code>∂/∂c_x[λ₂(c_x+a)]&nbsp;=&nbsp;λ₂</code> is itself zero. Per knot and per unit force the trade is <code>μ₀·a</code> against <code>q·d·dt·k_trans</code>, which is knot-count independent — so the origin is escapable only when</p>
+
+<pre>q &gt; μ₀ · a / (d · dt · k_trans)          predicted q* = <b>300.8</b>
+
+q = 150  (&lt; q*)   <span class="r">parked </span>   moved 0.0000 m
+q = 250  (&lt; q*)   <span class="g">escaped</span>   moved 0.1048 m
+q = 290  (&lt; q*)   <span class="r">parked </span>   moved 0.0000 m
+q = 310  (&gt; q*)   <span class="r">parked </span>   moved 0.0045 m
+q = 400  (&gt; q*)   <span class="g">escaped</span>   moved 0.1492 m   of a 0.15 m goal
+q = 600  (&gt; q*)   <span class="g">escaped</span>   moved 0.1495 m</pre>
+
+  <p>Well below the threshold the solver returns a feasible, converged, <em>useless</em> plan and calls it success — the same outcome the paper criticises IPOPT for in its own transport example. The transition itself is not sharp (see the retraction above), but the danger is unchanged: silence looks like success. <code>min_terminal_weight()</code> exposes the scale and weights auto-size to 10× it.</p>
+</section>
+
+<section>
+  <div class="kicker">Validation gap</div>
+  <h2>This port does not reproduce Table II</h2>
+  <p>At the paper's own benchmark scale — a 3 m target, N = 200, dt = 0.02 — accuracy and feasibility trade against each other instead of arriving together:</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>terminal weight</th><th class="num">tracking error</th><th class="num">violation</th><th>outcome</th></tr></thead>
+      <tbody>
+        <tr><td class="lbl">3 m bench &nbsp;q ×10</td><td class="num">0.0408 m (1.36%)</td><td class="num">7.5e−5</td><td>QP degenerates</td></tr>
+        <tr><td class="lbl">3 m bench &nbsp;q ×100</td><td class="num">0.2449 m (8.16%)</td><td class="num">1.7</td><td>penalty max out</td></tr>
+        <tr><td class="lbl">3 m bench &nbsp;q ×1000</td><td class="num">0.0000 m (0.00%)</td><td class="num">1.3</td><td>QP degenerates</td></tr>
+        <tr><td class="lbl">our box &nbsp;q ×10</td><td class="num">0.0046 m (3.05%)</td><td class="num">2.1e−14</td><td>converged</td></tr>
+        <tr><td class="lbl">our box &nbsp;q ×1000</td><td class="num">0.0000 m (0.00%)</td><td class="num">1.0e−12</td><td>converged</td></tr>
+        <tr><td class="lbl">paper, Table II</td><td class="num">0.02</td><td class="num">8.3e−9</td><td>100% success</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Correcting the constants and the encoding carried the box from 2.633 m to <strong>2.9592 m</strong> of the 3 m goal — most of the gap closed. What did not close is feasibility: 7.53e−5 against the reference's own 1e−6 bar.</p>
+
+  <p>The failure is <em>scale-dependent</em>. On our own box the trade is escapable — q ×1000 delivers a perfect trajectory <em>and</em> 1e−12 feasibility. At the reference's 3 m scale nothing tested delivers both, and the sweep is not even monotone: ×100 is worse than ×10 on <em>both</em> axes. Sweeping <code>r_lambda</code> across two decades still changes nothing, so the binding trade is against the ℓ₁ penalty on the complementarity residual, not the control cost.</p>
+
+  <div class="note">
+    <div class="kicker">The paper predicts this exactly</div>
+    <p>Remark 10 warns that first-order QP solvers give “insufficient solution quality … [that] may hurt motion planning”, and the source confirms CRISP runs PIQP. This port uses OSQP — precisely the first-order ADMM solver that remark warns against — and under the now-faithful formulation it needs roughly <strong>4× the iterations</strong> and stops converging at short horizons on a problem the reference solves routinely. Q and R are no longer guesses, so the weighting explanation is spent. The solver explanation is not.</p>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Integration</div>
+  <h2>What executing a plan would actually require</h2>
+  <p>The executor layer transfers cleanly. B-B plans a contact point on the box <em>surface</em>; a real pusher sits one radius outside it — the same offset our sampler calls <code>sampling_setback</code>. <code>to_execution_plan()</code> does that conversion and emits exactly the <code>p_ee_desired</code> and <code>lambda_des</code> that <code>OperationalSpaceController.compute_torque</code> already accepts.</p>
+
+  <p>What does not transfer is everything the model leaves out. B-B constrains the contact point <code>c_k</code> only through the face gates and the box bounds — <strong>nothing links <code>c_k</code> to <code>c_{k+1}</code></strong>, so a plan may teleport the pusher between faces at no modelled cost. Our entire reposition apparatus — the PWL tracker, <code>finished_reposition_cost</code>, the c3/free mode switch and its hysteresis — exists to pay that exact bill. B-B does not remove the problem; it stops accounting for it. Add to that no pusher friction, no arm or reachability, no velocities, and no out-of-plane freedom.</p>
+
+  <h3>Real-time budget</h3>
+  <p>Our control loop runs at 13.3 Hz — N = 7, dt = 0.075, a <strong>75 ms</strong> tick.</p>
+
+<pre>N =  7   dt 0.075   <b>1511.5 ms</b>/solve   30 iter   <span class="r">did not converge</span>   ← our horizon
+N = 10   dt 0.05     3702.7 ms/solve   50 iter   <span class="r">did not converge</span>
+N = 20   dt 0.05     1049.6 ms/solve   20 iter   converged
+
+paper, C++ / PIQP, harder push-T problem:  80 ms</pre>
+
+  <p>These got <em>worse</em> under the reference-faithful encoding — previously 166.8 / 443.5 / 1044.7 ms, all converging. Caching the Jacobian sparsity changed nothing, so the cost is iteration count, not assembly. The paper's C++ implementation solves the <em>harder</em> push-T problem — eight faces, 29 states — at 80 ms per MPC cycle, so a real-time B-B is plausible; nothing in this Python implementation demonstrates it.</p>
+</section>
+
+<section>
+  <div class="kicker">Verdict</div>
+  <h2>A planner for where to push, not a replacement</h2>
+  <p>For the canonical box task B-B is accurate, converges in 15 iterations, and needs no sampler, no witness table and no mode switch. But that case — one face, no rotation — is the whole of what works here, and the rotation limit is provable rather than tunable. The defensible use is as an upstream contact-sequence proposer feeding our existing OSC, replacing the sampler and mode switch rather than the LCS executor.</p>
+  <p>Two things settle whether that is worth pursuing, in this order:</p>
+  <ol class="steps">
+    <li><strong>Re-run against an interior-point inner QP</strong> — PIQP, or Drake's Clarabel/SCS. This is no longer a hypothesis: the reference uses PIQP, and our OSQP build needs ~4× the iterations on the identical formulation. Until the inner solver is cleared, none of the failure modes above — except the rotation Jacobian, which is formulation-independent — is safely attributable to B-B itself.</li>
+    <li><strong>Decide what pays for repositioning.</strong> A contact-point rate constraint is the minimal honest addition — and it is off-reference for both lineages, so it needs a deliberate call rather than a quiet patch.</li>
+  </ol>
+</section>
+
+<footer>
+  control/crisp/{scp,push_box}.py · tests/test_crisp_{scp,push_box}.py · tools/crisp/analyse_push_box.py<br>
+  Not wired into the control loop. The reference-conformance mission is untouched.
+</footer>
+
+</div>
