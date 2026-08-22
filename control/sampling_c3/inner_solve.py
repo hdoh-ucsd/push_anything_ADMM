@@ -206,8 +206,8 @@ def traj_cost(x_seq:  np.ndarray,
 # CalcCost forward-sim like every non-box demo (cost_type 3, richer
 # resolve_contacts_to_for_cost [0,3,6]); before this the jack's yaml request
 # was silently ignored and its samples were ranked on the planner's own plan.
-# Both T tasks (push_t_mesh, push_t_block) declare tshape via
-# sampling_c3_kik_t.yaml and take this path; H declares hshape.
+# The canonical Block-T declares tshape via sampling_c3_kik_t.yaml and takes
+# this path; H declares hshape.
 _COST_LCS_RANKING_SHAPES = ("tshape", "hshape", "jack")
 
 

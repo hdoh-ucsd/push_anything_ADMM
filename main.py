@@ -7,7 +7,7 @@ Usage
                    [--sampling-c3 PATH.yaml] [--name BASENAME] [--seed INT]
 
 Canonical launches (flag-minimal since the 2026-08-05 CLI prune):
-    python main.py push_t  --max-time 180 --sampling-c3 config/sampling_c3_kik_t.yaml --name X
+    python main.py push_t  --max-time 600 --sampling-c3 config/sampling_c3_kik_t.yaml --name X
     python main.py pushing --task-id 4 --max-time 180 --sampling-c3 config/sampling_c3_kik.yaml --name X
 
 Outputs: results/<stem>.txt run log (stem = --name or <task>_<timestamp>).
@@ -294,8 +294,7 @@ def main():
                                "config", "tasks.yaml")) as _f:
             _task_choices = sorted(_yaml_choices.safe_load(_f)["tasks"].keys())
     except Exception:
-        _task_choices = ["pushing", "push_t", "push_t_mesh", "push_t_block",
-                         "push_h", "push_jack"]
+        _task_choices = ["pushing", "push_t", "push_h", "push_jack"]
     parser.add_argument(
         "task", nargs="?", default="pushing",
         choices=_task_choices,
@@ -307,7 +306,8 @@ def main():
     # (--video-path / --no-record removed 2026-08-05 with the StaticHtml
     #  retirement — replay video = scripts/make_run_video.sh over the log.)
     parser.add_argument("--max-time", type=float, default=None,
-                        help="Override simulation duration in seconds (default: 8.0).")
+                        help="Override simulation duration in seconds "
+                             "(default: task max_time, otherwise 8.0).")
     parser.add_argument("--math-diag", action="store_true",
                         help="Print math-level solver diagnostics ([MATH.*] tags). "
                              "Zero overhead when off.")
@@ -513,6 +513,7 @@ def main():
             _gg_kwargs["nominal_orientations"] = [
                 np.array([1.0, 0.0, 0.0, 0.0])]
             _gg_kwargs["nominal_names"] = ["planar"]
+            _gg_kwargs["planar_yaw_step_max"] = 2.0
         if task_cfg.get("random_goal_x_limits") is not None:
             _gg_kwargs["x_limits"] = tuple(
                 float(v) for v in task_cfg["random_goal_x_limits"])
@@ -693,7 +694,7 @@ def main():
         # port-computed mesh-footprint table (see _tshape_vertex_set_body_frame).
         tshape_mesh_witnesses=bool(task_cfg.get("object_sdf", None)),
         # Per-task witness triangle from the object's reference
-        # *_controller.sdf spheres (imported anything objects + push_t_mesh).
+        # *_controller.sdf spheres (imported anything objects + push_t).
         mesh_ground_witnesses_body=task_cfg.get(
             "ground_witness_points_body", None),
     )
@@ -761,8 +762,7 @@ def main():
         #   planning_dt_position: 0.1 (anything: 0.075)
         #   planning_dt_pose: 0.05
         # Task-conditional so box path (uses anything defaults) stays put.
-        if (task_name in ("push_t", "push_t_mesh")
-                or task_cfg.get("object_sdf")):
+        if task_name == "push_t" or task_cfg.get("object_sdf"):
             # 2026-08-11 L2 (anything-N1 lineage): multiyaml_rewrite.py
             # PLANNING_HORIZON_CONFIGS {1: 10} + uniform planning_dt 0.075
             # (anything/sampling_c3plus_options.yaml post-rewrite). The old
@@ -802,6 +802,9 @@ def main():
         _c3plus_dt_pose = 0.1  # C3 baseline path — no regime swap
     print(f"[MPC]  Horizon: {_c3plus_N}   dt: {_c3plus_dt} s   "
           f"dt_pose: {_c3plus_dt_pose} s")
+    # The base MPC and optional Sampling-C3 wrapper share one planner cadence.
+    # Define it unconditionally so plain `main.py push_t` runs are valid too.
+    _dt_ctrl_pass = _c3plus_dt if args.solver == "c3plus" else 0.1
     _mpc_kwargs = dict(
         formulator=formulator,
         solver=solver,
@@ -939,11 +942,11 @@ def main():
             sc3_params.sampling_params.sampling_height = float(_task_sample_h)
             print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
                   f"(was {_was_sh:.3f}, per-task '{task_name}')")
-        # 2026-08-17: per-task grid_x/y_limits override. The perimeter-sampler
+        # Per-task grid_x/y_limits override. The perimeter-sampler
         # draw grid is a PER-DEMO reference literal (push_t [-0.12,0.08] x
         # [-0.08,0.08]; anything [-0.11,0.11]^2) and each object belongs to
-        # one lineage: push_t_block to the push_t demo (the shared kik_t yaml
-        # carries those), the mesh letters to anything. Absent -> yaml value.
+        # lineage is push_t for the reference Block-T and anything for the
+        # imported objects. Absent -> yaml value.
         for _gk in ("grid_x_limits", "grid_y_limits"):
             _task_g = task_cfg.get(_gk)
             if _task_g is not None:
@@ -1016,7 +1019,6 @@ def main():
         # time; here we tick the port planner once per planning_dt of sim time
         # so each planner tick corresponds to one LCS horizon step forward).
         # OSC runs at 1 kHz between planner ticks (compute_control_osc_only).
-        _dt_ctrl_pass = _c3plus_dt if args.solver == "c3plus" else 0.1
         # W_force reference value (LambdaEndEffectorW = I_3, scalar 1.0).
         sc3_params.W_force = 1.0
         # Planner workspace state constraints (reference cc:995-1025): hard
@@ -1051,21 +1053,14 @@ def main():
             start_in_c3_mode=False,
             rng=_rng,
             diagram=diagram,
-            # Fig 8 sampler fix (2026-08-15): imported mesh (object_sdf)
+            # Fig 8 sampler fix (2026-08-15): imported mesh
             # tasks use the reference geometry-generic perimeter sampler
             # (interior draw + signed-distance projection off the real
-            # collision geometry) — they have no face tables, and the old
-            # box-T table mis-placed their approach targets (never-engaged
-            # class). 2026-08-17: push_t_mesh is now INCLUDED (T-mesh
-            # divergence fix 2) — the box-T face table was a port-only
-            # substitute (reference PerimeterSampling has no face tables).
-            # The earlier 3/3 gate-draw spins that motivated the opt-out
-            # predate the reference witness triangle (089aaf6); re-gated
-            # at the canonical seed with that fix in. Legacy analytic
-            # tasks (push_t, push_h) keep their tables — their sim
-            # geometry IS the analytic shape.
-            use_geometry_perimeter_sampling=bool(
-                task_cfg.get("object_sdf", None)),
+            # collision geometry). Analytic tasks retain their shape tables.
+            # Key this from the selected strategy instead of object_sdf:
+            # canonical push_t now loads the reference SDF but remains an
+            # analytic kRandomOnPerimeter task with no OBJ dependency.
+            use_geometry_perimeter_sampling=(_mesh_faces_for_task is not None),
             # kMeshNormal (anything lineage): preprocess the object's
             # full-resolution OBJ into the reference face set. Path
             # convention mirrors the reference's
@@ -1169,10 +1164,13 @@ def main():
     # in 1 ms sub-steps using the cached planner output.
     _DT_OSC         = 0.001                              # 1 kHz OSC
     _N_OSC_PER_OUTER = int(round(dt_ctrl / _DT_OSC))     # 75 for c3plus
-    max_time      = args.max_time if args.max_time is not None else 8.0
+    max_time      = (args.max_time if args.max_time is not None
+                     else float(task_cfg.get("max_time", 8.0)))
     step          = 0
     if args.max_time is not None:
         print(f"[ENV]  Sim duration overridden: max_time={max_time}s")
+    elif "max_time" in task_cfg:
+        print(f"[ENV]  Task sim duration: max_time={max_time}s")
 
     # PORT_EXIT_ON_TIGHT=1 (2026-08-20 Fig-8 block-T campaign): end the run
     # after a one-second simulated-time settling hold following the first
@@ -1421,10 +1419,13 @@ def main():
                       f"axis=({_last_rot_axis[0]:+.3f},"
                       f"{_last_rot_axis[1]:+.3f},"
                       f"{_last_rot_axis[2]:+.3f})", flush=True)
+        _control_kwargs = {"target_yaw": _effective_target_yaw}
+        # The Sampling-C3 wrapper needs the unclipped terminal target for
+        # goal-transition logging; the base MPC API does not accept it.
+        if args.sampling_c3 is not None:
+            _control_kwargs["final_target_xy"] = target_xy
         u_opt = mpc.compute_control(current_q, current_v, plant_ctx,
-                                    _effective_target_xy,
-                                    target_yaw=_effective_target_yaw,
-                                    final_target_xy=target_xy)
+                                    _effective_target_xy, **_control_kwargs)
         # === end Stage 2 ===
 
         # Update predicted-trajectory markers in Meshcat

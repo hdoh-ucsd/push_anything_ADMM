@@ -3527,6 +3527,10 @@ class SamplingC3Controller:
             g_hat           = g_hat,
             g_hat_3d        = g_hat_3d,
             goal_dist       = goal_dist,
+            final_goal_dist = _final_goal_dist,
+            rot_error       = rot_error_now,
+            obj_quat        = _qn,
+            goal_yaw        = _goal_yaw_now,
             free_diag       = free_diag,
             samples         = samples,
             labels          = labels,
@@ -3654,6 +3658,10 @@ class SamplingC3Controller:
         g_hat           = plan_ctx["g_hat"]
         g_hat_3d        = plan_ctx["g_hat_3d"]
         goal_dist       = plan_ctx["goal_dist"]
+        _final_goal_dist = plan_ctx.get("final_goal_dist", goal_dist)
+        rot_error_now   = plan_ctx["rot_error"]
+        _qn             = plan_ctx["obj_quat"]
+        _goal_yaw_now   = plan_ctx["goal_yaw"]
         free_diag       = plan_ctx["free_diag"]
         samples         = plan_ctx["samples"]
         labels          = plan_ctx["labels"]

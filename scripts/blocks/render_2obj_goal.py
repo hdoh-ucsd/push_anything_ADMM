@@ -5,10 +5,10 @@ The port cannot SIMULATE two manipulands (see the multi-object scoping
 report), but the scene is fully determined by the reference's N=2 layout, so
 it can be built and rendered statically.
 
-Reference N=2 geometry, base_names = [push_t_white, H_shape_texture]:
+Reference N=2 geometry, base_names = [push_t, H_shape_texture]:
   goal   x = 0.5, y = 0.2*i - 0.1*(N-1)          -> i0 y=-0.1, i1 y=+0.1
          quat: per-object letter_settings, else [0.707,0,0,0.707]
-           push_t_white   : NO letter_settings entry -> default
+           push_t         : NO letter_settings entry -> default
            H_shape_texture: [0.71, 0, 0, -0.73]
   spawn  x = 0.4 + 0.02*i,  y = -0.3 + 0.2*i     -> i0 (0.40,-0.30)
          shared spawn yaw quat [0.393, 0, 0, 0.92]  (~133.8 deg)
@@ -31,9 +31,9 @@ from sim.env_builder import ROBOT_BASE_XYZ  # noqa: E402
 OUT = "/root/push_anything_ADMM/results/fig8_blocks/render2obj"
 os.makedirs(OUT, exist_ok=True)
 
-PAIR = ["push_t_white_block", "H_shape_texture_block"]
+PAIR = ["push_t", "H_shape_texture_block"]
 GOAL_QUAT = {
-    "push_t_white_block": [0.707, 0.0, 0.0, 0.707],      # no letter_settings
+    "push_t": [0.707, 0.0, 0.0, 0.707],                  # no letter_settings
     "H_shape_texture_block": [0.71, 0.0, 0.0, -0.73],    # letter_settings
 }
 SPAWN_QUAT = [0.393, 0.0, 0.0, 0.92]

@@ -243,6 +243,7 @@ class JackRandomGoalGenerator:
                                                 # reference
                                                 # GetNominalOrientations)
                  nominal_names=None,
+                 planar_yaw_step_max=None,       # optional reachable yaw step
                  success_mode="reference",      # "reference" | "flip"
                  flip_persistence=10,           # ticks of tripod match to latch
                  flip_event_persistence=3):     # ticks to log a tripod change
@@ -260,6 +261,8 @@ class JackRandomGoalGenerator:
                                 for q in nominal_orientations])
         self.nominal_names = (KNOMINAL_NAMES_JACK
                               if nominal_names is None else list(nominal_names))
+        self._planar_yaw_step_max = (None if planar_yaw_step_max is None
+                                     else float(planar_yaw_step_max))
         self.orientation_index = -1     # reference h:182
         self.goals_reached = 0
         # --- flip success mode (USER-DIRECTED DEVIATION 2026-08-17) ------
@@ -377,6 +380,26 @@ class JackRandomGoalGenerator:
         # a flip. Bounded like the reference's random_goal_gen_max_attempts.
         # Draws index over self._nominals (jack tripods by default; a
         # planar object has ONE nominal and never passes avoid_tripod).
+        # A planar object has only one nominal orientation. Draw a bounded
+        # signed yaw increment from the goal it just reached so every new
+        # demand stays inside the controller's yaw-lookahead envelope. The
+        # unconstrained reference rule can draw nearly pi radians; the first
+        # 28-goal Block-T attempt then parked forever at a pi-radian error on
+        # goal 2 despite having reached its position.
+        if self._planar_yaw_step_max is not None and len(self._nominals) == 1:
+            yaw_max = self._planar_yaw_step_max
+            if yaw_max < np.pi / 2:
+                raise ValueError("planar_yaw_step_max must be >= pi/2")
+            yaw = float(self._rng.uniform(np.pi / 2, yaw_max))
+            if int(self._rng.integers(0, 2)) == 0:
+                yaw = -yaw
+            qz = np.array([np.cos(yaw / 2.0), 0.0, 0.0,
+                           np.sin(yaw / 2.0)])
+            q = quat_multiply(qz, self.goal_quat)
+            self.goal_quat = q / np.linalg.norm(q)
+            self.orientation_index = 0
+            return
+
         for _ in range(100):
             idx = int(self._rng.integers(0, len(self._nominals)))
             if (avoid_tripod is None
