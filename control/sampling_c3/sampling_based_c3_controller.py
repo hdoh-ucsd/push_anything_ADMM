@@ -1917,13 +1917,28 @@ class SamplingC3Controller:
             self.inner_solver.set_ee_pos_clamp(None, 0.0)
 
         # 3. Evaluate every sample (per-sample C3 + alignment + travel)
-        results = self.inner_solver.evaluate_samples(
-            samples=samples,
+        _eval_kwargs = dict(
             current_q=current_q, current_v=current_v,
             plant_ctx=plant_ctx, target_xy=target_xy,
             ee_pos_now=ee_pos_now, g_hat_3d=g_hat_3d,
             target_yaw=target_yaw,
         )
+        results = self.inner_solver.evaluate_samples(
+            samples=samples, **_eval_kwargs)
+
+        # Path B probe (read-only, env-gated PORT_PATHB_SWEEP, no-op when
+        # unset): re-run this same evaluation on a deterministic sweep of
+        # contact locations along every face, to measure cost(s).
+        from control.sampling_c3 import pathb_probe as _pathb
+        if self._step in _pathb.sweep_ticks():
+            _pathb.run_sweep(
+                self.inner_solver, self._step,
+                obj_xy=obj_xy, obj_quat=obj_quat,
+                box_half=float(self.params.sampling_params.box_half_extent),
+                setback=float(self.params.sampling_params.sampling_setback),
+                z=float(self.params.sampling_params.sampling_height),
+                eval_kwargs=_eval_kwargs,
+            )
         # 2026-07-26 arc-2 E3 fix (unify progress + mode-switch cost signal).
         # Reference `KeepTrackOfC3ModeProgress` (cc:2208-2305) reads
         # `all_sample_costs_[kCurrentLocation]` which is the same signal that
