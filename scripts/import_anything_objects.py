@@ -17,8 +17,8 @@ frame shifted so the table top is z=0, i.e. +0.029):
   sampling_height   = 0.031                        (ref sampling z_height 0.002)
   cost.z_ee_target  = sampling_height
   cost.z_obj_target = init_z
-Cost block = the anything-N1 tables (object-independent), identical to
-push_t_mesh. Goal = the T-canonical fixed displacement for every object
+Cost block = the anything-N1 tables (object-independent). Goal = the
+T-canonical fixed displacement for every object
 (port fixed-goal deviation, documented): spawn (0.5, 0) -> goal
 (0.482, 0.187), yaw -0.7379.
 """
@@ -56,15 +56,6 @@ OBJECTS = {
     "Baby Toy": "baby_toy",
     "Gallon Milk": "gallon_milk",
     "Xbox": "xbox",
-    # The reference's BLOCK T in anything-lineage packaging: same
-    # 0.200x0.160x0.040 envelope as urdf/push_t.sdf's two boxes (every
-    # vertex within 1.22 mm of that union; the residual is a CAD
-    # chamfer), and its controller witness triangle is byte-identical
-    # to push_t_control.sdf's. Unlike urdf/push_t.sdf it is a proper
-    # urdf/<name>/ dir with a <name>.obj and a single link named after
-    # the folder, so it is a legal anything base_name -- the reference
-    # ran it on hardware (base_names: [push_t_white] @ 76f6d822).
-    "Push-T White": "push_t_white",
 }
 
 

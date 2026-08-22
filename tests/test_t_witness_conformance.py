@@ -1,4 +1,4 @@
-"""push_t_mesh ground-witness triangle == reference controller-SDF spheres.
+"""Canonical push_t witnesses match the reference controller SDF.
 
 The reference LCS takes an object's ground witnesses from the last three
 collision geometries of its *_controller.sdf — the corner spheres emitted
@@ -16,7 +16,6 @@ import numpy as np
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
-SDF = REPO / "sim/models/T_shape_video/T_shape_video_controller.sdf"
 TASKS = REPO / "config/tasks.yaml"
 
 
@@ -34,7 +33,7 @@ def _sphere_collision_poses(sdf_path):
     return np.asarray(poses)
 
 
-BLOCK_SDF = REPO / "sim/models/push_t_block/push_t_control.sdf"
+BLOCK_SDF = REPO / "sim/models/push_t/push_t_control.sdf"
 
 
 def _check(task_name, sdf_path):
@@ -49,9 +48,5 @@ def _check(task_name, sdf_path):
     np.testing.assert_allclose(yaml_pts, sdf_centres, atol=1e-12)
 
 
-def test_push_t_mesh_witnesses_match_controller_sdf():
-    _check("push_t_mesh", SDF)
-
-
-def test_push_t_block_witnesses_match_controller_sdf():
-    _check("push_t_block", BLOCK_SDF)
+def test_push_t_witnesses_match_controller_sdf():
+    _check("push_t", BLOCK_SDF)

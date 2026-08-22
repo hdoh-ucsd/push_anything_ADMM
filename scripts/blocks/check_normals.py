@@ -16,10 +16,8 @@ from control.sampling_c3.sampling import load_mesh_faces  # noqa: E402
 
 REPO = "/root/push_anything_ADMM/.claude/worktrees/fig8-lowcom-single-goal"
 CASES = [
-    ("BLOCK  push_t_white_block", "sim/models/push_t_white_block/push_t_white.obj"),
     ("BLOCK  H_shape_texture_block", "sim/models/H_shape_texture_block/H_shape_texture.obj"),
     ("BLOCK  book_block", "sim/models/book_block/book.obj"),
-    ("MESH   push_t_white", "sim/models/push_t_white/push_t_white.obj"),
     ("MESH   H_shape_texture", "sim/models/H_shape_texture/H_shape_texture.obj"),
 ]
 

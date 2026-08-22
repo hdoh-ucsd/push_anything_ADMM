@@ -3,7 +3,8 @@
 
 For each object in the merged spec this writes, under sim/models/<name>_block/:
   <link>.sdf   one link, N <box> visual+collision pairs (mirrors the imported
-               mesh SDFs' single-link/N-geometry structure, NOT push_t.sdf's
+               mesh SDFs' single-link/N-geometry structure, NOT the reference
+               push_t.sdf's
                two-link + fixed-joint form, so the floating-base state layout
                is identical to the mesh task)
   <link>.obj   the same boxes as triangles -- REQUIRED: the anything-lineage

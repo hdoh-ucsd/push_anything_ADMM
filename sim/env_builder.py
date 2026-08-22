@@ -702,10 +702,9 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
     # Manipulated object — generated from task config at runtime
     # ------------------------------------------------------------------
     obj_type = task_cfg["object_type"]
-    # 2026-08-11 mesh-T migration: a task may carry `object_sdf` (path to a
-    # reference SDF, e.g. sim/models/T_shape_video/T_shape_video.sdf). The
-    # file is loaded verbatim (mesh collision pieces, inertia, friction from
-    # the reference asset); all shape-keyed behavior stays on object_type.
+    # A task may carry `object_sdf`; load that reference/generated asset
+    # verbatim. This includes canonical push_t's analytic two-box SDF as well
+    # as imported mesh objects.
     _obj_sdf_path = task_cfg.get("object_sdf", None)
     if _obj_sdf_path:
         object_model = parser.AddModels(str(_obj_sdf_path))[0]
@@ -735,7 +734,7 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
         _init_z  = task_cfg["init_xyz"][2]
         if (task_cfg.get("object_sdf") is not None
                 and task_cfg["object_type"] != "jack"):
-            # Mesh-backed object (imported `anything` objects + push_t_mesh):
+            # SDF-backed object (imported `anything` objects + push_t):
             # build the ghost from the object's OWN visual geometry.
             #
             # Every imported object carries object_type "tshape" -- that flag

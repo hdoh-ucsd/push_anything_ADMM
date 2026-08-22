@@ -171,6 +171,23 @@ def test_repeat_index_forces_half_pi_yaw_on_previous_goal_quat():
     assert geodesic_angle(g.goal_quat, expected) < 1e-12
 
 
+def test_planar_draws_bounded_increment_inside_yaw_lookahead():
+    initial = np.array([np.cos(-0.4), 0.0, 0.0, np.sin(-0.4)])
+    g = JackRandomGoalGenerator(
+        rng=np.random.default_rng(11),
+        initial_xy=INITIAL_XY,
+        initial_quat=initial,
+        nominal_orientations=[np.array([1.0, 0.0, 0.0, 0.0])],
+        nominal_names=["planar"],
+        planar_yaw_step_max=2.0,
+    )
+    for _ in range(100):
+        old = g.goal_quat.copy()
+        assert g.check_and_regoal(g.goal_xy.copy(), old)
+        demand = geodesic_angle(old, g.goal_quat)
+        assert np.pi / 2 <= demand <= 2.0 + 1e-12
+
+
 # ---------------------------------------------------------------- diag
 def test_force_regoal_draws_without_gate():
     # Diagnostic path (DIAG_GOALGEN_FORCE_REGOAL_AT_STEP): draw a new goal

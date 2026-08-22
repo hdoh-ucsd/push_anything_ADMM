@@ -172,14 +172,12 @@ tasks:
       w_torque:         0.01
 
   # -----------------------------------------------------------------------
-  # Task: push_t — reference push_t.sdf T-shape, single-body-collapsed.
+  # Task: push_t — canonical reference push_t.sdf Block-T.
   # Reference: examples/sampling_c3/urdf/push_t.sdf + push_t/parameters/.
-  # Two 0.16×0.04×0.04 box collision elements welded via fixed joint at
-  # (0,0,0) and (-0.10,0,0,0,0,π/2) in the reference frame; the port uses one
-  # rigid link with those two collision elements (dynamically equivalent to
-  # a fixed joint). Combined CoM at (-0.05,0,0) in the reference frame; the
-  # port re-parameterizes so the link origin sits AT the combined CoM, moving
-  # both bar collision poses by +0.05 along x.
+  # The byte-identical reference asset has two 0.16×0.04×0.04 box links
+  # welded by a fixed joint. This is the sole T object in the port: the old
+  # procedural and mesh-derived duplicates were retired so `push_t`
+  # unambiguously means the reference Block-T.
   #
   # Friction: reference push_t.sdf has T μ=0.3, EE μ=1.0. Drake combines
   # per-surface μ via harmonic mean (μ_eff = 2·μ_A·μ_B/(μ_A+μ_B)), so the
@@ -195,22 +193,18 @@ tasks:
   # target on a non-yaw-symmetric object. w_yaw is dominant.
   push_t:
     object_type: tshape
-    link_name: t_link
+    link_name: vertical_link
+    max_time: 600.0       # s — canonical Block-T run budget
     mass: 1.0             # kg — matches reference (2 × 0.5 kg links)
     friction: 0.3         # μ_T (reference push_t.sdf drake:mu_dynamic); EE-T μ_eff=0.462
     pusher_friction: 1.0  # μ_EE (reference end_effector_full.urdf drake:mu_dynamic)
-    # 2026-08-11 L4 (anything-N1 lineage): planner-LCS mu from the authors'
-    # multiyaml_rewrite.py build_mu_per_pair_type constants — hardcoded for
-    # EVERY anything object (not recomputed per material), so verbatim copy
-    # is the authors' practice. Replaces the bit-rotted push_t literals
-    # (EE-BOX 1.0 gave the planner 2.4x the sim's actual tangential grip —
-    # Drake-combined 2*1.0*0.3/1.3 = 0.4615; the new 0.42 slightly
-    # under-promises, the authors' own convention). Sim-side materials
-    # (friction/pusher_friction above) unchanged.
+    # Effective pair coefficients derived from the reference surface values.
+    # EE-GND retains the anything-N1 controller convention.
     mu_per_pair_type:
-      EE-BOX:  0.42
-      BOX-GND: 0.46
-      EE-GND:  0.823
+      EE-BOX:  0.4615
+      BOX-GND: 0.4615
+      EE-GND:  0.4165
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     # Reference sim_params.yaml:15 q_init_object = [1,0,0,0, 0.5, 0, -0.009]
     # → T init at world (0.5, 0, -0.009) with reference ground at z=-0.029.
     # 2026-07-21: adopted reference-frame coordinates directly (was (0,0,0.02)
@@ -223,6 +217,7 @@ tasks:
     # 2026-07-21: adopted reference-frame absolute goal_xy directly.
     goal_xy:  [0.482, 0.187]
     goal_yaw: -0.7379    # rad = -42.28°, from reference push_t target quaternion
+    krandom_draw_initial_goal: true
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     # 2026-07-28c FRAME-SHIFT FIX (same family as the box-init bug): the
     # reference's sampling_height 0.005 (push_t/parameters/
@@ -247,6 +242,13 @@ tasks:
     # ground (z=-0.029), placing sphere-bottom 24 mm above T top — port
     # (ground at z=0) needs its own value.
     pwl_waypoint_height: 0.075   # T top 0.04 + pusher r 0.025 + 10 mm margin
+    object_sdf: sim/models/push_t/push_t.sdf
+    ground_witness_points_body:
+      - [-0.12, 0.08, -0.02]
+      - [-0.12, -0.08, -0.02]
+      - [0.08, 0.0, -0.02]
+    random_goal_x_limits: [0.44, 0.52]
+    random_goal_y_limits: [0.02, 0.25]
     cost:
       # 2026-07-18: reference q_vector port available but currently disabled.
       # When `use_reference_q_vector: true`, control/task_costs.py
@@ -658,191 +660,6 @@ tasks:
       w_ee_approach: 8000.0
       w_torque: 0.01
 
-  # -----------------------------------------------------------------------
-  # Task: push_t_mesh — the REFERENCE's maintained mesh-T (T_shape_video)
-  # 2026-08-11 option-(a) migration: same task demand as push_t, but the
-  # object is the anything pipeline's mesh asset (sim 0.05 kg, controller
-  # model 1.0 kg — the reference's own 20x convention). Generated from the
-  # push_t block; see push_t above for key rationale comments.
-  # sampling_height 0.031 / pwl 0.0989 = anything z_height 0.002 /
-  # pwl 0.0699 shifted from ref ground (-0.029) to port ground (0).
-  # -----------------------------------------------------------------------
-  push_t_mesh:
-    object_type: tshape
-    link_name: T_shape_video
-    mass: 0.05
-    friction: 0.3
-    pusher_friction: 1.0
-    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
-    # 2026-08-14 joint2 fix: same universal reference literal as `pushing`
-    # (identical in anything/, push_t/, and jacktoy/ sim_params.yaml).
-    # Required alongside the shared osc_franka.yaml W_joint2=1.0 pin —
-    # without it the T task would pin to 1.1 rad from an IK-preposition
-    # init far from 1.1 (the July "c3-entry arm slam" standing error).
-    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0243]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
-    color_rgba: [0.75, 0.75, 0.75, 1.0]
-    sampling_height: 0.031
-    pwl_waypoint_height: 0.0989
-    # T_shape_video is an ANYTHING-lineage object. Its reference sampler is
-    # NOT PerimeterSampling: anything/parameters/sampling_params.yaml:14
-    # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 ≡ port
-    # kMeshNormal) — area-weighted draws ON the mesh side walls, offset
-    # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # The old analytic box-T face table was an unwitting imitation of this
-    # (which is why it worked); PerimeterSampling was the wrong lineage
-    # (the 2026-08-17 spin class). Literals below = the anything yaml.
-    sampling_strategy: kMeshNormal
-    sample_projection_clearance: 0.027
-    buffer_distance: 0.035
-    max_attempts: 100
-    barycentric_bias: 1
-    # anything grid literal (kept for reference/fallback if the strategy
-    # is ever flipped back to kRandomOnPerimeter).
-    grid_x_limits: [-0.11, 0.11]
-    grid_y_limits: [-0.11, 0.11]
-    cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
-      ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.034
-      z_obj_target: 0.02
-      d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/T_shape_video/T_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-    # Reference ground-witness triangle: the 3 corner-sphere centres from
-    # T_shape_video_controller.sdf:289/300/311 (mesh-AABB bottom corners,
-    # emitted by the reference controller_sdf_generation.py get_obj_corners()).
-    # Replaces the port-computed bottom-slab extremity triangle (7a83bc2) —
-    # a port-only substitute; this is the reference literal, same mechanism
-    # as every auto-imported anything object below.
-    ground_witness_points_body:
-      - [-0.08161602, 0.08064646, -0.02428554]
-      - [-0.08161602, -0.08665214, -0.02428554]
-      - [0.13000116, -0.00300284, -0.02428554]
-
-  # BLOCK-T (2026-08-17, user directive): the website's "Push T" object —
-  # the reference push_t.sdf two-box T — loaded VERBATIM as reference
-  # assets (byte-identical copies in sim/models/push_t_block/), replacing
-  # the port-analytic _tshape_sdf build. Reference frame (vertical_link
-  # origin at crossbar centre; stem welded at (-0.10,0,0)): the goal
-  # literals below are the reference's own fixed_target for this body, so
-  # no COM-frame shift correction applies. Sim mass == controller mass
-  # (1.0 kg both SDFs) → no controller_mass/controller_inertia override;
-  # the plant's weld composite IS the reference planning model. The
-  # reference planner's EE-object pairs use vertical_link geometry only
-  # (franka_sampling_c3_controller.cc:205-239) — the port's body-based
-  # geom collection on link_name reproduces that exactly.
-  push_t_block:
-    object_type: tshape
-    link_name: vertical_link
-    mass: 1.0
-    friction: 0.3
-    pusher_friction: 1.0
-    # Reference push_t demo planner-mu, INTENT variant (2026-08-17 μ trial):
-    # the reference yaml's own comment says "match URDFs with
-    # (2mu1*mu2)/(mu1+mu2)" — for these materials (EE 1.0, T 0.3) that is
-    # 0.4615 — but its EE-T entry is 1.0, which matches the HARDWARE
-    # rubber tip, not its sim. The 1.0 literal made the planner demand
-    # tangential grip the sim cone cannot deliver: measured 10-30x
-    # pusher-on-face slip, Ft/Fn saturated at 0.4615, ~10%-of-plan yield
-    # per burst, 20-cycle endgame grind (blockT_retention_canon180).
-    # Same literal-vs-intent precedent as the box 3-witness case.
-    # Literal-1.0 run remains on record: tight PASS 0.0190/0.0887 @ df337c9.
-    mu_per_pair_type: {EE-BOX: 0.4615, BOX-GND: 0.4615, EE-GND: 0.4165}
-    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.02]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
-    # Fig-8 block-T campaign (user directive 2026-08-20): under kRandom
-    # (PORT_GOAL_MODE=kRandom only — INERT on canonical flagless runs,
-    # which never construct the goal generator) draw goal #1 from the
-    # kRandom distribution at boot so every seeded trial gets its own
-    # random goal. Same directive class as push_jack's key.
-    krandom_draw_initial_goal: true
-    color_rgba: [0.75, 0.75, 0.75, 1.0]
-    # Reference push_t sampling_params literals in port ground frame
-    # (ref 0.005/0.06 above its z=-0.029 ground — see the push_t task's
-    # frame-shift comments): sampling 0.034, pwl 0.075.
-    sampling_height: 0.034
-    pwl_waypoint_height: 0.075
-    object_sdf: sim/models/push_t_block/push_t.sdf
-    # Reference ground-witness triangle: the 3 sphere centres from
-    # push_t_control.sdf:44-66 (vertical_link frame — top_left/top_right
-    # on the stem's outer corners, bottom at the crossbar tip).
-    ground_witness_points_body:
-      - [-0.12, 0.08, -0.02]
-      - [-0.12, -0.08, -0.02]
-      - [0.08, 0.0, -0.02]
-    # kRandom re-goaling draw box (reference push_t/goal_params.yaml:33-34
-    # random_goal_x/y_limits). INERT unless goal_mode is kRandom (canonical
-    # runs stay fixed-goal; enable via PORT_GOAL_MODE=kRandom).
-    random_goal_x_limits: [0.44, 0.52]
-    random_goal_y_limits: [0.02, 0.25]
-    cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
-      ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.034
-      z_obj_target: 0.02
-      d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
 
   # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
   I_shape_texture:
@@ -866,11 +683,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -948,11 +765,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1030,11 +847,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1112,11 +929,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1194,11 +1011,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1276,11 +1093,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1358,11 +1175,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1440,11 +1257,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1522,11 +1339,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1604,11 +1421,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1686,11 +1503,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1768,11 +1585,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1850,11 +1667,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -1932,11 +1749,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2014,11 +1831,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2096,11 +1913,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2178,11 +1995,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2260,11 +2077,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2342,11 +2159,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2424,11 +2241,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2506,11 +2323,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2588,11 +2405,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2670,11 +2487,11 @@ tasks:
     # sets sampling_strategy: 7 (kMeshNormalMultiObject; N=1 == port
     # kMeshNormal) -- area-weighted draws ON the mesh side walls, offset
     # buffer_distance along the face normal (generate_samples.cc:445-551).
-    # push_t_mesh (same lineage) has carried these literals since 7f7fa39,
+    # The legacy anything-N1 T task carried these literals since 7f7fa39,
     # where PerimeterSampling was identified as the push_t demo's mechanism
     # = wrong lineage = the spin class. The imported Fig 8 objects were left
     # behind on the geometry-generic projection perimeter sampler. Values
-    # below are the anything yaml literals, verbatim from push_t_mesh.
+    # below are the anything yaml literals, retained verbatim.
     sampling_strategy: kMeshNormal
     sample_projection_clearance: 0.027
     buffer_distance: 0.035
@@ -2737,7 +2554,7 @@ tasks:
   # =====================================================================
 
   # BLOCK variant of `book` (1 <box> primitive, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `book` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -2874,7 +2691,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `lotion` (2 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `lotion` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3011,7 +2828,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `baby_toy` (3 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `baby_toy` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3148,7 +2965,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `I_shape_texture` (3 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `I_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3285,7 +3102,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `H_shape_texture` (3 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `H_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3422,7 +3239,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `E_shape_video` (4 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `E_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3559,7 +3376,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `clamp` (5 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `clamp` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3696,7 +3513,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `Y_shape_video` (3 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `Y_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3833,7 +3650,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `3_shape_video` (5 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `3_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -3970,7 +3787,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `C_shape_texture` (5 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `C_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -4107,7 +3924,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `G_shape_video` (5 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `G_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -4244,7 +4061,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `A_shape_video` (3 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `A_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -4381,7 +4198,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `B_shape_video` (5 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `B_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -4518,7 +4335,7 @@ tasks:
       - 0.0
 
   # BLOCK variant of `R_shape_texture` (5 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
+  # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `R_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
@@ -4653,194 +4470,3 @@ tasks:
       - 0.0
       - 0.0
       - 0.0
-
-  # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
-  push_t_white:
-    # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
-    # Fig 8 campaign 2026-08-15). mesh z: [-0.0200, 0.0200].
-    object_type: tshape
-    link_name: push_t_white
-    mass: 0.05
-    friction: 0.3
-    pusher_friction: 1.0
-    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
-    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0200]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
-    color_rgba: [0.75, 0.75, 0.75, 1.0]
-    sampling_height: 0.031
-    pwl_waypoint_height: 0.0900
-    # ANYTHING-lineage sampler (see the 23 imported objects above).
-    sampling_strategy: kMeshNormal
-    sample_projection_clearance: 0.027
-    buffer_distance: 0.035
-    max_attempts: 100
-    barycentric_bias: 1
-    grid_x_limits: [-0.11, 0.11]
-    grid_y_limits: [-0.11, 0.11]
-    ground_witness_points_body:
-      - [-0.120000, 0.080000, -0.020000]
-      - [-0.120000, -0.080000, -0.020000]
-      - [0.080000, 0.000000, -0.020000]
-    cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
-      ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
-      z_obj_target: 0.0200
-      d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/push_t_white/push_t_white.sdf
-    controller_mass: 1.0
-
-  # =====================================================================
-  # BLOCK OBJECT VARIANTS (2026-08-20)
-  # Box-primitive counterparts of the low-CoM Fig 8 objects.
-  # =====================================================================
-
-  # BLOCK variant of `push_t_white` (2 <box> primitives, hand-authored decomposition of that
-  # object's mesh silhouette, in the style of push_t_block).
-  # Identical to `push_t_white` in EVERY field except object_sdf and
-  # init_xyz.z -- same mass, friction, cost block, controller
-  # inertia, kMeshNormal sampler literals, goal and ground
-  # witnesses -- so the only variable is the collision shape.
-  push_t_white_block:
-    object_type: tshape
-    link_name: push_t_white
-    mass: 0.05
-    friction: 0.3
-    pusher_friction: 1.0
-    mu_per_pair_type:
-      EE-BOX: 0.42
-      BOX-GND: 0.46
-      EE-GND: 0.823
-    q_init_franka:
-    - 2.191
-    - 1.1
-    - -1.33
-    - -2.22
-    - 1.3
-    - 2.02
-    - 0.08
-    init_xyz:
-    - 0.5
-    - 0.0
-    - 0.02
-    goal_xy:
-    - 0.482
-    - 0.187
-    goal_yaw: -0.7379
-    color_rgba:
-    - 0.13
-    - 0.42
-    - 0.78
-    - 1.0
-    sampling_height: 0.031
-    pwl_waypoint_height: 0.09
-    sampling_strategy: kMeshNormal
-    sample_projection_clearance: 0.027
-    buffer_distance: 0.035
-    max_attempts: 100
-    barycentric_bias: 1
-    grid_x_limits:
-    - -0.11
-    - 0.11
-    grid_y_limits:
-    - -0.11
-    - 0.11
-    ground_witness_points_body:
-    - - -0.12
-      - 0.08
-      - -0.02
-    - - -0.12
-      - -0.08
-      - -0.02
-    - - 0.08
-      - 0.0
-      - -0.02
-    cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
-      ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.031
-      z_obj_target: 0.02
-      d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/push_t_white_block/push_t_white.sdf
-    controller_mass: 1.0

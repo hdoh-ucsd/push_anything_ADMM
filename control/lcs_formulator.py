@@ -70,15 +70,13 @@ class LCSFormulator:
         """
         self.plant = plant
         self.mu    = float(mu)
-        # Mesh-T migration (2026-08-11): ground-witness table comes from the
-        # reference T_shape_video mesh footprint instead of the box-T table.
+        # Select the legacy mesh-derived fallback table when requested.
         self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
         # Fig 8 campaign (2026-08-15): per-task ground-witness table — the
         # 3 sphere positions from the object's reference *_controller.sdf,
         # passed via the task's `ground_witness_points_body`. Takes
         # precedence over the two hardcoded T tables when set. Set for all
-        # imported anything objects and (since 2026-08-17) push_t_mesh;
-        # push_t (box-T) keeps its analytic table.
+        # imported anything objects and the canonical Block-T.
         self._mesh_ground_witnesses_body = (
             None if mesh_ground_witnesses_body is None
             else np.asarray(mesh_ground_witnesses_body, dtype=float).reshape(3, 3).T)
@@ -531,8 +529,8 @@ class LCSFormulator:
             # positions from the object's reference *_controller.sdf.
             return self._mesh_ground_witnesses_body
         if self._tshape_mesh_witnesses:
-            # FALLBACK ONLY (superseded 2026-08-17 for push_t_mesh by the
-            # per-task `ground_witness_points_body` reference literal above):
+            # FALLBACK ONLY (superseded by each task's
+            # `ground_witness_points_body` reference literal):
             # port-computed T_shape_video.obj bottom-slab support extremities.
             # NOT the reference controller-SDF sphere triangle — kept as the
             # fallback for an object_sdf task that lacks the per-task key.
@@ -2738,5 +2736,3 @@ class LCSFormulator:
             E_lcs, F_lcs, H_lcs, c_lcs,
             J_n_new, J_t_new, phi, mu,
         )
-
-

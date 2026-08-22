@@ -34,9 +34,9 @@ ORDER = [
     ("Clamp", "clamp"), ("Chicken Broth", "chicken_broth"),
     ("Egg Carton", "egg_carton"), ("Book", "book"),
     ("Baby Toy", "baby_toy"), ("Gallon Milk", "gallon_milk"),
-    ("Xbox", "xbox"), ("Push T", "push_t_white_block"),
+    ("Xbox", "xbox"), ("Push T", "push_t"),
 ]
-TASK_LOG_DIR = {"push_t_white_block": BLOCK_OUT_DIR}
+TASK_LOG_DIR = {"push_t": BLOCK_OUT_DIR}
 STEP_DT = 0.075
 SUCCESS_CSV = os.path.join(REPO, "FIG8_SUCCESS_RUNS.csv")
 
@@ -49,10 +49,29 @@ ORANGE = "#e8710a"
 
 
 def collect():
-    data = OrderedDict()
+    data = OrderedDict((disp, []) for disp, _ in ORDER)
     records = []
+    seen_logs = set()
+
+    # The manifest is tracked while bulky raw logs are not. Preserve its
+    # validated successes when regenerating in a checkout where an older log
+    # has been archived or removed, then append any newly completed logs.
+    if os.path.exists(SUCCESS_CSV):
+        with open(SUCCESS_CSV, newline="") as f:
+            for row in csv.DictReader(f):
+                disp = row.get("object", "")
+                log = row.get("log", "")
+                if disp not in data or not log:
+                    continue
+                try:
+                    time_s = float(row["time_to_goal_s"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                data[disp].append(time_s)
+                records.append(row)
+                seen_logs.add(log)
+
     for disp, task in ORDER:
-        times = []
         log_dir = TASK_LOG_DIR.get(task, OUT_DIR)
         for fn in sorted(os.listdir(log_dir)):
             if not (fn.startswith(f"{task}_") and fn.endswith(".log")):
@@ -62,20 +81,23 @@ def collect():
                 continue          # incomplete/crashed run: not a trial
             m = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
             if m:
+                rel_log = os.path.relpath(os.path.join(log_dir, fn), REPO)
+                if rel_log in seen_logs:
+                    continue
                 step = int(m.group(1))
                 time_s = step * STEP_DT
-                times.append(time_s)
+                data[disp].append(time_s)
                 meta = re.search(r"\[RUN-META\]\s+git=(\S+)\s+seed=(\S+)", txt)
                 records.append({
                     "object": disp,
                     "task": task,
-                    "log": os.path.relpath(os.path.join(log_dir, fn), REPO),
+                    "log": rel_log,
                     "commit": meta.group(1) if meta else "",
                     "seed": meta.group(2) if meta else "",
                     "first_goal_step": step,
                     "time_to_goal_s": f"{time_s:.3f}",
                 })
-        data[disp] = times
+                seen_logs.add(rel_log)
     return data, records
 
 
@@ -99,7 +121,7 @@ def main():
         if times:
             bp = ax.boxplot(
                 [times], positions=[i], widths=0.55, patch_artist=True,
-                showfliers=False, zorder=2,
+                orientation="vertical", showfliers=False, zorder=2,
                 boxprops=dict(facecolor="none", edgecolor=BOX, lw=1.2),
                 whiskerprops=dict(color=BOX, lw=1.2),
                 capprops=dict(color=BOX, lw=1.2),
