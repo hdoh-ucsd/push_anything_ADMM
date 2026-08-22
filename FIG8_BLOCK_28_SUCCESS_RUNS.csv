@@ -1,0 +1,117 @@
+object,task,log,commit,seed,first_goal_step,time_to_goal_s
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00001.txt,d565583,1,2815,211.125
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00002.txt,d565583,2,6097,457.275
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00003.txt,d565583,3,2632,197.400
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00005.txt,d565583,5,4884,366.300
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00006.txt,d565583,6,2845,213.375
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00007.txt,d565583,7,1737,130.275
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00008.txt,d565583,8,7828,587.100
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00009.txt,d565583,9,1477,110.775
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00010.txt,d565583,10,1215,91.125
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00011.txt,d565583,11,4770,357.750
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00012.txt,d565583,12,2273,170.475
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00013.txt,d565583,13,1237,92.775
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00014.txt,d565583,14,1517,113.775
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00016.txt,d565583,16,1192,89.400
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00017.txt,d565583,17,6912,518.400
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00018.txt,d565583,18,1009,75.675
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00019.txt,d565583,19,7029,527.175
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00020.txt,d565583,20,6455,484.125
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00021.txt,d565583,21,1542,115.650
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00023.txt,d565583,23,5610,420.750
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00025.txt,d565583,25,7283,546.225
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00026.txt,d565583,26,6173,462.975
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00027.txt,d565583,27,7223,541.725
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00028.txt,d565583,28,2810,210.750
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00029.txt,d565583,29,2435,182.625
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00030.txt,d565583,30,4572,342.900
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00032.txt,d565583,32,3135,235.125
+Push T,push_t,results/fig8_block_28_c3plus/push_t/push_t_seed00033.txt,d565583,33,317,23.775
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00000.txt,d565583,0,231,17.325
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00001.txt,d565583,1,127,9.525
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00002.txt,d565583,2,291,21.825
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00003.txt,d565583,3,187,14.025
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00004.txt,d565583,4,190,14.250
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00005.txt,d565583,5,311,23.325
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00006.txt,d565583,6,289,21.675
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00007.txt,d565583,7,152,11.400
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00008.txt,d565583,8,321,24.075
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00009.txt,d565583,9,803,60.225
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00010.txt,d565583,10,123,9.225
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00011.txt,d565583,11,192,14.400
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00012.txt,d565583,12,126,9.450
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00013.txt,d565583,13,232,17.400
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00014.txt,d565583,14,188,14.100
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00015.txt,d565583,15,233,17.475
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00016.txt,d565583,16,237,17.775
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00017.txt,d565583,17,204,15.300
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00018.txt,d565583,18,186,13.950
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00019.txt,d565583,19,351,26.325
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00020.txt,d565583,20,430,32.250
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00021.txt,d565583,21,180,13.500
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00022.txt,d565583,22,301,22.575
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00023.txt,d565583,23,262,19.650
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00024.txt,d565583,24,344,25.800
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00025.txt,d565583,25,632,47.400
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00026.txt,d565583,26,188,14.100
+Book,book_block,results/fig8_block_28_c3plus/book_block/book_block_seed00027.txt,d565583,27,293,21.975
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00001.txt,d565583,1,226,16.950
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00002.txt,d565583,2,241,18.075
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00003.txt,d565583,3,285,21.375
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00005.txt,d565583,5,446,33.450
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00006.txt,d565583,6,164,12.300
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00007.txt,d565583,7,241,18.075
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00008.txt,d565583,8,411,30.825
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00009.txt,d565583,9,209,15.675
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00010.txt,d565583,10,230,17.250
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00011.txt,d565583,11,238,17.850
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00012.txt,d565583,12,229,17.175
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00013.txt,d565583,13,335,25.125
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00014.txt,d565583,14,178,13.350
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00015.txt,d565583,15,378,28.350
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00016.txt,d565583,16,225,16.875
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00017.txt,d565583,17,286,21.450
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00018.txt,d565583,18,173,12.975
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00019.txt,d565583,19,248,18.600
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00020.txt,d565583,20,286,21.450
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00022.txt,d565583,22,333,24.975
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00023.txt,d565583,23,450,33.750
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00025.txt,d565583,25,306,22.950
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00026.txt,d565583,26,317,23.775
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00027.txt,d565583,27,319,23.925
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00028.txt,d565583,28,174,13.050
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00029.txt,d565583,29,306,22.950
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00031.txt,d565583,31,338,25.350
+Lotion,lotion_block,results/fig8_block_28_c3plus/lotion_block/lotion_block_seed00033.txt,d565583,33,119,8.925
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00000.txt,d565583,0,279,20.925
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00001.txt,d565583,1,256,19.200
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00002.txt,d565583,2,283,21.225
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00003.txt,d565583,3,248,18.600
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00004.txt,d565583,4,247,18.525
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00005.txt,d565583,5,328,24.600
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00006.txt,d565583,6,251,18.825
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00007.txt,d565583,7,180,13.500
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00008.txt,d565583,8,247,18.525
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00009.txt,d565583,9,176,13.200
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00010.txt,d565583,10,127,9.525
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00011.txt,d565583,11,266,19.950
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00012.txt,d565583,12,123,9.225
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00013.txt,d565583,13,353,26.475
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00014.txt,d565583,14,183,13.725
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00015.txt,d565583,15,179,13.425
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00016.txt,d565583,16,118,8.850
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00017.txt,d565583,17,496,37.200
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00018.txt,d565583,18,120,9.000
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00019.txt,d565583,19,240,18.000
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00020.txt,d565583,20,1142,85.650
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00021.txt,d565583,21,189,14.175
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00022.txt,d565583,22,367,27.525
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00023.txt,d565583,23,264,19.800
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00024.txt,d565583,24,302,22.650
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00025.txt,d565583,25,310,23.250
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00026.txt,d565583,26,404,30.300
+Baby Toy,baby_toy_block,results/fig8_block_28_c3plus/baby_toy_block/baby_toy_block_seed00027.txt,d565583,27,315,23.625
+Clamp,clamp_block,results/fig8_block_28_c3plus/clamp_block/clamp_block_seed00001.txt,d565583,1,270,20.250
+Clamp,clamp_block,results/fig8_block_28_c3plus/clamp_block/clamp_block_seed00002.txt,d565583,2,244,18.300
+Clamp,clamp_block,results/fig8_block_28_c3plus/clamp_block/clamp_block_seed00003.txt,d565583,3,259,19.425
+Clamp,clamp_block,results/fig8_block_28_c3plus/clamp_block/clamp_block_seed00004.txt,d565583,4,241,18.075

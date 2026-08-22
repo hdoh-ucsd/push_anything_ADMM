@@ -536,7 +536,11 @@ def main():
             **_gg_kwargs,
         )
         _gg_planar = (task_cfg.get("object_type") == "tshape")
-        if bool(task_cfg.get("krandom_draw_initial_goal", False)):
+        _draw_initial_goal = (
+            bool(task_cfg.get("krandom_draw_initial_goal", False))
+            or os.environ.get("PORT_GOAL_DRAW_INITIAL", "0") == "1"
+        )
+        if _draw_initial_goal:
             _avoid = (tripod_id(np.asarray(task_cfg.get(
                           "init_quat", [1.0, 0.0, 0.0, 0.0]), dtype=float))
                       if _goal_success_mode == "flip" else None)

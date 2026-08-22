@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Fig 8-style time-to-goal figure for all recorded successful runs.
+"""Fig. 8 time-to-goal figure for the block-only randomized C3+ campaign.
 
-Every completed log in a task's configured Fig. 8 result directory whose
-filename starts with the task name is considered. A run is recorded only when
-it contains an
-``ACHIEVED-FIXED-GOAL`` latch; unsuccessful runs are neither assigned a timeout
-value nor drawn as censored observations.  The y-axis expands to the measured
-success times, including successes later than 180 s.
+Each task targets 28 independent successful trials. A trial is recorded only
+when the kRandom goal generator reports one achieved goal; unsuccessful and
+incomplete attempts are retained as logs but are not plotted as successes.
 """
 import csv
 import os
@@ -20,25 +17,27 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO, "results", "fig8_objects")
-BLOCK_OUT_DIR = os.path.join(REPO, "results", "fig8_blocks")
+CAMPAIGN_DIR = os.path.join(REPO, "results", "fig8_block_28_c3plus")
 
 ORDER = [
-    ("Letter I", "I_shape_texture"), ("Letter C", "C_shape_texture"),
-    ("Letter R", "R_shape_texture"), ("Letter A", "A_shape_video"),
-    ("Letter Y", "Y_shape_video"), ("Letter G", "G_shape_video"),
-    ("Letter B", "B_shape_video"), ("Letter 3", "3_shape_video"),
-    ("Letter H", "H_shape_texture"), ("Letter E", "E_shape_video"),
-    ("Expo Box", "expo_box"), ("Lotion", "lotion"),
-    ("Wood Block", "wood_block"), ("Tape", "tape"),
-    ("Eraser", "eraser"), ("Milk Bottle", "milk"),
-    ("Clamp", "clamp"), ("Chicken Broth", "chicken_broth"),
-    ("Egg Carton", "egg_carton"), ("Book", "book"),
-    ("Baby Toy", "baby_toy"), ("Gallon Milk", "gallon_milk"),
-    ("Xbox", "xbox"), ("Push T", "push_t"),
+    ("Push T", "push_t"),
+    ("Book", "book_block"), ("Lotion", "lotion_block"),
+    ("Baby Toy", "baby_toy_block"), ("Clamp", "clamp_block"),
+    ("Letter I", "I_shape_texture_block"),
+    ("Letter H", "H_shape_texture_block"),
+    ("Letter E", "E_shape_video_block"),
+    ("Letter Y", "Y_shape_video_block"),
+    ("Letter 3", "3_shape_video_block"),
+    ("Letter C", "C_shape_texture_block"),
+    ("Letter G", "G_shape_video_block"),
+    ("Letter A", "A_shape_video_block"),
+    ("Letter B", "B_shape_video_block"),
+    ("Letter R", "R_shape_texture_block"),
 ]
-TASK_LOG_DIR = {"push_t": BLOCK_OUT_DIR}
 STEP_DT = 0.075
-SUCCESS_CSV = os.path.join(REPO, "FIG8_SUCCESS_RUNS.csv")
+SUCCESS_CSV = os.path.join(REPO, "FIG8_BLOCK_28_SUCCESS_RUNS.csv")
+SUCCESS_RE = re.compile(
+    r"\[GOAL-GEN\] COMPLETE: 1 goals achieved .*? at t=([\d.]+)s")
 
 # Neutral marks + one semantic accent (trial dots), text in ink tones.
 INK = "#1f2430"
@@ -53,9 +52,7 @@ def collect():
     records = []
     seen_logs = set()
 
-    # The manifest is tracked while bulky raw logs are not. Preserve its
-    # validated successes when regenerating in a checkout where an older log
-    # has been archived or removed, then append any newly completed logs.
+    # Preserve prior validated campaign successes if bulky logs are archived.
     if os.path.exists(SUCCESS_CSV):
         with open(SUCCESS_CSV, newline="") as f:
             for row in csv.DictReader(f):
@@ -72,20 +69,21 @@ def collect():
                 seen_logs.add(log)
 
     for disp, task in ORDER:
-        log_dir = TASK_LOG_DIR.get(task, OUT_DIR)
+        log_dir = os.path.join(CAMPAIGN_DIR, task)
+        if not os.path.isdir(log_dir):
+            continue
         for fn in sorted(os.listdir(log_dir)):
-            if not (fn.startswith(f"{task}_") and fn.endswith(".log")):
+            if not (fn.startswith(f"{task}_") and fn.endswith(".txt")):
                 continue
             txt = open(os.path.join(log_dir, fn), errors="replace").read()
-            if "[RESULT]" not in txt:
-                continue          # incomplete/crashed run: not a trial
-            m = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
+            m = SUCCESS_RE.search(txt)
             if m:
                 rel_log = os.path.relpath(os.path.join(log_dir, fn), REPO)
                 if rel_log in seen_logs:
                     continue
-                step = int(m.group(1))
-                time_s = step * STEP_DT
+                time_s = float(m.group(1))
+                latch = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
+                step = int(latch.group(1)) if latch else round(time_s / STEP_DT)
                 data[disp].append(time_s)
                 meta = re.search(r"\[RUN-META\]\s+git=(\S+)\s+seed=(\S+)", txt)
                 records.append({
@@ -149,13 +147,13 @@ def main():
 
     n_trials = len(records)
     ax.set_title(
-        "Time-to-goal by object — recorded successful runs only  "
-        f"(n={n_trials}; each dot is a fixed-goal success)",
+        "Figure 8 — single-object Block C3+ randomized trials  "
+        f"(n={n_trials} successes; target 28/object)",
         fontsize=9.5, color=INK, loc="left", pad=10)
     fig.text(0.005, 0.005,
-             "Time-to-goal = first achieved-fixed-goal latch (geodesic). "
-             "Unsuccessful and incomplete runs are omitted, not censored at 180 s; "
-             "see fig8_success_runs.csv for run provenance.",
+             "Time-to-goal = first tight kRandom goal achievement. "
+             "Timeouts and incomplete trials are omitted, not censored at 600 s; "
+             "campaign still in progress. See FIG8_BLOCK_28_SUCCESS_RUNS.csv.",
              fontsize=7, color=MUTED)
 
     fig.tight_layout(rect=(0, 0.03, 1, 1))
