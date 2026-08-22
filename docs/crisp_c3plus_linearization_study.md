@@ -134,6 +134,14 @@ From a 90 s `pushing --sampling-c3` rollout, 1200 planner ticks, parsed from
 | box motion per tick | 1e-5 m | 2e-5 m | 5e-5 m |
 | box yaw per horizon | 1.2e-4 rad | 3.2e-4 rad | 6.0e-4 rad |
 
+> **SUPERSEDED 2026-08-21.** This rollout used a bare `--sampling-c3`, which
+> loads `sampling_c3_params.yaml` (`kRandomOnCircle`) — **not** the box's
+> canonical `sampling_c3_kik.yaml` (`kFaceNormal`). Corrected measurements,
+> from a run that does establish contact, are in
+> `docs/crisp/path_b_results.md` §1. The per-horizon EE excursions are
+> essentially unchanged (p90 0.087 m, max 0.100 m), so this study's
+> conclusion stands; the box-motion rows below are the ones that were noise.
+
 **Caveat, stated plainly: this rollout never made contact.** The end-effector
 closed to 0.0912 m of the box centre against the ~0.075 m needed, and hovered —
 the known hover-at-standoff class. So the box-motion and force rows are noise,
