@@ -43,6 +43,7 @@ OBJECTS = {
     "Letter 3": "3_shape_video",
     "Letter H": "H_shape_texture",
     "Letter E": "E_shape_video",
+    "Letter S": "S_shape_texture",
     "Expo Box": "expo_box",
     "Lotion": "lotion",
     "Wood Block": "wood_block",

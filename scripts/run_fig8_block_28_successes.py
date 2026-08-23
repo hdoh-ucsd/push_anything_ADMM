@@ -25,12 +25,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON = Path("/root/miniconda3/envs/push_anything_ADMM/bin/python3")
 OUT = ROOT / "results" / "fig8_block_28_c3plus"
 ROSTER = [
-    "push_t",
-    "book_block", "lotion_block", "baby_toy_block", "clamp_block",
-    "I_shape_texture_block", "H_shape_texture_block",
-    "E_shape_video_block", "Y_shape_video_block", "3_shape_video_block",
-    "C_shape_texture_block", "G_shape_video_block",
-    "A_shape_video_block", "B_shape_video_block", "R_shape_texture_block",
+    "I_shape_texture_block", "C_shape_texture_block",
+    "R_shape_texture_block", "A_shape_video_block",
+    "Y_shape_video_block", "G_shape_video_block", "B_shape_video_block",
+    "3_shape_video_block", "H_shape_texture_block", "E_shape_video_block",
+    "S_shape_texture",
+    "expo_box", "lotion_block", "wood_block", "tape", "eraser", "milk",
+    "clamp_block", "chicken_broth", "egg_carton", "book_block",
+    "baby_toy_block", "gallon_milk", "xbox", "push_t",
 ]
 SUCCESS_MARKER = "[GOAL-GEN] COMPLETE: 1 goals achieved"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fig. 8 time-to-goal figure for the block-only randomized C3+ campaign.
+"""Fig. 8 time-to-goal figure for the randomized C3+ object campaign.
 
 Each task targets 28 independent successful trials. A trial is recorded only
 when the kRandom goal generator reports one achieved goal; unsuccessful and
@@ -20,19 +20,31 @@ OUT_DIR = os.path.join(REPO, "results", "fig8_objects")
 CAMPAIGN_DIR = os.path.join(REPO, "results", "fig8_block_28_c3plus")
 
 ORDER = [
-    ("Push T", "push_t"),
-    ("Book", "book_block"), ("Lotion", "lotion_block"),
-    ("Baby Toy", "baby_toy_block"), ("Clamp", "clamp_block"),
     ("Letter I", "I_shape_texture_block"),
+    ("Letter C", "C_shape_texture_block"),
+    ("Letter R", "R_shape_texture_block"),
+    ("Letter A", "A_shape_video_block"),
+    ("Letter Y", "Y_shape_video_block"),
+    ("Letter G", "G_shape_video_block"),
+    ("Letter B", "B_shape_video_block"),
+    ("Letter 3", "3_shape_video_block"),
     ("Letter H", "H_shape_texture_block"),
     ("Letter E", "E_shape_video_block"),
-    ("Letter Y", "Y_shape_video_block"),
-    ("Letter 3", "3_shape_video_block"),
-    ("Letter C", "C_shape_texture_block"),
-    ("Letter G", "G_shape_video_block"),
-    ("Letter A", "A_shape_video_block"),
-    ("Letter B", "B_shape_video_block"),
-    ("Letter R", "R_shape_texture_block"),
+    ("Letter S", "S_shape_texture"),
+    ("Expo Box", "expo_box"),
+    ("Lotion", "lotion_block"),
+    ("Wood Block", "wood_block"),
+    ("Tape", "tape"),
+    ("Eraser", "eraser"),
+    ("Milk Bottle", "milk"),
+    ("Clamp", "clamp_block"),
+    ("Chicken Broth", "chicken_broth"),
+    ("Egg Carton", "egg_carton"),
+    ("Book", "book_block"),
+    ("Baby Toy", "baby_toy_block"),
+    ("Gallon Milk", "gallon_milk"),
+    ("Xbox", "xbox"),
+    ("Push T", "push_t"),
 ]
 STEP_DT = 0.075
 SUCCESS_CSV = os.path.join(REPO, "FIG8_BLOCK_28_SUCCESS_RUNS.csv")
@@ -147,7 +159,7 @@ def main():
 
     n_trials = len(records)
     ax.set_title(
-        "Figure 8 — single-object Block C3+ randomized trials  "
+        "Figure 8 — single-object C3+ randomized trials  "
         f"(n={n_trials} successes; target 28/object)",
         fontsize=9.5, color=INK, loc="left", pad=10)
     fig.text(0.005, 0.005,
