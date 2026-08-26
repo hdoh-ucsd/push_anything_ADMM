@@ -1,0 +1,26 @@
+object,task,log,commit,seed,outcome,goals_reached,requested_goals,failed_goal_index,failure_category,translational_error_m,rotational_error_rad,loose_goal
+Letter I,I_shape_texture,results/fig8_consecutive_28_c3plus/I_shape_texture/I_shape_texture_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Letter C,C_shape_texture,results/fig8_consecutive_28_c3plus/C_shape_texture/C_shape_texture_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Letter R,R_shape_texture,results/fig8_consecutive_28_c3plus/R_shape_texture/R_shape_texture_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Letter A,A_shape_video,results/fig8_consecutive_28_c3plus/A_shape_video/A_shape_video_consecutive28.txt,4b12d8a,0,FAIL,1,28,2,persistent_topple,0.0192,3.1025,FAIL
+Letter Y,Y_shape_video,results/fig8_consecutive_28_c3plus/Y_shape_video/Y_shape_video_consecutive28.txt,4b12d8a,0,FAIL,7,28,8,persistent_topple,0.0157,3.0946,FAIL
+Letter G,G_shape_video,results/fig8_consecutive_28_c3plus/G_shape_video/G_shape_video_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Letter B,B_shape_video,results/fig8_consecutive_28_c3plus/B_shape_video/B_shape_video_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Letter 3,3_shape_video,results/fig8_consecutive_28_c3plus/3_shape_video/3_shape_video_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Letter H,H_shape_texture,results/fig8_consecutive_28_c3plus/H_shape_texture/H_shape_texture_consecutive28.txt,4b12d8a,0,FAIL,1,28,2,numerical_divergence,,,
+Letter E,E_shape_video,results/fig8_consecutive_28_c3plus/E_shape_video/E_shape_video_consecutive28.txt,4b12d8a,0,FAIL,0,28,1,tight_tolerance_timeout,0.0117,0.1625,PASS
+Letter S,S_shape,results/fig8_consecutive_28_c3plus/S_shape/S_shape_consecutive28.txt,4b12d8a,0,FAIL,2,28,3,numerical_divergence,,,
+Expo Box,expo_box,results/fig8_consecutive_28_c3plus/expo_box/expo_box_consecutive28.txt,4b12d8a,0,PASS,28,28,,,0.1318,1.6948,FAIL
+Lotion,lotion_block,results/fig8_consecutive_28_c3plus/lotion_block/lotion_block_consecutive28.txt,4b12d8a,0,FAIL,7,28,8,persistent_topple,0.0351,3.1415,FAIL
+Wood Block,wood_block,results/fig8_consecutive_28_c3plus/wood_block/wood_block_consecutive28.txt,4b12d8a,0,FAIL,3,28,4,persistent_topple,0.1615,1.6231,FAIL
+Tape,tape,results/fig8_consecutive_28_c3plus/tape/tape_consecutive28.txt,4b12d8a,0,FAIL,0,28,1,tight_tolerance_timeout,0.019,0.1906,PASS
+Eraser,eraser,results/fig8_consecutive_28_c3plus/eraser/eraser_consecutive28.txt,4b12d8a,0,FAIL,0,28,1,persistent_topple,0.0263,1.5943,FAIL
+Milk Bottle,milk,results/fig8_consecutive_28_c3plus/milk/milk_consecutive28.txt,4b12d8a,0,PASS,28,28,,,0.1431,1.7309,FAIL
+Clamp,clamp_block,results/fig8_consecutive_28_c3plus/clamp_block/clamp_block_consecutive28.txt,4b12d8a,0,FAIL,3,28,4,workspace_limit,,,
+Chicken Broth,chicken_broth,results/fig8_consecutive_28_c3plus/chicken_broth/chicken_broth_consecutive28.txt,4b12d8a,0,PASS,28,28,,,0.1282,1.861,FAIL
+Egg Carton,egg_carton,results/fig8_consecutive_28_c3plus/egg_carton/egg_carton_consecutive28.txt,4b12d8a,0,PASS,28,28,,,0.144,1.711,FAIL
+Book,book_block,results/fig8_consecutive_28_c3plus/book_block/book_block_consecutive28.txt,4b12d8a,0,FAIL,5,28,6,workspace_limit,,,
+Baby Toy,baby_toy_block,results/fig8_consecutive_28_c3plus/baby_toy_block/baby_toy_block_consecutive28.txt,4b12d8a,0,PASS,28,28,,,0.1197,1.7118,FAIL
+Gallon Milk,gallon_milk,results/fig8_consecutive_28_c3plus/gallon_milk/gallon_milk_consecutive28.txt,4b12d8a,0,FAIL,0,28,1,workspace_limit,,,
+Xbox,xbox,results/fig8_consecutive_28_c3plus/xbox/xbox_consecutive28.txt,4b12d8a,0,PASS,28,28,,,0.1301,1.8522,FAIL
+Push T,push_t,results/fig8_consecutive_28_c3plus/push_t/push_t_consecutive28.txt,4b12d8a,0,FAIL,4,28,5,goal_timeout,0.0923,0.5232,FAIL
