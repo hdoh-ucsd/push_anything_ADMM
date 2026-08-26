@@ -16,21 +16,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_DIR = os.path.join(REPO, "results", "fig8_objects")
-CAMPAIGN_DIR = os.path.join(REPO, "results", "fig8_block_28_c3plus")
+OUT_DIR = os.path.join(REPO, "results", "fig8_mesh_objects")
+CAMPAIGN_DIR = os.path.join(REPO, "results", "fig8_mesh_28_c3plus")
 
 ORDER = [
-    ("Letter I", "I_shape_texture_block"),
-    ("Letter C", "C_shape_texture_block"),
-    ("Letter R", "R_shape_texture_block"),
-    ("Letter A", "A_shape_video_block"),
-    ("Letter Y", "Y_shape_video_block"),
-    ("Letter G", "G_shape_video_block"),
-    ("Letter B", "B_shape_video_block"),
-    ("Letter 3", "3_shape_video_block"),
-    ("Letter H", "H_shape_texture_block"),
-    ("Letter E", "E_shape_video_block"),
-    ("Letter S", "S_shape_texture"),
+    ("Letter I", "I_shape_texture"),
+    ("Letter C", "C_shape_texture"),
+    ("Letter R", "R_shape_texture"),
+    ("Letter A", "A_shape_video"),
+    ("Letter Y", "Y_shape_video"),
+    ("Letter G", "G_shape_video"),
+    ("Letter B", "B_shape_video"),
+    ("Letter 3", "3_shape_video"),
+    ("Letter H", "H_shape_texture"),
+    ("Letter E", "E_shape_video"),
+    ("Letter S", "S_shape"),
     ("Expo Box", "expo_box"),
     ("Lotion", "lotion_block"),
     ("Wood Block", "wood_block"),
@@ -46,8 +46,21 @@ ORDER = [
     ("Xbox", "xbox"),
     ("Push T", "push_t"),
 ]
+LEGACY_TASK = {
+    "I_shape_block": "I_shape_texture_block",
+    "C_shape_block": "C_shape_texture_block",
+    "R_shape_block": "R_shape_texture_block",
+    "A_shape_block": "A_shape_video_block",
+    "Y_shape_block": "Y_shape_video_block",
+    "G_shape_block": "G_shape_video_block",
+    "B_shape_block": "B_shape_video_block",
+    "3_shape_block": "3_shape_video_block",
+    "H_shape_block": "H_shape_texture_block",
+    "E_shape_block": "E_shape_video_block",
+    "S_shape": "S_shape_texture",
+}
 STEP_DT = 0.075
-SUCCESS_CSV = os.path.join(REPO, "FIG8_BLOCK_28_SUCCESS_RUNS.csv")
+SUCCESS_CSV = os.path.join(REPO, "FIG8_MESH_28_SUCCESS_RUNS.csv")
 SUCCESS_RE = re.compile(
     r"\[GOAL-GEN\] COMPLETE: 1 goals achieved .*? at t=([\d.]+)s")
 
@@ -81,33 +94,36 @@ def collect():
                 seen_logs.add(log)
 
     for disp, task in ORDER:
-        log_dir = os.path.join(CAMPAIGN_DIR, task)
-        if not os.path.isdir(log_dir):
-            continue
-        for fn in sorted(os.listdir(log_dir)):
-            if not (fn.startswith(f"{task}_") and fn.endswith(".txt")):
+        for stored_task in (task, LEGACY_TASK.get(task)):
+            if stored_task is None:
                 continue
-            txt = open(os.path.join(log_dir, fn), errors="replace").read()
-            m = SUCCESS_RE.search(txt)
-            if m:
-                rel_log = os.path.relpath(os.path.join(log_dir, fn), REPO)
-                if rel_log in seen_logs:
+            log_dir = os.path.join(CAMPAIGN_DIR, stored_task)
+            if not os.path.isdir(log_dir):
+                continue
+            for fn in sorted(os.listdir(log_dir)):
+                if not (fn.startswith(f"{stored_task}_") and fn.endswith(".txt")):
                     continue
-                time_s = float(m.group(1))
-                latch = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
-                step = int(latch.group(1)) if latch else round(time_s / STEP_DT)
-                data[disp].append(time_s)
-                meta = re.search(r"\[RUN-META\]\s+git=(\S+)\s+seed=(\S+)", txt)
-                records.append({
-                    "object": disp,
-                    "task": task,
-                    "log": rel_log,
-                    "commit": meta.group(1) if meta else "",
-                    "seed": meta.group(2) if meta else "",
-                    "first_goal_step": step,
-                    "time_to_goal_s": f"{time_s:.3f}",
-                })
-                seen_logs.add(rel_log)
+                txt = open(os.path.join(log_dir, fn), errors="replace").read()
+                m = SUCCESS_RE.search(txt)
+                if m:
+                    rel_log = os.path.relpath(os.path.join(log_dir, fn), REPO)
+                    if rel_log in seen_logs:
+                        continue
+                    time_s = float(m.group(1))
+                    latch = re.search(r"ACHIEVED-FIXED-GOAL\] step=(\d+)", txt)
+                    step = int(latch.group(1)) if latch else round(time_s / STEP_DT)
+                    data[disp].append(time_s)
+                    meta = re.search(r"\[RUN-META\]\s+git=(\S+)\s+seed=(\S+)", txt)
+                    records.append({
+                        "object": disp,
+                        "task": task,
+                        "log": rel_log,
+                        "commit": meta.group(1) if meta else "",
+                        "seed": meta.group(2) if meta else "",
+                        "first_goal_step": step,
+                        "time_to_goal_s": f"{time_s:.3f}",
+                    })
+                    seen_logs.add(rel_log)
     return data, records
 
 
@@ -123,6 +139,7 @@ def write_success_records(records):
 def main():
     data, records = collect()
     write_success_records(records)
+    os.makedirs(OUT_DIR, exist_ok=True)
     n_obj = len(data)
     fig, ax = plt.subplots(figsize=(12.5, 5.2), dpi=200)
 
@@ -165,7 +182,7 @@ def main():
     fig.text(0.005, 0.005,
              "Time-to-goal = first tight kRandom goal achievement. "
              "Timeouts and incomplete trials are omitted, not censored at 600 s; "
-             "campaign still in progress. See FIG8_BLOCK_28_SUCCESS_RUNS.csv.",
+             "campaign still in progress. See FIG8_MESH_28_SUCCESS_RUNS.csv.",
              fontsize=7, color=MUTED)
 
     fig.tight_layout(rect=(0, 0.03, 1, 1))
