@@ -9,8 +9,8 @@ from __future__ import annotations
 import argparse
 import html
 import math
+import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,8 +26,8 @@ def slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
-def run(command: list[str]) -> None:
-    subprocess.run(command, cwd=ROOT, check=True)
+def run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+    subprocess.run(command, cwd=ROOT, check=True, env=env)
 
 
 def render(log: Path, task: str, output: Path, duration: float,
@@ -40,9 +40,16 @@ def render(log: Path, task: str, output: Path, duration: float,
     stride = max(1, math.ceil(duration / (0.075 * target_frames)))
     with tempfile.TemporaryDirectory(prefix="fig8-success-frames-", dir="/tmp") as tmp:
         frames = Path(tmp)
+        render_env = os.environ.copy()
+        # Figure 8 objects and goals live near x=0.5. The renderer's historical
+        # fallback targets x=-0.15, which puts the experiment at the far edge
+        # of frame when this script is called directly instead of through
+        # make_run_video.sh.
+        render_env.setdefault("PORT_CAM_EYE", "0.85,-0.38,0.38")
+        render_env.setdefault("PORT_CAM_TARGET", "0.50,0.05,0.035")
         run([sys.executable, "tools/visualizer/render_log_drake_scene.py",
              str(log), "--task", task, "--stride", str(stride),
-             "--out-dir", str(frames)])
+             "--out-dir", str(frames)], env=render_env)
         run([sys.executable, "tools/visualizer/paint_log_sidepanel.py",
              "--frames-dir", str(frames), "--log-path", str(log),
              "--output", str(output), "--fps", str(fps)])
@@ -110,8 +117,10 @@ def main() -> None:
     data, records = collect()
     output_dir = ROOT / "results" / "fig8_success_gallery"
     video_dir, thumb_dir = output_dir / "videos", output_dir / "thumbnails"
+    preview_dir = output_dir / "previews"
     video_dir.mkdir(parents=True, exist_ok=True)
     thumb_dir.mkdir(parents=True, exist_ok=True)
+    preview_dir.mkdir(parents=True, exist_ok=True)
     task_by_object = dict(ORDER)
     selected = []
     for object_name, times in data.items():
@@ -123,6 +132,7 @@ def main() -> None:
         name = slug(object_name)
         video = video_dir / f"{name}.mp4"
         thumb = thumb_dir / f"{name}.jpg"
+        preview = preview_dir / f"{name}.gif"
         duration = float(record["time_to_goal_s"])
         print(f"rendering {object_name}: {source.relative_to(ROOT)} ({duration:.2f}s)")
         render(source, task_by_object[object_name], video, duration,
@@ -130,9 +140,18 @@ def main() -> None:
         if args.force or not thumb.exists():
             run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "0.2", "-i", str(video),
                  "-frames:v", "1", "-q:v", "3", str(thumb)])
+        if args.force or not preview.exists():
+            # Animated GIF is rendered inline by GitHub Markdown. Keep the
+            # full MP4 as the click target for controls and full resolution.
+            run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+                 "-filter_complex",
+                 "fps=5,scale=480:-2:flags=lanczos,split[a][b];"
+                 "[a]palettegen=max_colors=96[p];"
+                 "[b][p]paletteuse=dither=bayer:bayer_scale=3",
+                 "-loop", "0", str(preview)])
         selected.append({"object": object_name, "meta": f"{duration:.2f} s",
                          "video": str(video.relative_to(output_dir)),
-                         "thumb": str(thumb.relative_to(output_dir))})
+                         "thumb": str(preview.relative_to(output_dir))})
     if not selected:
         raise RuntimeError("no successful Figure 8 records found")
     write_gallery(selected, output_dir / "index.html")

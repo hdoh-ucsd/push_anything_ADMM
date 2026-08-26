@@ -105,31 +105,31 @@ Click a preview to play one representative validated success for that object.
 
 | Object | Time to goal | Video |
 |---|---:|---|
-| Letter I | 13.88 s | [![Letter I successful run](results/fig8_success_gallery/thumbnails/letter-i.jpg)](results/fig8_success_gallery/videos/letter-i.mp4) |
-| Letter C | 15.07 s | [![Letter C successful run](results/fig8_success_gallery/thumbnails/letter-c.jpg)](results/fig8_success_gallery/videos/letter-c.mp4) |
-| Letter R | 12.68 s | [![Letter R successful run](results/fig8_success_gallery/thumbnails/letter-r.jpg)](results/fig8_success_gallery/videos/letter-r.mp4) |
-| Letter A | 13.65 s | [![Letter A successful run](results/fig8_success_gallery/thumbnails/letter-a.jpg)](results/fig8_success_gallery/videos/letter-a.mp4) |
-| Letter Y | 7.80 s | [![Letter Y successful run](results/fig8_success_gallery/thumbnails/letter-y.jpg)](results/fig8_success_gallery/videos/letter-y.mp4) |
-| Letter G | 10.05 s | [![Letter G successful run](results/fig8_success_gallery/thumbnails/letter-g.jpg)](results/fig8_success_gallery/videos/letter-g.mp4) |
-| Letter B | 19.73 s | [![Letter B successful run](results/fig8_success_gallery/thumbnails/letter-b.jpg)](results/fig8_success_gallery/videos/letter-b.mp4) |
-| Letter 3 | 11.55 s | [![Letter 3 successful run](results/fig8_success_gallery/thumbnails/letter-3.jpg)](results/fig8_success_gallery/videos/letter-3.mp4) |
-| Letter H | 10.80 s | [![Letter H successful run](results/fig8_success_gallery/thumbnails/letter-h.jpg)](results/fig8_success_gallery/videos/letter-h.mp4) |
-| Letter E | 397.50 s | [![Letter E successful run](results/fig8_success_gallery/thumbnails/letter-e.jpg)](results/fig8_success_gallery/videos/letter-e.mp4) |
-| Letter S | 12.97 s | [![Letter S successful run](results/fig8_success_gallery/thumbnails/letter-s.jpg)](results/fig8_success_gallery/videos/letter-s.mp4) |
-| Expo Box | 5.85 s | [![Expo Box successful run](results/fig8_success_gallery/thumbnails/expo-box.jpg)](results/fig8_success_gallery/videos/expo-box.mp4) |
-| Lotion | 5.55 s | [![Lotion successful run](results/fig8_success_gallery/thumbnails/lotion.jpg)](results/fig8_success_gallery/videos/lotion.mp4) |
-| Wood Block | 6.45 s | [![Wood Block successful run](results/fig8_success_gallery/thumbnails/wood-block.jpg)](results/fig8_success_gallery/videos/wood-block.mp4) |
-| Tape | 13.28 s | [![Tape successful run](results/fig8_success_gallery/thumbnails/tape.jpg)](results/fig8_success_gallery/videos/tape.mp4) |
-| Eraser | 4.88 s | [![Eraser successful run](results/fig8_success_gallery/thumbnails/eraser.jpg)](results/fig8_success_gallery/videos/eraser.mp4) |
-| Milk Bottle | 9.75 s | [![Milk Bottle successful run](results/fig8_success_gallery/thumbnails/milk-bottle.jpg)](results/fig8_success_gallery/videos/milk-bottle.mp4) |
-| Clamp | 4.50 s | [![Clamp successful run](results/fig8_success_gallery/thumbnails/clamp.jpg)](results/fig8_success_gallery/videos/clamp.mp4) |
-| Chicken Broth | 9.00 s | [![Chicken Broth successful run](results/fig8_success_gallery/thumbnails/chicken-broth.jpg)](results/fig8_success_gallery/videos/chicken-broth.mp4) |
-| Egg Carton | 5.62 s | [![Egg Carton successful run](results/fig8_success_gallery/thumbnails/egg-carton.jpg)](results/fig8_success_gallery/videos/egg-carton.mp4) |
-| Book | 4.58 s | [![Book successful run](results/fig8_success_gallery/thumbnails/book.jpg)](results/fig8_success_gallery/videos/book.mp4) |
-| Baby Toy | 8.40 s | [![Baby Toy successful run](results/fig8_success_gallery/thumbnails/baby-toy.jpg)](results/fig8_success_gallery/videos/baby-toy.mp4) |
-| Gallon Milk | 15.82 s | [![Gallon Milk successful run](results/fig8_success_gallery/thumbnails/gallon-milk.jpg)](results/fig8_success_gallery/videos/gallon-milk.mp4) |
-| Xbox | 8.85 s | [![Xbox successful run](results/fig8_success_gallery/thumbnails/xbox.jpg)](results/fig8_success_gallery/videos/xbox.mp4) |
-| Push T | 133.88 s | [![Push T successful run](results/fig8_success_gallery/thumbnails/push-t.jpg)](results/fig8_success_gallery/videos/push-t.mp4) |
+| Letter I | 13.88 s | [![Letter I successful run](results/fig8_success_gallery/previews/letter-i.gif)](results/fig8_success_gallery/videos/letter-i.mp4) |
+| Letter C | 15.07 s | [![Letter C successful run](results/fig8_success_gallery/previews/letter-c.gif)](results/fig8_success_gallery/videos/letter-c.mp4) |
+| Letter R | 12.68 s | [![Letter R successful run](results/fig8_success_gallery/previews/letter-r.gif)](results/fig8_success_gallery/videos/letter-r.mp4) |
+| Letter A | 13.65 s | [![Letter A successful run](results/fig8_success_gallery/previews/letter-a.gif)](results/fig8_success_gallery/videos/letter-a.mp4) |
+| Letter Y | 7.80 s | [![Letter Y successful run](results/fig8_success_gallery/previews/letter-y.gif)](results/fig8_success_gallery/videos/letter-y.mp4) |
+| Letter G | 10.05 s | [![Letter G successful run](results/fig8_success_gallery/previews/letter-g.gif)](results/fig8_success_gallery/videos/letter-g.mp4) |
+| Letter B | 19.73 s | [![Letter B successful run](results/fig8_success_gallery/previews/letter-b.gif)](results/fig8_success_gallery/videos/letter-b.mp4) |
+| Letter 3 | 11.55 s | [![Letter 3 successful run](results/fig8_success_gallery/previews/letter-3.gif)](results/fig8_success_gallery/videos/letter-3.mp4) |
+| Letter H | 10.80 s | [![Letter H successful run](results/fig8_success_gallery/previews/letter-h.gif)](results/fig8_success_gallery/videos/letter-h.mp4) |
+| Letter E | 397.50 s | [![Letter E successful run](results/fig8_success_gallery/previews/letter-e.gif)](results/fig8_success_gallery/videos/letter-e.mp4) |
+| Letter S | 12.97 s | [![Letter S successful run](results/fig8_success_gallery/previews/letter-s.gif)](results/fig8_success_gallery/videos/letter-s.mp4) |
+| Expo Box | 5.85 s | [![Expo Box successful run](results/fig8_success_gallery/previews/expo-box.gif)](results/fig8_success_gallery/videos/expo-box.mp4) |
+| Lotion | 5.55 s | [![Lotion successful run](results/fig8_success_gallery/previews/lotion.gif)](results/fig8_success_gallery/videos/lotion.mp4) |
+| Wood Block | 6.45 s | [![Wood Block successful run](results/fig8_success_gallery/previews/wood-block.gif)](results/fig8_success_gallery/videos/wood-block.mp4) |
+| Tape | 13.28 s | [![Tape successful run](results/fig8_success_gallery/previews/tape.gif)](results/fig8_success_gallery/videos/tape.mp4) |
+| Eraser | 4.88 s | [![Eraser successful run](results/fig8_success_gallery/previews/eraser.gif)](results/fig8_success_gallery/videos/eraser.mp4) |
+| Milk Bottle | 9.75 s | [![Milk Bottle successful run](results/fig8_success_gallery/previews/milk-bottle.gif)](results/fig8_success_gallery/videos/milk-bottle.mp4) |
+| Clamp | 4.50 s | [![Clamp successful run](results/fig8_success_gallery/previews/clamp.gif)](results/fig8_success_gallery/videos/clamp.mp4) |
+| Chicken Broth | 9.00 s | [![Chicken Broth successful run](results/fig8_success_gallery/previews/chicken-broth.gif)](results/fig8_success_gallery/videos/chicken-broth.mp4) |
+| Egg Carton | 5.62 s | [![Egg Carton successful run](results/fig8_success_gallery/previews/egg-carton.gif)](results/fig8_success_gallery/videos/egg-carton.mp4) |
+| Book | 4.58 s | [![Book successful run](results/fig8_success_gallery/previews/book.gif)](results/fig8_success_gallery/videos/book.mp4) |
+| Baby Toy | 8.40 s | [![Baby Toy successful run](results/fig8_success_gallery/previews/baby-toy.gif)](results/fig8_success_gallery/videos/baby-toy.mp4) |
+| Gallon Milk | 15.82 s | [![Gallon Milk successful run](results/fig8_success_gallery/previews/gallon-milk.gif)](results/fig8_success_gallery/videos/gallon-milk.mp4) |
+| Xbox | 8.85 s | [![Xbox successful run](results/fig8_success_gallery/previews/xbox.gif)](results/fig8_success_gallery/videos/xbox.mp4) |
+| Push T | 133.88 s | [![Push T successful run](results/fig8_success_gallery/previews/push-t.gif)](results/fig8_success_gallery/videos/push-t.mp4) |
 
 ## Quick Start
 
