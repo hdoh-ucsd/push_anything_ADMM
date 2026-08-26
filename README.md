@@ -105,8 +105,41 @@ and [`FIG8_CONSECUTIVE_28_GOALS.csv`](FIG8_CONSECUTIVE_28_GOALS.csv).
 | Milk Bottle | 28/28 | [![Milk Bottle — 28 consecutive goals](results/fig8_consecutive_gallery/previews/milk-bottle.gif)](results/fig8_consecutive_gallery/videos/milk-bottle.mp4) |
 | Xbox | 28/28 | [![Xbox — 28 consecutive goals](results/fig8_consecutive_gallery/previews/xbox.gif)](results/fig8_consecutive_gallery/videos/xbox.mp4) |
 
-The remaining 19 sessions did not satisfy the 28-consecutive-goal criterion and
-are retained in the manifests as failed or protocol-invalid results.
+### Genuine failure videos
+
+These 12 sessions produced a valid experiment failure. “Goals reached” is the
+consecutive prefix completed before the terminal failed goal. Click a preview
+to open the full failed-session MP4.
+
+| Object | Goals reached | Failure reason | Full session video |
+|---|---:|---|---|
+| Letter A | 1/28 | Persistent topple | [![Letter A failure](results/fig8_consecutive_failures/previews/letter-a.gif)](results/fig8_consecutive_failures/videos/letter-a.mp4) |
+| Letter Y | 7/28 | Persistent topple | [![Letter Y failure](results/fig8_consecutive_failures/previews/letter-y.gif)](results/fig8_consecutive_failures/videos/letter-y.mp4) |
+| Letter H | 1/28 | Runaway displacement / safety limit | [![Letter H failure](results/fig8_consecutive_failures/previews/letter-h.gif)](results/fig8_consecutive_failures/videos/letter-h.mp4) |
+| Letter E | 0/28 | Tight-tolerance timeout | [![Letter E failure](results/fig8_consecutive_failures/previews/letter-e.gif)](results/fig8_consecutive_failures/videos/letter-e.mp4) |
+| Lotion | 7/28 | Persistent topple | [![Lotion failure](results/fig8_consecutive_failures/previews/lotion.gif)](results/fig8_consecutive_failures/videos/lotion.mp4) |
+| Wood Block | 3/28 | Persistent topple | [![Wood Block failure](results/fig8_consecutive_failures/previews/wood-block.gif)](results/fig8_consecutive_failures/videos/wood-block.mp4) |
+| Tape | 0/28 | Tight-tolerance timeout | [![Tape failure](results/fig8_consecutive_failures/previews/tape.gif)](results/fig8_consecutive_failures/videos/tape.mp4) |
+| Eraser | 0/28 | Persistent topple | [![Eraser failure](results/fig8_consecutive_failures/previews/eraser.gif)](results/fig8_consecutive_failures/videos/eraser.mp4) |
+| Clamp | 3/28 | Workspace limit | [![Clamp failure](results/fig8_consecutive_failures/previews/clamp.gif)](results/fig8_consecutive_failures/videos/clamp.mp4) |
+| Book | 5/28 | Workspace limit | [![Book failure](results/fig8_consecutive_failures/previews/book.gif)](results/fig8_consecutive_failures/videos/book.mp4) |
+| Gallon Milk | 0/28 | Workspace limit | [![Gallon Milk failure](results/fig8_consecutive_failures/previews/gallon-milk.gif)](results/fig8_consecutive_failures/videos/gallon-milk.mp4) |
+| Push T | 4/28 | Goal timeout | [![Push T failure](results/fig8_consecutive_failures/previews/push-t.gif)](results/fig8_consecutive_failures/videos/push-t.mp4) |
+
+### Protocol-invalid abort videos
+
+These seven sessions were stopped by the erroneous displacement guard. They are
+shown for diagnosis but are not counted as genuine controller failures.
+
+| Object | Goals reached | Abort reason | Full session video |
+|---|---:|---|---|
+| Letter I | 2/28 | Displacement-guard abort | [![Letter I invalid session](results/fig8_consecutive_failures/previews/letter-i.gif)](results/fig8_consecutive_failures/videos/letter-i.mp4) |
+| Letter C | 2/28 | Displacement-guard abort | [![Letter C invalid session](results/fig8_consecutive_failures/previews/letter-c.gif)](results/fig8_consecutive_failures/videos/letter-c.mp4) |
+| Letter R | 2/28 | Displacement-guard abort | [![Letter R invalid session](results/fig8_consecutive_failures/previews/letter-r.gif)](results/fig8_consecutive_failures/videos/letter-r.mp4) |
+| Letter G | 2/28 | Displacement-guard abort | [![Letter G invalid session](results/fig8_consecutive_failures/previews/letter-g.gif)](results/fig8_consecutive_failures/videos/letter-g.mp4) |
+| Letter B | 2/28 | Displacement-guard abort | [![Letter B invalid session](results/fig8_consecutive_failures/previews/letter-b.gif)](results/fig8_consecutive_failures/videos/letter-b.mp4) |
+| Letter 3 | 2/28 | Displacement-guard abort | [![Letter 3 invalid session](results/fig8_consecutive_failures/previews/letter-3.gif)](results/fig8_consecutive_failures/videos/letter-3.mp4) |
+| Letter S | 2/28 | Displacement-guard abort | [![Letter S invalid session](results/fig8_consecutive_failures/previews/letter-s.gif)](results/fig8_consecutive_failures/videos/letter-s.mp4) |
 
 ## Quick Start
 
