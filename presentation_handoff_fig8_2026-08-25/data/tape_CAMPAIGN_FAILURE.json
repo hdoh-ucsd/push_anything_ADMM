@@ -1,0 +1,6 @@
+{
+  "object": "tape",
+  "outcome": "failure",
+  "reason": "Stopped by operator after repeated unsuccessful attempts; move to next object.",
+  "recorded_at": "2026-08-24T22:04:09-07:00"
+}
