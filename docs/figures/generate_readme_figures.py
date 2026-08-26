@@ -186,8 +186,8 @@ def roadmap() -> None:
 
 
 def stage_measured_result() -> None:
-    source = ROOT / "results" / "fig8_objects" / "fig8_time_to_goal.png"
-    target = OUT / "fig8_fixed_goal_result.png"
+    source = ROOT / "results" / "fig8_mesh_objects" / "fig8_time_to_goal.png"
+    target = OUT / "fig8_randomized_result.png"
     if not source.exists():
         raise FileNotFoundError(f"measured source figure is missing: {source}")
     shutil.copyfile(source, target)
