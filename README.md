@@ -120,7 +120,13 @@ Time to goal is the first fixed-goal latch at the 0.075 s planning interval.
 This is one fixed-goal validation run per object, not the paper's randomized
 28-consecutive-goal evaluation and not a success-rate estimate.
 
-## Figure 8 — 28 Consecutive SE(2) Goals
+## Figure 8 — 28 Consecutive SE(2) Goals (Archived Campaign)
+
+These runs do exist, but they predate the current-model fixed-goal campaign
+above. All 25 sessions were run on August 25–26, 2026 from commit `4b12d8a`.
+They have not yet been rerun with the current model. The archived outcome is 6
+complete 28/28 sessions, 12 genuine experiment failures, and 7 protocol-invalid
+aborts caused by the displacement guard used in that revision.
 
 The corrected protocol uses one uninterrupted manipulation session per object:
 the robot, object, controller state, and random-goal stream carry over across all
