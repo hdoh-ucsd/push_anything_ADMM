@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760" role="img" aria-labelledby="title desc">
+  <title id="title">Object-Informed Manipulation scenario-to-results pipeline</title>
+  <desc id="desc">Five scenarios and xArm configuration are fetched from the external OIM reference, imported into PyDrake, solved in a feedback loop by C3+, evaluated with OIM metrics, and saved as results.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#334155"/>
+    </marker>
+    <style>
+      .title { font: 700 34px system-ui, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 18px system-ui, sans-serif; fill: #475569; }
+      .phase { font: 700 18px system-ui, sans-serif; letter-spacing: 1.5px; fill: #475569; }
+      .head { font: 700 22px system-ui, sans-serif; fill: #0f172a; }
+      .body { font: 500 17px system-ui, sans-serif; fill: #334155; }
+      .small { font: 500 15px system-ui, sans-serif; fill: #475569; }
+      .arrow { stroke: #334155; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+      .feedback { stroke: #7c3aed; stroke-width: 4; fill: none; stroke-dasharray: 10 8; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="760" rx="28" fill="url(#bg)"/>
+  <text x="70" y="62" class="title">External OIM scenarios → our C3+ → xArm results</text>
+  <text x="70" y="94" class="subtitle">Preserve the reference task definition; replace its optimizer with the repository's C3+ execution path.</text>
+
+  <text x="70" y="145" class="phase">1 · FETCH REFERENCE SCENARIOS</text>
+  <rect x="70" y="165" width="410" height="260" rx="22" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+  <text x="105" y="207" class="head">External OIM reference</text>
+  <text x="105" y="245" class="body">Five tabletop scenarios</text>
+  <text x="125" y="278" class="small">• open_table</text>
+  <text x="125" y="306" class="small">• single_obstacle</text>
+  <text x="125" y="334" class="small">• shelf_gap</text>
+  <text x="285" y="278" class="small">• ycb_clutter</text>
+  <text x="285" y="306" class="small">• icra_sign</text>
+  <line x1="105" y1="354" x2="445" y2="354" stroke="#93c5fd" stroke-width="2"/>
+  <text x="105" y="382" class="small">xArm6 model · scene assets · start/goal poses</text>
+  <text x="105" y="408" class="small">run budget · 5 cm / 0.1 rad goal tolerances</text>
+
+  <text x="595" y="145" class="phase">2 · RUN WITH C3+</text>
+  <rect x="555" y="165" width="610" height="400" rx="22" fill="#ede9fe" stroke="#7c3aed" stroke-width="3"/>
+  <rect x="590" y="205" width="240" height="115" rx="16" fill="#ffffff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="710" y="242" text-anchor="middle" class="head">Import adapter</text>
+  <text x="710" y="274" text-anchor="middle" class="small">OIM scene → PyDrake</text>
+  <text x="710" y="299" text-anchor="middle" class="small">state + task contract</text>
+
+  <rect x="890" y="205" width="240" height="115" rx="16" fill="#ffffff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="1010" y="242" text-anchor="middle" class="head">Our C3+ MPC</text>
+  <text x="1010" y="274" text-anchor="middle" class="small">local LCS + ADMM</text>
+  <text x="1010" y="299" text-anchor="middle" class="small">short-horizon action</text>
+
+  <rect x="740" y="390" width="240" height="115" rx="16" fill="#ffffff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="860" y="427" text-anchor="middle" class="head">xArm execution</text>
+  <text x="860" y="459" text-anchor="middle" class="small">apply first control interval</text>
+  <text x="860" y="484" text-anchor="middle" class="small">push object in scenario</text>
+
+  <path d="M830 262 H882" class="arrow"/>
+  <path d="M1010 320 V350 Q1010 370 990 382 L972 394" class="arrow"/>
+  <path d="M740 448 H680 Q640 448 640 408 V340 Q640 320 660 320" class="feedback"/>
+  <text x="860" y="535" text-anchor="middle" class="small" fill="#7c3aed">Feedback: measure xArm + object state and replan every interval</text>
+
+  <text x="1245" y="145" class="phase">3 · EVALUATE + REPORT</text>
+  <rect x="1230" y="165" width="300" height="260" rx="22" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+  <text x="1380" y="207" text-anchor="middle" class="head">OIM goal gate</text>
+  <text x="1380" y="243" text-anchor="middle" class="body">position ≤ 0.05 m</text>
+  <text x="1380" y="273" text-anchor="middle" class="body">orientation ≤ 0.10 rad</text>
+  <line x1="1265" y1="300" x2="1495" y2="300" stroke="#86efac" stroke-width="2"/>
+  <text x="1380" y="334" text-anchor="middle" class="small">SR · εd · εdˢ · θ</text>
+  <text x="1380" y="362" text-anchor="middle" class="small">steps · planning Hz · time</text>
+  <text x="1380" y="397" text-anchor="middle" class="small">JSON · logs · video · table</text>
+
+  <path d="M480 295 H547" class="arrow"/>
+  <path d="M1165 295 H1222" class="arrow"/>
+
+  <rect x="70" y="630" width="1460" height="75" rx="16" fill="#0f172a"/>
+  <text x="800" y="662" text-anchor="middle" font-family="system-ui, sans-serif" font-size="19" font-weight="700" fill="#ffffff">Benchmark contract</text>
+  <text x="800" y="689" text-anchor="middle" font-family="system-ui, sans-serif" font-size="17" fill="#cbd5e1">OIM supplies scenarios and scoring · this repository supplies C3+ planning and xArm execution · results retain scene and run provenance</text>
+</svg>
