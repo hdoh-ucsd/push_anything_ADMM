@@ -96,43 +96,6 @@ contact model are refreshed. See `control/admm_solver.py`,
 
 ## Figure 8 Results
 
-The current-model fixed-goal smoke campaign ran seed 0 for up to 600 simulated
-seconds per object with C3+ and `config/sampling_c3_kik_t.yaml`. All 23 tested
-objects reached the tight SE(2) goal; Eraser and Gallon Milk were intentionally
-skipped. Time to goal is the first fixed-goal latch at the 0.075 s planning
-interval.
-
-| Object | Time to goal | Result |
-|---|---:|:---:|
-| Expo Box | 7.200 s | Pass |
-| Push T | 13.800 s | Pass |
-| Chicken Broth | 14.475 s | Pass |
-| Lotion | 15.150 s | Pass |
-| E Shape Video | 15.975 s | Pass |
-| Y Shape Video | 15.975 s | Pass |
-| Wood Block | 15.975 s | Pass |
-| Tape | 16.425 s | Pass |
-| Baby Toy | 19.650 s | Pass |
-| Xbox | 21.300 s | Pass |
-| Book | 24.300 s | Pass |
-| B Shape Video | 37.050 s | Pass |
-| Egg Carton | 38.550 s | Pass |
-| G Shape Video | 39.075 s | Pass |
-| C Shape Texture | 41.700 s | Pass |
-| Milk Bottle | 42.675 s | Pass |
-| A Shape Video | 42.750 s | Pass |
-| S Shape | 52.800 s | Pass |
-| Clamp | 52.800 s | Pass |
-| I Shape Texture | 54.150 s | Pass |
-| H Shape Texture | 54.225 s | Pass |
-| R Shape Texture | 68.025 s | Pass |
-| 3 Shape Video | 86.400 s | Pass |
-| Eraser | — | Skipped |
-| Gallon Milk | — | Skipped |
-
-This is a single fixed-goal validation run per object, not the paper's
-randomized 28-consecutive-goal evaluation and not a success-rate estimate.
-
 ![Time-to-goal across successful randomized-goal runs](figures/fig8_randomized_result.png)
 
 **Stored Figure 8 randomized-goal campaign.** The figure records every completed
