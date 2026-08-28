@@ -84,7 +84,32 @@ contact model are refreshed. See `control/admm_solver.py`,
 
 ## Object-Informed-Manipulation
 
-### Single-Object Pushing
+The scenario is completed as a closed-loop manipulation process. Object
+geometry, pose, and the requested goal define candidate contacts. Our C3+
+controller chooses a short contact-rich motion, the xArm executes its first
+control interval, and the measured state is fed back into the next planning
+cycle. Replanning continues until the object satisfies the task goal.
+
+```mermaid
+flowchart LR
+    scene[Object geometry<br/>pose and task goal]
+    sample[Object-informed<br/>contact sampling]
+    model[Local contact model<br/>LCS construction]
+    plan[Our C3+ MPC<br/>contact-rich trajectory]
+    control[xArm controller<br/>joint torques]
+    robot[xArm + spherical pusher]
+    object[Object motion<br/>and contact response]
+    observe[Measure robot and<br/>object state]
+    gate{Scenario goal<br/>satisfied?}
+    done[Scenario complete]
+
+    scene --> sample --> model --> plan --> control --> robot --> object
+    object --> observe --> gate
+    gate -->|No: replan| sample
+    gate -->|Yes| done
+```
+
+## Single-Object Pushing
 
 The corrected protocol uses one uninterrupted manipulation session per object:
 the robot, object, controller state, and random-goal stream carry over across all
