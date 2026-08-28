@@ -90,11 +90,48 @@ the robot, object, controller state, and random-goal stream carry over across al
 only if it reaches all 28 goals consecutively; failed sessions are not replaced
 with another seed.
 
-The completed campaign contains **6 passing sessions out of 25 objects**. The
-table below contains only those 28/28 sessions. Click an animated preview to open
-the full MP4 with video controls. The complete per-session and per-goal results
-are available in [`FIG8_CONSECUTIVE_28_SESSIONS.csv`](FIG8_CONSECUTIVE_28_SESSIONS.csv)
-and [`FIG8_CONSECUTIVE_28_GOALS.csv`](FIG8_CONSECUTIVE_28_GOALS.csv).
+The latest-model campaign reran 23 objects on August 28, 2026 and retained the
+requested prior outcomes for Eraser and Gallon Milk. The combined result is
+**17 passing sessions out of 25 objects**. Full current results and provenance
+are in [`FIG8_CONSECUTIVE_28_LATEST_SESSIONS.csv`](FIG8_CONSECUTIVE_28_LATEST_SESSIONS.csv).
+
+| Object | Consecutive goals | Outcome | Failure cause |
+|---|---:|:---:|---|
+| Letter I | 28/28 | Pass | — |
+| Letter C | 28/28 | Pass | — |
+| Letter R | 28/28 | Pass | — |
+| Letter A | 28/28 | Pass | — |
+| Letter Y | 4/28 | Fail | Goal timeout |
+| Letter G | 28/28 | Pass | — |
+| Letter B | 28/28 | Pass | — |
+| Letter 3 | 28/28 | Pass | — |
+| Letter H | 28/28 | Pass | — |
+| Letter E | 4/28 | Fail | Goal timeout |
+| Letter S | 28/28 | Pass | — |
+| Expo Box | 28/28 | Pass | — |
+| Lotion | 28/28 | Pass | — |
+| Wood Block | 24/28 | Fail | Goal timeout |
+| Tape | 2/28 | Fail | Goal timeout |
+| Eraser | 0/28 | Fail | Persistent topple (retained) |
+| Milk Bottle | 5/28 | Fail | Goal timeout |
+| Clamp | 28/28 | Pass | — |
+| Chicken Broth | 28/28 | Pass | — |
+| Egg Carton | 3/28 | Fail | Workspace limit |
+| Book | 28/28 | Pass | — |
+| Baby Toy | 28/28 | Pass | — |
+| Gallon Milk | 0/28 | Fail | Workspace limit (retained) |
+| Xbox | 28/28 | Pass | — |
+| Push T | 28/28 | Pass | — |
+
+### Prior-campaign videos
+
+The videos below are from the earlier commit `4b12d8a` campaign and are retained
+as historical evidence. They do not represent the latest-model table above.
+The earlier per-session and per-goal manifests are
+[`FIG8_CONSECUTIVE_28_SESSIONS.csv`](FIG8_CONSECUTIVE_28_SESSIONS.csv) and
+[`FIG8_CONSECUTIVE_28_GOALS.csv`](FIG8_CONSECUTIVE_28_GOALS.csv).
+
+#### Earlier 28/28 session videos
 
 | Object | Consecutive goals | Full session video |
 |---|---:|---|
@@ -105,7 +142,7 @@ and [`FIG8_CONSECUTIVE_28_GOALS.csv`](FIG8_CONSECUTIVE_28_GOALS.csv).
 | Milk Bottle | 28/28 | [![Milk Bottle — 28 consecutive goals](results/fig8_consecutive_gallery/previews/milk-bottle.gif)](results/fig8_consecutive_gallery/videos/milk-bottle.mp4) |
 | Xbox | 28/28 | [![Xbox — 28 consecutive goals](results/fig8_consecutive_gallery/previews/xbox.gif)](results/fig8_consecutive_gallery/videos/xbox.mp4) |
 
-### Genuine failure videos
+#### Genuine failure videos
 
 These 12 sessions produced a valid experiment failure. “Goals reached” is the
 consecutive prefix completed before the terminal failed goal. Click a preview
@@ -126,7 +163,7 @@ to open the full failed-session MP4.
 | Gallon Milk | 0/28 | Workspace limit | [![Gallon Milk failure](results/fig8_consecutive_failures/previews/gallon-milk.gif)](results/fig8_consecutive_failures/videos/gallon-milk.mp4) |
 | Push T | 4/28 | Goal timeout | [![Push T failure](results/fig8_consecutive_failures/previews/push-t.gif)](results/fig8_consecutive_failures/videos/push-t.mp4) |
 
-### Protocol-invalid abort videos
+#### Protocol-invalid abort videos
 
 These seven sessions were stopped by the erroneous displacement guard. They are
 shown for diagnosis but are not counted as genuine controller failures.

@@ -1,0 +1,26 @@
+object,task,source,outcome,goals_reached,requested_goals,failure_cause
+Letter I,I_shape_texture,rerun_2026-08-28,PASS,28,28,
+Letter C,C_shape_texture,rerun_2026-08-28,PASS,28,28,
+Letter R,R_shape_texture,rerun_2026-08-28,PASS,28,28,
+Letter A,A_shape_video,rerun_2026-08-28,PASS,28,28,
+Letter Y,Y_shape_video,rerun_2026-08-28,FAIL,4,28,goal_timeout
+Letter G,G_shape_video,rerun_2026-08-28,PASS,28,28,
+Letter B,B_shape_video,rerun_2026-08-28,PASS,28,28,
+Letter 3,3_shape_video,rerun_2026-08-28,PASS,28,28,
+Letter H,H_shape_texture,rerun_2026-08-28,PASS,28,28,
+Letter E,E_shape_video,rerun_2026-08-28,FAIL,4,28,goal_timeout
+Letter S,S_shape,rerun_2026-08-28,PASS,28,28,
+Expo Box,expo_box,rerun_2026-08-28,PASS,28,28,
+Lotion,lotion_block,rerun_2026-08-28,PASS,28,28,
+Wood Block,wood_block,rerun_2026-08-28,FAIL,24,28,goal_timeout
+Tape,tape,rerun_2026-08-28,FAIL,2,28,goal_timeout
+Eraser,eraser,retained_4b12d8a,FAIL,0,28,persistent_topple
+Milk Bottle,milk,rerun_2026-08-28,FAIL,5,28,goal_timeout
+Clamp,clamp_block,rerun_2026-08-28,PASS,28,28,
+Chicken Broth,chicken_broth,rerun_2026-08-28,PASS,28,28,
+Egg Carton,egg_carton,rerun_2026-08-28,FAIL,3,28,workspace_limit
+Book,book,rerun_2026-08-28,PASS,28,28,
+Baby Toy,baby_toy,rerun_2026-08-28,PASS,28,28,
+Gallon Milk,gallon_milk,retained_4b12d8a,FAIL,0,28,workspace_limit
+Xbox,xbox,rerun_2026-08-28,PASS,28,28,
+Push T,push_t_mesh,rerun_2026-08-28,PASS,28,28,
