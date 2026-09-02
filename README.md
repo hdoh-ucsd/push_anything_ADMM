@@ -70,18 +70,18 @@ validated general-purpose 3D manipulation.
 
 For each local candidate, `LCSFormulator` produces the discrete dynamics
 
-$$
+```math
 x_{k+1} = A x_k + B u_k + D\lambda_k + d,
 \qquad k=0,\ldots,N-1,
-$$
+```
 
 and complementarity data based on the current contact geometry. C3+ introduces
 the slack
 
-$$
+```math
 \eta_k := E x_k + F\lambda_k + H u_k + c,
 \qquad 0 \leq \lambda_k \perp \eta_k \geq 0.
-$$
+```
 
 For vectors, $0 \leq a \perp b \geq 0$ means $a \geq 0$, $b \geq 0$,
 and $a^\top b=0$ (equivalently, $a_jb_j=0$ for every component $j$).
@@ -93,89 +93,139 @@ and $a^\top b=0$ (equivalently, $a_jb_j=0$ for every component $j$).
 3. consensus/dual and penalty updates;
 4. a final QP/trajectory extraction.
 
-### The C3 algorithm (consensus complementarity control)
+### The C3+ algorithm
 
-This is the formulation of Aydinoglu, Wei & Posa, *Consensus Complementarity
-Control for Multi-Contact MPC* ([arXiv:2304.11259](https://arxiv.org/abs/2304.11259),
-§IV), restated in this repository's notation. The paper is the authoritative
-source; what follows is our summary of its math and how each piece maps to
-this port.
+C3+ retains the consensus-ADMM scaffold introduced by Aydinoglu, Wei & Posa
+in *Consensus Complementarity Control for Multi-Contact MPC*
+([arXiv:2304.11259](https://arxiv.org/abs/2304.11259), §IV), then changes the
+contact representation and projection as described by Bui et al. The
+derivation below starts from C3 and marks the point at which C3+ intervenes.
 
-**The problem.** Contact-implicit MPC over the LCS is the finite-horizon
-program
+**Shared contact-implicit problem.** Both algorithms optimize the same
+finite-horizon LCS problem:
 
-$$
+```math
 \begin{aligned}
 \underset{\{x_k,u_k,\lambda_k\}}{\operatorname{minimize}}\quad
   & \sum_{k=0}^{N-1} \ell_k(x_k,\lambda_k,u_k) + \ell_N(x_N) \\
 \text{subject to}\quad
-  & x_{k+1}=Ax_k+Bu_k+D\lambda_k+d, && k=0,\ldots,N-1, \\
+  & x_{k+1}=Ax_k+Bu_k+D\lambda_k+d,
+    && k=0,\ldots,N-1, \\
   & 0\leq\lambda_k\perp Ex_k+F\lambda_k+Hu_k+c\geq0,
     && k=0,\ldots,N-1, \\
   & x_0=x_{\mathrm{meas}}.
 \end{aligned}
-$$
+```
 
-with quadratic stage costs. The complementarity constraint is what makes
-this hard: it is nonconvex and combinatorial (each contact is either open
-with zero force or closed with nonnegative force), so the feasible set is a
-union of exponentially many pieces — solving it exactly is a mixed-integer
-program.
+The complementarity constraint makes the feasible set nonconvex and
+combinatorial: each contact component is either open with zero force or
+closed with zero gap velocity.
 
-**The consensus split.** Stack each step's variables as
-$z_k := (x_k,\lambda_k,u_k)$ and use calligraphic symbols for the two
-feasible sets: $\mathcal{D}$ contains the *linear* dynamics and input bounds,
-whereas $\mathcal{H}$ contains the *complementarity* conditions. C3 introduces
-a consensus copy $\delta_k$ and scaled dual $\omega_k$, with
-$z\in\mathcal{D}$, $\delta\in\mathcal{H}$, and $z=\delta$. The calligraphic
-set names deliberately distinguish $\mathcal{D}$ and $\mathcal{H}$ from the
-LCS matrices $D$ and $H$. The nonconvexity is now confined to
-$\mathcal{H}$.
+**C3 consensus scaffold.** C3 stacks
+$z_k:=(x_k,\lambda_k,u_k)$. The set $\mathcal{D}$ contains the linear
+dynamics and bounds, while $\mathcal{H}$ contains the complementarity
+conditions. A consensus copy $\delta$ and scaled dual $\omega$ impose
+$z\in\mathcal{D}$, $\delta\in\mathcal{H}$, and $z=\delta$ through
 
-**The ADMM iteration.** With per-step penalty matrices $G_k$ and projection
-metrics $U_k$, each iteration alternates three steps:
-
-$$
+```math
 \begin{aligned}
 z^{i+1}
-  &= \underset{z\in\mathcal{D}}{\operatorname{argmin}}
-     \left[J(z)+\frac{1}{2}\sum_{k=0}^{N-1}
-     \left\|z_k-\delta_k^i+\omega_k^i\right\|_{G_k}^2\right],
-     && \text{(coupled convex QP)}, \\
+  &=\underset{z\in\mathcal{D}}{\operatorname{argmin}}
+    \left[J(z)+\frac{1}{2}\sum_{k=0}^{N-1}
+    \left\|z_k-\delta_k^i+\omega_k^i\right\|_{G_k}^2\right], \\
 \delta_k^{i+1}
-  &= \Pi_{\mathcal{H}_k}^{U_k}\!\left(z_k^{i+1}+\omega_k^i\right),
-     && k=0,\ldots,N-1, \\
+  &=\Pi_{\mathcal{H}_k}^{U_k}\!\left(z_k^{i+1}+\omega_k^i\right), \\
 \omega_k^{i+1}
-  &= \omega_k^i+z_k^{i+1}-\delta_k^{i+1},
-     && k=0,\ldots,N-1,
+  &=\omega_k^i+z_k^{i+1}-\delta_k^{i+1}.
 \end{aligned}
-$$
+```
 
-where $\|a\|_G^2:=a^\top G a$ and $\Pi_{\mathcal{H}_k}^{U_k}$ denotes
-projection onto $\mathcal{H}_k$ in the metric induced by $U_k$.
+Here $\|a\|_G^2:=a^\top G a$. The first line is one convex QP coupled across
+the horizon. In baseline C3, the second line projects each time step onto
+the full complementarity set, using a small MIQP or a heuristic projection.
 
-Step 1 is one convex QP over the whole horizon — this is where the
-trajectory is optimized. Step 2 is where contact decisions are made: each
-time step's copy is projected onto the complementarity set, and because the
-steps decouple, the projections can run in parallel. The paper solves the
-projection either exactly (a small per-step MIQP) or with a fast heuristic;
-after a fixed number of iterations the first input of the latest QP solution
-is applied and the horizon recedes.
+**C3+ intervention: expose the slack.** C3+ augments each decision block with
+the complementarity slack,
 
-**What this buys.** The consensus structure never linearizes the
-complementarity away — contact mode sequences are *chosen* by the
-projection, not assumed — yet everything expensive is convex. That is what
-lets C3 run as real-time MPC through contact.
+```math
+\bar z_k:=\left(x_k,\lambda_k,u_k,\eta_k\right),
+\qquad
+\eta_k=Ex_k+F\lambda_k+Hu_k+c.
+```
 
-**Mapping to this port.** `control/admm_solver.py` implements the loop with
-the C3+ variant: the slack $\eta=Ex+F\lambda+Hu+c$ is added as an explicit
-variable, so step 2 becomes a *componentwise* $(\lambda,\eta)$ projection (each
-scalar pair is resolved by a case split) instead of a per-step MIQP —
-cheaper, at the cost of a looser projection. `G` and `U` above are exactly
-the `consensus_cost_scale`/`projection_cost_scale` matrices in the task
-YAMLs, the dual update is the consensus/penalty update in the solver, and
-the "final QP" polish (with its contact-weight boost) extracts the executed
-trajectory after the last iteration.
+The hard part of the feasible set is now only the product constraint between
+$\lambda_k$ and $\eta_k$. Define
+
+```math
+\mathcal{C}:=
+\left\{(a,b)\in\mathbb{R}^{n_\lambda}\times\mathbb{R}^{n_\lambda}
+:a\geq0,\ b\geq0,\ a\odot b=0\right\},
+```
+
+where $\odot$ denotes elementwise multiplication. C3+'s two split sets are
+
+```math
+\begin{aligned}
+\mathcal{D}_+
+  &:=\left\{\bar z:
+    \begin{array}{l}
+    x_{k+1}=Ax_k+Bu_k+D\lambda_k+d,\\
+    \eta_k=Ex_k+F\lambda_k+Hu_k+c,\\
+    x_0=x_{\mathrm{meas}},\ \text{and all configured bounds hold}
+    \end{array}\right\}, \\
+\mathcal{H}_+
+  &:=\left\{\bar\delta:
+    (\delta_{\lambda,k},\delta_{\eta,k})\in\mathcal{C};\
+    \delta_{x,k},\delta_{u,k}\ \text{are free}\right\}.
+\end{aligned}
+```
+
+C3+ then applies the same ADMM scaffold to the augmented variables:
+
+```math
+\begin{aligned}
+\bar z^{i+1}
+  &=\underset{\bar z\in\mathcal{D}_+}{\operatorname{argmin}}
+    \left[J(\bar z)+\frac{1}{2}\sum_{k=0}^{N-1}
+    \left\|\bar z_k-\bar\delta_k^i+\bar\omega_k^i\right\|_{G_k}^2\right], \\
+\bar\delta_k^{i+1}
+  &=\Pi_{\mathcal{H}_{+,k}}^{U_k}
+    \!\left(\bar z_k^{i+1}+\bar\omega_k^i\right), \\
+\bar\omega_k^{i+1}
+  &=\bar\omega_k^i+\bar z_k^{i+1}-\bar\delta_k^{i+1}.
+\end{aligned}
+```
+
+**Closed-form C3+ projection.** Let
+$(\lambda_j^\circ,\eta_j^\circ)$ be component $j$ of
+$\bar z_k^{i+1}+\bar\omega_k^i$, and define the weight ratio
+$r_j:=\sqrt{u_{\lambda,j}/u_{\eta,j}}$. Bui's componentwise projection is
+
+```math
+(\delta_{\lambda,j},\delta_{\eta,j})=
+\begin{cases}
+(0,\eta_j^\circ),
+  & \eta_j^\circ\geq0\ \text{and}\
+    \eta_j^\circ\geq r_j\lambda_j^\circ,\\
+(\lambda_j^\circ,0),
+  & \lambda_j^\circ\geq0\ \text{and}\
+    \eta_j^\circ<r_j\lambda_j^\circ,\\
+(0,0), & \text{otherwise}.
+\end{cases}
+```
+
+The $x$ and $u$ components pass through the projection unchanged. Thus C3+
+preserves C3's horizon-wide convex QP, consensus update, and dual ascent, but
+replaces the full per-step contact projection with independent scalar
+$(\lambda_j,\eta_j)$ case splits. The projected copy satisfies
+$0\leq\delta_\lambda\perp\delta_\eta\geq0$ exactly; the QP copy approaches it
+through consensus.
+
+`control/admm_solver.py` implements this augmented loop. Its $G$ and $U$
+weights come from the task YAMLs, and its final-QP polish uses the selected
+contact branch to extract the trajectory. In receding-horizon operation, only
+the first execution interval is applied before the state and local LCS are
+rebuilt.
 
 ### The Anitescu contact formulation
 
@@ -190,7 +240,7 @@ normal force $\lambda_n$, the four friction-pyramid edge forces $\lambda_t$,
 and a slack $\gamma$ that converges to the sliding speed — coupled by three
 complementarity conditions on the post-step velocity $v^+$:
 
-$$
+```math
 \begin{aligned}
 0 &\leq \lambda_n \perp
   \frac{\phi}{\Delta t}+J_n v^+ \geq 0,
@@ -202,7 +252,7 @@ $$
   \operatorname{Diag}(\boldsymbol\mu)\lambda_n-E_t\lambda_t \geq 0,
   && \text{(friction-pyramid bound)}.
 \end{aligned}
-$$
+```
 
 Here $\lambda_n,\gamma,\phi,\boldsymbol\mu\in\mathbb{R}^{n_c}$,
 $\lambda_t\in\mathbb{R}^{4n_c}$, and
@@ -218,7 +268,7 @@ One combined Jacobian replaces the three groups. Replicate the per-contact
 friction coefficients across their four pyramid edges as
 $\bar{\boldsymbol\mu}:=E_t^\top\boldsymbol\mu\in\mathbb{R}^{4n_c}$. Then
 
-$$
+```math
 \begin{aligned}
 J_c
   &:= E_t^\top J_n
@@ -228,7 +278,7 @@ J_c
   \frac{E_t^\top\phi}{\Delta t}+J_c v^+ \geq 0,
   \qquad \lambda\in\mathbb{R}^{4n_c}.
 \end{aligned}
-$$
+```
 
 Each $\lambda_j$ is now a force along a *cone edge* (normal tilted by $\mu$
 into a tangent direction); the normal component is $E_t\lambda$, while the
@@ -278,23 +328,23 @@ end effector and plans in a small mixed robot/object state:
 
 Define the object configuration and spatial velocity as
 
-$$
+```math
 q_O:=\begin{bmatrix}q_{WO}\\{}^W\!p_O\end{bmatrix}\in\mathbb{R}^7,
 \qquad
 v_O:=\begin{bmatrix}{}^W\!\omega_O\\{}^W\!v_O^{\mathrm{lin}}\end{bmatrix}
 \in\mathbb{R}^6.
-$$
+```
 
 The Python port stores the reduced state in object-first order:
 
-$$
+```math
 x:=
 \begin{bmatrix}
 q_O \\ {}^W\!p_{EE} \\ v_O \\ {}^W\!v_{EE}
 \end{bmatrix}
 \in\mathbb{R}^{7+3+6+3}
 =\mathbb{R}^{19}.
-$$
+```
 
 Here ${}^W\!p_{EE}$ and ${}^W\!v_{EE}$ are the spherical pusher's position
 and velocity in the world frame. This storage order matches
@@ -306,11 +356,11 @@ differs from the actor-first order used by the native C++ reference.
 The input is the **Cartesian force applied at the pusher**, not joint
 torques:
 
-$$
+```math
 u_k\in\mathcal{U}:=
 \left\{u\in\mathbb{R}^3:\lVert u\rVert_\infty\leq F_{\max}\right\},
 \qquad [u_k]=\mathrm{N}.
-$$
+```
 
 The bound $F_{\max}$ is task-specific; in this formulation the configuration
 key `torque_limit` is interpreted in newtons.
@@ -326,22 +376,22 @@ falsification runs.)
 
 Drake evaluates the full arm/object/table plant in the standard form
 
-$$
+```math
 M_{\mathrm{plant}}(q)\dot v+h(q,v)
 =\tau_g(q)+B_\tau\tau+J_n^\top\lambda_n+J_t^\top\lambda_t,
-$$
+```
 
 where $h$ collects Coriolis and centrifugal bias terms and
 $\tau\in\mathbb{R}^7$ is joint torque. The reduced planner retains the
 object dynamics and contact geometry but replaces the arm dynamics with the
 spherical pusher's isotropic point-mass model:
 
-$$
+```math
 \mathcal{M}(r)\dot\nu+h_r(r,\nu)
 =\tau_{g,r}(r)+B_u u+J_n^\top\lambda_n+J_t^\top\lambda_t,
 \qquad
 \mathcal{M}:=\operatorname{Diag}(M_O,m_{EE}I_3).
-$$
+```
 
 Thus $u\in\mathbb{R}^3$ is Cartesian force in the planner, while the OSC
 later maps the planned trajectory and force to the simulator's joint torques.
@@ -358,7 +408,7 @@ $\nu:=[v_O^\top\;({}^W\!v_{EE})^\top]^\top$. At the measured linearization
 point $(r^\star,\nu^\star)$, the unconstrained generalized acceleration has
 the affine model
 
-$$
+```math
 \begin{aligned}
 f(r,\nu,u) &\approx J_r r+J_\nu\nu+J_u u+d_v, \\
 J_r &:= \left.\frac{\partial f}{\partial r}\right|_{(r^\star,\nu^\star,0)},
@@ -368,7 +418,7 @@ J_u &:= \left.\frac{\partial f}{\partial u}\right|_{(r^\star,\nu^\star,0)},
 &
 d_v &:= f(r^\star,\nu^\star,0)-J_r r^\star-J_\nu\nu^\star.
 \end{aligned}
-$$
+```
 
 Because the reduced input channel is linear, this definition of $d_v$ makes
 the affine model exact at the measured state for every $u$.
@@ -401,21 +451,21 @@ in `linearize_discrete_ee_space` (`control/lcs_formulator.py:2608-2697`).
 Partitioning the folded Jacobian by reduced velocity as
 $J_c=[J_{c,O}\;J_{c,EE}]$ gives
 
-$$
+```math
 J_c:=E_t^\top J_n
   +\operatorname{Diag}(E_t^\top\boldsymbol\mu)J_t,
-$$
+```
 
-$$
+```math
 \begin{aligned}
 x_{k+1} &= Ax_k+Bu_k+D\lambda_k+d, \\
 0 &\leq\lambda_k\perp Ex_k+F\lambda_k+Hu_k+c\geq0,
 \end{aligned}
-$$
+```
 
 with
 
-$$
+```math
 \begin{aligned}
 D &=
 \begin{bmatrix}
@@ -435,7 +485,7 @@ c &= \frac{E_t^\top\phi}{\Delta t}
    +\Delta t\,J_cd_v
    -\frac{E_t^\top J_n\mathcal{N}_{\nu r}r^\star}{\Delta t}.
 \end{aligned}
-$$
+```
 
 Reading the complementarity row as physics: $Ex+F\lambda+Hu+c$ predicts
 the post-step contact velocity/gap of each friction-pyramid direction;
@@ -586,11 +636,11 @@ continuously underneath it.
    $(A,B,D,d,E,F,H,c)$ with $\lambda_k\in\mathbb{R}^{20}$ over a horizon
    $N=5$:
 
-   $$
+   ```math
    x_{k+1}=Ax_k+Bu_k+D\lambda_k+d,
    \qquad
    0\leq\lambda_k\perp Ex_k+F\lambda_k+Hu_k+c\geq0.
-   $$
+   ```
 
 5. **C3+ solve (per candidate).**
    *Input:* the candidate's LCS, the goal-encoding desired state $x_d$, and
@@ -634,7 +684,7 @@ continuously underneath it.
    the only block that talks to the motors. Each control tick solves DAIRLab's
    inverse-dynamics QP with decision variables $(\dot v,\tau,\lambda)$:
 
-   $$
+   ```math
    \begin{aligned}
    \underset{\dot v,\tau,\lambda}{\operatorname{minimize}}\quad
      & \sum_i
@@ -645,16 +695,16 @@ continuously underneath it.
        =B\tau+\tau_g+J_{\mathrm{ext}}^\top f^\star, \\
      & -\tau_{\max}\leq\tau\leq\tau_{\max}.
    \end{aligned}
-   $$
+   ```
 
    with the commanded task accelerations from PD on each tracking objective:
 
-   $$
+   ```math
    \ddot y_i^{\mathrm{cmd}}
    =\ddot y_i^{\mathrm{des}}
     +k_p\bigl(y_i^{\mathrm{des}}-y_i\bigr)
     +k_d\bigl(\dot y_i^{\mathrm{des}}-\dot y_i\bigr).
-   $$
+   ```
 
    The tracking objectives $y_i$ are the tip position ($k_p=200$,
    $k_d=20$), the stick-axis orientation (weighted $0.35^2=0.1225$
@@ -691,11 +741,11 @@ open table from its start pose to a goal pose. The goal variables are the
 object's planar SE(2) pose in the `oim_world` frame
 (`examples/sampling_c3/oim_t/parameters/oim_t.yaml` in the C++ worktree):
 
-$$
+```math
 g:=(x_g,y_g,\theta_g)=(0.381,-0.400,3.1416),
 \qquad
 x^o:=(x,y,\theta),
-$$
+```
 
 where $g$ is `object.goal_pose` and $x^o$ is the measured T pose, with yaw
 extracted from its quaternion.
@@ -703,7 +753,7 @@ extracted from its quaternion.
 Success is a terminal tolerance check on both goal variables simultaneously
 (`task.translation_tolerance`, `task.orientation_tolerance`):
 
-$$
+```math
 e_p:=\left\lVert
 \begin{bmatrix}x\\y\end{bmatrix}
 -\begin{bmatrix}x_g\\y_g\end{bmatrix}
@@ -711,7 +761,7 @@ e_p:=\left\lVert
 \qquad
 e_\theta:=\left|\operatorname{wrap}(\theta-\theta_g)\right|
 <0.10\ \mathrm{rad}.
-$$
+```
 
 #### Orientation error and the wrap function
 
@@ -721,10 +771,10 @@ The orientation error is computed in three steps
 1. **Yaw extraction.** The measured object quaternion
    $q_{WO}=(q_w,q_x,q_y,q_z)$ is normalized and reduced to its heading:
 
-   $$
+   ```math
    \theta=\operatorname{atan2}
    \!\left(2(q_wq_z+q_xq_y),\ 1-2(q_y^2+q_z^2)\right).
-   $$
+   ```
 
    This is the standard ZYX yaw formula; roll and pitch are ignored by the
    planar gate (a tilted or toppled T is caught by the separate settle check's
@@ -739,11 +789,11 @@ The orientation error is computed in three steps
 
 3. **Wrapping.**
 
-   $$
+   ```math
    \operatorname{wrap}(\Delta\theta)
    :=\operatorname{atan2}\!\left(\sin\Delta\theta,\cos\Delta\theta\right)
    \in(-\pi,\pi].
-   $$
+   ```
 
    Feeding $\Delta\theta$ through sine and cosine erases every multiple of
    $2\pi$, and `atan2` rebuilds the unique representative in $(-\pi,\pi]$.
@@ -777,7 +827,7 @@ object quaternion, object position, then velocities), the input is
 $u\in\mathbb{R}^3$ (Cartesian pusher force), contact forces are
 $\lambda\in\mathbb{R}^{20}$, and the horizon is $N=5$:
 
-$$
+```math
 \begin{aligned}
 \underset{\{x_k,u_k,\lambda_k\}}{\operatorname{minimize}}\quad
   & \sum_{k=0}^{N}\lVert x_k-x_d\rVert_Q^2
@@ -789,7 +839,7 @@ $$
     && k=0,\ldots,N-1, \\
   & x_0=x_{\mathrm{meas}}.
 \end{aligned}
-$$
+```
 
 The desired state $x_d$ encodes the `open_table` goal variables directly: the
 object-position slots hold $(x_g,y_g,h_{\mathrm{rest}})$ and the
@@ -798,7 +848,7 @@ object-quaternion slots hold $q(\theta_g)$, a pure yaw rotation built from
 matrices are assembled in `RunSolveAtSampledPusher`
 (`xarm6_full_sampling_c3plus.cc:1579-1596`):
 
-$$
+```math
 \begin{aligned}
 Q
   &= 50\,\operatorname{Diag}\!\left(
@@ -811,7 +861,7 @@ Q
 R
   &= 0.01\,I_3.
 \end{aligned}
-$$
+```
 
 so translation error is weighted at an effective 10,000 per m² on object x/y
 and orientation enters through the quaternion-error terms. ADMM additionally
