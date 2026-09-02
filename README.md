@@ -437,23 +437,36 @@ The contact pairs are the pusher-vs-object faces plus the object-vs-ground
 witness points, so `n_c` changes with the sampled candidate and the object's
 pose — these matrices are re-inferred at every tick and for every candidate.
 
-Write $\mathcal{N}_{r\nu}:=\mathrm{diag}(N_O,I_3)$ for the map
-$\dot r=\mathcal{N}_{r\nu}\nu$, and let $\mathcal{N}_{\nu r}$ denote its
-configuration-rate-to-velocity counterpart. The reduced inertia is
-$\mathcal{M}=\mathrm{diag}(M_O,m_{EE}I_3)$ defined above: the object
-uses its spatial inertia $M_O$, while the planner models the pusher as an
-isotropic point mass $m_{EE}$. All quantities below are evaluated at the current
-linearization point; the $\star$ superscripts are suppressed for readability.
+The reduced configuration-rate and velocity maps are
+
+```math
+\dot r=\mathcal{N}_{r\nu}\nu,
+\qquad
+\mathcal{N}_{r\nu}:=\mathrm{diag}(N_O,I_3),
+\qquad
+\nu=\mathcal{N}_{\nu r}\dot r.
+```
+
+The corresponding reduced inertia is
+
+```math
+\mathcal{M}:=\mathrm{diag}(M_O,m_{EE}I_3).
+```
+
+Here, `M_O` is the object's spatial inertia and `m_EE` is the isotropic point
+mass assigned to the pusher in the planning model. All quantities below are
+evaluated at the current linearization point; asterisk superscripts are
+suppressed for readability.
 
 Under the default Anitescu contact model, friction is folded into one
 combined contact Jacobian and the reduced-coordinate LCS blocks are assembled
 in `linearize_discrete_ee_space` (`control/lcs_formulator.py:2608-2697`).
-Partitioning the folded Jacobian by reduced velocity as
-$J_c=[J_{c,O}\;J_{c,EE}]$ gives
+Partitioning the folded Jacobian by object and end-effector velocity gives
 
 ```math
 J_c:=E_t^\top J_n
-  +\mathrm{diag}(E_t^\top\boldsymbol\mu)J_t,
+  +\mathrm{diag}(E_t^\top\boldsymbol\mu)J_t
+  =\begin{bmatrix}J_{c,O} & J_{c,EE}\end{bmatrix}.
 ```
 
 ```math
