@@ -7,7 +7,7 @@ python -m pytest tests
 ```
 
 The current baseline and all non-passing nodes are documented in
-`../TEST_BASELINE.md` and `baseline_failures.yaml`. Do not change tolerances,
+`../docs/TEST_BASELINE.md` and `baseline_failures.yaml`. Do not change tolerances,
 expected values, configs, or solver behavior merely to make the baseline green.
 
 ## Current categories

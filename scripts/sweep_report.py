@@ -11,7 +11,7 @@ CSV  = ROOT / "summary.csv"
 HEATMAP_MD = ROOT / "heatmap.md"
 ENVELOPE_PNG = ROOT / "envelope.png"
 ENVELOPE_TXT = ROOT / "envelope.txt"
-REPORT_MD = ROOT / "REPORT.md"
+REPORT_MD = ROOT / "docs" / "REPORT.md"
 
 
 def load_rows() -> list[dict]:

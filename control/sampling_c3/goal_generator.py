@@ -229,7 +229,7 @@ def orientation_lookahead(q_now, q_goal, last_axis,
 
 
 class JackRandomGoalGenerator:
-    """Single-object kRandom re-goaler (reference jacktoy goal_params)."""
+    """Single-object random or orientation-sequence goal manager."""
 
     def __init__(self, rng, initial_xy, initial_quat,
                  x_limits=(0.42, 0.5),          # random_goal_x_limits
@@ -244,6 +244,8 @@ class JackRandomGoalGenerator:
                                                 # GetNominalOrientations)
                  nominal_names=None,
                  planar_yaw_step_max=None,       # optional reachable yaw step
+                 track_tripods=True,             # jack-only telemetry
+                 goal_mode="kRandom",           # random pose | fixed-XY sequence
                  success_mode="reference",      # "reference" | "flip"
                  flip_persistence=10,           # ticks of tripod match to latch
                  flip_event_persistence=3):     # ticks to log a tripod change
@@ -263,6 +265,10 @@ class JackRandomGoalGenerator:
                               if nominal_names is None else list(nominal_names))
         self._planar_yaw_step_max = (None if planar_yaw_step_max is None
                                      else float(planar_yaw_step_max))
+        self._track_tripods_enabled = bool(track_tripods)
+        if goal_mode not in ("kRandom", "kOrientationSequence"):
+            raise ValueError(f"unknown goal_mode: {goal_mode!r}")
+        self.goal_mode = goal_mode
         self.orientation_index = -1     # reference h:182
         self.goals_reached = 0
         # --- flip success mode (USER-DIRECTED DEVIATION 2026-08-17) ------
@@ -291,6 +297,8 @@ class JackRandomGoalGenerator:
         return self._current_tripod
 
     def _track_tripod(self, obj_tripod) -> None:
+        if not self._track_tripods_enabled:
+            return
         if obj_tripod == self._current_tripod:
             self._cand_tripod = None
             self._cand_streak = 0
@@ -315,8 +323,10 @@ class JackRandomGoalGenerator:
         reference mode: cc:135-154 (pos<thr AND geodesic<thr).
         flip mode: resting-tripod match held flip_persistence checks.
         """
-        obj_tripod = tripod_id(obj_quat)
-        self._track_tripod(obj_tripod)
+        obj_tripod = tripod_id(obj_quat) if (
+            self._track_tripods_enabled or self.success_mode == "flip") else None
+        if obj_tripod is not None:
+            self._track_tripod(obj_tripod)
         if self.success_mode == "flip":
             if obj_tripod == tripod_id(self.goal_quat):
                 self._match_streak += 1
@@ -326,8 +336,7 @@ class JackRandomGoalGenerator:
                 return False
             self._match_streak = 0
             self.goals_reached += 1
-            self._draw_position()
-            self._draw_orientation(avoid_tripod=obj_tripod)
+            self._advance_goal(avoid_tripod=obj_tripod)
             return True
         pos_err = float(np.linalg.norm(
             np.asarray(obj_xy, dtype=float) - self.goal_xy))
@@ -335,9 +344,21 @@ class JackRandomGoalGenerator:
         if pos_err >= self._pos_thr or ang_err >= self._ori_thr:
             return False
         self.goals_reached += 1
-        self._draw_position()
-        self._draw_orientation()
+        self._advance_goal()
         return True
+
+    def _advance_goal(self, avoid_tripod=None) -> None:
+        """Apply DAIRLab OnGoalReached semantics for the selected mode."""
+        if self.goal_mode == "kRandom":
+            self._draw_position()
+            self._draw_orientation(avoid_tripod=avoid_tripod)
+            return
+        # Reference CycleThroughOrientationSequence uses goal_counter before
+        # incrementing it. goals_reached has already been incremented here.
+        idx = (self.goals_reached - 1) % len(self._nominals)
+        q = np.asarray(self._nominals[idx], dtype=float)
+        self.goal_quat = q / np.linalg.norm(q)
+        self.orientation_index = idx
 
     def draw_initial_goal(self, avoid_tripod=None) -> None:
         """Draw goal #1 from the kRandom distribution (port option,
@@ -363,8 +384,7 @@ class JackRandomGoalGenerator:
         canonical path.
         """
         self.goals_reached += 1
-        self._draw_position()
-        self._draw_orientation()
+        self._advance_goal()
 
     def _draw_position(self) -> None:
         # Single object: datum is always NaN at draw time -> plain uniform

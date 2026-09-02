@@ -33,6 +33,7 @@ TASKS_YAML = os.path.join(REPO, "config", "tasks.yaml")
 
 # display name -> reference dir
 OBJECTS = {
+    "Push T (mesh)": "T_shape_video",
     "Letter I": "I_shape_texture",
     "Letter C": "C_shape_texture",
     "Letter R": "R_shape_texture",
@@ -43,7 +44,7 @@ OBJECTS = {
     "Letter 3": "3_shape_video",
     "Letter H": "H_shape_texture",
     "Letter E": "E_shape_video",
-    "Letter S": "S_shape_texture",
+    "Letter S": "S_shape",
     "Expo Box": "expo_box",
     "Lotion": "lotion",
     "Wood Block": "wood_block",
@@ -58,6 +59,10 @@ OBJECTS = {
     "Gallon Milk": "gallon_milk",
     "Xbox": "xbox",
 }
+
+# Port task/asset names that intentionally differ from the upstream folder.
+SOURCE_ALIASES = {"S_shape": "S_shape_texture"}
+TASK_ALIASES = {"T_shape_video": "push_t_mesh"}
 
 
 def obj_z_extents(path):
@@ -165,7 +170,7 @@ def main():
     blocks = []
     report = []
     for disp, name in OBJECTS.items():
-        src = os.path.join(REF, name)
+        src = os.path.join(REF, SOURCE_ALIASES.get(name, name))
         dst = os.path.join(REPO, "sim", "models", name)
         if not os.path.isdir(src):
             print(f"MISSING ASSET DIR: {name}"); sys.exit(1)
@@ -182,7 +187,8 @@ def main():
             f"{disp:14s} {name:18s} link={link:18s} m={mass:<7} cm={cmass:<6} "
             f"z=[{zmin:+.4f},{zmax:+.4f}] init_z={-zmin:.4f} "
             f"pwl={(zmax-zmin)+0.05:.4f} wit0={wit[0]}")
-        if f"\n  {name}:\n" in existing:
+        task_name = TASK_ALIASES.get(name, name)
+        if f"\n  {task_name}:\n" in existing:
             continue
         blocks.append(task_block(name, link, mass, cmass, zmin, zmax, wit))
     print("\n".join(report))

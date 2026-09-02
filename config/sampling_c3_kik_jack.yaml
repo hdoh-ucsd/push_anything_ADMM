@@ -94,6 +94,10 @@ freeze_c3_ee_z: true
 use_reposition_pwl_trajectory: true
 w_rot: 0.0
 surrogate_admm_iters: 3
+# Reference jacktoy sampling_c3_options.yaml uses the absolute input cost
+# ||u||_R^2, not ||u-u_previous_solve||_R^2. Keep the C3+ projection, but
+# start its control regularization from that published C3 setting.
+penalize_input_change: false
 # Per-task ADMM solver scales — 2026-08-16 contact-latch regression fix.
 # Reference jacktoy/parameters/sampling_c3plus_options.yaml pins
 # u_lambda_list = uniform 4 (:192-199) and w_G = 0.03 (:73); the port's
@@ -104,6 +108,7 @@ surrogate_admm_iters: 3
 # 2026-08-16: HEAD + these values re-latches contact (jack_headscales).
 u_lambda: 4.0
 w_G: 0.03
+w_G_position: 0.05
 # PAPER-ERA G STRUCTURE EXPERIMENT (2026-08-17, user-directed) —
 # FALSIFIED for C3+: transplanting the plain-C3 paper G (w_G 0.25,
 # g_x [800 EE pos, 100 quat, 10 obj pos, 0.1 vels], g_lambda 0.005,

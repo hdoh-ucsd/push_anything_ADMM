@@ -62,6 +62,7 @@ _STICKY_TAGS = {
     "[FLIP]",
     "[GOAL-GEN] goal #",
     "[GOAL-GEN] success mode",
+    "[SCENARIO]",
 }
 _ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]", "[CONTACT-RUN]", "[ENTRY-GATE]",
                  "[TOPPLE-DRIVER]"}
@@ -74,16 +75,20 @@ _ROLLING_TAGS = {"[STEP]", "[GS]", "[C3+]", "[CONTACT-RUN]", "[ENTRY-GATE]",
 # "c3" in the panel). Logs without a RUN-META line keep the raw string.
 _SOLVER_DISPLAY = {"c3plus": "C3+", "c3": "C3"}
 _RUN_META_SOLVER_RE = re.compile(r"^\[RUN-META\] .*?flags=\[solver=(\w+)")
+_SOLVER_MODE_RE = re.compile(r"^\[C3\] Solver mode:\s*(\w+)")
 _C3_LABEL = "c3"  # overwritten in main() from the log's RUN-META line
 
 
 def _detect_solver_label(log_path: Path) -> str:
     with open(log_path, errors="replace") as f:
-        for _ in range(20):
+        for _ in range(80):
             line = f.readline()
             if not line:
                 break
-            m = _RUN_META_SOLVER_RE.match(line)
+            # RUN-META is emitted before main's log tee is installed in some
+            # runs, so use the in-log solver banner as an equivalent fallback.
+            m = (_RUN_META_SOLVER_RE.match(line)
+                 or _SOLVER_MODE_RE.match(line))
             if m:
                 return _SOLVER_DISPLAY.get(m.group(1), m.group(1))
     return "c3"
@@ -111,6 +116,7 @@ _TAG_COLORS = {
     "[ENTRY-GATE]":            (255, 140, 140),
     "[FLIP]":                  (120, 255, 120),
     "[GOAL-GEN]":              (255, 240, 120),
+    "[SCENARIO]":              (147, 197, 253),
     "[TOPPLE-DRIVER]":         (255, 160, 160),
 }
 _DEFAULT_COLOR = (200, 200, 200)
@@ -561,7 +567,7 @@ def compose_frame(
         # solver-call counters beside controller steps.
         compact_sticky = [line for line in sticky_lines if line.startswith((
             "[ACHIEVED-FIXED-GOAL]", "[ACHIEVED-GOAL-RELEASE]",
-            "[GOAL-GEN]", "[FLIP]", "[RESULT]"))]
+            "[SCENARIO]", "[GOAL-GEN]", "[FLIP]", "[RESULT]"))]
         draw.text((panel_x0, y), "── recent events ──", font=font_tiny,
                   fill=(150, 150, 150))
         y += line_h

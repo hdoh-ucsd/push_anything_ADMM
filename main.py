@@ -55,6 +55,7 @@ from control.sampling_c3.goal_generator import (
     TRIPOD_NAMES,
     geodesic_angle,
     orientation_lookahead,
+    quat_multiply,
     topple_roll_plan,
     tripod_id,
 )
@@ -206,15 +207,82 @@ def _update_predicted_trajectory(
 # Helpers
 # ---------------------------------------------------------------------------
 
+def planar_tilt_angle(q_wxyz) -> float:
+    """Return the angle between a body's +Z axis and world +Z.
+
+    Yaw is intentionally ignored: planar pushing can control arbitrary yaw,
+    but it cannot right an object that has rolled or pitched onto its side.
+    """
+    q = np.asarray(q_wxyz, dtype=float).reshape(4)
+    norm = float(np.linalg.norm(q))
+    if not np.isfinite(norm) or norm <= 0.0:
+        return float("inf")
+    q /= norm
+    z_alignment = 1.0 - 2.0 * (q[1] ** 2 + q[2] ** 2)
+    return float(np.arccos(np.clip(z_alignment, -1.0, 1.0)))
+
+
+def object_position_is_divergent(current_xyz, initial_xyz, *,
+                                 planar_limit=1.0, vertical_limit=0.5) -> bool:
+    """Detect numerical position blowup without rejecting valid goal travel.
+
+    Continuous campaigns legitimately move an object more than 0.5 m from its
+    boot pose.  Vertical motion of that scale is never physical here, while a
+    one-metre planar displacement remains a conservative numerical guard.
+    """
+    current = np.asarray(current_xyz, dtype=float).reshape(3)
+    initial = np.asarray(initial_xyz, dtype=float).reshape(3)
+    delta = current - initial
+    return (float(np.linalg.norm(delta[:2])) > planar_limit
+            or abs(float(delta[2])) > vertical_limit)
+
 def load_task(task_name: str) -> dict:
     with open("config/tasks.yaml") as f:
         cfg = yaml.safe_load(f)
     tasks = cfg.get("tasks", {})
+    legacy_block_tasks = {
+        "I_shape_texture_block": "I_shape_block",
+        "C_shape_texture_block": "C_shape_block",
+        "R_shape_texture_block": "R_shape_block",
+        "A_shape_video_block": "A_shape_block",
+        "Y_shape_video_block": "Y_shape_block",
+        "G_shape_video_block": "G_shape_block",
+        "B_shape_video_block": "B_shape_block",
+        "3_shape_video_block": "3_shape_block",
+        "H_shape_texture_block": "H_shape_block",
+        "E_shape_video_block": "E_shape_block",
+        "S_shape_texture": "S_shape",
+    }
+    task_name = legacy_block_tasks.get(task_name, task_name)
     if task_name not in tasks:
         raise ValueError(
             f"Unknown task '{task_name}'. Valid options: {list(tasks.keys())}"
         )
-    return tasks[task_name]
+    task = tasks[task_name]
+    # Imported Fig. 8 tasks have a deterministic asset layout. Keep a narrow
+    # recovery path for configs produced by older/pruned task manifests that
+    # retained geometry metadata but dropped object_sdf and the shared
+    # controller-model inertia. Without this, object_type=tshape silently
+    # builds the analytic T instead of the selected imported object.
+    if task.get("object_sdf") is None:
+        link_name = str(task.get("link_name", ""))
+        model_dir = Path("sim/models") / task_name
+        inferred = model_dir / f"{task_name}.sdf"
+        linked_inferred = model_dir / f"{link_name}.sdf"
+        if not inferred.is_file() and linked_inferred.is_file():
+            inferred = linked_inferred
+        if inferred.is_file():
+            task["object_sdf"] = str(inferred)
+            task.setdefault("controller_mass", 1.0)
+            task.setdefault("controller_inertia", {
+                "mass": 1.0,
+                "com": [0.0, 0.0, 0.0],
+                "moments": [0.003, 0.003, 0.006],
+                "products": [0.0, 0.0, 0.0],
+            })
+            print(f"[TASK-ASSET-FALLBACK] {task_name}: object_sdf={inferred} "
+                  "controller_mass=1.0", flush=True)
+    return task
 
 
 def build_planner_workspace_bounds(sc3_params) -> list:
@@ -485,35 +553,42 @@ def main():
     # PORT_GOAL_MODE: env override to run a task under kRandom re-goaling
     # (the reference's consecutive-goals protocol, goal_params goal_mode: 0)
     # without touching its canonical yaml. Planar tasks get their boot
-    # quat synthesized from goal_yaw (flat rest: yaw quat ≡ full goal).
+    # quat synthesized as world-yaw * the task's nominal resting attitude.
     _env_goal_mode = os.environ.get("PORT_GOAL_MODE")
     if _env_goal_mode:
         task_cfg["goal_mode"] = _env_goal_mode
-    # The generator works in quaternions internally. Planar tasks do NOT
-    # get task_cfg["goal_quat"] set — they stay on the target_yaw path so
-    # the reference yaw lookahead (goal_params lookahead_angle 2 +
-    # angle_hysteresis 0.4; cc:427 min(angle, lookahead)) chunks large
-    # re-goal demands into sub-goals. Installing a goal quat bypasses that
-    # machinery (main.py GOAL-QUAT note) — the first 5-goal attempt stalled
-    # 390 s on a 2.66 rad static demand exactly this way.
+    # The generator works in quaternions internally. Planar tasks retain
+    # goal_yaw in task_cfg for configuration compatibility; the simulation
+    # loop synthesizes/installs the corresponding full quaternion and applies
+    # the reference quaternion lookahead to it.
     _gg_boot_quat = task_cfg.get("goal_quat")
+    _planar_nominal_quat = np.asarray(
+        task_cfg.get("planar_nominal_quat", [1.0, 0.0, 0.0, 0.0]),
+        dtype=float)
+    _planar_nominal_quat /= float(np.linalg.norm(_planar_nominal_quat))
     if _gg_boot_quat is None and "goal_yaw" in task_cfg:
         _hy = 0.5 * float(task_cfg["goal_yaw"])
-        _gg_boot_quat = [float(np.cos(_hy)), 0.0, 0.0, float(np.sin(_hy))]
+        _gg_boot_quat = quat_multiply(
+            np.array([np.cos(_hy), 0.0, 0.0, np.sin(_hy)]),
+            _planar_nominal_quat)
+    _gg_planar = (task_cfg.get("object_type") == "tshape")
     _goal_gen = None
     _initial_goal_drawn = False
-    if (str(task_cfg.get("goal_mode", "")) == "kRandom"
+    if (str(task_cfg.get("goal_mode", "")) in
+            ("kRandom", "kOrientationSequence")
             and _gg_boot_quat is not None):
-        # Planar (tshape) objects have ONE flat-resting nominal orientation
-        # (reference GetNominalOrientations) — pass [identity] so every
+        # Planar objects have one nominal resting orientation (reference
+        # GetNominalOrientations). Most are identity; imported meshes whose
+        # stable support plane is tilted provide a calibrated task value. Every
         # re-draw after the first applies >=90 deg of yaw to the previous
         # goal quat (cc:330-336). The jack keeps its tripod nominals.
         _gg_kwargs = {}
         if task_cfg.get("object_type") == "tshape":
             _gg_kwargs["nominal_orientations"] = [
-                np.array([1.0, 0.0, 0.0, 0.0])]
+                _planar_nominal_quat.copy()]
             _gg_kwargs["nominal_names"] = ["planar"]
             _gg_kwargs["planar_yaw_step_max"] = 2.0
+            _gg_kwargs["track_tripods"] = False
         if task_cfg.get("random_goal_x_limits") is not None:
             _gg_kwargs["x_limits"] = tuple(
                 float(v) for v in task_cfg["random_goal_x_limits"])
@@ -532,10 +607,10 @@ def main():
                 None if args.seed is None else [args.seed, 0x60A1]),
             initial_xy=np.asarray(task_cfg["goal_xy"], dtype=float),
             initial_quat=np.asarray(_gg_boot_quat, dtype=float),
+            goal_mode=str(task_cfg["goal_mode"]),
             success_mode=_goal_success_mode,
             **_gg_kwargs,
         )
-        _gg_planar = (task_cfg.get("object_type") == "tshape")
         _draw_initial_goal = (
             bool(task_cfg.get("krandom_draw_initial_goal", False))
             or os.environ.get("PORT_GOAL_DRAW_INITIAL", "0") == "1"
@@ -549,11 +624,9 @@ def main():
                                    float(_goal_gen.goal_xy[1])]
             task_cfg["goal_quat"] = [float(v) for v in _goal_gen.goal_quat]
             if _gg_planar:
-                # Planar tasks consume goal_yaw (target_yaw path — keeps
-                # the reference yaw-lookahead machinery active). Mirror
-                # the re-goal planar conversion for the drawn boot goal;
-                # without this the drawn quat would be ignored and the
-                # boot yaw would silently stay at the task literal.
+                # Keep the scalar yaw mirror used by planar sampling and
+                # telemetry. The simulation loop also installs this drawn
+                # quaternion as the full final orientation.
                 _q0 = _goal_gen.goal_quat
                 task_cfg["goal_yaw"] = float(np.arctan2(
                     2.0 * (_q0[0] * _q0[3] + _q0[1] * _q0[2]),
@@ -564,7 +637,7 @@ def main():
                   f"(krandom_draw_initial_goal, seed={args.seed}): "
                   f"xy=({task_cfg['goal_xy'][0]:+.3f},"
                   f"{task_cfg['goal_xy'][1]:+.3f}) "
-                  f"tripod={KNOMINAL_NAMES_JACK[_goal_gen.orientation_index]} "
+                  f"orientation={_goal_gen.nominal_names[_goal_gen.orientation_index]} "
                   f"quat=[{_gq0[0]:+.4f} {_gq0[1]:+.4f} "
                   f"{_gq0[2]:+.4f} {_gq0[3]:+.4f}]")
 
@@ -590,13 +663,17 @@ def main():
           f"Friction mu: {task_cfg.get('friction', '?')}")
     print(f"[MPC]  ADMM max iters: {args.admm_iter}   rho_init: {_rho_init}")
     print(f"[MPC]  Force limit: 30.0 Nm")
-    print(f"[COST] w_obj_xy:      {_cost.get('w_obj_xy', '?')}")
-    print(f"[COST] w_obj_z:       {_cost.get('w_obj_z', '?')}")
-    print(f"[COST] w_box_z:       {_cost.get('w_box_z', '?')}")
-    print(f"[COST] w_box_rp:      {_cost.get('w_box_rp', '?')}")
-    print(f"[COST] w_terminal:    {_cost.get('w_terminal', '?')}  (QN = w_terminal * Q)")
-    print(f"[COST] w_ee_approach: {_cost.get('w_ee_approach', '?')}")
-    print(f"[COST] w_torque:      {_cost.get('w_torque', '?')}")
+    if _cost.get("profile") == "push_anything":
+        from control.push_anything_cost import push_anything_cost_profile
+        _cp = push_anything_cost_profile(int(_cost.get("num_objects", 1)))
+        print(f"[COST] profile: push_anything  objects={_cp.num_objects}")
+        print(f"[COST] pose: w_Q={_cp.w_Q:g} w_R={_cp.w_R:g} "
+              f"Qdim={len(_cp.q_vector(True))}")
+        print(f"[COST] position: w_Q={_cp.w_Q_position:g} w_R={_cp.w_R:g}")
+        print(f"[COST] quaternion Hessian weight={_cp.quaternion_weight:g} "
+              f"regularizer_fraction={_cp.quaternion_regularizer_fraction:g}")
+    else:
+        print(f"[COST] legacy scalar configuration: {_cost}")
     if task_cfg.get("q_init_franka") is not None:
         print(f"[ENV]  init arm q: reference q_init_franka (tasks.yaml)")
     else:
@@ -702,7 +779,6 @@ def main():
         mesh_ground_witnesses_body=task_cfg.get(
             "ground_witness_points_body", None),
     )
-
     # EE-space planner: solver/cost get the low-dim sizing (n_x=19, n_u=3).
     # DEFAULT since the 2026-07-28 divergence removal (reference plans all
     # tasks with the point-EE simple model); --r7 opts out to the legacy
@@ -823,27 +899,27 @@ def main():
         _mpc_kwargs["dt_pose"] = _c3plus_dt_pose
     if args.ee_space:
         _mpc_kwargs["use_ee_space"] = True
-        # Reference ee_velocity_limits state constraint (added in commit
-        # b877785) is available via ee_velocity_bounds kwarg. Disabled by
-        # default 2026-07-18: analysis of results/push_t_evel_20260718_155846
-        # showed the cap exposes the port's LCS-vs-Drake phantom-contact
-        # divergence — arm settles hovering above T (Drake F_W=0) because
-        # LCS predicts contact and the velocity cap prevents the QP from
-        # commanding the arm downward. Re-enable by adding kwarg per-task.
+        if args.solver == "c3plus":
+            # Reference anything/parameters/sampling_c3plus_options.yaml:36.
+            # Apply the reference state constraint to predicted translational
+            # EE velocities; ci_mpc_c3plus forwards it to every ADMM QP.
+            _mpc_kwargs["ee_velocity_bounds"] = (-0.14, 0.14)
     mpc = _MPCClass(**_mpc_kwargs)
 
     target_xy   = np.array(task_cfg["goal_xy"], dtype=float)
     target_yaw  = float(task_cfg.get("goal_yaw", 0.0))   # radians; 0 for legacy tasks
     # ------------------------------------------------------------------
-    # Optional full goal quaternion. Flat-resting tasks (box, T, H) reach
-    # every attainable orientation by yaw alone, so they specify goal_yaw and
-    # goal_quat is None. The jack rests on a tripod of tip spheres and
-    # reorients by ROLLING onto a different tripod -- its goal tilts out of
-    # the plane and is not any yaw, so tasks.yaml gives the quaternion
-    # (reference jacktoy/parameters/goal_params.yaml fixed_target_orientation).
+    # Full goal quaternion.  The reference goal generator represents planar
+    # goals as quaternions too and applies the same axis-continuous lookahead
+    # used for SE(3) objects (goal_generator.cc:408-437).  Synthesize the
+    # quaternion from goal_yaw when tasks.yaml does not provide one; keeping
+    # planar goals on a scalar wrapped-yaw path loses the rotation axis at pi
+    # and cannot represent an object that has tipped front-to-back.
     # ------------------------------------------------------------------
     _pending_goal_quat = None
     target_quat = task_cfg.get("goal_quat", None)
+    if target_quat is None and "goal_yaw" in task_cfg:
+        target_quat = np.asarray(_gg_boot_quat, dtype=float)
     if target_quat is not None:
         target_quat = np.asarray(target_quat, dtype=float)
         target_quat = target_quat / float(np.linalg.norm(target_quat))
@@ -871,11 +947,9 @@ def main():
     # mutates task_cfg before build_environment). Banner here, where the
     # normalized target_quat exists.
     if _goal_gen is not None:
-        _gg_q_str = ("target_yaw path (planar; reference yaw lookahead active)"
-                     if target_quat is None else
-                     f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
+        _gg_q_str = (f"quat=[{target_quat[0]:+.4f} {target_quat[1]:+.4f} "
                      f"{target_quat[2]:+.4f} {target_quat[3]:+.4f}]")
-        print(f"[GOAL-GEN] kRandom re-goaling ACTIVE (reference goal_mode 0): "
+        print(f"[GOAL-GEN] {task_cfg['goal_mode']} re-goaling ACTIVE: "
               f"goal #1 {'DRAWN' if _initial_goal_drawn else 'fixed (reference boot value)'} "
               f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) {_gg_q_str}")
         if _goal_gen.success_mode == "flip":
@@ -896,6 +970,12 @@ def main():
     # exercise the live re-goal path without a real goal achievement.
     _goal_gen_force_step = int(
         os.environ.get("DIAG_GOALGEN_FORCE_REGOAL_AT_STEP", "-1") or -1)
+    # Parse once so terminal campaign reporting is also valid for runs that
+    # abort or time out before their first re-goal.
+    _gg_n = int(os.environ.get("PORT_GOALGEN_N", "0") or 0)
+    # Diagnostic campaign guard: maximum simulated time spent on any one goal.
+    # Unset/zero is inert. It resets only after an actual goal achievement.
+    _gg_goal_timeout_s = float(os.environ.get("PORT_GOAL_TIMEOUT_S", "0") or 0)
     ee_frame    = plant.GetFrameByName(EE_BODY_NAME)
     world_frame = plant.world_frame()
 
@@ -905,6 +985,16 @@ def main():
     if args.sampling_c3 is not None:
         _yaml_path = args.sampling_c3
         sc3_params = SamplingC3Params.from_yaml(_yaml_path)
+        # Projection selection and input regularization are independent. A
+        # task can retain C3+ while using the published C3 input cost. Apply
+        # this before the wrapper creates its thread-local solver clones.
+        if sc3_params.penalize_input_change is not None:
+            solver._penalize_input_change = bool(
+                sc3_params.penalize_input_change)
+            solver._u_prev_solve = None
+        print("[C3] Input regularization: "
+              f"{'delta-u (u-u_prev)' if solver._penalize_input_change else 'absolute-u'} "
+              f"(task override={sc3_params.penalize_input_change})")
         # object_shape is a property of the TASK, not of the controller config,
         # but the sampler reads it from the sampling-c3 yaml while the LCS and
         # the cost read task_cfg["object_type"]. Two sources of truth for the
@@ -946,6 +1036,18 @@ def main():
             sc3_params.sampling_params.sampling_height = float(_task_sample_h)
             print(f"[OVERRIDE] sampling_height={float(_task_sample_h):.3f} "
                   f"(was {_was_sh:.3f}, per-task '{task_name}')")
+        # Contact height is demo-specific.  The reference Anything demo fixes
+        # all planar samples at z=0.002 in its frame (0.031 in ours); its tall
+        # imported meshes must not inherit the port's object-centre adaptive
+        # plane, which creates a large, non-reference tipping moment.
+        _task_adaptive_h = task_cfg.get("use_adaptive_contact_height")
+        if _task_adaptive_h is not None:
+            _was_ah = sc3_params.sampling_params.use_adaptive_contact_height
+            sc3_params.sampling_params.use_adaptive_contact_height = bool(
+                _task_adaptive_h)
+            print(f"[OVERRIDE] use_adaptive_contact_height="
+                  f"{bool(_task_adaptive_h)} (was {_was_ah}, per-task "
+                  f"'{task_name}')")
         # Per-task grid_x/y_limits override. The perimeter-sampler
         # draw grid is a PER-DEMO reference literal (push_t [-0.12,0.08] x
         # [-0.08,0.08]; anything [-0.11,0.11]^2) and each object belongs to
@@ -1120,16 +1222,12 @@ def main():
     # Main simulation loop
     # ------------------------------------------------------------------
     sim_time      = 0.0
+    _gg_goal_started_at = sim_time
     # Planner cadence set from _dt_ctrl_pass above so a single source-of-truth
     # (_c3plus_dt) drives both the LCS discretization step and the outer loop.
     # For c3plus: 0.075 s → planner ticks ~13.3 Hz (matches reference
     # sampling_c3plus_options.yaml planning_dt_position/pose = 0.075).
     dt_ctrl       = float(_dt_ctrl_pass)
-    # Yaw sub-goal clip hysteresis state (reference goal_params.yaml:24
-    # angle_hysteresis: 0.4). Once we've entered the clip regime, require
-    # |Δyaw| to fall below (lookahead_angle - hysteresis) before un-clipping.
-    # Prevents sub-goal orientation flip near the 180° error singularity.
-    _yaw_clip_active = False
     # Quaternion-goal SLERP lookahead state (reference goal_generator.h:180
     # last_rotation_axis_, zero-initialized) + clamp-transition log latch.
     _last_rot_axis = np.zeros(3)
@@ -1185,7 +1283,37 @@ def main():
     _tight_hold_s = 1.0
     _tight_exit_at = None
 
+    # A planar controller can command translation and yaw, but has no
+    # roll/pitch righting action. Retire attempts that remain substantially
+    # tilted for longer than every observed recoverable Fig. 8 transient.
+    # The defaults preserve the slowest known successful recovery (83.1 s)
+    # while ending the C/Y/H absorbing topple states seen at 200--1100 s.
+    # The DAIRLab reference has no tilt-based termination in its simulation
+    # loop.  Keep this campaign safety mechanism available for diagnostics,
+    # but require an explicit opt-in so normal runs retain reference behavior.
+    _planar_reachability_guard = (
+        os.environ.get("PORT_PLANAR_REACHABILITY_GUARD", "0") == "1"
+        and _gg_planar
+        and isinstance(mpc, SamplingC3Controller))
+    _planar_tilt_limit = float(os.environ.get(
+        "PORT_PLANAR_TILT_LIMIT_RAD", "1.0"))
+    _planar_tilt_hold_s = float(os.environ.get(
+        "PORT_PLANAR_TILT_HOLD_S", "120.0"))
+    _planar_unreachable_since = None
+    if _planar_reachability_guard:
+        print(f"[PLANAR-REACHABILITY] ACTIVE tilt_limit="
+              f"{_planar_tilt_limit:.3f}rad hold="
+              f"{_planar_tilt_hold_s:.1f}s", flush=True)
+
     while True:
+        if (_goal_gen is not None and _gg_goal_timeout_s > 0
+                and sim_time - _gg_goal_started_at >= _gg_goal_timeout_s):
+            print(f"[GOAL-TIMEOUT] goal #{_goal_gen.goals_reached + 1} "
+                  f"not achieved within {_gg_goal_timeout_s:.3f}s "
+                  f"(started t={_gg_goal_started_at:.3f}s, "
+                  f"now t={sim_time:.3f}s) — ending consecutive run",
+                  flush=True)
+            break
         if _exit_on_tight and getattr(mpc, "_tight_ever_latched", False):
             if _tight_exit_at is None:
                 _latch_t = getattr(mpc, "_tight_first_latch_sim_t", None)
@@ -1212,27 +1340,51 @@ def main():
         if not (np.all(np.isfinite(current_q)) and np.all(np.isfinite(current_v))):
             print(f"[WARN] NaN in state at t={sim_time:.3f}s — stopping.")
             break
+        if _planar_reachability_guard:
+            _obj_tilt = planar_tilt_angle(
+                current_q[pos_start:pos_start + 4])
+            if _obj_tilt > _planar_tilt_limit:
+                if _planar_unreachable_since is None:
+                    _planar_unreachable_since = sim_time
+                    print(f"[PLANAR-UNREACHABLE] entered at "
+                          f"t={sim_time:.3f}s tilt={_obj_tilt:.4f}rad",
+                          flush=True)
+                _tilted_for = sim_time - _planar_unreachable_since
+                if _tilted_for >= _planar_tilt_hold_s:
+                    print(f"[ABORT-UNREACHABLE] t={sim_time:.3f}s "
+                          f"tilt={_obj_tilt:.4f}rad > "
+                          f"{_planar_tilt_limit:.4f}rad continuously for "
+                          f"{_tilted_for:.3f}s; planar controller has no "
+                          f"roll/pitch recovery action", flush=True)
+                    break
+            else:
+                if _planar_unreachable_since is not None:
+                    print(f"[PLANAR-REACHABLE] recovered at "
+                          f"t={sim_time:.3f}s tilt={_obj_tilt:.4f}rad",
+                          flush=True)
+                _planar_unreachable_since = None
         # ---- Object-position blowup abort (Bug 4 safety net) --------------
         # 2026-07-22: p41 diverged silently over 145s because obj_z hit
         # -107km without triggering NaN. Any LCS-parameter experiment can
         # produce sim divergence; without this abort the run wastes 10+ min
-        # of compute and produces misleading logs. Threshold TIGHTENED
-        # 1.0 → 0.5m after p44 attempts got WSL-killed at drift ~0.9m before
-        # Bug 4 could fire (Drake contact solver bogs down as T sinks,
-        # allowing WSL OOM/CPU kill before the sim reaches the abort).
-        # Table-top push should never displace object > 0.5m; anything past
-        # that is divergent. TEMPORARY: remove once qvector migration is
-        # implemented properly (per user directive 2026-07-22).
+        # of compute and produces misleading logs.  Keep vertical and planar
+        # limits separate: consecutive random goals can legitimately carry an
+        # object more than 0.5 m from its boot pose, but a 0.5 m z excursion
+        # or a 1.0 m planar excursion is numerical divergence for this table.
         _obj_now = np.array([current_q[obj_x_idx],
                              current_q[obj_y_idx],
                              current_q[obj_z_idx]])
         _obj_init = np.asarray(task_cfg["init_xyz"], dtype=float)
-        _drift = float(np.linalg.norm(_obj_now - _obj_init))
-        if _drift > 0.5:
+        _delta_obj = _obj_now - _obj_init
+        _planar_drift = float(np.linalg.norm(_delta_obj[:2]))
+        _vertical_drift = abs(float(_delta_obj[2]))
+        if object_position_is_divergent(_obj_now, _obj_init):
             raise RuntimeError(
                 f"[ABORT] Object position blowup at t={sim_time:.3f}s: "
                 f"obj={_obj_now.tolist()} vs init={_obj_init.tolist()} "
-                f"drift={_drift:.3f}m > 1.0m — sim numerically diverged. "
+                f"planar_drift={_planar_drift:.3f}m (limit=1.0m), "
+                f"vertical_drift={_vertical_drift:.3f}m (limit=0.5m) — "
+                "sim numerically diverged. "
                 "See main.py Bug 4 safety net."
             )
         arm_q = current_q[:n_u]
@@ -1251,8 +1403,8 @@ def main():
         # sub-goal each tick rather than the distant final goal.
         _lookahead = 0.15
         _obj_xy_now = np.array([current_q[obj_x_idx], current_q[obj_y_idx]])
-        # kRandom re-goaling (reference goal_generator.cc:135-154 success
-        # gate + :378-389 OnGoalReached). On success: new goal to the cost
+        # Re-goaling (reference goal_generator.cc:135-154 success gate and
+        # :378-389 OnGoalReached). On success: new goal to the cost
         # + dispatcher; ghost moves; the achieved latch is reset because the
         # reference latch is kFixedGoal-only (controller cc:914-916).
         # target_yaw stays stale — inert for quaternion tasks (goal_quat
@@ -1261,7 +1413,8 @@ def main():
             _obj_quat_now = np.array(
                 [current_q[pos_start + _i] for _i in range(4)])
             _regoaled = _goal_gen.check_and_regoal(_obj_xy_now, _obj_quat_now)
-            if _goal_gen.flip_events > _flip_events_seen:
+            if (task_cfg.get("object_type") == "jack"
+                    and _goal_gen.flip_events > _flip_events_seen):
                 _flip_events_seen = _goal_gen.flip_events
                 print(f"[FLIP] #{_goal_gen.flip_events} at t={sim_time:.3f}s "
                       f"{_goal_gen.last_flip[0]} -> {_goal_gen.last_flip[1]}",
@@ -1272,24 +1425,20 @@ def main():
                 print(f"[GOAL-GEN] DIAG forced re-goal at step={step}",
                       flush=True)
             if _regoaled:
+                _gg_goal_started_at = sim_time
                 target_xy = _goal_gen.goal_xy.copy()
                 _gg_new_quat = _goal_gen.goal_quat.copy()
                 if _gg_planar:
-                    # Planar task: stay on the target_yaw path — the
-                    # per-tick yaw lookahead below (reference
-                    # goal_params lookahead_angle 2 / angle_hysteresis
-                    # 0.4, cc:427 min(angle, lookahead)) then chunks the
-                    # new demand into <=2 rad sub-goals. Installing the
-                    # quat would bypass it (static-goal deviation — the
-                    # first 5-goal attempt stalled 390 s on 2.66 rad).
+                    # Preserve the scalar for telemetry and planar sampling,
+                    # but install the full final quaternion for the reference
+                    # axis-continuous lookahead and success metric.
                     target_yaw = float(np.arctan2(
                         2.0 * (_gg_new_quat[0] * _gg_new_quat[3]),
                         1.0 - 2.0 * (_gg_new_quat[3] ** 2)))
-                else:
-                    target_quat = _gg_new_quat
-                    quad_cost.set_goal_quat(target_quat)
-                    if hasattr(mpc, "set_goal_quat"):
-                        mpc.set_goal_quat(target_quat)
+                target_quat = _gg_new_quat
+                quad_cost.set_goal_quat(target_quat)
+                if hasattr(mpc, "set_goal_quat"):
+                    mpc.set_goal_quat(target_quat)
                 # Reference goal-change reset (cc:827-845): position regime,
                 # achieved latch, progress, and BOTH sample buffers.
                 if hasattr(mpc, "reset_for_new_goal"):
@@ -1297,13 +1446,14 @@ def main():
                 elif hasattr(mpc, "_achieved_fixed_goal"):
                     mpc._achieved_fixed_goal = False
                     mpc._off_target_streak = 0
-                _update_jack_goal_marker(meshcat, target_xy, _gg_new_quat,
-                                         task_cfg["init_xyz"][2])
+                if task_cfg.get("object_type") == "jack":
+                    _update_jack_goal_marker(meshcat, target_xy, _gg_new_quat,
+                                             task_cfg["init_xyz"][2])
                 _gg_demand = geodesic_angle(_gg_new_quat, _obj_quat_now)
                 print(f"[GOAL-GEN] goal #{_goal_gen.goals_reached} REACHED "
                       f"at t={sim_time:.3f}s -> new goal "
                       f"xy=({target_xy[0]:+.3f},{target_xy[1]:+.3f}) "
-                      f"tripod={_goal_gen.nominal_names[_goal_gen.orientation_index]} "
+                      f"orientation={_goal_gen.nominal_names[_goal_gen.orientation_index]} "
                       f"quat=[{_gg_new_quat[0]:+.4f} {_gg_new_quat[1]:+.4f} "
                       f"{_gg_new_quat[2]:+.4f} {_gg_new_quat[3]:+.4f}] "
                       f"demand={_gg_demand:.3f} rad"
@@ -1315,7 +1465,6 @@ def main():
                 # achieved (achievements counted by the generator, boot
                 # goal included). Diagnostic-class env gate for the
                 # consecutive-goals protocol; unset = run to max-time.
-                _gg_n = int(os.environ.get("PORT_GOALGEN_N", "0") or 0)
                 if _gg_n > 0 and _goal_gen.goals_reached >= _gg_n:
                     print(f"[GOAL-GEN] COMPLETE: {_goal_gen.goals_reached} "
                           f"goals achieved (PORT_GOALGEN_N={_gg_n}) at "
@@ -1368,37 +1517,13 @@ def main():
             _effective_target_xy = _obj_xy_now + (_delta_vec / _dist) * _step
         else:
             _effective_target_xy = target_xy
-        # Yaw sub-goal — reference anything/goal_params.yaml:20 and
-        # push_t/goal_params.yaml:18 `lookahead_angle: 2 rad`. Clip the
-        # planner's yaw target to at most `lookahead_angle` from current
-        # object yaw so a distant orientation goal doesn't force the
-        # planner to reason over a large rotation in one solve. Yaw
-        # extraction from box quaternion (qw, qx, qy, qz) at pos_start.
-        _lookahead_angle = 2.0  # rad, reference goal_params.yaml:18/20
-        _yaw_hysteresis  = 0.4  # rad, reference goal_params.yaml:24
+        # Object quaternion at this tick.  Reference planar and SE(3) demos
+        # both feed this through GenerateLineTrajectoryWithLookahead.
         _qw = float(current_q[pos_start + 0])
         _qx = float(current_q[pos_start + 1])
         _qy = float(current_q[pos_start + 2])
         _qz = float(current_q[pos_start + 3])
-        _yaw_now = float(np.arctan2(
-            2.0 * (_qw * _qz + _qx * _qy),
-            1.0 - 2.0 * (_qy * _qy + _qz * _qz),
-        ))
-        _dyaw = float(np.arctan2(np.sin(target_yaw - _yaw_now),
-                                 np.cos(target_yaw - _yaw_now)))
-        # Hysteresis: enter clip at |Δyaw| > lookahead_angle; only exit clip
-        # when |Δyaw| falls below (lookahead_angle - hysteresis).
-        if _yaw_clip_active:
-            if abs(_dyaw) < (_lookahead_angle - _yaw_hysteresis):
-                _yaw_clip_active = False
-        else:
-            if abs(_dyaw) > _lookahead_angle:
-                _yaw_clip_active = True
-        if _yaw_clip_active:
-            _effective_target_yaw = float(_yaw_now
-                                          + np.sign(_dyaw) * _lookahead_angle)
-        else:
-            _effective_target_yaw = float(target_yaw)
+        _effective_target_yaw = float(target_yaw)
         # Quaternion-goal SLERP lookahead (reference goal_generator.cc:
         # 408-437): the COST chases a sub-goal at most lookahead_angle
         # (2 rad) along the geodesic from the CURRENT orientation,
@@ -1412,6 +1537,13 @@ def main():
             _sub_quat, _last_rot_axis = orientation_lookahead(
                 _q_obj_now, target_quat, _last_rot_axis)
             quad_cost.set_goal_quat(_sub_quat)
+            # The sampling heuristics consume a yaw scalar.  Give them the
+            # yaw of the same quaternion lookahead target rather than an
+            # independently wrapped final-yaw target.
+            _effective_target_yaw = float(np.arctan2(
+                2.0 * (_sub_quat[0] * _sub_quat[3]
+                       + _sub_quat[1] * _sub_quat[2]),
+                1.0 - 2.0 * (_sub_quat[2] ** 2 + _sub_quat[3] ** 2)))
             _full_err = geodesic_angle(target_quat, _q_obj_now)
             _clamped = _full_err > 2.0
             _clamp_transition = _clamped != _lookahead_was_clamped
@@ -1490,6 +1622,20 @@ def main():
                                 and _pa in formulator._manipuland_geom_ids)):
                         _fm = float(np.linalg.norm(_in1k.contact_force()))
                         break
+                # Mesh objects use hydroelastic contact, which is reported
+                # separately from PointPairContactInfo. Include its integrated
+                # traction so F1K does not falsely report zero realized force.
+                for _ci in range(_cr1k.num_hydroelastic_contacts()):
+                    _hi1k = _cr1k.hydroelastic_contact_info(_ci)
+                    _surf1k = _hi1k.contact_surface()
+                    _hm, _hn = _surf1k.id_M(), _surf1k.id_N()
+                    if ((_hm in formulator._ee_geom_ids
+                         and _hn in formulator._manipuland_geom_ids)
+                            or (_hn in formulator._ee_geom_ids
+                                and _hm in formulator._manipuland_geom_ids)):
+                        _hf = np.asarray(
+                            _hi1k.F_Ac_W().translational(), dtype=float)
+                        _fm = max(_fm, float(np.linalg.norm(_hf)))
                 _f1k_vals.append(_fm)
             except Exception:
                 pass
@@ -1524,6 +1670,7 @@ def main():
             _gate_n_BA = None
             _gate_ia_ee = None
             _n_pairs = _cr.num_point_pair_contacts()
+            _n_hydro = _cr.num_hydroelastic_contacts()
             for _i in range(_n_pairs):
                 _info = _cr.point_pair_contact_info(_i)
                 _pp = _info.point_pair()
@@ -1541,8 +1688,44 @@ def main():
                     _gate_n_BA  = np.asarray(_pp.nhat_BA_W, dtype=float).reshape(3)
                     _gate_ia_ee = (_ia in formulator._ee_geom_ids)
                     break
+            # Integrated hydroelastic traction on the EE-object contact
+            # surface. F_Ac_W is the spatial force on body A (geometry M),
+            # expressed in world; flip it when M is the EE to obtain force
+            # and moment on the manipuland.
+            _hydro_F_on_box = np.zeros(3)
+            _hydro_tau_on_box = np.zeros(3)
+            _hydro_ee_box = 0
+            for _i in range(_n_hydro):
+                _hinfo = _cr.hydroelastic_contact_info(_i)
+                _hsurf = _hinfo.contact_surface()
+                _hm, _hn = _hsurf.id_M(), _hsurf.id_N()
+                _m_ee = _hm in formulator._ee_geom_ids
+                _n_ee = _hn in formulator._ee_geom_ids
+                _m_box = _hm in formulator._manipuland_geom_ids
+                _n_box = _hn in formulator._manipuland_geom_ids
+                if not ((_m_ee and _n_box) or (_n_ee and _m_box)):
+                    continue
+                _hspatial = _hinfo.F_Ac_W()
+                _hforce = np.asarray(
+                    _hspatial.translational(), dtype=float).reshape(3)
+                _htorque = np.asarray(
+                    _hspatial.rotational(), dtype=float).reshape(3)
+                _sign_to_box = -1.0 if _m_ee else 1.0
+                _hydro_F_on_box += _sign_to_box * _hforce
+                _hydro_tau_on_box += _sign_to_box * _htorque
+                _hydro_ee_box += 1
             print(f"[DRAKE-CONTACT] step={step} n_pairs={_n_pairs} "
-                  f"ee_box_normal={_eebox_fmag:.3f}", flush=True)
+                  f"n_hydro={_n_hydro} ee_box_normal={_eebox_fmag:.3f}",
+                  flush=True)
+            print(
+                f"[HYDRO-CONTACT] step={step} patches={_hydro_ee_box} "
+                f"F_on_box=({_hydro_F_on_box[0]:+.4f},"
+                f"{_hydro_F_on_box[1]:+.4f},{_hydro_F_on_box[2]:+.4f}) "
+                f"tau_on_box=({_hydro_tau_on_box[0]:+.5f},"
+                f"{_hydro_tau_on_box[1]:+.5f},"
+                f"{_hydro_tau_on_box[2]:+.5f})",
+                flush=True,
+            )
             # [GATE-CONTACT] one line per step. Always emitted (zero vec when
             # no EE-box contact). Box quat lives at pos_start+[0..3].
             if _gate_F_W is None:
@@ -1675,7 +1858,7 @@ def main():
     _tight_reason = ("final" if _tight_final
                      else ("latched" if _tight_latched else "-"))
     if _goal_gen is not None:
-        # kRandom headline: the reference task is continuous re-goaling, so
+        # Continuous-goal headline: goals_reached is the success count, so
         # goals_reached is the success count; RESULT below is measured
         # against the LAST active goal only.
         if _goal_gen.success_mode == "flip":
@@ -1683,12 +1866,23 @@ def main():
                   f"(flip success mode: goals_reached counts goal-tripod "
                   f"matches; flips counts ALL persisted tripod changes)")
         print(f"[GOAL-GEN] goals_reached={_goal_gen.goals_reached} "
-              f"(kRandom re-goaling; RESULT metrics are vs the final goal)")
+              f"({task_cfg['goal_mode']} re-goaling; RESULT metrics are "
+              f"vs the final goal)")
+        # Campaign outcome is distinct from the final-pose snapshot below.
+        # PORT_GOALGEN_N stops immediately after drawing the next goal, so a
+        # successful N-goal campaign normally has a failing final-pose error
+        # against that deliberately unattempted goal.  Emit an unambiguous,
+        # diagnostic-only outcome without changing reference goal generation,
+        # latching, dispatch, or controller trajectories.
+        if _gg_n > 0:
+            _campaign_pass = _goal_gen.goals_reached >= _gg_n
+            print(f"[CAMPAIGN-RESULT] requested_goals={_gg_n} "
+                  f"goals_reached={_goal_gen.goals_reached} "
+                  f"status={'PASS' if _campaign_pass else 'FAIL'}")
     print(f"[RESULT] method={_method}  "
           f"final_obj_xy=({final_obj_xy[0]:.4f}, {final_obj_xy[1]:.4f})  "
           f"translational_error={final_dist:.4f}m  "
           f"rotational_error={orient_err:.4f}rad  "
-          f"success={'YES' if final_dist < 0.05 else 'NO'}  "
           f"tight_goal={'PASS' if _tight else 'FAIL'}({_tight_reason})  "
           f"loose_goal={'PASS' if _loose else 'FAIL'}")
 

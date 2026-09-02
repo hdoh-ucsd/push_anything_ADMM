@@ -45,5 +45,5 @@ export OUT PER_RUN_TIMEOUT MAX_TIME ADMM_ITER
 
 # Use xargs -P for 8-way parallelism. Sequential within the same shell so
 # stdout lines from run_one are line-buffered.
-seq 0 $((N_SEEDS - 1)) | xargs -n 1 -P "$PARALLEL" -I{} bash -c 'run_one "$@"' _ {}
+seq 0 $((N_SEEDS - 1)) | xargs -P "$PARALLEL" -I{} bash -c 'run_one "$@"' _ {}
 echo "=== sweep complete: $OUT ==="

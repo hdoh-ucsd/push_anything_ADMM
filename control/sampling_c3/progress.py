@@ -297,6 +297,13 @@ class ProgressTracker:
         current = self._pos_error_history[-1]
         return max(0.0, current - self._best_pos_error)
 
+    def rot_regression(self) -> float:
+        """Current rotation error minus its best value since reset()."""
+        if self._n_updates == 0:
+            return 0.0
+        current = self._rot_error_history[-1]
+        return max(0.0, current - self._best_rot_error)
+
     def reset(self) -> None:
         """Wipe history. Call when entering a fresh repos→c3 cycle so the
         timeout starts from scratch."""

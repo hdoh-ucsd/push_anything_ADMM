@@ -96,7 +96,8 @@ _RESULT_RE = re.compile(
     r"^\[RESULT\] method=(\S+)\s+"
     r"final_obj_xy=\(([-\d.]+), ([-\d.]+)\)\s+"
     r"translational_error=([\d.]+)m\s+rotational_error=([\d.]+)rad\s+"
-    r"success=(\w+)\s+tight_goal=(\S+)\s+loose_goal=(\S+)")
+    r"(?:success=(?P<legacy_success>\w+)\s+)?"
+    r"tight_goal=(?P<tight>\S+)\s+loose_goal=(?P<loose>\S+)")
 
 # -------------------------------------------------------------------- colors
 
@@ -320,8 +321,7 @@ class RunState:
         if m:
             self.result_line = line
             self.result_verdict = (
-                f"success={m.group(6)} tight={m.group(7)} "
-                f"loose={m.group(8)}")
+                f"tight={m.group('tight')} loose={m.group('loose')}")
             return
 
 

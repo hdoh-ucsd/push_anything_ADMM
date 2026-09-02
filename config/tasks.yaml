@@ -65,49 +65,11 @@ tasks:
     # cross-over) so a stricter clearance is fine here.
     pwl_waypoint_height: 0.135   # box top 0.10 + pusher r 0.025 + 10 mm margin
     cost:
-      # 2026-08-11 box-lineage: the anything-N1 dual-regime reference cost
-      # (same set the T runs — see push_t block for rationale). The legacy
-      # w_obj_* keys below stay for the non-reference build() path only.
-      use_reference_q_vector:  true
-      w_Q:                    80.0
-      w_Q_position:           50.0
-      q_vector_ee_pos:        [0.01, 0.01, 0.01]
-      q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos:       [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos:  [200.0, 200.0, 120.0]
-      q_vector_ee_vel:        [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
-      w_R:                    6.0
-      r_vector:               [0.01, 0.01, 1.0]
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy:    100000.0
-      w_obj_z:         10.0
-      w_box_z:        100.0
-      w_box_rp:        50.0
-      w_yaw:            0.0
-      w_terminal:       1.0   # box-lineage: QN = Q (reference gamma=1; was 5.0)
-      # z_ee_target: planner-cost proxy z (task_costs.py:349 proxy_3d.z
-      # = self.z_ref). Must match sampling_height above so the planner
-      # drives arm to the SAME z the reposition tracker + IK place it at.
-      # Coupled with sampling_height edit above (2026-07-17: 0.064 →
-      # 0.050 for cube-COM contact, no-tumble geometry).
-      z_ee_target:      0.050
-      d_push:           0.05
-      w_ee_approach: 8000.0
-      w_torque:         0.01
-      # Near-goal (pose regime) overrides. Fire when the wrapper's
-      # sticky `_crossed_switching_threshold` flag latches at
-      # box-to-goal distance < cost_switching_threshold_distance (5 cm).
-      # Ratios mirror reference push_t sampling_c3plus_options.yaml:
-      #   position obj_pos = [250, 250, 250], pose obj_pos = [200, 200, 120]
-      #   → 20 % xy reduction, 52 % z reduction near goal.
-      w_obj_xy_pose: 80000.0    # 100k × 0.80
-      w_box_z_pose:  48.0       # 100 × 0.48
-
+      z_ee_target: 0.05
+      d_push: 0.05
   # -----------------------------------------------------------------------
   # Task 2: Hard Physics Pushing
   # -----------------------------------------------------------------------
@@ -217,7 +179,7 @@ tasks:
     # 2026-07-21: adopted reference-frame absolute goal_xy directly.
     goal_xy:  [0.482, 0.187]
     goal_yaw: -0.7379    # rad = -42.28°, from reference push_t target quaternion
-    krandom_draw_initial_goal: true
+    krandom_draw_initial_goal: false
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     # 2026-07-28c FRAME-SHIFT FIX (same family as the box-init bug): the
     # reference's sampling_height 0.005 (push_t/parameters/
@@ -250,164 +212,83 @@ tasks:
     random_goal_x_limits: [0.44, 0.52]
     random_goal_y_limits: [0.02, 0.25]
     cost:
-      # 2026-07-18: reference q_vector port available but currently disabled.
-      # When `use_reference_q_vector: true`, control/task_costs.py
-      # build_ee_space builds Q_base = w_Q · diag(q_vector) with the
-      # reference's per-slot values from
-      # push_t/parameters/sampling_c3_options.yaml:65-75, remapped into the
-      # port's state layout. Disabled after empirical test in
-      # results/push_t_T_qvec_20260718_005535: full reference q_vector
-      # (velocity regularization on ang_vel, lin_vel, ee_vel slots) over-
-      # damped the QP's dynamics — goal_dist 0.107→0.242, orient_err
-      # 0.581→0.789 vs the simpler w_obj_xy=9000 fix (commit 7d11b98).
-      # The reference's dense Q assumes an LCS whose velocity states behave
-      # differently than the port's. Full structural adoption requires
-      # porting the LCS state layout, not just the cost. Flag off by
-      # default; individual w_obj_xy/w_obj_z/etc. below drive Q_base.
-      #
-      # default; individual w_obj_xy/w_obj_z/etc. below drive Q_base.
-      #
-      # 2026-07-22 qvector migration attempts (p39-p46) all diverged:
-      #  - p39/p40/p41 (single-parameter): all regressed or blew up
-      #  - p44 (full coordinated, admm_iter=3): 174.8mm trans, T over-pushed
-      #  - p46 (full coordinated, admm_iter=25): dual explodes 1000×/solve
-      # Root cause is structural (port scalar-ρ ADMM vs ref per-slot G).
-      # Reverted to p38 config; qvector migration requires G-matrix port.
-      use_reference_q_vector:  true
-      # 2026-08-11 L3 (anything-N1 lineage, docs/anything-n1-config-delta-audit.md):
-      # dual-regime Q exactly as multiyaml_rewrite.py build_q_vector emits —
-      # FAR (position regime): w_Q_position 50 x q_vector_position
-      #   (quat weights ZERO — orientation ignored until 5 cm out);
-      # NEAR (pose regime, crossed_switching_threshold): w_Q 80 x q_vector
-      #   (quat slots overridden by the 1000x quaternion Hessian, which the
-      #   reference does NOT scale by w_Q — cc:1582-1590).
-      # ee_vel [15,15,10] is the reference literal for BOTH regimes; the old
-      # [5,5,5] was a deliberate p108 port deviation, retired here.
-      w_Q:                    80.0
-      w_Q_position:           50.0
-      q_vector_ee_pos:        [0.01, 0.01, 0.01]
-      q_vector_obj_quat:      [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos:       [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos:  [200.0, 200.0, 120.0]
-      q_vector_ee_vel:        [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel:   [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel:   [0.05, 0.05, 0.05]
-      # R = w_R x diag(r_vector) (both regimes; anything-N1 literals). The
-      # z-axis EE force is penalized 100x the horizontal — was flat
-      # w_torque*I = 0.01*I (the stale product 1 x [0.01,0.01,0.01]).
-      w_R:                    6.0
-      r_vector:               [0.01, 0.01, 1.0]
-      # 2026-07-22 xy bumped to reference parity. Reference push_t
-      # sampling_c3plus_options.yaml position regime: q_vector_position[8:10]=250
-      # × w_Q=50 = 12500 per axis. Port was 9000 (~72% of ref). p43 diagnosis:
-      # planner commanded 0.72N west push against 4.53N static-friction
-      # threshold on 1kg T (μ=0.462) — insufficient because Q_xy gradient too
-      # weak. Matches the z-tracking fix pattern (position regime target 12500).
-      w_obj_xy:     12500.0
-      w_obj_z:         10.0
-      # 2026-07-22 z-tracking bumped to reference parity. Reference push_t
-      # sampling_c3plus_options.yaml position regime: q_vector_position[10]=250
-      # × w_Q=50 = 12500 obj_z weight. Port was w_obj_z + w_box_z = 10 + 100
-      # = 110 (~113× underweight) — insufficient gradient in z direction to
-      # prevent z-drift near goal (identified 2026-07-22 cost audit against
-      # ref, item #2). Set w_box_z so w_obj_z + w_box_z = 12500.
-      w_box_z:      12490.0
-      # Reference goal_params.yaml:14 ee_target_z_offset_above_object.
-      # When > 0, build_ee_space sets x_ref[EE_pos] = obj_curr_xyz +
-      # [0, 0, ee_target_z_offset] with Q[EE_pos] = w_Q * q_vec_ee_pos,
-      # matching franka_sampling_c3_controller.cc:440 target_state_mux
-      # port 0 semantics. Pulls the arm to hover above the T center as
-      # the T moves, preventing lateral drift near-goal that pushes
-      # T out of the tight_goal region.
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      # Near-goal (pose regime) obj-position weight overrides. Ported from
-      # reference push_t sampling_c3plus_options.yaml — reduces obj_pos xy
-      # by 0.80 and z by 0.48 when the wrapper's crossed_switching_threshold
-      # latches (obj-to-goal < cost_switching_threshold_distance = 0.05 m).
-      # Rationale: at pose regime the quaternion Hessian (line 213-222) drives
-      # yaw; keeping obj_pos xy weight at 9000 there would let translation
-      # compete with the yaw correction. Same 0.80/0.48 ratio the box config
-      # (tasks.yaml:62-63) uses. task_costs.py:build_ee_space applies the
-      # swap; the legacy build() path already had it.
-      # 2026-07-22 pose xy bumped to reference parity (p47).
-      # Reference push_t q_vector[8:10]=200 × w_Q=50 = 10000 per axis pose.
-      # Ratio to position regime preserved (10000/12500 = 0.80).
-      w_obj_xy_pose: 10000.0  # 12500 × 0.80, matches ref pose q_vec[8:10]×w_Q
-      # 2026-07-22 pose-regime z bumped to reference parity. Reference push_t
-      # sampling_c3plus_options.yaml pose regime: q_vector[10]=120 × w_Q=50 =
-      # 6000 obj_z weight. Port was w_obj_z + w_box_z_pose = 10 + 48 = 58
-      # (~103× underweight). Set w_box_z_pose so w_obj_z + w_box_z_pose = 6000.
-      # Ratio to position regime (6000/12500=0.48) preserved.
-      w_box_z_pose: 5990.0     # sum=6000, matches ref pose q_vec[10]×w_Q
-      # 2026-07-22 roll/pitch reduced 50 → 5 for reference parity. Reference
-      # sampling_c3plus_options.yaml q_vector[1:3]=[0.1, 0.1] × w_Q=50 = 5.0
-      # per quat-roll and quat-pitch axis. Port used 50 (10× overweight);
-      # applied at task_costs.py:825-826 in build_ee_space's Q assembly.
-      # Note: near-goal, the quaternion Hessian override at line 911 wipes
-      # this via Q[0:4,0:4] = Q_quat, so this term only fires far-goal
-      # during transit; reducing it should let the T float more freely on
-      # roll/pitch without giving up ground contact (z-tracking now =12500).
-      w_box_rp:         5.0
-      # 2026-07-22 removed port-only linear rank-1 yaw form. Reference
-      # (sampling_c3plus_options.yaml + sampling_based_c3_controller.cc:1517-1570)
-      # has NO linear yaw cost — yaw is entirely driven by the near-goal
-      # quaternion-dependent Hessian override (weight=1000, fires at
-      # goal_dist < cost_switching_threshold_distance = 0.05 m). Port had
-      # w_yaw=800 outer(cy,cy) on Q[0:4,0:4] as a far-goal driver; removed
-      # so yaw is Hessian-only, matching reference.
-      w_yaw:            0.0
-      # Near-goal hessian-quaternion Q_block (reference push_t
-      # sampling_c3plus_options.yaml:74-75 and
-      # sampling_based_c3_controller.cc:1517-1570). When the wrapper's
-      # crossed_switching_threshold latches (obj-to-goal < 0.05m), the
-      # linear w_yaw quat block is REPLACED by the Hessian of squared
-      # quaternion-angle-difference cost. Linear form saturates near
-      # goal (dcost/dpsi → 0 as psi → 0); hessian form has non-zero
-      # curvature at the optimum, so the planner keeps driving yaw
-      # error down.
-      use_quaternion_dependent_cost:                    true
-      q_quaternion_dependent_weight:                    1000.0
-      # 2026-07-27: 0.1 → 0.0 (exact reference,
-      # sampling_c3plus_options.yaml). The 0.1 was a port-side hedge from
-      # the p63/64 era (pre-arc-2 stack, G-off, EE-space) where 0.0 alone
-      # regressed trans. On the R^7 conformant stack (G-on, reference Q
-      # chain, gravity-centered u-box) the hedge is unjustified; the
-      # regularizer dilutes the quat Hessian's yaw-driving curvature —
-      # p112 rot diagnosis flags every dilution of yaw authority.
-      q_quaternion_dependent_regularizer_fraction:      0.0
-      # w_terminal for the tshape path was formerly hardcoded to 1.0 (QN=Q)
-      # inside task_costs.py:1076 to match reference gamma=1.0 — so the old
-      # yaml value of 5.0 here was DEAD. That special-case was removed
-      # 2026-07-20; the yaml value is now live. Reference behavior is
-      # w_terminal:1.0.
-      #
-      # Tuning history:
-      #   1.0  → reference; goal_dist=9.6mm / orient_err=7.2° with Fix A.
-      #   20.0 → over-committed terminal pull; caused 100-s mid-run stall
-      #          at goal_dist≈70mm (regressed to 25.7mm / 11.4°). Reverted.
-      w_terminal:       1.0
-      # 2026-07-19 z_ee_target 0.034 → 0.005. The old 0.034 came from an
-      # earlier mistaken frame-offset argument (see sampling_c3_kik_t.yaml
-      # :322 comment) that also broke sampling_height, which was later
-      # fixed to 0.005 but z_ee_target was left stale. The comment on this
-      # block (line 41-45 of pushing task) explicitly says z_ee_target
-      # must match sampling_height so the planner's EE-cost target
-      # agrees with the reposition tracker + kRandomOnPerimeter
-      # target z. Under the mismatch the planner drove arm to z=0.034
-      # while repos drove it to z=0.005, producing conflicting z-targets
-      # in the C3+ solve.
-      # 2026-08-02 (user-directed height unification): 0.005 → 0.034. The
-      # 2026-07-28c frame-shift fix moved sampling_height 0.005 → 0.034
-      # but left this stale AGAIN (same family). Inert on the active path
-      # (use_reference_q_vector: true retires the proxy branch; only
-      # PORT_EE_Z_HOLD fallback + evaluation-only ManipulationCost read
-      # it) — aligned to the task height to defuse the trap.
-      z_ee_target:      0.034
-      z_obj_target:     0.020   # T stays on ground (reference target z = init z)
-      d_push:           0.05
+      z_ee_target: 0.034
+      z_obj_target: 0.02
+      d_push: 0.05
+  # -----------------------------------------------------------------------
+  # Task: push_t_mesh — Fig. 8 / anything-lineage T_shape_video.
+  # This is distinct from the analytic two-box push_t demo above.
+  # -----------------------------------------------------------------------
+  push_t_mesh:
+    object_type: tshape
+    link_name: T_shape_video
+    max_time: 1200.0
+    mass: 0.05
+    friction: 0.3
+    pusher_friction: 1.0
+    mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    init_xyz: [0.5, 0.0, 0.0243]
+    goal_xy: [0.482, 0.187]
+    goal_yaw: -0.7379
+    krandom_draw_initial_goal: true
+    color_rgba: [0.75, 0.75, 0.75, 1.0]
+    sampling_height: 0.031
+    pwl_waypoint_height: 0.0989
+    sampling_strategy: kMeshNormal
+    sample_projection_clearance: 0.027
+    buffer_distance: 0.035
+    max_attempts: 100
+    barycentric_bias: 1
+    grid_x_limits: [-0.11, 0.11]
+    grid_y_limits: [-0.11, 0.11]
+    object_sdf: sim/models/T_shape_video/T_shape_video.sdf
+    controller_mass: 1.0
+    controller_inertia:
+      mass: 1.0
+      com: [0.0, 0.0, 0.0]
+      moments: [0.003, 0.003, 0.006]
+      products: [0.0, 0.0, 0.0]
+    ground_witness_points_body:
+      - [-0.08161602, 0.08064646, -0.02428554]
+      - [-0.08161602, -0.08665214, -0.02428554]
+      - [0.13000116, -0.00300284, -0.02428554]
+    random_goal_x_limits: [0.44, 0.52]
+    random_goal_y_limits: [0.02, 0.25]
+    cost:
+      use_reference_q_vector: true
+      w_Q: 80.0
+      w_Q_position: 50.0
+      q_vector_ee_pos: [0.01, 0.01, 0.01]
+      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
+      q_vector_obj_pos: [150.0, 150.0, 120.0]
+      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
+      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
+      q_vector_ee_vel: [15.0, 15.0, 10.0]
+      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
+      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
+      w_R: 6.0
+      r_vector: [0.01, 0.01, 1.0]
+      w_obj_xy: 12500.0
+      w_obj_z: 10.0
+      w_box_z: 12490.0
+      ee_target_z_offset_above_object: 0.06
+      w_obj_xy_pose: 10000.0
+      w_box_z_pose: 5990.0
+      w_box_rp: 5.0
+      w_yaw: 0.0
+      use_quaternion_dependent_cost: true
+      q_quaternion_dependent_weight: 1000.0
+      q_quaternion_dependent_regularizer_fraction: 0.0
+      w_terminal: 1.0
+      z_ee_target: 0.031
+      z_obj_target: 0.0243
+      d_push: 0.05
       w_ee_approach: 8000.0
-      w_torque:         0.01
+      w_torque: 0.01
 
   # -----------------------------------------------------------------------
   # Task 3b: Push H — low-CoM H, PURE TRANSLATION
@@ -538,6 +419,7 @@ tasks:
   push_jack:
     object_type: jack
     link_name: jack_link
+    max_time: 600.0
     mass: 0.156              # 3 x 0.052, urdf/jack.sdf (SIM)
     # Reference plans with urdf/jack_control.sdf = 3 x 0.33 = 0.99 kg, 6.35x
     # the sim mass. Not cosmetic: at the sim mass the LCS predicts a phantom
@@ -556,6 +438,11 @@ tasks:
       EE-BOX:  1.0
       BOX-GND: 0.4615
       EE-GND:  0.4165
+
+    # Reference jacktoy/parameters/sim_params.yaml. Using the published joint
+    # state avoids giving the port a different IK-generated approach problem
+    # before it begins the shared fixed boot goal.
+    q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
 
     # Resting CoM height = h/sqrt(3) + r = 0.0625/sqrt(3) + 0.025 = 0.061084,
     # the tripod rest. Reference goal_params resting_object_height 0.031971466
@@ -580,6 +467,10 @@ tasks:
     # world yaw (>= 90 deg extra yaw when the tripod index repeats).
     # Implemented 2026-08-16 (JackRandomGoalGenerator); absent/kFixedGoal
     # keeps the single fixed goal (the pre-2026-08-16 port behavior).
+    # Reference goal_params.yaml goal_mode: 0 (kRandom). Goal #1 remains the
+    # fixed boot target above; after each reference-gate success, draw a new
+    # XY position and valid jack resting orientation from the configured
+    # random-goal distribution.
     goal_mode: kRandom
     # User directive 2026-08-16: the random-quaternion chase IS the jacktoy
     # task. The reference boots from the fixed goal above and randomizes
@@ -589,11 +480,8 @@ tasks:
     # goal #1 is drawn from that distribution at startup (seeded via
     # --seed), replacing the one-time fixed boot transient. false =
     # reference-literal boot.
-    # Merge-back 2026-08-19: drawn-goal default RESTORED (the branch's
-    # A/B eval protocol pinned false to boot at the reference fixed_target;
-    # that protocol note lives in the eval logs and 4de4da3). To reproduce
-    # the branch's canonical A/B numbers, set false.
-    krandom_draw_initial_goal: true
+    # Reference-literal boot: keep fixed_target for goal #1 and draw a random
+    # goal only after success.
     # User directive 2026-08-17: success = FLIPS. A goal is reached when the
     # jack's RESTING TRIPOD matches the goal's tripod (held 10 ticks);
     # position and yaw are ignored — replaces the reference gate pos<0.02
@@ -623,42 +511,14 @@ tasks:
     pwl_waypoint_height: 0.06   # reposition_params.yaml
 
     cost:
-      # jacktoy/parameters/sampling_c3plus_options.yaml q_vector / w_Q.
-      use_reference_q_vector: true
-      w_Q: 45.0
-      q_vector_ee_pos:      [0.01, 0.01, 0.01]
-      q_vector_obj_quat:    [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos:     [200.0, 200.0, 120.0]
-      q_vector_ee_vel:      [5.0, 5.0, 5.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 2500.0     # jacktoy value (push_t: 1000)
-      q_quaternion_dependent_regularizer_fraction: 0.0
-
-      # --- the two SE(2) assumptions that MUST be disabled ---------------
-      # w_box_rp penalizes roll/pitch away from upright. For a flat-resting
-      # object that is a helpful regularizer; for the jack, roll and pitch
-      # ARE the task -- a nonzero weight would penalize the 97 deg roll the
-      # goal demands. w_yaw is the port-only rank-1 yaw form, meaningless for
-      # an out-of-plane goal and would fight the quaternion Hessian.
-      w_box_rp: 0.0
-      w_yaw: 0.0
-
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 10.0            # NOT push_h's 12490: the jack's CoM height
-                               # legitimately rises while it rolls over.
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 10.0
+      # Exact pose and position-regime Q/R values from the reference
+      # jacktoy C3+ options. The named profile also excludes obsolete
+      # port-only planar/legacy weights.
+      profile: jacktoy_c3plus
       ee_target_z_offset_above_object: 0.06   # goal_params.yaml
-      w_terminal: 1.0
       z_ee_target: 0.069
       z_obj_target: 0.061084
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
 
 
   # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
@@ -672,9 +532,12 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0258]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    # Reference anything N=1 initial pose (multiyaml_rewrite.py).  The
+    # z-coordinate is translated to this port's table-at-z=0 convention.
+    init_xyz: [0.4, -0.3, 0.0258]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: 0.0199993
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1020
@@ -704,46 +567,12 @@ tasks:
       - [-0.082043, -0.029964, -0.025781]
       - [0.079604, 0.000780, -0.025781]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0258
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/I_shape_texture/I_shape_texture.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   C_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0277, 0.0262].
@@ -754,9 +583,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0277]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0277]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: -0.0199993
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1039
@@ -786,46 +616,12 @@ tasks:
       - [-0.080955, -0.055968, -0.027656]
       - [0.079531, 0.004334, -0.027656]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0277
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/C_shape_texture/C_shape_texture.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   R_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0266, 0.0264].
@@ -836,9 +632,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0266]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0266]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: 0.0999168
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1029
@@ -868,46 +665,12 @@ tasks:
       - [-0.077854, -0.052867, -0.026556]
       - [0.085599, 0.001884, -0.026556]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0266
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/R_shape_texture/R_shape_texture.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   A_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0270, 0.0272].
@@ -918,9 +681,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0270]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0270]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.51, 0.0]
+    goal_yaw: -1.59857
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1043
@@ -950,46 +714,12 @@ tasks:
       - [-0.068272, -0.084372, -0.027044]
       - [0.067329, -0.003332, -0.027044]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
-      z_obj_target: 0.0270
+      z_ee_target: 0.031
+      z_obj_target: 0.027
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/A_shape_video/A_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   Y_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0241, 0.0259].
@@ -1000,9 +730,14 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
+    # Reference anything/parameters/sim_params.yaml q_init_object translation
+    # is (0.5, 0.0).  Keep this paired with the verbatim q_init_franka above;
+    # the former (0.4, -0.3) port spawn separated EE and object by 0.705 m
+    # and did not represent any approach visible in the hardware Y run.
     init_xyz: [0.5, 0.0, 0.0241]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.49, 0.0]
+    goal_yaw: 1.52764
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1000
@@ -1032,46 +767,12 @@ tasks:
       - [-0.061691, -0.094816, -0.024119]
       - [0.055935, -0.015371, -0.024119]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0241
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/Y_shape_video/Y_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   G_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0263, 0.0259].
@@ -1082,9 +783,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0263]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0263]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.51, 0.0]
+    goal_yaw: 1.57080
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1022
@@ -1114,46 +816,12 @@ tasks:
       - [-0.069857, -0.073224, -0.026314]
       - [0.063228, 0.006181, -0.026314]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0263
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/G_shape_video/G_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   B_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0261, 0.0268].
@@ -1164,9 +832,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0261]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0261]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.51, 0.0]
+    goal_yaw: 0.0
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1029
@@ -1196,46 +865,12 @@ tasks:
       - [-0.081106, -0.051523, -0.026118]
       - [0.075366, 0.004028, -0.026118]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0261
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/B_shape_video/B_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   3_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0245, 0.0287].
@@ -1246,9 +881,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0245]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0245]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: 0.0
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1032
@@ -1278,46 +914,12 @@ tasks:
       - [-0.078869, -0.055748, -0.024539]
       - [0.079597, -0.004730, -0.024539]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0245
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/3_shape_video/3_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   H_shape_texture:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0236, 0.0238].
@@ -1328,9 +930,10 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0236]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0236]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: -1.59857
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.0974
@@ -1360,46 +963,12 @@ tasks:
       - [-0.059715, -0.081456, -0.023597]
       - [0.064094, -0.002352, -0.023597]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0236
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/H_shape_texture/H_shape_texture.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   E_shape_video:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0309, 0.0264].
@@ -1410,9 +979,13 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0309]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0309]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    # Stable support attitude measured before arm contact; random planar goals
+    # apply world yaw to this nominal rather than unreachable identity.
+    planar_nominal_quat: [0.99677962, -0.08037502, -0.01083501, 0.00690315]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: -0.0799574
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1073
@@ -1442,46 +1015,12 @@ tasks:
       - [-0.079472, -0.044026, -0.030900]
       - [0.083349, 0.008043, -0.030900]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0309
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/E_shape_video/E_shape_video.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   expo_box:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0629, 0.0589].
@@ -1524,46 +1063,12 @@ tasks:
       - [-0.063746, -0.071637, -0.062896]
       - [0.060525, -0.002882, -0.062896]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0629
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/expo_box/expo_box.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   lotion:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0216, 0.0220].
@@ -1606,46 +1111,12 @@ tasks:
       - [-0.039172, -0.101197, -0.021594]
       - [0.040963, -0.012404, -0.021594]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0216
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/lotion/lotion.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   wood_block:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0682, 0.0673].
@@ -1688,46 +1159,12 @@ tasks:
       - [-0.049298, -0.053252, -0.068155]
       - [0.050037, -0.001384, -0.068155]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0682
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/wood_block/wood_block.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   tape:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0419, 0.0367].
@@ -1739,6 +1176,7 @@ tasks:
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     init_xyz: [0.5, 0.0, 0.0419]
+    planar_nominal_quat: [0.99583, -0.01479, 0.09144, 0.00266]
     goal_xy: [0.482, 0.187]
     goal_yaw: -0.7379
     color_rgba: [0.75, 0.75, 0.75, 1.0]
@@ -1770,46 +1208,12 @@ tasks:
       - [-0.055459, -0.073075, -0.041906]
       - [0.058693, 0.007316, -0.041906]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0419
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/tape/tape.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   eraser:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0397, 0.0483].
@@ -1820,11 +1224,22 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0397]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    # Reference Anything N=1 x/y and orientation.  Use the mesh's
+    # nonpenetrating rest height in the port: the reference z=0 boot pose,
+    # shifted by +0.029 m, intersects this mesh by 10.7 mm under hydroelastic
+    # contact and is not a dynamically equivalent initial condition.
+    init_xyz: [0.4, -0.3, 0.0397]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    # Default Anything goal for objects absent from letter_settings.yaml.
+    goal_xy: [0.5, 0.0]
+    goal_yaw: 1.5707963267948966
+    random_goal_x_limits: [0.5, 0.51]
+    random_goal_y_limits: [-0.30, 0.30]
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
+    # Reference Anything update_sampling_params fixes z_height=0.002 in its
+    # world, i.e. 0.031 in the port frame.  Do not replace it with obj_z+5mm.
+    use_adaptive_contact_height: false
     pwl_waypoint_height: 0.1380
     # ANYTHING-lineage sampler (2026-08-20). These objects come from the
     # reference `anything` demo, whose parameters/sampling_params.yaml:14
@@ -1852,46 +1267,12 @@ tasks:
       - [-0.052205, -0.125373, -0.039712]
       - [0.052153, 0.000602, -0.039712]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0397
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/eraser/eraser.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   milk:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0412, 0.0408].
@@ -1934,46 +1315,12 @@ tasks:
       - [-0.039753, -0.108533, -0.041170]
       - [0.040289, 0.007807, -0.041170]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0412
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/milk/milk.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   clamp:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0245, 0.0251].
@@ -2016,46 +1363,12 @@ tasks:
       - [-0.108825, -0.079959, -0.024540]
       - [0.117827, -0.002104, -0.024540]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0245
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/clamp/clamp.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   chicken_broth:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0343, 0.0340].
@@ -2098,46 +1411,12 @@ tasks:
       - [-0.050525, -0.112505, -0.034256]
       - [0.051231, -0.002642, -0.034256]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0343
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/chicken_broth/chicken_broth.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   egg_carton:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0432, 0.0355].
@@ -2180,46 +1459,12 @@ tasks:
       - [-0.098883, -0.150249, -0.043249]
       - [0.086056, 0.003252, -0.043249]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0432
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/egg_carton/egg_carton.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   book:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0207, 0.0203].
@@ -2262,46 +1507,12 @@ tasks:
       - [-0.072740, -0.096789, -0.020722]
       - [0.074246, -0.000416, -0.020722]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0207
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/book/book.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   baby_toy:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0283, 0.0268].
@@ -2313,6 +1524,7 @@ tasks:
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
     init_xyz: [0.5, 0.0, 0.0283]
+    planar_nominal_quat: [0.99895, 0.01300, 0.04405, 0.01276]
     goal_xy: [0.482, 0.187]
     goal_yaw: -0.7379
     color_rgba: [0.75, 0.75, 0.75, 1.0]
@@ -2344,46 +1556,12 @@ tasks:
       - [-0.097731, -0.108470, -0.028300]
       - [0.098644, -0.000536, -0.028300]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0283
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/baby_toy/baby_toy.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   gallon_milk:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0772, 0.0790].
@@ -2394,11 +1572,22 @@ tasks:
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0772]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    # Reference Anything N=1 x/y and orientation.  Use the mesh's
+    # nonpenetrating rest height in the port: the reference z=0 boot pose,
+    # shifted by +0.029 m, intersects this mesh by 48.2 mm under hydroelastic
+    # contact and causes immediate numerical divergence.
+    init_xyz: [0.4, -0.3, 0.0772]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    # Default Anything goal for objects absent from letter_settings.yaml.
+    goal_xy: [0.5, 0.0]
+    goal_yaw: 1.5707963267948966
+    random_goal_x_limits: [0.5, 0.51]
+    random_goal_y_limits: [-0.30, 0.30]
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
+    # Reference Anything update_sampling_params fixes z_height=0.002 in its
+    # world, i.e. 0.031 in the port frame.  A centre-height push tips Gallon.
+    use_adaptive_contact_height: false
     pwl_waypoint_height: 0.2061
     # ANYTHING-lineage sampler (2026-08-20). These objects come from the
     # reference `anything` demo, whose parameters/sampling_params.yaml:14
@@ -2426,46 +1615,12 @@ tasks:
       - [-0.071343, -0.153392, -0.077160]
       - [0.070719, -0.026180, -0.077160]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0772
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/gallon_milk/gallon_milk.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   xbox:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0326, 0.0392].
@@ -2508,46 +1663,12 @@ tasks:
       - [-0.060143, -0.087103, -0.032591]
       - [0.071018, -0.007774, -0.032591]
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos: [0.01, 0.01, 0.01]
-      q_vector_obj_quat: [0.1, 0.1, 0.1, 0.1]
-      q_vector_obj_pos: [150.0, 150.0, 120.0]
-      q_vector_position_obj_quat: [0.0, 0.0, 0.0, 0.0]
-      q_vector_position_obj_pos: [200.0, 200.0, 120.0]
-      q_vector_ee_vel: [15.0, 15.0, 10.0]
-      q_vector_obj_ang_vel: [0.05, 0.05, 0.05]
-      q_vector_obj_lin_vel: [0.05, 0.05, 0.05]
-      w_R: 6.0
-      r_vector: [0.01, 0.01, 1.0]
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
-      z_ee_target: 0.0310
+      z_ee_target: 0.031
       z_obj_target: 0.0326
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/xbox/xbox.sdf
-    controller_mass: 1.0
-    # Declared planner tensor from the reference *_controller.sdf <inertial>
-    # (NOT proportional to the sim tensor — see scripts/emit_controller_inertia.py).
-    controller_inertia:
-      mass: 1.0
-      com: [0.0, 0.0, 0.0]
-      moments: [0.003, 0.003, 0.006]
-      products: [0.0, 0.0, 0.0]
-
   # =====================================================================
   # BLOCK OBJECT VARIANTS (2026-08-20)
   # Box-primitive counterparts of the low-CoM Fig 8 objects.
@@ -2614,82 +1735,12 @@ tasks:
       - -0.000416
       - -0.020722
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0207
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/book_block/book.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `lotion` (2 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `lotion` in EVERY field except object_sdf and
@@ -2751,82 +1802,12 @@ tasks:
       - -0.012404
       - -0.021594
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0216
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/lotion_block/lotion.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `baby_toy` (3 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `baby_toy` in EVERY field except object_sdf and
@@ -2888,91 +1869,21 @@ tasks:
       - -0.000536
       - -0.0283
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0283
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/baby_toy_block/baby_toy.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `I_shape_texture` (3 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `I_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  I_shape_texture_block:
+  I_shape_block:
     object_type: tshape
-    link_name: I_shape_texture
+    link_name: I_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3025,91 +1936,21 @@ tasks:
       - 0.00078
       - -0.025781
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0258
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/I_shape_texture_block/I_shape_texture.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `H_shape_texture` (3 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `H_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  H_shape_texture_block:
+  H_shape_block:
     object_type: tshape
-    link_name: H_shape_texture
+    link_name: H_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3162,91 +2003,21 @@ tasks:
       - -0.002352
       - -0.023597
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0236
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/H_shape_texture_block/H_shape_texture.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `E_shape_video` (4 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `E_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  E_shape_video_block:
+  E_shape_block:
     object_type: tshape
-    link_name: E_shape_video
+    link_name: E_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3299,82 +2070,12 @@ tasks:
       - 0.008043
       - -0.0309
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0309
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/E_shape_video_block/E_shape_video.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `clamp` (5 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `clamp` in EVERY field except object_sdf and
@@ -3436,91 +2137,21 @@ tasks:
       - -0.002104
       - -0.02454
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0245
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/clamp_block/clamp.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `Y_shape_video` (3 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `Y_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  Y_shape_video_block:
+  Y_shape_block:
     object_type: tshape
-    link_name: Y_shape_video
+    link_name: Y_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3573,91 +2204,21 @@ tasks:
       - -0.015371
       - -0.024119
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0241
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/Y_shape_video_block/Y_shape_video.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `3_shape_video` (5 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `3_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  3_shape_video_block:
+  3_shape_block:
     object_type: tshape
-    link_name: 3_shape_video
+    link_name: 3_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3710,91 +2271,21 @@ tasks:
       - -0.00473
       - -0.024539
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0245
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/3_shape_video_block/3_shape_video.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `C_shape_texture` (5 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `C_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  C_shape_texture_block:
+  C_shape_block:
     object_type: tshape
-    link_name: C_shape_texture
+    link_name: C_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3847,91 +2338,21 @@ tasks:
       - 0.004334
       - -0.027656
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0277
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/C_shape_texture_block/C_shape_texture.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `G_shape_video` (5 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `G_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  G_shape_video_block:
+  G_shape_block:
     object_type: tshape
-    link_name: G_shape_video
+    link_name: G_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -3984,91 +2405,21 @@ tasks:
       - 0.006181
       - -0.026314
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0263
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/G_shape_video_block/G_shape_video.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `A_shape_video` (3 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `A_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  A_shape_video_block:
+  A_shape_block:
     object_type: tshape
-    link_name: A_shape_video
+    link_name: A_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -4121,91 +2472,21 @@ tasks:
       - -0.003332
       - -0.027044
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.027
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/A_shape_video_block/A_shape_video.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `B_shape_video` (5 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `B_shape_video` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  B_shape_video_block:
+  B_shape_block:
     object_type: tshape
-    link_name: B_shape_video
+    link_name: B_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -4258,91 +2539,21 @@ tasks:
       - 0.004028
       - -0.026118
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0261
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/B_shape_video_block/B_shape_video.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-
   # BLOCK variant of `R_shape_texture` (5 <box> primitives, hand-authored decomposition of that
   # object's mesh silhouette, using the same box-decomposition approach).
   # Identical to `R_shape_texture` in EVERY field except object_sdf and
   # init_xyz.z -- same mass, friction, cost block, controller
   # inertia, kMeshNormal sampler literals, goal and ground
   # witnesses -- so the only variable is the collision shape.
-  R_shape_texture_block:
+  R_shape_block:
     object_type: tshape
-    link_name: R_shape_texture
+    link_name: R_shape_block
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
@@ -4395,94 +2606,28 @@ tasks:
       - 0.001884
       - -0.026556
     cost:
-      use_reference_q_vector: true
-      w_Q: 80.0
-      w_Q_position: 50.0
-      q_vector_ee_pos:
-      - 0.01
-      - 0.01
-      - 0.01
-      q_vector_obj_quat:
-      - 0.1
-      - 0.1
-      - 0.1
-      - 0.1
-      q_vector_obj_pos:
-      - 150.0
-      - 150.0
-      - 120.0
-      q_vector_position_obj_quat:
-      - 0.0
-      - 0.0
-      - 0.0
-      - 0.0
-      q_vector_position_obj_pos:
-      - 200.0
-      - 200.0
-      - 120.0
-      q_vector_ee_vel:
-      - 15.0
-      - 15.0
-      - 10.0
-      q_vector_obj_ang_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      q_vector_obj_lin_vel:
-      - 0.05
-      - 0.05
-      - 0.05
-      w_R: 6.0
-      r_vector:
-      - 0.01
-      - 0.01
-      - 1.0
-      w_obj_xy: 12500.0
-      w_obj_z: 10.0
-      w_box_z: 12490.0
+      # Canonical values come from push_anything_dev multiyaml_rewrite.py.
+      profile: push_anything
       ee_target_z_offset_above_object: 0.06
-      w_obj_xy_pose: 10000.0
-      w_box_z_pose: 5990.0
-      w_box_rp: 5.0
-      w_yaw: 0.0
-      use_quaternion_dependent_cost: true
-      q_quaternion_dependent_weight: 1000.0
-      q_quaternion_dependent_regularizer_fraction: 0.0
-      w_terminal: 1.0
       z_ee_target: 0.031
       z_obj_target: 0.0266
       d_push: 0.05
-      w_ee_approach: 8000.0
-      w_torque: 0.01
-    object_sdf: sim/models/R_shape_texture_block/R_shape_texture.sdf
-    controller_mass: 1.0
-    controller_inertia:
-      mass: 1.0
-      com:
-      - 0.0
-      - 0.0
-      - 0.0
-      moments:
-      - 0.003
-      - 0.003
-      - 0.006
-      products:
-      - 0.0
-      - 0.0
-      - 0.0
-  S_shape_texture:
+
+  # ---- AUTO-IMPORTED anything objects (Fig 8 campaign 2026-08-15) ----
+  S_shape:
     # AUTO-IMPORTED anything object (scripts/import_anything_objects.py,
     # Fig 8 campaign 2026-08-15). mesh z: [-0.0291, 0.0258].
     object_type: tshape
-    link_name: S_shape_texture
+    link_name: S_shape
     mass: 0.05
     friction: 0.3
     pusher_friction: 1.0
     mu_per_pair_type: {EE-BOX: 0.42, BOX-GND: 0.46, EE-GND: 0.823}
     q_init_franka: [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08]
-    init_xyz: [0.5, 0.0, 0.0291]
-    goal_xy: [0.482, 0.187]
-    goal_yaw: -0.7379
+    init_xyz: [0.4, -0.3, 0.0291]
+    init_quat: [0.393, 0.0, 0.0, 0.92]
+    goal_xy: [0.5, 0.0]
+    goal_yaw: 0.0399947
     color_rgba: [0.75, 0.75, 0.75, 1.0]
     sampling_height: 0.031
     pwl_waypoint_height: 0.1049
@@ -4521,5 +2666,5 @@ tasks:
       d_push: 0.05
       w_ee_approach: 8000.0
       w_torque: 0.01
-    object_sdf: sim/models/S_shape_texture/S_shape_texture.sdf
+    object_sdf: sim/models/S_shape/S_shape.sdf
     controller_mass: 1.0

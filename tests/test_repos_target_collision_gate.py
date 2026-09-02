@@ -27,7 +27,10 @@ from pydrake.multibody.tree import SpatialInertia, UnitInertia
 from pydrake.multibody.plant import CoulombFriction
 
 from control.sampling_c3.params import SamplingC3Params
-from control.sampling_c3.sampling_based_c3_controller import SamplingC3Controller
+from control.sampling_c3.sampling_based_c3_controller import (
+    SamplingC3Controller,
+    selected_geometry_point_distance,
+)
 
 
 @pytest.fixture(scope="module")
@@ -86,3 +89,17 @@ def test_no_target_is_clear(box_world):
     plant, ctx, gid = box_world
     c = _controller(plant, gid, target=None)
     assert c._pursued_target_in_collision(ctx) is False
+
+
+def test_selected_box_distance_is_exact_and_does_not_use_global_query(box_world):
+    plant, ctx, gid = box_world
+    query = plant.get_geometry_query_input_port().Eval(ctx)
+    distance, gradient = selected_geometry_point_distance(
+        query, {gid}, np.array([0.06, 0.0, 0.0]))
+    assert distance == pytest.approx(0.01)
+    np.testing.assert_allclose(gradient, [1.0, 0.0, 0.0])
+
+    inside, inside_gradient = selected_geometry_point_distance(
+        query, {gid}, np.array([0.0, 0.0, 0.0]))
+    assert inside == pytest.approx(-0.05)
+    assert np.linalg.norm(inside_gradient) == pytest.approx(1.0)

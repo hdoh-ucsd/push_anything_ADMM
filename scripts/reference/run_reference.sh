@@ -21,7 +21,16 @@ DEMO="${1:-push_t}"
 MAX_SEC="${2:-180}"
 TAG="${3:-$(date +%Y%m%d_%H%M%S)}"
 
-REF_ROOT=/root/reference_repos/dairlib_sampling_c3
+[[ "$MAX_SEC" =~ ^[0-9]+$ ]] && (( MAX_SEC > 0 )) || {
+  echo "error: MAX_SEC must be a positive integer (got '$MAX_SEC')" >&2
+  exit 2
+}
+[[ "$TAG" =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "error: TAG may contain only letters, digits, dot, underscore, and dash" >&2
+  exit 2
+}
+
+REF_ROOT="${DAIRLIB_REF_ROOT:-/root/reference_repos/dairlib_sampling_c3}"
 BIN="$REF_ROOT/bazel-bin/examples/sampling_c3"
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="/root/push_anything_ADMM/results/reference/${DEMO}_${TAG}"
@@ -30,6 +39,11 @@ case "$DEMO" in
   push_t|jacktoy|anything) ;;
   *) echo "error: demo must be push_t, jacktoy, or anything (got '$DEMO')" >&2; exit 2 ;;
 esac
+
+if [[ -e "$OUT_DIR" ]]; then
+  echo "error: output already exists; choose a new TAG: $OUT_DIR" >&2
+  exit 2
+fi
 
 for b in franka_sim franka_osc_controller franka_sampling_c3_controller; do
   if [[ ! -x "$BIN/$b" ]]; then
@@ -106,7 +120,7 @@ python3 "$HARNESS_DIR/summarize_reference_log.py" "$OUT_DIR" || true
 
 # The [EXPERIMENT] verbose=true controller build logs ~2 MB/s — compress
 # after summarizing (summarizer reads .gz transparently for re-runs).
-gzip -f "$OUT_DIR/c3controller.log" || true
+gzip "$OUT_DIR/c3controller.log" || true
 
 if [[ "$EARLY_EXIT" == 1 ]]; then
   echo "[run_reference] FAILED (early process exit) — logs in $OUT_DIR"

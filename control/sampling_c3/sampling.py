@@ -83,6 +83,24 @@ _TSHAPE_HALF_HEIGHT = 0.020
 # at the setback point, mirroring the 0.5 mm side-face gap.
 _TSHAPE_TOP_SETBACK = 0.020
 
+# Measured OIM lab T from tee_real.xml / tee_sampling_c3plus.xml.  The body
+# origin is at the crossbar/stem junction and the two boxes overlap cleanly.
+_OIM_TSHAPE_FACE_TABLE = np.array([
+    (-0.0445, +0.0099, -1.0,  0.0, 0.0099),
+    ( 0.0000, +0.0198,  0.0, +1.0, 0.0445),
+    (+0.0445, +0.0099, +1.0,  0.0, 0.0099),
+    (+0.0272,  0.0000,  0.0, -1.0, 0.0173),
+    (+0.0099, -0.0397, +1.0,  0.0, 0.0397),
+    ( 0.0000, -0.0794,  0.0, -1.0, 0.0099),
+    (-0.0099, -0.0397, -1.0,  0.0, 0.0397),
+    (-0.0272,  0.0000,  0.0, -1.0, 0.0173),
+], dtype=float)
+_OIM_TSHAPE_TOP_TABLE = np.array([
+    (0.0, +0.0099, 0.0445, 0.0099),
+    (0.0, -0.0397, 0.0099, 0.0397),
+], dtype=float)
+_OIM_TSHAPE_HALF_HEIGHT = 0.0298
+
 
 # H-shape side faces, body frame. Geometry from sim/env_builder.py
 # `_hshape_sdf` (envelope 0.112 x 0.128 x 0.032, centred on the link origin):
@@ -629,6 +647,13 @@ def _face_normal_projection(n_samples:    int,
     z        = float(params.sampling_height)
     reject_clearance = float(params.sample_reject_clearance)
     shape    = str(getattr(params, "object_shape", "box"))
+    _t_variant = str(getattr(params, "tshape_geometry_variant", "reference"))
+    _is_oim_t = shape == "tshape" and _t_variant == "oim_lab"
+    _t_face_table = _OIM_TSHAPE_FACE_TABLE if _is_oim_t else _TSHAPE_FACE_TABLE
+    _t_top_table = _OIM_TSHAPE_TOP_TABLE if _is_oim_t else _TSHAPE_TOP_TABLE
+    _t_half_height = (_OIM_TSHAPE_HALF_HEIGHT if _is_oim_t
+                      else _TSHAPE_HALF_HEIGHT)
+    _t_bar_height = 2.0 * _t_half_height
 
     # BUG 2 fix (2026-07-13) — horizontal-setback compensation for the
     # port's fatter pusher radius. This is a COMPENSATION, not a
@@ -696,7 +721,7 @@ def _face_normal_projection(n_samples:    int,
         # T LINK FRAME face patches → rotate through obj_quat to get world frame.
         # Each row: (cx, cy, nx, ny, half_len). Center-x/y and normals rotate;
         # half_len is invariant under rigid rotation.
-        _table = _TSHAPE_FACE_TABLE
+        _table = _t_face_table
         body_centers = np.column_stack([_table[:, 0], _table[:, 1],
                                         np.zeros(_table.shape[0])])   # (N,3)
         body_normals = np.column_stack([_table[:, 2], _table[:, 3],
@@ -714,7 +739,7 @@ def _face_normal_projection(n_samples:    int,
         # planar top patches; normal is +z regardless of obj_quat (T rotates
         # only about z). Body-frame centers rotate through R for world-frame
         # placement.
-        _top_table = _TSHAPE_TOP_TABLE
+        _top_table = _t_top_table
         _top_body_centers = np.column_stack([
             _top_table[:, 0], _top_table[:, 1],
             np.zeros(_top_table.shape[0])])
@@ -751,7 +776,7 @@ def _face_normal_projection(n_samples:    int,
     # port's rectangular jitter, matches barycentric_bias=1 semantics).
     # See SamplingParams.use_mesh_normal_area_weighting docstring for
     # per-face expected fractions.
-    _T_BAR_HEIGHT = 0.04  # matches env_builder._tshape_sdf T bar cross-section
+    _T_BAR_HEIGHT = _t_bar_height
     _use_mesh_normal = bool(getattr(
         params, "use_mesh_normal_area_weighting", False))
     _beta = float(getattr(params, "face_bias_strength", 0.0))
@@ -945,8 +970,8 @@ def _face_normal_projection(n_samples:    int,
                 j_world = j_body
             face_center_xy = _face_center_xy(face_idx)
             _sample_xy = face_center_xy + j_world[:2]
-            _sample_z = (_TSHAPE_HALF_HEIGHT +          # obj_z at rest
-                         _TSHAPE_HALF_HEIGHT +          # T top offset from center
+            _sample_z = (_t_half_height +               # obj_z at rest
+                         _t_half_height +               # T top offset from center
                          _TSHAPE_TOP_SETBACK)           # +z setback above top
             samples.append(
                 np.array([_sample_xy[0], _sample_xy[1], _sample_z]))
@@ -1098,11 +1123,25 @@ def _random_on_perimeter(n_samples: int,
     # landed exactly AT the gate boundary and p139 rejected 698 of the
     # sampler's own fresh outputs. sampling_setback remains the kFaceNormal
     # knob; it is not used here.
-    from sim.env_builder import PUSHER_RADIUS as _PUSHER_R
+    from sim.env_builder import PUSHER_RADIUS as _DEFAULT_PUSHER_R
+    _override_radius = getattr(params, "pusher_radius_override", None)
+    _PUSHER_R = (float(_DEFAULT_PUSHER_R) if _override_radius is None
+                 else float(_override_radius))
     clearance = float(_PUSHER_R) + float(getattr(
         params, "sample_projection_clearance", 0.02))
 
     R = _quat_to_rot(obj_quat) if obj_quat is not None else np.eye(3)
+
+    _variant = str(getattr(params, "tshape_geometry_variant", "reference"))
+    if shape == "tshape" and _variant == "oim_lab":
+        _spec = {
+            "face_table": _OIM_TSHAPE_FACE_TABLE,
+            "rects": ((-0.0445, +0.0445, 0.0, +0.0198),
+                      (-0.0099, +0.0099, -0.0794, 0.0)),
+            "bbox": (-0.0445, +0.0445, -0.0794, +0.0198),
+        }
+    else:
+        _spec = _poly_spec(shape)
 
     # Bounding-box (body-frame) for the uniform draw.  Prefer explicit
     # grid_x_limits / grid_y_limits if present (matches reference YAML
@@ -1116,16 +1155,15 @@ def _random_on_perimeter(n_samples: int,
         gy = np.asarray(params.grid_y_limits, dtype=float).flatten()
         x_lo, x_hi = float(gx[0]), float(gx[1])
         y_lo, y_hi = float(gy[0]), float(gy[1])
-    elif _poly_spec(shape) is not None:
+    elif _spec is not None:
         # Tight bounding box from the shape's face-table extents.
-        x_lo, x_hi, y_lo, y_hi = _poly_spec(shape)["bbox"]
+        x_lo, x_hi, y_lo, y_hi = _spec["bbox"]
     else:
         h = float(params.box_half_extent)
         x_lo, x_hi = -h, +h
         y_lo, y_hi = -h, +h
 
     # Face table (body-frame).  Each row: (cx, cy, nx, ny, half_len).
-    _spec = _poly_spec(shape)
     if _spec is not None:
         face_table = _spec["face_table"]
     else:

@@ -31,7 +31,8 @@ PY=/root/miniconda3/envs/push_anything_ADMM/bin/python3
 # invalid UTF-8 byte that crashed the frame renderer). Shell stdout goes to a
 # separate diagnostic file instead.
 RESULT_PATH="results/${RUN_NAME}.txt"
-SHELL_LOG="results/.${RUN_NAME}.shell"
+ATTEMPT_ID="$(date +%Y%m%d_%H%M%S)_$$"
+SHELL_LOG="results/.${RUN_NAME}.attempt-${ATTEMPT_ID}.shell"
 ATTEMPT_LOG="results/.${RUN_NAME}.attempts"
 
 # Already finished? Nothing to do — exit 0 so systemd stops retrying.
@@ -66,12 +67,17 @@ if [ -f "$RESULT_PATH" ]; then
     best_steps=${best_steps:-0}
   fi
   if [ "$prev_steps" -gt "$best_steps" ]; then
+    if [ -f "results/.${RUN_NAME}.best" ]; then
+      mv "results/.${RUN_NAME}.best" \
+        "results/.${RUN_NAME}.best-${ATTEMPT_ID}.previous"
+    fi
     mv "$RESULT_PATH" "results/.${RUN_NAME}.best"
     echo "[run-until-complete]   kept prior partial (step=$prev_steps) as .best" \
       >> "$ATTEMPT_LOG"
   fi
 fi
 
+echo "[run-until-complete] shell log: $SHELL_LOG" >> "$ATTEMPT_LOG"
 "$PY" main.py "$TASK" --sampling-c3 "$CONFIG" --max-time "$MAX_TIME" \
   --name "$RUN_NAME" > "$SHELL_LOG" 2>&1
 rc=$?

@@ -58,6 +58,7 @@ class BufferedSample:
     age_steps:     int                  = 0
     result:        Optional[object]     = None  # SampleResult; typed loosely
                                                 # to avoid circular import.
+    position_body_xy: Optional[np.ndarray] = None
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +75,17 @@ def _quat_geodesic_angle(q_a: np.ndarray, q_b: np.ndarray) -> float:
     d = float(abs(np.dot(q_a, q_b)))
     d = min(1.0, max(-1.0, d))
     return 2.0 * float(np.arccos(d))
+
+
+def _quat_yaw(q_wxyz: np.ndarray) -> float:
+    """World-z yaw of a wxyz quaternion."""
+    q = np.asarray(q_wxyz, dtype=float).reshape(4)
+    n = float(np.linalg.norm(q))
+    if n <= 1e-12:
+        return 0.0
+    qw, qx, qy, qz = (float(v) for v in q / n)
+    return float(np.arctan2(2.0 * (qw * qz + qx * qy),
+                            1.0 - 2.0 * (qy * qy + qz * qz)))
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +159,16 @@ class SampleBuffer:
                 del self._entries[i]
                 return True
         return False
+
+    def remove_near(self, position: np.ndarray, radius: float) -> int:
+        """Remove every cached candidate inside a failed-contact ball."""
+        p = np.asarray(position, dtype=float).reshape(3)
+        before = len(self._entries)
+        self._entries = [
+            entry for entry in self._entries
+            if float(np.linalg.norm(entry.position - p)) >= float(radius)
+        ]
+        return before - len(self._entries)
 
     def clear(self) -> None:
         self._entries.clear()
@@ -228,6 +250,11 @@ class UnsuccessfulSampleBuffer:
         before = len(self._entries)
         kept: list[BufferedSample] = []
         for s in self._entries:
+            # Body-relative failures remain meaningful as the object moves;
+            # FIFO capacity still bounds how many are retained.
+            if s.position_body_xy is not None:
+                kept.append(s)
+                continue
             d_pos = float(np.linalg.norm(obj_pos_xy_now - s.obj_pos_xy))
             if d_pos > self.unsuccessful_pos_retention:
                 continue
@@ -245,7 +272,11 @@ class UnsuccessfulSampleBuffer:
         while len(self._entries) > self.capacity:
             self._entries.pop(0)
 
-    def sample_avoids_bad_spots(self, ee_candidate: np.ndarray) -> bool:
+    def sample_avoids_bad_spots(
+            self,
+            ee_candidate: np.ndarray,
+            obj_pos_xy_now: Optional[np.ndarray] = None,
+            obj_quat_now: Optional[np.ndarray] = None) -> bool:
         """Reference generate_samples.cc:187-205 sample_avoids_bad_spots.
 
         Returns True iff `ee_candidate` is at least `unsuccessful_radius`
@@ -254,7 +285,19 @@ class UnsuccessfulSampleBuffer:
         """
         p = np.asarray(ee_candidate, dtype=float).reshape(3)
         for s in self._entries:
-            if float(np.linalg.norm(p - s.position)) \
+            failed_position = s.position
+            if (s.position_body_xy is not None
+                    and obj_pos_xy_now is not None
+                    and obj_quat_now is not None):
+                yaw = _quat_yaw(obj_quat_now)
+                c, sn = np.cos(yaw), np.sin(yaw)
+                rotation = np.array([[c, -sn], [sn, c]])
+                failed_position = np.array([
+                    *(np.asarray(obj_pos_xy_now, dtype=float).reshape(2)
+                      + rotation @ s.position_body_xy),
+                    float(s.position[2]),
+                ])
+            if float(np.linalg.norm(p - failed_position)) \
                     < self.unsuccessful_radius:
                 return False
         return True

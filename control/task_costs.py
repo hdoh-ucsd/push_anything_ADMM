@@ -18,6 +18,8 @@ Cost terms:
 """
 import numpy as np
 
+from control.push_anything_cost import resolve_cost_config
+
 
 def _goal_quaternion(target_yaw: float, target_quat=None) -> np.ndarray:
     """Goal quaternion [w, x, y, z] for the object-orientation cost.
@@ -100,7 +102,13 @@ class QuadraticManipulationCost:
         self._obj_y_idx = ps + 5
         self._obj_z_idx = ps + 6
 
-        c = cost_cfg
+        c = resolve_cost_config(cost_cfg)
+        self.push_anything_num_objects = int(c.get("push_anything_num_objects", 1))
+        if self.push_anything_num_objects != 1:
+            raise NotImplementedError(
+                "QuadraticManipulationCost currently owns one object; use "
+                "push_anything_cost_profile(N).tracking_matrices(...) when "
+                "wiring the future multi-object plant")
         self.w_obj_xy      = float(c.get("w_obj_xy",      1000.0))
         # Path-C Pareto probe (2026-07-09): PORT_W_OBJ_XY_MULT scales w_obj_xy
         # in-place after yaml load. Default 1.0 = byte-identical. Used to sweep
@@ -132,6 +140,15 @@ class QuadraticManipulationCost:
         # globally monotonic on ψ ∈ (α-π, α+π). NOT a raw qz penalty, which is
         # invalid for a unit quaternion.
         self.w_yaw         = float(c.get("w_yaw",            0.0))
+        # Optional exact SE(2) rollout-ranking cost.  The QP still needs a
+        # quadratic quaternion cost, but OIM's C3 reference ranks predicted
+        # object trajectories with wrapped yaw error in (x, y, theta).
+        self.use_oim_se2_ranking_cost = bool(
+            c.get("use_oim_se2_ranking_cost", False))
+        self.oim_q_pos = float(c.get("oim_q_pos", 1000.0))
+        self.oim_q_theta = float(c.get("oim_q_theta", 100.0))
+        self.oim_qf_pos = float(c.get("oim_qf_pos", 10000.0))
+        self.oim_qf_theta = float(c.get("oim_qf_theta", 1000.0))
         self._target_yaw   = 0.0   # updated each build() call via target_yaw kwarg
         # Optional full goal quaternion (tasks.yaml `goal_quat`). None => the
         # goal is the yaw-only rotation built from target_yaw, which is what
@@ -212,6 +229,10 @@ class QuadraticManipulationCost:
             "q_vector_position_obj_quat", self._q_vec_obj_quat))
         self._q_vec_pos_obj_pos  = list(c.get(
             "q_vector_position_obj_pos",  self._q_vec_obj_pos))
+        self._q_vec_pos_obj_ang_vel = list(c.get(
+            "q_vector_position_obj_ang_vel", self._q_vec_obj_ang_vel))
+        self._q_vec_pos_obj_lin_vel = list(c.get(
+            "q_vector_position_obj_lin_vel", self._q_vec_obj_lin_vel))
         # R = w_R x diag(r_vector) when r_vector is given (reference
         # c3_options.h: R = w_R * diag(r_vector); anything-N1 r_vector
         # [0.01, 0.01, 1] penalizes vertical EE force 100x horizontal).
@@ -280,6 +301,29 @@ class QuadraticManipulationCost:
         self._Q_obj = self._make_Q_obj()
         self._R     = self.w_torque * np.eye(n_u)
 
+    def effective_object_position_weights(self, near: bool | None = None) -> np.ndarray:
+        """Return the live xyz weights on one object's position.
+
+        Reference-vector tasks derive these from ``w_Q * q_vector``.  Legacy
+        tasks retain their scalar configuration.  Keeping this calculation in
+        one place prevents progress tracking and diagnostics from reading
+        obsolete fallback fields.
+        """
+        if near is None:
+            near = self._crossed_switching_threshold
+        if self.use_reference_q_vector:
+            scale = self.w_Q if near else self.w_Q_position
+            vector = self._q_vec_obj_pos if near else self._q_vec_pos_obj_pos
+            return scale * np.asarray(vector, dtype=float)
+        if near:
+            return np.asarray([
+                self.w_obj_xy_pose, self.w_obj_xy_pose,
+                self.w_obj_z + self.w_box_z_pose,
+            ])
+        return np.asarray([
+            self.w_obj_xy, self.w_obj_xy, self.w_obj_z + self.w_box_z,
+        ])
+
     def _make_Q_obj(self) -> np.ndarray:
         Q = np.zeros((self.n_x, self.n_x))
         # XY position → goal
@@ -343,21 +387,29 @@ class QuadraticManipulationCost:
             # assignment is regime-independent (no w_obj_xy_pose swap —
             # q_vector_obj_pos already carries the reference pose-regime
             # values).
+            _near = self._crossed_switching_threshold
+            _wQ = self.w_Q if _near else self.w_Q_position
+            _v_quat = self._q_vec_obj_quat if _near else self._q_vec_pos_obj_quat
+            _v_obj_pos = self._q_vec_obj_pos if _near else self._q_vec_pos_obj_pos
+            _v_obj_ang = (self._q_vec_obj_ang_vel if _near
+                          else self._q_vec_pos_obj_ang_vel)
+            _v_obj_lin = (self._q_vec_obj_lin_vel if _near
+                          else self._q_vec_pos_obj_lin_vel)
             ps = self._obj_ps
             for _i in range(4):
-                Q[ps + _i, ps + _i] = self.w_Q * self._q_vec_obj_quat[_i]
+                Q[ps + _i, ps + _i] = _wQ * _v_quat[_i]
             Q[self._obj_x_idx, self._obj_x_idx] = \
-                self.w_Q * self._q_vec_obj_pos[0]
+                _wQ * _v_obj_pos[0]
             Q[self._obj_y_idx, self._obj_y_idx] = \
-                self.w_Q * self._q_vec_obj_pos[1]
+                _wQ * _v_obj_pos[1]
             Q[self._obj_z_idx, self._obj_z_idx] = \
-                self.w_Q * self._q_vec_obj_pos[2]
+                _wQ * _v_obj_pos[2]
             _vb = self.n_q + self._obj_vs
             for _i in range(3):
                 Q[_vb + _i, _vb + _i] = \
-                    self.w_Q * self._q_vec_obj_ang_vel[_i]
+                    _wQ * _v_obj_ang[_i]
                 Q[_vb + 3 + _i, _vb + 3 + _i] = \
-                    self.w_Q * self._q_vec_obj_lin_vel[_i]
+                    _wQ * _v_obj_lin[_i]
             if not getattr(self, "_ref_qvec_r7_logged", False):
                 self._ref_qvec_r7_logged = True
                 print("[REF-QVEC-R7] build(): reference q_vector base Q "
@@ -871,10 +923,14 @@ class QuadraticManipulationCost:
             q_diag[self._NEW_OBJ_Y]  = _v_obj_pos[1]
             q_diag[self._NEW_OBJ_Z]  = _v_obj_pos[2]
             q_diag[self._NEW_PEE_SLOT]   = self._q_vec_ee_pos
-            q_diag[self._NEW_VBOX_OMEGA] = self._q_vec_obj_ang_vel
-            q_diag[self._NEW_VBOX_LIN_X] = self._q_vec_obj_lin_vel[0]
-            q_diag[self._NEW_VBOX_LIN_Y] = self._q_vec_obj_lin_vel[1]
-            q_diag[self._NEW_VBOX_LIN_Z] = self._q_vec_obj_lin_vel[2]
+            _v_obj_ang = (self._q_vec_obj_ang_vel if _near
+                          else self._q_vec_pos_obj_ang_vel)
+            _v_obj_lin = (self._q_vec_obj_lin_vel if _near
+                          else self._q_vec_pos_obj_lin_vel)
+            q_diag[self._NEW_VBOX_OMEGA] = _v_obj_ang
+            q_diag[self._NEW_VBOX_LIN_X] = _v_obj_lin[0]
+            q_diag[self._NEW_VBOX_LIN_Y] = _v_obj_lin[1]
+            q_diag[self._NEW_VBOX_LIN_Z] = _v_obj_lin[2]
             q_diag[self._NEW_VEE_SLOT]   = self._q_vec_ee_vel
             Q[np.arange(n_x), np.arange(n_x)] = _wQ * q_diag
         else:

@@ -4,6 +4,8 @@ Generic Drake environment builder for all three manipulation tasks.
 Builds: table (static) + Franka Panda arm + task-specific manipulable object.
 Object geometry (box vs sphere) and physical properties come from tasks.yaml.
 """
+from pathlib import Path
+
 import numpy as np
 import pydrake.all as ad
 
@@ -528,6 +530,14 @@ def build_environment(task_cfg: dict, time_step: float | None = None,
     print(f"[ENV]  sim time_step = {time_step:g} s", flush=True)
 
     parser = ad.Parser(plant)
+
+    static_scene_model = task_cfg.get("static_scene_model")
+    if static_scene_model:
+        scene_path = Path(static_scene_model).expanduser().resolve()
+        if not scene_path.is_file():
+            raise FileNotFoundError(f"static scene model not found: {scene_path}")
+        parser.AddModels(str(scene_path))
+        print(f"[ENV]  static scene = {scene_path}", flush=True)
 
     # ------------------------------------------------------------------
     # Table — a thin static box providing the collision ground plane

@@ -34,6 +34,7 @@ def _sphere_collision_poses(sdf_path):
 
 
 BLOCK_SDF = REPO / "sim/models/push_t/push_t_control.sdf"
+MESH_SDF = REPO / "sim/models/T_shape_video/T_shape_video_controller.sdf"
 
 
 def _check(task_name, sdf_path):
@@ -50,3 +51,7 @@ def _check(task_name, sdf_path):
 
 def test_push_t_witnesses_match_controller_sdf():
     _check("push_t", BLOCK_SDF)
+
+
+def test_push_t_mesh_witnesses_match_controller_sdf():
+    _check("push_t_mesh", MESH_SDF)

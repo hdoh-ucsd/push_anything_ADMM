@@ -406,16 +406,16 @@ class C3PlusMPC:
             BOX_V_START = self.formulator._obj_body.floating_velocities_start_in_v()
             box_q = current_q[BOX_Q_START : BOX_Q_START + 7]
             box_v = current_v[BOX_V_START : BOX_V_START + 6]
-            ee_body  = plant.GetBodyByName('pusher')
+            ee_frame = self.quad_cost.ee_frame
             p_ee_now = plant.CalcPointsPositions(
-                plant_ctx, ee_body.body_frame(), np.zeros((3, 1)),
+                plant_ctx, ee_frame, np.zeros((3, 1)),
                 plant.world_frame(),
             ).flatten()
             J_ee_full = plant.CalcJacobianTranslationalVelocity(
                 plant_ctx,
                 __import__('pydrake.all', fromlist=['JacobianWrtVariable'])
                 .JacobianWrtVariable.kV,
-                ee_body.body_frame(), np.zeros(3),
+                ee_frame, np.zeros(3),
                 plant.world_frame(), plant.world_frame(),
             )
             v_ee_now = J_ee_full @ current_v

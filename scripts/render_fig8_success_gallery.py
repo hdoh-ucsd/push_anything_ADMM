@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Render one representative successful run per Figure 8 object.
-
-The shortest validated success is used to keep the gallery compact. Videos are
-rendered from the recorded state logs; this script does not rerun experiments.
-"""
+"""Render each object's uninterrupted 28-goal Figure 8 session."""
 from __future__ import annotations
 
 import argparse
@@ -90,8 +86,8 @@ video {{ display:block; width:100%; aspect-ratio:26/9; background:#090d15; }}
 .object span {{ display:flex; justify-content:space-between; align-items:baseline; padding:9px 10px; gap:6px; }}
 .object small {{ color:#6b7280; white-space:nowrap; }}
 </style></head><body><main>
-<h1>Figure 8 — successful randomized-goal runs</h1>
-<p class="intro">One representative validated success per object. Click an object to play its video.</p>
+<h1>Figure 8 — 28 consecutive SE(2) goals</h1>
+<p class="intro">One uninterrupted manipulation session per object. Click an object to play its full video.</p>
 <section class="viewer"><video id="video" controls playsinline preload="metadata" src="{html.escape(first['video'])}"></video>
 <div class="caption"><strong id="title">{html.escape(first['object'])}</strong><span id="meta">{html.escape(first['meta'])}</span></div></section>
 <section class="objects" aria-label="Successful objects">{''.join(cards)}</section>
@@ -115,7 +111,7 @@ def main() -> None:
     args = parser.parse_args()
 
     data, records = collect()
-    output_dir = ROOT / "results" / "fig8_success_gallery"
+    output_dir = ROOT / "results" / "fig8_consecutive_gallery"
     video_dir, thumb_dir = output_dir / "videos", output_dir / "thumbnails"
     preview_dir = output_dir / "previews"
     video_dir.mkdir(parents=True, exist_ok=True)
@@ -124,16 +120,17 @@ def main() -> None:
     task_by_object = dict(ORDER)
     selected = []
     for object_name, times in data.items():
-        if not times:
+        if len(times) != 28:
             continue
         candidates = [r for r in records if r["object"] == object_name]
-        record = min(candidates, key=lambda r: float(r["time_to_goal_s"]))
+        # All 28 rows point to the same continuous session log.
+        record = candidates[0]
         source = ROOT / record["log"]
         name = slug(object_name)
         video = video_dir / f"{name}.mp4"
         thumb = thumb_dir / f"{name}.jpg"
         preview = preview_dir / f"{name}.gif"
-        duration = float(record["time_to_goal_s"])
+        duration = float(record["session_total_s"])
         print(f"rendering {object_name}: {source.relative_to(ROOT)} ({duration:.2f}s)")
         render(source, task_by_object[object_name], video, duration,
                fps=args.fps, target_frames=args.target_frames, force=args.force)
@@ -149,7 +146,8 @@ def main() -> None:
                  "[a]palettegen=max_colors=96[p];"
                  "[b][p]paletteuse=dither=bayer:bayer_scale=3",
                  "-loop", "0", str(preview)])
-        selected.append({"object": object_name, "meta": f"{duration:.2f} s",
+        selected.append({"object": object_name,
+                         "meta": f"28 consecutive goals · {duration:.2f} s",
                          "video": str(video.relative_to(output_dir)),
                          "thumb": str(preview.relative_to(output_dir))})
     if not selected:

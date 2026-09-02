@@ -22,9 +22,11 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections import deque
 from typing import Optional
 
 import numpy as np
+from pydrake.geometry import Box
 from pydrake.trajectories import PiecewisePolynomial
 
 from control.sampling_c3.commit_face_gate import decide_commit_face_gate
@@ -68,6 +70,148 @@ MAX_APPROACH_STEP      = 0.010
 _SEL_AUDIT_UNINIT = object()
 
 
+def selected_geometry_point_distance(query_object, geometry_ids, point_W):
+    """Minimum signed point distance over selected box geometries only.
+
+    ``ComputeSignedDistanceToPoint`` evaluates the whole SceneGraph before a
+    caller can filter its results. A malformed, unrelated robot mesh can
+    therefore abort an object-only collision query. OIM's manipuland is an
+    exact union of boxes, so evaluate those boxes analytically and never ask
+    Drake to construct normals for unrelated meshes.
+
+    Returns ``(distance, grad_W)`` or ``(None, None)`` when any selected
+    geometry is not a box, allowing the established generic query fallback.
+    """
+    ids = tuple(geometry_ids or ())
+    if not ids:
+        return None, None
+    inspector = query_object.inspector()
+    p_W = np.asarray(point_W, dtype=float).reshape(3)
+    best_distance = None
+    best_gradient = None
+    for geometry_id in ids:
+        shape = inspector.GetShape(geometry_id)
+        if not isinstance(shape, Box):
+            return None, None
+        X_WG = query_object.GetPoseInWorld(geometry_id)
+        p_G = np.asarray(X_WG.inverse().multiply(p_W), dtype=float)
+        half = 0.5 * np.asarray(shape.size(), dtype=float)
+        q = np.abs(p_G) - half
+        outside = np.maximum(q, 0.0)
+        outside_norm = float(np.linalg.norm(outside))
+        distance = outside_norm + min(float(np.max(q)), 0.0)
+        if outside_norm > 1e-12:
+            closest_G = np.clip(p_G, -half, half)
+            grad_G = (p_G - closest_G) / outside_norm
+        else:
+            axis = int(np.argmax(q))
+            grad_G = np.zeros(3)
+            grad_G[axis] = 1.0 if p_G[axis] >= 0.0 else -1.0
+        grad_W = X_WG.rotation().matrix() @ grad_G
+        if best_distance is None or distance < best_distance:
+            best_distance = distance
+            best_gradient = grad_W
+    return float(best_distance), np.asarray(best_gradient, dtype=float)
+
+
+class RepositionProgressWatchdog:
+    """Classify a stationary reposition target as arrived or failed.
+
+    The reference arrival gate remains authoritative while motion is making
+    progress. This watchdog only acts after one complete low-progress window.
+    """
+
+    def __init__(self, window_s: float, min_progress: float,
+                 arrival_tolerance: float, dt: float):
+        self.window_steps = (0 if window_s <= 0.0 else
+                             max(2, int(np.ceil(window_s / dt)) + 1))
+        self.min_progress = float(min_progress)
+        self.arrival_tolerance = float(arrival_tolerance)
+        self._distances = deque(maxlen=max(1, self.window_steps))
+        self._target = None
+
+    def reset(self) -> None:
+        self._distances.clear()
+        self._target = None
+
+    def update(self, target, distance: float) -> Optional[str]:
+        """Return ``"arrived"``, ``"resample"``, or ``None``."""
+        if self.window_steps == 0:
+            return None
+        target = np.asarray(target, dtype=float).reshape(3)
+        if (self._target is None
+                or float(np.linalg.norm(target - self._target)) > 1e-3):
+            self._target = target.copy()
+            self._distances.clear()
+        self._distances.append(float(distance))
+        if len(self._distances) < self.window_steps:
+            return None
+        improvement = self._distances[0] - min(self._distances)
+        if improvement >= self.min_progress:
+            return None
+        outcome = ("arrived" if distance <= self.arrival_tolerance
+                   else "resample")
+        self._distances.clear()
+        return outcome
+
+
+def preserve_reposition_arrival(latched: bool, build_flag: bool,
+                                euclidean_arrival: bool) -> bool:
+    """Combine one-shot watchdog arrival with the current PWL predicates.
+
+    ``latched`` is produced during execution and consumed by the following
+    planning tick.  It must not be replaced by the newly evaluated PWL flags
+    before ``decide_mode`` gets a chance to act on it.
+    """
+    return bool(latched or build_flag or euclidean_arrival)
+
+
+def classify_ee_box_contact(contact_info, lam_n, *,
+                            distance_tolerance: float = 0.002,
+                            force_tolerance: float = 1e-3):
+    """Separate an always-resolved LCS pair from physical EE-box contact.
+
+    The DAIR C3+ reference always resolves the closest configured pair, even
+    across a positive gap. Pair presence is planner topology, not evidence of
+    physical contact.
+    """
+    pair_index = None
+    normal = None
+    distance = float("inf")
+    if contact_info:
+        for index, info in enumerate(contact_info):
+            if isinstance(info, dict) and info.get("tag") == "EE-BOX":
+                pair_index = index
+                distance = float(info.get("distance", float("inf")))
+                normal = info.get("nhat_BA_W")
+                break
+
+    pair_resolved = pair_index is not None
+    normal_force = 0.0
+    if pair_resolved and lam_n is not None and hasattr(lam_n, "__len__"):
+        if len(lam_n) > pair_index:
+            normal_force = float(lam_n[pair_index])
+    physical_contact = (
+        pair_resolved
+        and distance <= float(distance_tolerance)
+        and normal_force > float(force_tolerance)
+    )
+    return pair_resolved, physical_contact, pair_index, distance, normal
+
+
+def object_tilt_from_quaternion_wxyz(quaternion) -> float:
+    """Return the angle between body-z and world-z for a wxyz quaternion."""
+    qw, qx, qy, qz = np.asarray(quaternion, dtype=float).reshape(4)
+    qnorm = float(np.linalg.norm([qw, qx, qy, qz]))
+    if qnorm <= 1e-12:
+        return float("inf")
+    qx /= qnorm
+    qy /= qnorm
+    body_z_dot_world_z = np.clip(
+        1.0 - 2.0 * (qx * qx + qy * qy), -1.0, 1.0)
+    return float(np.arccos(body_z_dot_world_z))
+
+
 class SamplingC3Controller:
     """Replaces the legacy GlobalSamplingC3MPC. Accepts a single
     SamplingC3Params object instead of a dozen individual kwargs."""
@@ -85,7 +229,8 @@ class SamplingC3Controller:
                  *,
                  diagram=None,
                  use_geometry_perimeter_sampling: bool = False,
-                 mesh_faces: dict | None = None):
+                 mesh_faces: dict | None = None,
+                 compensate_solve_latency: bool = True):
         """Construct the outer sampling-C3 controller.
 
         Parameters
@@ -98,6 +243,13 @@ class SamplingC3Controller:
             does not use the diagram and ignores this kwarg.
         """
         self.base_mpc    = base_mpc
+        # The reference timestamps a newly published trajectory after the
+        # measured solve latency because its plant continues evolving under
+        # the previously published command while planning.  A synchronous
+        # simulator does not: simulation time is frozen during the solve.
+        # Such callers must disable the latency offset or every replanning
+        # tick can expire before the first trajectory knot becomes active.
+        self._compensate_solve_latency = bool(compensate_solve_latency)
         # Fig 8 sampler fix (2026-08-15): geometry-generic perimeter
         # sampling for mesh (object_sdf) tasks — reference PerimeterSampling
         # mechanism (interior draw + signed-distance projection) instead of
@@ -132,7 +284,10 @@ class SamplingC3Controller:
             # after this push).
             _slv.apply_task_solver_scales(
                 u_lambda=getattr(params, "u_lambda", None),
-                w_G=getattr(params, "w_G", None),
+                # The controller starts in the far/position regime.
+                w_G=(getattr(params, "w_G_position", None)
+                     if getattr(params, "w_G_position", None) is not None
+                     else getattr(params, "w_G", None)),
                 g_x_vector=getattr(params, "g_x_vector", None),
                 g_lambda=getattr(params, "g_lambda", None),
                 g_u=getattr(params, "g_u", None),
@@ -159,6 +314,9 @@ class SamplingC3Controller:
         # base_mpc.dt is the *planning* timestep (0.05s), which is 5×
         # too fast — must NOT be used here.
         self._dt_ctrl    = float(dt_ctrl)
+        # Last Cartesian force requested by the C3 planner.  Keep this
+        # separate from the runtime bridge's joint-space velocity command.
+        self.last_ee_force_command = np.zeros(3, dtype=float)
 
         # Inner stack references
         self._formulator = base_mpc.formulator
@@ -342,6 +500,13 @@ class SamplingC3Controller:
         self.is_doing_c3 = start_in_c3_mode
         self._prev_mode:                str   = "c3" if start_in_c3_mode else "free"
         self._step:                     int   = 0
+        self._pos_regression_streak:     int   = 0
+        self._yaw_regression_streak:     int   = 0
+        # Reference state defaults.  This must exist before the first call to
+        # _solve_plan: a reference boot goal can already satisfy the position
+        # threshold on tick 1, before the legacy lazy initializer lower in
+        # that method is reached.
+        self._crossed_switching_threshold: bool = False
         # Reference `pursued_target_source_` state
         # (dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.h:505).
         # Purely telemetry — derived from the mode + best-sample-source label at
@@ -416,6 +581,15 @@ class SamplingC3Controller:
         # target within tolerance. Used as the primary kToC3ReachedReposTarget
         # trigger; the cost-based finished_reposition_cost is a fallback.
         self._last_repos_finished:      bool                 = False
+        _sp = self.params.sampling_params
+        self._repos_progress_watchdog = RepositionProgressWatchdog(
+            window_s=float(getattr(_sp, "reposition_stall_window_s", 0.0)),
+            min_progress=float(getattr(
+                _sp, "reposition_stall_min_progress", 0.002)),
+            arrival_tolerance=float(getattr(
+                _sp, "reposition_stall_arrival_tolerance", 0.025)),
+            dt=self._dt_ctrl,
+        )
 
         # ----- Sample buffer for random-ring persistence -----
         # Caches the strategy_samples list (excludes current/prev_repos)
@@ -534,7 +708,8 @@ class SamplingC3Controller:
             _samples = []
             _rejected = []
             for s in _raw_samples:
-                if self.unsuccessful_buffer.sample_avoids_bad_spots(s):
+                if self.unsuccessful_buffer.sample_avoids_bad_spots(
+                        s, obj_xy, obj_quat):
                     _samples.append(s)
                     if len(_samples) >= int(n_strategy):
                         break
@@ -593,6 +768,10 @@ class SamplingC3Controller:
             return False
         query_object = self.plant.get_geometry_query_input_port().Eval(
             plant_ctx)
+        distance, _ = selected_geometry_point_distance(
+            query_object, geom_ids, p)
+        if distance is not None:
+            return distance <= clearance
         results = query_object.ComputeSignedDistanceToPoint(
             np.asarray(p, dtype=float).reshape(3), clearance)
         for r in results:
@@ -628,11 +807,11 @@ class SamplingC3Controller:
                               lambda_n: Optional[np.ndarray],
                               g_hat_3d: np.ndarray,
                               plant_ctx=None) -> np.ndarray:
-        """Derive a sustained Cartesian force command for OSC λ_ext tracking.
+        """Derive the Cartesian force command for OSC λ_ext tracking.
 
         Mirrors the dairlib reference's `end_effector_force_target`
-        (sampling_based_c3_controller.cc:1508-1515): a force command the
-        executor commits to, persisting across momentary LCS contact loss.
+        (sampling_based_c3_controller.cc:1855-1867): each C3 knot carries
+        the corresponding solved ``u_sol`` without a ``lambda_n`` gate.
 
         Convention matches the existing F_ff path
         (operational_space_controller.py:185-193 / qp_builder.py docstring):
@@ -642,7 +821,7 @@ class SamplingC3Controller:
         recoil on the EE points in −g_hat (e.g., box goes west ⇒ EE on
         east ⇒ recoil east = −g_hat for g_hat=[−1,0,0]).
 
-        Magnitude rule:
+        Legacy fallback magnitude rule (non-EE-space planner only):
           * if the LCS admitted an EE-BOX pair at knot 0, use the planner's
             Σ|λ_n| as the intent magnitude (floored at ``min_push_force``).
           * else use ``nominal_push_force`` so the command does NOT collapse
@@ -1148,6 +1327,8 @@ class SamplingC3Controller:
         self._crossed_switching_threshold = False
         self._achieved_fixed_goal = False
         self._off_target_streak = 0
+        self._pos_regression_streak = 0
+        self._yaw_regression_streak = 0
         # New goal = new round: the sticky achievement record restarts too
         # (it records "this goal was reached", not "some goal was reached").
         self._tight_ever_latched = False
@@ -1165,6 +1346,7 @@ class SamplingC3Controller:
             self.unsuccessful_buffer.clear()
         except AttributeError:
             pass
+        self._repos_progress_watchdog.reset()
 
     # ------------------------------------------------------------------
     # Main control entry
@@ -1829,6 +2011,10 @@ class SamplingC3Controller:
                     plant_ctx)
 
                 def _pp_projector(p, _qo=_pp_qo, _gids=_pp_gids):
+                    _bd, _bg = selected_geometry_point_distance(
+                        _qo, _gids, p)
+                    if _bd is not None:
+                        return _bd, _bg
                     try:
                         _res = _qo.ComputeSignedDistanceToPoint(
                             np.asarray(p, dtype=float).reshape(3), 0.5)
@@ -2008,7 +2194,21 @@ class SamplingC3Controller:
         if (self._prev_mode == "c3"
                 and sp.consider_best_buffer_sample_when_leaving_c3
                 and len(self.buffer) > 0):
+            # A regular cached promise must not bypass a later observed-fail
+            # blacklist. Drop every blocked best entry until the remaining
+            # best is admissible (or the cache is empty).
             _best_buf = self.buffer.best_with_position()
+            while (_best_buf is not None
+                   and self._avoid_unsuccessful
+                   and not self.unsuccessful_buffer.sample_avoids_bad_spots(
+                       _best_buf.position, obj_xy, obj_quat)):
+                self.buffer.remove(_best_buf)
+                if self.log_diag:
+                    print(f"[BUFFER-UNSUCC-FILTER] step={self._step} "
+                          f"rejected=({_best_buf.position[0]:+.4f},"
+                          f"{_best_buf.position[1]:+.4f},"
+                          f"{_best_buf.position[2]:+.4f})", flush=True)
+                _best_buf = self.buffer.best_with_position()
             if _best_buf is not None and _best_buf.result is not None:
                 # Reference cc:2113-2118: the stored cost is TRAVEL-FREE;
                 # price it with CURRENT-EE travel before comparing/injecting
@@ -2087,7 +2287,9 @@ class SamplingC3Controller:
         # w_yaw=800 dominant), yaw progress was invisible to
         # ProgressTracker's kConfigCostDrop metric. Now includes yaw
         # cost so kConfigCostDrop tracks the reference's full pos+rot.
-        w_obj_xy = self._quad_cost.w_obj_xy
+        # Read the active Q profile, not legacy scalar fallback fields.
+        w_obj_xy = float(
+            self._quad_cost.effective_object_position_weights()[0])
         w_yaw    = float(getattr(self._quad_cost, "w_yaw", 0.0))
         config_cost_now = w_obj_xy * (goal_dist ** 2)
 
@@ -2138,6 +2340,10 @@ class SamplingC3Controller:
         _goal_yaw_now = float(np.arctan2(
             2.0 * (_gqw * _gqz + _gqx * _gqy),
             1.0 - 2.0 * (_gqy * _gqy + _gqz * _gqz)))
+        if (self._goal_quat is None
+                and bool(getattr(self.params,
+                                 "use_planar_yaw_progress", False))):
+            rot_error_now = planar_yaw_error(_qn, _goal_yaw_now)
 
         # Include yaw component in config_cost (reference full Q_block covers
         # quat too). Uses the half-angle metric that w_yaw multiplies:
@@ -2176,6 +2382,18 @@ class SamplingC3Controller:
                 pos_error   = _final_goal_dist,
                 rot_error   = rot_error_now,
             ))
+
+        # Reference cc:821-830 updates the sticky position->pose regime
+        # *before* evaluating object_on_target at cc:876-897.  This ordering
+        # matters for per-letter boot goals whose XY is already close while
+        # their orientation still needs control.
+        _cost_switch_thr = (
+            self.params.progress_params.cost_switching_threshold_distance)
+        _crossed_before_achievement = False
+        if (not self._crossed_switching_threshold
+                and _final_goal_dist < _cost_switch_thr):
+            self._crossed_switching_threshold = True
+            _crossed_before_achievement = True
 
         # Reference achieved_fixed_goal_ (sampling_based_c3_controller.cc:887-897):
         # when the object is at goal (position_success_threshold=0.02 m
@@ -2260,15 +2478,17 @@ class SamplingC3Controller:
         # Port previously re-evaluated near_goal each tick, causing
         # hysteresis-variant thrashing near the threshold. Now tracked as
         # persistent state that latches on first crossing.
-        if not hasattr(self, "_crossed_switching_threshold"):
-            self._crossed_switching_threshold = False
-        _cost_switch_thr = self.params.progress_params.cost_switching_threshold_distance
         # Reference cc:821-830 uses `x_lcs_final_des` (FINAL goal), not the
         # per-tick lookahead sub-goal. Port previously used goal_dist here
         # (lookahead sub-goal distance) — same bug as the progress-tracker
         # feed I fixed in bf2828b. Use _final_goal_dist for the crossed check.
-        if not self._crossed_switching_threshold and _final_goal_dist < _cost_switch_thr:
-            self._crossed_switching_threshold = True
+        if _crossed_before_achievement:
+            # Reference GetC3Options swaps the complete option set at this
+            # latch. In particular jacktoy changes w_G 0.05 -> 0.03.
+            _pose_w_g = getattr(self.params, "w_G", None)
+            _slv = getattr(self.base_mpc, "solver", None)
+            if _slv is not None and _pose_w_g is not None:
+                _slv.apply_task_solver_scales(w_G=_pose_w_g)
             # Reference cc:845-847: reset progress metrics when threshold
             # is crossed while doing c3. Pose regime uses different cost
             # scaling than position regime, so stale position-regime
@@ -2366,7 +2586,13 @@ class SamplingC3Controller:
             _p_target   = np.asarray(self._pwl_traj.p_target)
             _euclid_arr = (float(np.linalg.norm(_p_target - ee_pos_now))
                            <= _tol_arr)
-            finished_repos = _flag_build or _euclid_arr
+            # Keep the previous execution tick's one-shot arrival latch.
+            # Replacing it here made REPOS-STALL-ARRIVED a diagnostic-only
+            # event: the watchdog set _last_repos_finished=True after the
+            # mode decision, then this assignment erased it on the next tick
+            # before decide_mode could consume it.
+            finished_repos = preserve_reposition_arrival(
+                finished_repos, _flag_build, _euclid_arr)
             if self.log_diag and _euclid_arr and not _flag_build:
                 _d_now = float(np.linalg.norm(_p_target - ee_pos_now))
                 print(f"[REPOS-ARR-EUCLID] step={self._step} "
@@ -2494,13 +2720,33 @@ class SamplingC3Controller:
         # runaway signature directly, not on the wait-expiry symptom.
         # Plan: docs/superpowers/plans/2026-06-06-position-progress-fix-combined.md
         _pos_reg = self.progress.pos_regression()
+        _yaw_reg = self.progress.rot_regression()
         _pos_reg_thr = float(self.params.progress_params.pos_regression_threshold)
-        if _pos_reg_thr > 0.0 and _pos_reg > _pos_reg_thr and met:
+        _yaw_reg_thr = float(getattr(
+            self.params.progress_params, "yaw_regression_threshold", 0.0))
+        _required = max(1, int(getattr(
+            self.params.progress_params, "regression_consecutive_steps", 1)))
+        if self._prev_mode != "c3":
+            self._pos_regression_streak = 0
+            self._yaw_regression_streak = 0
+        else:
+            self._pos_regression_streak = (
+                self._pos_regression_streak + 1
+                if _pos_reg_thr > 0.0 and _pos_reg > _pos_reg_thr else 0)
+            self._yaw_regression_streak = (
+                self._yaw_regression_streak + 1
+                if _yaw_reg_thr > 0.0 and _yaw_reg > _yaw_reg_thr else 0)
+        _se2_regression_forced = (
+            self._pos_regression_streak >= _required
+            or self._yaw_regression_streak >= _required)
+        if _se2_regression_forced:
             met = False
             if self.log_diag:
-                print(f"[POS-REGRESSION] step={self._step} "
-                      f"pos_regression={_pos_reg*1000:.1f}mm "
-                      f"> threshold={_pos_reg_thr*1000:.1f}mm "
+                print(f"[SE2-REGRESSION] step={self._step} "
+                      f"pos={_pos_reg*1000:.1f}mm/{_pos_reg_thr*1000:.1f}mm "
+                      f"yaw={_yaw_reg:.3f}rad/{_yaw_reg_thr:.3f}rad "
+                      f"streaks=({self._pos_regression_streak},"
+                      f"{self._yaw_regression_streak}) required={_required} "
                       f"— forcing met_progress=False", flush=True)
 
         # T1a — EE_z altitude gate (reference sampling_based_c3_controller.cc
@@ -2530,26 +2776,14 @@ class SamplingC3Controller:
         # yaml is byte-identical to the pre-T1a behavior — the gate is
         # skipped when object_shape != "tshape". Same §9-leak discipline as
         # T1b/T1c (both correctly gated at their use sites).
-        _obj_shape = getattr(
-            getattr(self.base_mpc, "formulator", None), "_object_shape", "box")
         # Reference sampling_based_c3_controller.cc:1290-1293 applies this
-        # gate for ALL objects. Retested twice for box (once earlier, once
-        # after achieved_fixed_goal + cost-drop-fraction + hyst-inversion +
-        # W_posture + a_ee_cap fixes) — box still regresses when gate is
-        # enabled (goal_dist 0.109→0.374 → 0.602 m, orient 92°→180° tumble).
-        # Kept tshape-only. Port divergence documented.
-        # 2026-08-10: extended to the jack. The reference applies this to all
-        # objects; the port had it tshape-only because the BOX regressed with
-        # it on. The jack needs it and is not the box: measured at its c3
-        # entries, the EE sits 132 mm above its own c3 tracking height when
-        # kToC3ReachedReposTarget fires (ee_z 0.1562 vs z_height 0.0244,
-        # ceiling 0.0344), and the z-freeze then commands that entire drop in
-        # one tick -- straight through the jack, whose top is at 0.122 m. Those
-        # ticks are 100% of the run's contact events and carry 123 N peaks on a
-        # 1.53 N object. Box and T behaviour is untouched.
+        # gate to every object. A former port exception disabled it for box
+        # runs after an empirical regression, but that silently changed the
+        # dispatcher contract and allowed C3 to begin above the configured
+        # contact-plane ceiling. Keep task differences in z_height and
+        # c3_min_clearance, not in whether the reference gate exists.
         if (self._prev_mode == "free"
-                and getattr(self.params, "ee_z_close", True)
-                and _obj_shape in ("tshape", "jack")):
+                and getattr(self.params, "ee_z_close", True)):
             _sampling_z = self._c3_track_z()   # ref cc:1290 uses z_height
             _c3_min_clearance = float(getattr(
                 self.params, "c3_min_clearance", 0.01))
@@ -2626,10 +2860,21 @@ class SamplingC3Controller:
         # `unsuccessful_radius` next tick.  This is off-reference in the
         # trigger (reference only fires at c3 entry) but the buffer
         # mechanism itself is byte-conformant with cc:2161-2205.
-        if self._avoid_unsuccessful and reason in (
+        _mark_failed_c3_contact = (
+            self._prev_mode == "c3"
+            and reason == SwitchReason.kToReposUnproductive
+            and _se2_regression_forced
+        )
+        _legacy_unsuccessful_transition = reason in (
                 SwitchReason.kToC3Cost,
                 SwitchReason.kToC3ReachedReposTarget,
-                SwitchReason.kToBetterRepos):
+                SwitchReason.kToBetterRepos)
+        _observed_failures_only = bool(getattr(
+            self.params, "unsuccessful_only_on_observed_failure", False))
+        if self._avoid_unsuccessful and (
+                _mark_failed_c3_contact
+                or (_legacy_unsuccessful_transition
+                    and not _observed_failures_only)):
             _obj_xy_now = np.array([
                 float(current_q[self._obj_x_idx]),
                 float(current_q[self._obj_y_idx]),
@@ -2644,19 +2889,31 @@ class SamplingC3Controller:
             self.unsuccessful_buffer.prune(_obj_xy_now, _obj_quat_now)
             # Add the arm's CURRENT EE position (reference cc:2177 uses
             # candidate_states[0] which represents current arm state).
+            _failed_body_xy = None
+            if bool(getattr(self.params, "unsuccessful_body_relative", False)):
+                _failed_body_xy = planar_position_in_object_frame(
+                    ee_pos_now, _obj_xy_now, _obj_quat_now)
             self.unsuccessful_buffer.append(BufferedSample(
                 position   = np.asarray(ee_pos_now, dtype=float).copy(),
                 cost       = float(c_curr),
                 obj_pos_xy = _obj_xy_now.copy(),
                 obj_quat   = _obj_quat_now.copy(),
+                position_body_xy = _failed_body_xy,
             ))
+            _purged_cached = 0
+            if _mark_failed_c3_contact:
+                _purged_cached = self.buffer.remove_near(
+                    ee_pos_now,
+                    self.unsuccessful_buffer.unsuccessful_radius,
+                )
             if self.log_diag:
                 print(f"[UNSUCC-ADD] step={self._step} "
                       f"reason={reason.name} "
                       f"ee_pos=({float(ee_pos_now[0]):+.4f},"
                       f"{float(ee_pos_now[1]):+.4f},"
                       f"{float(ee_pos_now[2]):+.4f}) "
-                      f"buffer_size={len(self.unsuccessful_buffer)}",
+                      f"buffer_size={len(self.unsuccessful_buffer)} "
+                      f"cached_purged={_purged_cached}",
                       flush=True)
 
         # Per-tick sample-selection trace. Env-gated (PORT_ALL_SAMP=1,
@@ -2730,6 +2987,35 @@ class SamplingC3Controller:
                           f"orig_reason={_orig_reason_name} "
                           f"-> override mode=free reason=kStayInRepos",
                           flush=True)
+
+        # Port-only planar-task guard. The authoritative C3+ reference uses
+        # the closest configured pair across a gap, so a generic distance-to-
+        # contact entry gate would be wrong. Wrapped SE(2) tasks may opt into
+        # this attitude invariant when their Drake execution object is free.
+        _max_planar_tilt = getattr(
+            self.params, "max_planar_object_tilt_rad", None)
+        if mode == "c3" and _max_planar_tilt is not None:
+            _object_tilt = object_tilt_from_quaternion_wxyz([
+                current_q[self._obj_x_idx - 4],
+                current_q[self._obj_x_idx - 3],
+                current_q[self._obj_x_idx - 2],
+                current_q[self._obj_x_idx - 1],
+            ])
+            if _object_tilt > float(_max_planar_tilt):
+                _orig_reason_name = reason.name
+                mode = "free"
+                reason = (SwitchReason.kToReposUnproductive
+                          if self._prev_mode == "c3"
+                          else SwitchReason.kStayInRepos)
+                if self.log_diag:
+                    print(
+                        f"[PLANAR-TILT-GATE] step={self._step} "
+                        f"tilt={_object_tilt:.4f}rad > "
+                        f"limit={float(_max_planar_tilt):.4f}rad "
+                        f"orig_reason={_orig_reason_name} -> "
+                        f"mode=free reason={reason.name}",
+                        flush=True,
+                    )
 
         # 6a-pre. Contact-loss disengagement (W13 fix). The kik config's
         # hyst_c3_to_repos_frac=0.95 makes the cost gate fire only when
@@ -2810,24 +3096,6 @@ class SamplingC3Controller:
         # required _approach_override_phase == "C_approach", which the
         # unreachable LTD override could never set, so neither the stall nor
         # the hard-cap condition could ever fire.)
-
-        # 6a. 1d watchdog override (9.4.7 Option A re-test). When the
-        # configured threshold is > 0 and steps_since_improve has reached it
-        # while in free mode, force c3 regardless of cost arithmetic. The
-        # progress reset on the free→c3 transition (line ~430 below) zeroes
-        # steps_since_improve, so the next fire is at least `threshold`
-        # loops away. Disabled (default) when threshold = 0.
-        _wd_thresh = self.params.progress_params.watchdog_steps_since_improve_threshold
-        _wd_si     = self.progress.steps_since_improve()
-        if (_wd_thresh > 0 and self._prev_mode == "free"
-                and _wd_si >= _wd_thresh and mode != "c3"):
-            mode = "c3"
-            reason = SwitchReason.kForceC3Watchdog
-            self._n_watchdog_fires += 1
-            if self.log_diag:
-                print(f"[GS-watchdog] step={self._step} "
-                      f"steps_since_improve={_wd_si} threshold={_wd_thresh} "
-                      f"FORCE c3-mode  total_fires={self._n_watchdog_fires}")
 
         if mode != self._prev_mode:
             self._n_switches += 1
@@ -3307,6 +3575,7 @@ class SamplingC3Controller:
             self._current_repos_target  = None
             self._current_repos_cost    = None
             self._last_repos_finished   = False
+            self._repos_progress_watchdog.reset()
             self._prev_logged_repos_target = None
             self._last_held_existed       = False
             self._last_held_cost_logged   = None
@@ -3483,6 +3752,56 @@ class SamplingC3Controller:
                 # mode-switch decision (kToC3ReachedReposTarget).
                 self._last_repos_finished = bool(
                     free_diag.get("finished", False))
+                _repos_distance = float(free_diag.get(
+                    "finished_val", np.linalg.norm(p_repos - ee_pos_now)))
+                _stall_outcome = self._repos_progress_watchdog.update(
+                    p_repos, _repos_distance)
+                if _stall_outcome == "arrived":
+                    # Preserve the strict reference predicate during normal
+                    # motion. This only adds hysteresis after a full plateau
+                    # window, allowing the next mode decision to enter C3.
+                    self._last_repos_finished = True
+                    if self.log_diag:
+                        print(f"[REPOS-STALL-ARRIVED] step={self._step} "
+                              f"distance={_repos_distance:.4f}m — "
+                              f"plateau inside hysteresis band", flush=True)
+                elif _stall_outcome == "resample":
+                    # The target is far and execution has stopped making
+                    # useful Cartesian progress. Blacklist the target itself
+                    # and clear the held slot so next tick draws globally
+                    # fresh candidates instead of kStayInRepos forever.
+                    _obj_xy_now = np.array([
+                        float(current_q[self._obj_x_idx]),
+                        float(current_q[self._obj_y_idx]),
+                    ])
+                    _obj_quat_now = np.array([
+                        float(current_q[self._obj_x_idx - 4]),
+                        float(current_q[self._obj_x_idx - 3]),
+                        float(current_q[self._obj_x_idx - 2]),
+                        float(current_q[self._obj_x_idx - 1]),
+                    ])
+                    self.unsuccessful_buffer.prune(
+                        _obj_xy_now, _obj_quat_now)
+                    self.unsuccessful_buffer.append(BufferedSample(
+                        position=np.asarray(p_repos, dtype=float).copy(),
+                        cost=float(self._current_repos_cost or 0.0),
+                        obj_pos_xy=_obj_xy_now,
+                        obj_quat=_obj_quat_now,
+                        # A reposition stall is a world-space arm/planner
+                        # failure, not evidence that an object face is bad.
+                        # Keep it world-relative so normal object-pose drift
+                        # pruning retires it.  Only observed C3 contact
+                        # failures above use position_body_xy.
+                        position_body_xy=None,
+                    ))
+                    self._current_repos_target = None
+                    self._current_repos_cost = None
+                    self._prev_logged_repos_target = None
+                    if self.log_diag:
+                        print(f"[REPOS-STALL-RESAMPLE] step={self._step} "
+                              f"distance={_repos_distance:.4f}m — "
+                              f"blacklisted stalled target; forcing fresh "
+                              f"samples", flush=True)
                 # 2026-07-28e: the arrival-time _refresh_buffer_on_arrival()
                 # call was deleted — it had been a no-op since the 2026-07-19
                 # fresh-samples refactor (it wrote _sample_buffer* fields that
@@ -3802,6 +4121,9 @@ class SamplingC3Controller:
                 _bhe = float(getattr(self.params.sampling_params,
                                      "box_half_extent", 0.05))
                 if _shape_c3 == "tshape":
+                    _t_variant = getattr(
+                        self.base_mpc.formulator,
+                        "_tshape_geometry_variant", "reference")
                     # T geometry (reference push_t.sdf + port _tshape_sdf):
                     #   vertical bar: x [-0.03, +0.13], y [-0.02, +0.02]
                     #     (center CoM+0.05 in x, 0.16 x-long, 0.04 y-wide)
@@ -3818,7 +4140,16 @@ class SamplingC3Controller:
                     # arm at |y|=0.08 for pure-y push — outside T's actual
                     # extent (T y-half at vertical bar is 0.02, not 0.08).
                     # New: pick the bar to push based on |gx| vs |gy|.
-                    if abs(g_hat_3d[1]) >= abs(g_hat_3d[0]):
+                    if _t_variant == "oim_lab":
+                        # OIM mesh bounds about its planar body origin:
+                        # x=[-.0445,+.0445], y=[-.0794,+.0198].  Select the
+                        # actual upstream face behind the requested motion.
+                        if abs(g_hat_3d[1]) >= abs(g_hat_3d[0]):
+                            _face_offset = (0.0794 if g_hat_3d[1] > 0
+                                            else 0.0198)
+                        else:
+                            _face_offset = 0.0445
+                    elif abs(g_hat_3d[1]) >= abs(g_hat_3d[0]):
                         # dominant y push: target vertical bar's y face
                         _face_offset = 0.02
                     else:
@@ -3835,8 +4166,10 @@ class SamplingC3Controller:
                         current_q[self._obj_x_idx],
                         current_q[self._obj_y_idx],
                     ])
-                    _contact_offset = (_face_offset
-                                       + float(getattr(self, "_pusher_radius", 0.0195)))
+                    _contact_offset = (_face_offset + float(getattr(
+                        self.params.sampling_params,
+                        "pusher_radius_override", None)
+                        or getattr(self, "_pusher_radius", 0.0195)))
                     # Reference c3-mode UpdateC3ExecutionTrajectory
                     # (cc:1757-1761) OVERRIDES the c3 planner's z at each
                     # knot to sampling_params_.z_height:
@@ -3921,63 +4254,15 @@ class SamplingC3Controller:
                 _lam_t = getattr(self.base_mpc, "last_lambda_t_first", None)
             _Jn    = self.base_mpc.formulator._last_J_n
             _Jt    = self.base_mpc.formulator._last_J_t
-            # SIGN-BUG FIX: only issue a force-tracking command when the
-            # planner actually predicts contact force on the EE-manipuland
-            # pair. Ground-contact λ_n can be ~2 N even without EE contact,
-            # which would spuriously trigger `_derive_force_command` and
-            # re-open the fictional-force drift.
-            #
-            # Filter shape-gated to match `_derive_force_command` (line 611+):
-            #   tshape → filter EE-BOX tags only
-            #   box    → raw sum (byte-identical to pre-fix)
-            _shape_gate = getattr(self.base_mpc.formulator,
-                                   "_object_shape", "box")
-            _cinfo_gate = getattr(self.base_mpc.formulator,
-                                   "_last_contact_info", None)
-            _ee_pair_admitted = False
-            if (_lam_n is not None
-                    and hasattr(_lam_n, "size")
-                    and _lam_n.size > 0):
-                if (_shape_gate == "tshape"
-                        and _cinfo_gate is not None
-                        and len(_cinfo_gate) == _lam_n.size):
-                    _ee_idxs_gate = [i for i, info in enumerate(_cinfo_gate)
-                                     if isinstance(info, dict)
-                                     and info.get("tag", "") == "EE-BOX"]
-                    _ee_pair_admitted = bool(_ee_idxs_gate)
-                    if _ee_idxs_gate:
-                        _lam_n_mag = float(np.sum(np.abs(_lam_n[_ee_idxs_gate])))
-                    else:
-                        _lam_n_mag = 0.0
-                else:
-                    _lam_n_mag = float(np.sum(np.abs(_lam_n)))
-                    # Box path / fallback: no per-pair tag scan available,
-                    # so admission is inferred from the fact that _lam_n has
-                    # nonzero size AND cinfo indicates at least one pair.
-                    _ee_pair_admitted = (
-                        _cinfo_gate is not None and len(_cinfo_gate) > 0)
-            else:
-                _lam_n_mag = 0.0
-            # Bug 1 fix (2026-07-22, gated 2026-07-22 v2): the p41 pattern
-            # was "LCS admits EE-BOX pair AND planner says λ_n=0" for many
-            # consecutive c3 steps while Drake reality remains in contact.
-            # Root cause: LCS conditioning (17.5x-amplified D rows) caused
-            # planner to disengage. Fallback via nominal_push_force is
-            # WRONG on healthy runs — during legitimate approach/transit
-            # the planner correctly commands small/zero λ. Gate the
-            # fallback on the same "suspicious conditioning" flag Bug 2
-            # emits (dt/m_ee > 0.5). Under normal port config
-            # (m_ee=1.0, dt=0.1 → ratio=0.1), the gate is False and this
-            # block is byte-identical to pre-fix behavior. Under future
-            # qvector-migration attempts where m_ee is rescaled, the
-            # fallback kicks in as intended.
-            _suspicious_cond = (
-                getattr(self.base_mpc.formulator, "_dt_mee_warned", False))
-            if _lam_n_mag > 0.05 or (_ee_pair_admitted and _suspicious_cond):
-                _lam_des = self._derive_force_command(
-                    _lam_n, g_hat_3d, plant_ctx=plant_ctx)
-            else:
-                _lam_des = np.zeros(3)
+            # Reference cc:1855-1867 sends u_sol as the OSC's
+            # end_effector_force_target at every C3 knot.  It does not gate
+            # that feed-forward command on the complementarity normal force:
+            # u and lambda are distinct optimization variables, and u_sol can
+            # legitimately be nonzero while lambda_n is zero.  The former
+            # lambda_n admission gate therefore made the executor diverge
+            # from the trajectory that the reference planner solved.
+            _lam_des = self._derive_force_command(
+                _lam_n, g_hat_3d, plant_ctx=plant_ctx)
 
             import os as _os_fr
             if _os_fr.environ.get("DIAG_FORCE_ROUTE_TRACE", "0") == "1":
@@ -4344,8 +4629,9 @@ class SamplingC3Controller:
                 # early-run decay from the dt init briefly clamps to
                 # knot 0 = hold current state, same as reference under
                 # slow warmup solves).
-                _fst = float(getattr(self.base_mpc,
-                                     "_filtered_solve_time", 0.0))
+                _fst = (float(getattr(self.base_mpc,
+                                      "_filtered_solve_time", 0.0))
+                        if self._compensate_solve_latency else 0.0)
                 _knots = np.array([
                     _x_seq_full[i][7:10] for i in range(0, _N_plan)
                 ], dtype=float).T
@@ -4591,14 +4877,25 @@ class SamplingC3Controller:
                     else ee_pos_now
                 )
                 _p_target_arr = np.asarray(_p_target, dtype=float).reshape(3)
-                # 2026-07-19: rebuild EVERY planner tick, matching reference
+                # 2026-07-19: rebuild EVERY planner tick by default, matching reference
                 # sampling_based_c3_controller.cc:1330 which calls
                 # UpdateRepositioningExecutionTrajectory unconditionally.
                 # Prior port only rebuilt on target-change (>5 mm) — with a
                 # stale trajectory, `finished_reposition_flag` (which is set
                 # at build time from `t_end - t_start <= dt_plan`) also went
                 # stale and never fired mid-run.  Ref cc:1330 does not gate.
-                _need_rebuild = True
+                _rebuild_every_tick = bool(getattr(
+                    self.params, "rebuild_reposition_pwl_every_tick", True))
+                _target_changed = (
+                    self._pwl_traj_built_for_target is None
+                    or float(np.linalg.norm(
+                        _p_target_arr - self._pwl_traj_built_for_target)) > 0.005
+                )
+                _need_rebuild = (
+                    self._pwl_traj is None
+                    or _target_changed
+                    or _rebuild_every_tick
+                )
 
                 # Stage C landing-storm trace — gated, default-OFF.
                 # Window: step >= DIAG_LANDING_TRACE_FROM (default 1600 at
@@ -5266,6 +5563,11 @@ class SamplingC3Controller:
                       f"mode {self._prev_mode}->{mode} reason={reason.name} "
                       f"pursued_src={best_src} target_retained=Y "
                       f"buf_removed={'Y' if _removed_buf else 'N'}")
+        self.last_ee_force_command = (
+            np.zeros(3, dtype=float)
+            if _lam_des is None
+            else np.asarray(_lam_des, dtype=float).reshape(3).copy()
+        )
         self._prev_mode              = mode
         self.last_mode               = mode
         self.last_switch_reason      = reason
@@ -5494,17 +5796,13 @@ class SamplingC3Controller:
         # C3 mode: contact payload.
         # lam_n = max over EE-BOX pair component (n=0 fallback when present).
         ci = getattr(self.base_mpc.formulator, "_last_contact_info", None)
-        ee_box_idx = None
+        (pair_resolved, physical_contact, ee_box_idx,
+         contact_distance, contact_normal) = classify_ee_box_contact(ci, lam_n)
         nhat_xy = None
-        if ci:
-            for i, info in enumerate(ci):
-                if isinstance(info, dict) and info.get("tag") == "EE-BOX":
-                    ee_box_idx = i
-                    n = info.get("nhat_BA_W")
-                    if n is not None and len(n) >= 2:
-                        nhat_xy = (float(n[0]), float(n[1]))
-                    break
-        contact = "Y" if ee_box_idx is not None else "N"
+        if contact_normal is not None and len(contact_normal) >= 2:
+            nhat_xy = (float(contact_normal[0]), float(contact_normal[1]))
+        pair = "Y" if pair_resolved else "N"
+        contact = "Y" if physical_contact else "N"
         if (lam_n is not None and hasattr(lam_n, "__len__")
                 and len(lam_n) > 0):
             if ee_box_idx is not None and len(lam_n) > ee_box_idx:
@@ -5522,7 +5820,7 @@ class SamplingC3Controller:
         # parser's attribution predicate at parse_log_to_jsonl.py:306).
         if nhat_xy is not None:
             dot = nhat_xy[0] * g_hat[0] + nhat_xy[1] * g_hat[1]
-            productive = "Y" if dot < -0.3 else "N"
+            productive = "Y" if physical_contact and dot < -0.3 else "N"
         else:
             productive = "N"
         # f_cmd: planner-derived OSC force command (force-tracking mode).
@@ -5534,7 +5832,8 @@ class SamplingC3Controller:
             f"{prefix} "
             f"c3_cost={float(curr_cost):.2f} "
             f"lam_n={lam_n_val:.3f} lam_t={lam_t_val:.3f} "
-            f"contact={contact} productive={productive} "
+            f"pair={pair} contact={contact} "
+            f"contact_dist={contact_distance:.5f}m productive={productive} "
             f"f_cmd=({f_cmd[0]:+.2f},{f_cmd[1]:+.2f},{f_cmd[2]:+.2f})"
         )
 
@@ -5708,3 +6007,40 @@ class SamplingC3Controller:
                   f"mode_time_c3={self._mode_time_c3}  "
                   f"mode_time_free={self._mode_time_free}  "
                   f"c3_fraction={frac:.3f}")
+def planar_yaw_error(q_wxyz: np.ndarray, goal_yaw: float) -> float:
+    """Wrapped SE(2) heading error, deliberately independent of tilt."""
+    q = np.asarray(q_wxyz, dtype=float).reshape(4)
+    norm = float(np.linalg.norm(q))
+    if norm <= 1e-12:
+        q = np.array([1.0, 0.0, 0.0, 0.0])
+    else:
+        q = q / norm
+    qw, qx, qy, qz = (float(v) for v in q)
+    yaw = float(np.arctan2(
+        2.0 * (qw * qz + qx * qy),
+        1.0 - 2.0 * (qy * qy + qz * qz)))
+    return abs(float(np.arctan2(
+        np.sin(yaw - float(goal_yaw)),
+        np.cos(yaw - float(goal_yaw)))))
+
+
+def planar_position_in_object_frame(
+        position_world: np.ndarray,
+        obj_pos_xy: np.ndarray,
+        obj_quat_wxyz: np.ndarray) -> np.ndarray:
+    """Express a world XY position as an offset in the object's yaw frame."""
+    q = np.asarray(obj_quat_wxyz, dtype=float).reshape(4)
+    n = float(np.linalg.norm(q))
+    if n <= 1e-12:
+        q = np.array([1.0, 0.0, 0.0, 0.0])
+    else:
+        q = q / n
+    qw, qx, qy, qz = (float(v) for v in q)
+    yaw = float(np.arctan2(
+        2.0 * (qw * qz + qx * qy),
+        1.0 - 2.0 * (qy * qy + qz * qz)))
+    c, s = np.cos(yaw), np.sin(yaw)
+    delta = (np.asarray(position_world, dtype=float).reshape(3)[:2]
+             - np.asarray(obj_pos_xy, dtype=float).reshape(2))
+    return np.array([c * delta[0] + s * delta[1],
+                     -s * delta[0] + c * delta[1]])

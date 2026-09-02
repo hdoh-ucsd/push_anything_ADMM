@@ -38,11 +38,12 @@ KQUAT_ALL_UP = np.array(
      -0.115916895959295])
 
 
-def _mk(rng=None):
+def _mk(rng=None, **kwargs):
     return JackRandomGoalGenerator(
         rng=rng if rng is not None else np.random.default_rng(0),
         initial_xy=INITIAL_XY,
         initial_quat=KQUAT_ALL_UP,
+        **kwargs,
     )
 
 
@@ -87,6 +88,34 @@ def test_nominals_pairwise_distinct():
             assert geodesic_angle(
                 KNOMINAL_ORIENTATIONS_JACK[i],
                 KNOMINAL_ORIENTATIONS_JACK[j]) > 0.1
+
+
+def test_planar_generator_does_not_emit_jack_tripod_telemetry():
+    g = JackRandomGoalGenerator(
+        rng=np.random.default_rng(28),
+        initial_xy=INITIAL_XY,
+        initial_quat=np.array([1.0, 0.0, 0.0, 0.0]),
+        nominal_orientations=[np.array([1.0, 0.0, 0.0, 0.0])],
+        nominal_names=["planar"],
+        planar_yaw_step_max=2.0,
+        track_tripods=False,
+    )
+    # Feed the upside-down quaternion that previously produced GreenUp-like
+    # Jack telemetry during a Y run. Planar success still uses pose error,
+    # but tripod state and flip events must remain absent.
+    g.check_and_regoal(INITIAL_XY + [0.1, 0.0],
+                       np.array([0.0, 1.0, 0.0, 0.0]))
+    assert g.current_tripod is None
+    assert g.flip_events == 0
+    assert g.last_flip is None
+
+
+def test_y_spawn_matches_reference_anything_translation():
+    import yaml
+
+    with open("config/tasks.yaml") as f:
+        y = yaml.safe_load(f)["tasks"]["Y_shape_video"]
+    assert y["init_xyz"][:2] == [0.5, 0.0]
 
 
 # ---------------------------------------------------------------- geodesic
@@ -225,11 +254,30 @@ def test_draw_initial_goal_is_seed_deterministic():
 
 
 # ---------------------------------------------------------------- config
-def test_push_jack_task_config_enables_krandom():
+def test_orientation_sequence_keeps_position_and_cycles_nominals():
+    g = _mk(goal_mode="kOrientationSequence")
+    fixed_xy = g.goal_xy.copy()
+    for i in range(10):
+        g.force_regoal()
+        np.testing.assert_array_equal(g.goal_xy, fixed_xy)
+        np.testing.assert_allclose(
+            g.goal_quat, KNOMINAL_ORIENTATIONS_JACK[i % 8])
+        assert g.orientation_index == i % 8
+
+
+def test_push_jack_task_config_enables_reference_random_regoaling():
     import yaml
     cfg = yaml.safe_load(open("config/tasks.yaml"))
-    assert cfg["tasks"]["push_jack"].get("goal_mode") == "kRandom"
-    # Parked to false with the 2026-08-19 canonical jack recipe (boot from
-    # the fixed reference target; draw on success only). Stale `is True`
-    # assertion corrected during the 2026-08-19 T+jack merge.
-    assert cfg["tasks"]["push_jack"].get("krandom_draw_initial_goal") is False
+    jack = cfg["tasks"]["push_jack"]
+    assert jack.get("goal_mode") == "kRandom"
+    assert "krandom_draw_initial_goal" not in jack
+    assert jack["goal_xy"] == [0.450, 0.200]
+    np.testing.assert_allclose(jack["goal_quat"], [
+        0.8804762392171493, 0.27984814233312133,
+        -0.3647051996310009, -0.11591689595929514,
+    ])
+    np.testing.assert_allclose(
+        jack["q_init_franka"],
+        [2.191, 1.1, -1.33, -2.22, 1.30, 2.02, 0.08],
+    )
+    assert jack.get("max_time") == 600.0

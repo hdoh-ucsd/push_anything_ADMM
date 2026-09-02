@@ -16,13 +16,16 @@ git rev-parse HEAD > "$OUTDIR/HEAD.txt"
 for SEED in 0 1 2 3 4; do
   echo "=== seed=$SEED ==="
   START=$(date +%s)
-  "$PY" -u main.py pushing \
-      --seed "$SEED" --max-time 8 \
-      --admm-iter 25 --use-osc \
-      --no-record \
-      --sampling-c3 config/sampling_c3_kik.yaml \
-      > "$OUTDIR/seed${SEED}_altitude_hold.log" 2>&1 || true
-  RC=$?
+  if "$PY" -u main.py pushing \
+        --seed "$SEED" --max-time 8 \
+        --admm-iter 25 --use-osc \
+        --no-record \
+        --sampling-c3 config/sampling_c3_kik.yaml \
+        > "$OUTDIR/seed${SEED}_altitude_hold.log" 2>&1; then
+    RC=0
+  else
+    RC=$?
+  fi
   ELAPSED=$(( $(date +%s) - START ))
   N_LCS=$(grep -c '\[CONTACT-RUN\] step=.* contact_type=EE-BOX' "$OUTDIR/seed${SEED}_altitude_hold.log" || true)
   N_AEE1=$(grep -c 'A_is_ee=1' "$OUTDIR/seed${SEED}_altitude_hold.log" || true)
