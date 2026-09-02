@@ -1,6 +1,6 @@
 # DAIRlib `sampling_c3` Reference Code
 
-Source: `/root/reference_repos/dairlib_sampling_c3/` (DAIRLab/dairlib). The checkout is on the AUTHORITATIVE branch `push_anything_dev`, HEAD `257e3ede` (see docs/alignment-references.md). NOTE: quotes below were originally extracted at `sampling_based_c3_public` HEAD `b52c68d` — line numbers may have shifted on push_anything_dev; verify against the working tree before relying on exact lines.
+Source: `/root/external/dairlib_sampling_c3/` (DAIRLab/dairlib). The checkout is on the AUTHORITATIVE branch `push_anything_dev`, HEAD `257e3ede` (see docs/alignment-references.md). NOTE: quotes below were originally extracted at `sampling_based_c3_public` HEAD `b52c68d` — line numbers may have shifted on push_anything_dev; verify against the working tree before relying on exact lines.
 
 This document is a curated quote-and-cite extraction of the reference implementation. Each section gives file:line citations and the actual source so it can be referenced without re-grepping. All commentary is from the dairlib source — none added here.
 
@@ -1379,7 +1379,7 @@ LCM channels (in `parameter_headers/lcm_channels.h`):
 | Branch | `sampling_based_c3_public` |
 | HEAD | `b52c68d Fix error in quaternion error hessian (fraction inadvertently converted to integer)` |
 | Paper | arXiv 2505.13350 — Venkatesh, Bianchini, Aydinoglu, Yang, Posa (2025) |
-| Local clone | `/root/reference_repos/dairlib_sampling_c3/` |
-| Local mirror | `/d/projects/ERL/reference_repos/dairlib_sampling_c3/` |
+| Local clone | `/root/external/dairlib_sampling_c3/` |
+| Local mirror | `/d/projects/ERL/external/dairlib_sampling_c3/` |
 
 `AddFrankaToPlant` / `AddObjectToPlant` / `AddLCSModelsToPlant` are defined in `examples/sampling_c3/sampling_c3_utils.cc:14-87` and declared in `sampling_c3_utils.h`. The full file is short (89 lines) and reproduced inline in §1.

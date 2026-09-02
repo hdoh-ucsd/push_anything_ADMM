@@ -30,7 +30,7 @@ TAG="${3:-$(date +%Y%m%d_%H%M%S)}"
   exit 2
 }
 
-REF_ROOT="${DAIRLIB_REF_ROOT:-/root/reference_repos/dairlib_sampling_c3}"
+REF_ROOT="${DAIRLIB_REF_ROOT:-/root/external/dairlib_sampling_c3}"
 BIN="$REF_ROOT/bazel-bin/examples/sampling_c3"
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="/root/push_anything_ADMM/results/reference/${DEMO}_${TAG}"

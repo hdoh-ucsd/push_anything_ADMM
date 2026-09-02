@@ -13,7 +13,7 @@ Runtime gate: `PORT_CANDIDATE_WARMSTART` (default `legacy_ordered`, inert).
 
 Verified by reading the reference sources directly, not inferred.
 
-`reference_repos/dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.cc`
+`external/dairlib_sampling_c3/systems/controllers/sampling_based_c3_controller.cc`
 
 ```
  989   std::vector<std::shared_ptr<C3>> c3_objects(num_total_samples, nullptr);
@@ -24,7 +24,7 @@ Verified by reading the reference sources directly, not inferred.
 1099     c3_objects.at(i) = test_c3_object;
 ```
 
-`reference_repos/c3/core/c3.cc`
+`external/c3/core/c3.cc`
 
 ```
   91-97   u_sol_ initialised to VectorXd::Zero(n_u_) per knot

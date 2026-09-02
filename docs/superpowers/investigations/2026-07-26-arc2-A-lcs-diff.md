@@ -9,7 +9,7 @@ covered by sibling §E (`2026-07-26-arc2-E-outer-diff.md`).
 **Conformance-map baseline (do not re-derive):** `docs/conformance-map.md`
 subsystem 3 (pair admission) at 2026-07-14/17/25 states. That map deferred
 the LCSFactory internals as "external — clone denied." **THAT PREMISE IS NOW
-STALE**: `/root/reference_repos/c3/` is fully populated locally at this
+STALE**: `/root/external/c3/` is fully populated locally at this
 session's baseline (`multibody/lcs_factory.cc`, `core/lcs.cc/h`, `multibody/
 lcs_factory.h`). This report closes the gap by reading the reference
 LCSFactory directly. Deltas below therefore include material the map could
@@ -612,7 +612,7 @@ Port:
   contact-model cluster) marked the LCSFactory-internal audit as
   **DEFERRED** on the grounds that the c3 lib clone was denied. That
   premise is now false — the c3 lib is fully accessible at
-  `/root/reference_repos/c3/`. Future arc reports on subsystem 3 can
+  `/root/external/c3/`. Future arc reports on subsystem 3 can
   and should treat `c3/multibody/lcs_factory.cc` as reference-source.
 - The port's EE-space Anitescu path (`_contact_model = 'anitescu'` set
   in `__init__` at :86) is the runtime default. The R^7 ST path

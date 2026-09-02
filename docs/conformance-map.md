@@ -647,14 +647,14 @@ Six UNKNOWNs/LOAD-BEARINGs → six CONFIRMED verdicts. Zero remaining executor-s
 
 ## 3.qp_alpha — `qp_projection_alpha` slack parameter
 
-- **Reference:** `sampling_c3plus_options.yaml:24` sets `qp_projection_alpha: 0.01`. Consumed by `/root/reference_repos/c3/core/c3_qp.cc:49` in the QP-based projection variant:
+- **Reference:** `sampling_c3plus_options.yaml:24` sets `qp_projection_alpha: 0.01`. Consumed by `/root/external/c3/core/c3_qp.cc:49` in the QP-based projection variant:
   ```cpp
   double alpha = options_.qp_projection_alpha.value_or(0.01);
   New_U.block(n_x_, n_x_, n_lambda_, n_lambda_) = alpha * F;
   prog.AddQuadraticCost((1 - alpha) * F, ...);
   ```
 - **Port C3+ path:** `control/admm_solver.py::_project_componentwise` (line 843) uses the Bui 2026 case-analysis projection (`sqrt(u_lambda / u_eta)` weight ratio) — matches reference `c3_plus.cc::SolveSingleProjection` line 205-212. Neither consumes `qp_projection_alpha`.
-- **Reference C3+ path:** `/root/reference_repos/c3/core/c3_plus.cc` grep for `qp_projection_alpha` returns 0 hits.
+- **Reference C3+ path:** `/root/external/c3/core/c3_plus.cc` grep for `qp_projection_alpha` returns 0 hits.
 - **Tag:** DOCUMENTED-INERT for the port's active solver path.
 - **Confidence:** high.
 - **Tier 2:** Reference `sampling_c3plus_options.yaml:8` sets `projection_type: 'C3+'` for push_t, and `main.py:569 args.solver == "c3plus"` for the port (invoked with `--solver c3plus` in `run_T_180.sh:50`). Both use C3+ exclusively → `qp_projection_alpha` never enters either projection body. Divergence is inert for the runtime configuration; would become load-bearing only if `projection_type: 'QP'` were selected (which no example config in either repo does). Verified 2026-07-21 during H+G plan execution.
@@ -815,7 +815,7 @@ Reading `c3/multibody/lcs_factory.cc:404-494` confirms the exact structural dive
 
 ## c3 lib clone — CLOSED
 
-User authorized clone 2026-07-14. `/root/reference_repos/c3` at pinned commit `5c08cb2e14b1ab10e024cb46e8504970cffcd5ea` (per `dairlib_sampling_c3/MODULE.bazel:88-95`). Read-only; no port code touched. Closed 3.b + 3.q + bonus contact-model cluster mechanical confirmation.
+User authorized clone 2026-07-14. `/root/external/c3` at pinned commit `5c08cb2e14b1ab10e024cb46e8504970cffcd5ea` (per `dairlib_sampling_c3/MODULE.bazel:88-95`). Read-only; no port code touched. Closed 3.b + 3.q + bonus contact-model cluster mechanical confirmation.
 
 ---
 
