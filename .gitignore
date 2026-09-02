@@ -55,3 +55,6 @@ audit_output/gpu_golden/
 audit_output/perf_snapshots/
 # Local upstream DAIRLab checkouts used for source comparison.
 /external/
+
+# Local reference papers (not repo content).
+/papers/
