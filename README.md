@@ -157,6 +157,64 @@ YAMLs, the dual update is the consensus/penalty update in the solver, and
 the "final QP" polish (with its contact-weight boost) extracts the executed
 trajectory after the last iteration.
 
+### The Anitescu contact formulation
+
+The LCS above needs a discrete-time contact model to define what `λ` *is*.
+The port implements both standard time-stepping formulations in
+`control/lcs_formulator.py`, defaulting to Anitescu to match the reference
+(`c3/multibody/lcs_factory.cc`, `FormulateAnitescuContactDynamics`).
+
+**The baseline: Stewart–Trinkle.** The exact time-stepping model
+(Stewart & Trinkle, 1996) keeps three variable groups per contact — the
+normal force `λ_n`, the four friction-pyramid edge forces `λ_t`, and a
+slack `γ` that converges to the sliding speed — coupled by three
+complementarity conditions on the post-step velocity `v⁺`:
+
+```text
+0 ≤ λ_n ⊥ φ/dt + J_n v⁺           ≥ 0     # no interpenetration; force only in contact
+0 ≤ λ_t ⊥ E_tᵀ γ + J_t v⁺         ≥ 0     # friction opposes each slip direction
+0 ≤ γ   ⊥ μ λ_n − E_t λ_t         ≥ 0     # Coulomb cone: |friction| ≤ μ·normal
+```
+
+This is physically exact for the pyramid cone, but the third row couples
+the force variables to each other, giving `6·n_c` complementarity variables
+(with 4 pyramid edges) and a harder projection.
+
+**The Anitescu relaxation.** Anitescu's convex formulation (Anitescu,
+*Optimization-based simulation of nonsmooth multibody dynamics*, Math.
+Program. 105, 2006) folds the normal direction *into* each friction edge.
+One combined Jacobian replaces the three groups:
+
+```text
+J_c = E_tᵀ J_n + diag(μ) J_t                # one row per pyramid edge, (4·n_c, n_v)
+0 ≤ λ ⊥ φ/dt + J_c v⁺ ≥ 0                   # single complementarity, λ ∈ R^{4·n_c}
+```
+
+Each `λ_j` is now a force along a *cone edge* (normal tilted by `μ` into a
+tangent direction); the physical normal force is recovered as `E_t λ` and
+the friction force as the tangential part of the edge sum. The Coulomb cone
+is satisfied by construction — no third complementarity row, no `γ`.
+
+**What is gained and what is given up.** The gain: the per-contact
+conditions define a *convex* (cone-complementarity) problem — solutions
+always exist, the variable count drops to `4·n_c`, and the LCS blocks
+`(D, E, F, H, c)` take the compact folded form shown in the Franka section
+(Step 4), with `F = dt·J_c M⁻¹ J_cᵀ` the standard Delassus operator. The
+cost: a known relaxation artifact — during sliding, the folded constraint
+introduces a small normal "boost" proportional to the slip speed, so a
+sliding object can gain `O(μ·dt·|v_t|)` of separation per step (the
+boundary-layer effect). At this port's planning `dt` and push speeds the
+artifact is well below the goal tolerances, and — decisively for
+conformance — the reference stack plans with the same model.
+
+**In the code.** `lcs_formulator.py` builds the Stewart–Trinkle blocks
+first (`γ`/`λ_n`/`λ_t` rows) and, when `_contact_model == "anitescu"`
+(the default, matching the reference), overwrites `D, E, F, H, c` with the
+folded formulation (`lcs_formulator.py:1692-1698`); the Stewart–Trinkle
+path is preserved behind `_contact_model == "stewart_trinkle"` for
+falsification. The per-pair-type friction map (`mu_per_pair_type`) enters
+through `diag(μ)` in `J_c`.
+
 The candidate objective feeds the sampling-C3 dispatcher. As in receding-horizon
 MPC, only the first execution interval is applied before the state and local
 contact model are refreshed. See `control/admm_solver.py`,
