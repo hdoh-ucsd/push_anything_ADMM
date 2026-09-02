@@ -1,0 +1,28 @@
+# Six-actuator translation of the production Sampling-C3 OSC configuration
+# (joint 6 is the axisymmetric-stick wrist roll from the canonical model).
+osc:
+  Kp_cart: [200.0, 200.0, 200.0]
+  Kd_cart: [20.0, 20.0, 20.0]
+  Kp_null: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+  Kd_null: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+  Kp_joint2: 0.0
+  Kd_joint2: 0.0
+  W_joint2: 0.0
+  joint2_target_rad: 0.60737458
+  joint2_idx: 1
+  W_track: 1.0
+  # The xArm needs a weak secondary posture objective after its
+  # passive joint-4 spring is represented in the OSC dynamics.  This is two
+  # orders below Cartesian tracking and only resolves redundant drift.
+  W_posture: 0.01
+  W_torque: 0.0
+  W_acc: 0.0000001
+  Kp_rot: [800.0, 800.0, 800.0]
+  Kd_rot: [40.0, 40.0, 40.0]
+  # The controlled joints cannot independently satisfy a 3-D position and
+  # a full 3-D tool-orientation objective.  The MJCF's passive joint-4 spring
+  # supplies the intended tool attitude; leave its yaw unconstrained so the
+  # Cartesian translation task remains feasible.
+  W_rot: 0.0
+  tau_max: [50.0, 50.0, 32.0, 32.0, 32.0, 20.0]
+  end_effector_acceleration: 10.0
