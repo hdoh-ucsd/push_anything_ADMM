@@ -168,7 +168,8 @@ in a clean Git worktree:
 - maintained process diagram and validation gates:
   `examples/sampling_c3/oim_t/ARCHITECTURE.md`
 
-The intended native process topology is:
+The native stack runs as three LCM processes configured by the single
+canonical YAML:
 
 ```text
 oim_t.yaml
@@ -177,30 +178,69 @@ oim_t.yaml
  └── xarm6_sampling_c3_controller
 ```
 
-#### DAIRLab/Drake-to-xArm6 file correspondence
+#### Pipeline: inputs, outputs, and the equation at each block
 
-"Reference" below means the DAIRLab Sampling-C3 Franka/Push-T implementation
-built on Drake, not an upstream Drake example. A row marked **reused** calls the
-same implementation from the xArm6 targets; **adapted** identifies the xArm6
-counterpart; **consolidated** records several reference configuration inputs in
-the single canonical OIM YAML. This is an interface correspondence, not a claim
-that different robot models or physics engines are numerically identical.
+Each block below consumes the previous block's output over LCM and publishes
+its own. One planning cycle traverses the loop once; the simulator and OSC run
+continuously underneath it.
 
-| DAIRLab/Drake reference | OIM xArm6 counterpart | Relationship |
-|---|---|---|
-| `examples/sampling_c3/BUILD.bazel` | `examples/sampling_c3/oim_t/BUILD.bazel` | **Adapted:** defines the three canonical `xarm6_*` processes and compatibility aliases without changing the Franka targets. |
-| `examples/sampling_c3/franka_sim.cc` | `examples/sampling_c3/oim_t/xarm6_sim.cc` | **Adapted:** Drake plant/simulator and LCM state-command loop for the six-joint xArm, table, pusher capsule, and OIM T. |
-| `examples/sampling_c3/franka_osc_controller.cc` | `examples/sampling_c3/oim_t/xarm6_osc_controller.cc` | **Adapted:** the same DAIRLab inverse-dynamics OSC architecture, with xArm6 frames, six-joint posture, passive spring, gravity, and source velocity-servo semantics. |
-| `examples/sampling_c3/franka_sampling_c3_controller.cc` | `examples/sampling_c3/oim_t/xarm6_sampling_c3_controller.cc` | **Adapted:** live-state Sampling-C3+ orchestration, contact acquisition, receding execution, physical-response conditioning, and acceptance gates. |
-| `systems/controllers/sampling_based_c3_controller.{cc,h}` | `examples/sampling_c3/oim_t/xarm6_full_sampling_c3plus.{cc,h}` | **Specialized wrapper:** preserves the C3/C3+ trajectory contract while adding the 19-state OIM T model, sampled contacts, xArm6 execution receipts, and safety predicates. |
-| `systems/controllers/osc/operational_space_control.{cc,h}` and its tracking-data classes | Same `systems/controllers/osc/*` files | **Reused:** xArm6 links DAIRLab's OSC QP directly; there is no copied xArm-specific OSC solver. |
-| `examples/sampling_c3/sampling_c3_utils.{cc,h}` and `@c3//` | Same utility and C3 library targets | **Reused:** trajectory encoding, LCS/C3 interfaces, and consensus/projection implementation remain shared. |
-| `examples/sampling_c3/parameter_headers/{franka_sim_params,goal_params,sampling_c3_controller_params}.h` | `examples/sampling_c3/parameter_headers/oim_t_params.h` | **Consolidated:** typed Drake YAML schema for robot, simulation, object, task, controller, full Sampling-C3+, and LCM sections. |
-| `examples/sampling_c3/push_t/parameters/{sim_params,goal_params,sampling_c3_controller_params}.yaml` | `examples/sampling_c3/oim_t/parameters/oim_t.yaml` | **Consolidated:** one authoritative OIM scenario file replaces the three task-level YAML inputs. |
-| `push_t/parameters/{sampling_c3_options,sampling_c3plus_options,sampling_params,reposition_params}.yaml` | `oim_t.yaml` sections `full_sampling_c3plus` and `controller` | **Consolidated with provenance:** structural solver, sampling, and reposition values are explicit; unchanged values remain identified as Push-T/Anything carryovers. |
-| `@drake_models//:franka_description` | `examples/sampling_c3/urdf/oim_xarm6_tabletop/xarm6/xarm6.xml` plus `xarm6_lcs_pusher.urdf` | **Model replacement:** six xArm joints and the physical pusher capsule replace the seven-joint Franka description. |
-| `examples/sampling_c3/urdf/push_t.sdf` | `examples/sampling_c3/urdf/oim_xarm6_tabletop/t_block.sdf` | **Object replacement:** the OIM two-box T has its own measured geometry, mass, inertia, and collision representation. |
-| Reference executable smoke coverage | `oim_t_config_check.cc` and `test/{xarm6_open_table_test,xarm6_full_sampling_c3plus_test}.cc` | **New validation:** checks the consolidated contract, six-joint plant, spatial Sampling-C3+ invariants, and open-table model loading. |
+1. **`xarm6_sim` — physics (2 ms step).**
+   *Input:* commanded joint torques `τ ∈ R^6`.
+   *Output:* measured robot state `(q, q̇) ∈ R^6 × R^6` at 500 Hz and the
+   object's spatial pose/velocity `(p^O_W, q_WO, ṗ^O_W, ω^O_W)` at 20 Hz.
+   *Equation:* Drake's rigid-body dynamics with hydroelastic/point contact —
+   `M(q) q̈ + C(q, q̇) = τ + τ_g + J_cᵀ f_c`.
+
+2. **State reduction (inside `xarm6_sampling_c3_controller`).**
+   *Input:* the measured six-joint arm state and object spatial state.
+   *Output:* the reduced planning state
+   `x = [p^P_W, q_WO, p^O_W, ṗ^P_W, ω^O_W, ṗ^O_W] ∈ R^19`, where the arm is
+   collapsed to its stick-tip point `p^P_W` via forward kinematics. The six
+   joints never enter the optimization.
+
+3. **Contact sampling.**
+   *Input:* the reduced state `x` and the T's exact two-box boundary.
+   *Output:* a set of candidate pusher placements — points on the object
+   perimeter with outward face normals, lifted to world coordinates at
+   sampling height.
+
+4. **LCS linearization (per candidate).**
+   *Input:* one candidate pusher position and the current `x`.
+   *Output:* a local Linear Complementarity System — matrices
+   `(A, B, D, d, E, F, H, c)` with `λ ∈ R^20` contact variables over an
+   `N = 5` horizon:
+   `x_{t+1} = A x_t + B u_t + D λ_t + d`,
+   `0 ≤ λ_t ⊥ E x_t + F λ_t + H u_t + c ≥ 0`.
+
+5. **C3+ solve (per candidate).**
+   *Input:* the candidate's LCS, the goal-encoding desired state `x_d`, and
+   the cost matrices `(Q, R, G, U)`.
+   *Output:* an open-loop plan `{x_t*, u_t*, λ_t*}` minimizing
+   `Σ (x_t − x_d)ᵀ Q (x_t − x_d) + Σ u_tᵀ R u_t` by ADMM over consensus
+   copies of `(λ, η)`.
+
+6. **Rollout ranking and selection.**
+   *Input:* every candidate's plan.
+   *Output:* the single executed candidate — each plan is forward-simulated
+   through its LCS and scored with the same quadratic error
+   `Σ eᵀ Q e + e_Nᵀ Q e_N`, `e = x_t − x_d` (`dynamic_rollout_cost`); the
+   argmin wins. The controller then emits either a pushing trajectory (the
+   plan's first interval) or a contact-acquisition trajectory (collision-aware
+   IK to reach the sampled placement).
+
+7. **`xarm6_osc_controller` — operational-space control (500 Hz).**
+   *Input:* the selected tip trajectory and the measured `(q, q̇)`.
+   *Output:* joint torques `τ` from the DAIRLab inverse-dynamics QP tracking
+   the tip with `kp = 200`, `kd = 20`, a 0.01-weight posture regularizer, and
+   the source velocity-servo bridge. These torques close the loop into
+   block 1.
+
+8. **Goal gate (each planning cycle).**
+   *Input:* the measured object pose.
+   *Equation measured:* `e_p = ||(x, y) − (x_g, y_g)||₂` and
+   `e_θ = |wrap(θ − θ_g)|` (see the task definition below). The run ends when
+   both pass their tolerances simultaneously, or when the update budget is
+   exhausted.
 
 `oim_t.yaml` replaces the legacy task-level composition through
 `sim_params.yaml`, `goal_params.yaml`, and
@@ -227,13 +267,57 @@ Success is a terminal tolerance check on both goal variables simultaneously
 
 ```text
 e_p = || (x, y) - (x_g, y_g) ||_2         <  0.05 m
-e_θ = | wrap(θ - θ_g) |                   <  0.10 rad,   wrap(a) = atan2(sin a, cos a)
+e_θ = | wrap(θ - θ_g) |                   <  0.10 rad
 ```
 
-The yaw is extracted from the measured quaternion and wrapped exactly as in
-`EvaluateXarmFullSamplingC3PlanarSettle`
-(`xarm6_full_sampling_c3plus.cc:92-107`). The task therefore requires roughly
-0.8 m of translation plus a ~π reorientation of the T.
+#### Orientation error and the wrap function
+
+The orientation error is computed in three steps
+(`xarm6_full_sampling_c3plus.cc:92-107`):
+
+1. **Yaw extraction.** The measured object quaternion
+   `q_WO = (w, x, y, z)` is normalized and reduced to its heading:
+
+   ```text
+   θ = atan2( 2(wz + xy),  1 − 2(y² + z²) )
+   ```
+
+   This is the standard ZYX yaw formula; roll and pitch are ignored by the
+   planar gate (a tilted or toppled T is caught by the separate settle check's
+   tilt angle `ψ = acos((R_WO ẑ)·ẑ)`, not by `e_θ`).
+
+2. **Raw difference.** `Δ = θ − θ_g`. This raw value is meaningless as a
+   distance, because yaw lives on the circle S¹, not on the real line: the
+   values `θ` and `θ + 2π` are the same physical heading, so `Δ` can be off
+   by any multiple of `2π` depending on which branch `atan2` returned.
+
+3. **Wrapping.**
+
+   ```text
+   wrap(Δ) = atan2(sin Δ, cos Δ)   ∈ (−π, π]
+   ```
+
+   Feeding `Δ` through `sin`/`cos` erases every multiple of `2π` (both are
+   `2π`-periodic), and `atan2` rebuilds the unique representative in
+   `(−π, π]`. The result is the **shortest signed arc** from `θ_g` to `θ` —
+   the geodesic distance on the circle. It is exact (no branching or modulo
+   edge cases), and its absolute value never exceeds `π`.
+
+Why this matters for `open_table` specifically: the goal heading is
+`θ_g = 3.1416 ≈ π`, which sits exactly on the `atan2` branch cut. A T that has
+essentially reached the goal can be measured at `θ = +3.10` on one tick and
+`θ = −3.10` on the next — the same physical pose, differing only in branch.
+Without wrapping, the second measurement scores `|Δ| = |−3.10 − 3.1416| =
+6.24 rad`, a catastrophic false failure; wrapped, both score
+`e_θ ≈ 0.04 rad` and correctly pass the 0.10 rad gate. The reported terminal
+errors in the gate ledgers (e.g. `2.9 rad`) are therefore true remaining
+rotations, never branch artifacts.
+
+The same wrap is used everywhere a yaw difference is consumed: the terminal
+gate, the per-cycle progress accounting
+(`xarm6_full_sampling_c3plus.cc:836-846`), and the settle check's `yaw_delta`.
+The task therefore requires roughly 0.8 m of translation plus a genuine ~π
+reorientation of the T.
 
 ### What we optimize
 
