@@ -94,6 +94,128 @@ contact model are refreshed. See `control/admm_solver.py`,
 `control/lcs_formulator.py`, `control/ci_mpc_c3plus.py`, and
 `control/sampling_c3/` for the implementation.
 
+### Franka arm mathematics
+
+This section builds the Franka stack's math from the ground up: what the
+planner's state and input are, where they come from, and every matrix the
+port infers from the physics engine each tick.
+
+#### Step 1 — the planner does not control joints
+
+The Franka Panda has seven joints, but the planner never sees them. The
+default formulation (Push-Anything §IV-A, `use_ee_space=True` in
+`control/ci_mpc_c3plus.py`) reduces the arm to the spherical pusher at its
+end effector and plans in a small mixed robot/object state:
+
+```text
+x = [ p^EE_W,  q_WO,  p^O_W,  ṗ^EE_W,  ω^O_W,  ṗ^O_W ]  ∈ R^19
+      3        4      3       3        3       3
+```
+
+- `p^EE_W`, `ṗ^EE_W` — pusher (end-effector) position and velocity in world;
+- `q_WO`, `p^O_W` — object orientation (unit quaternion) and position;
+- `ω^O_W`, `ṗ^O_W` — object angular and linear velocity.
+
+#### Step 2 — how the input is defined
+
+The input is the **Cartesian force applied at the pusher**, not joint
+torques:
+
+```text
+u ∈ R^3   [N],    ‖u‖∞ ≤ F_max   (per-task u-force limits; the config's
+                                   "torque_limit" is reinterpreted in Newtons)
+```
+
+This is the key abstraction of the reduced formulation: the planner asks
+"what force should the ball at the fingertip exert," and the downstream OSC
+QP is responsible for finding the seven joint torques that realize that
+force on the real arm. (The legacy full-plant path behind `--r7` plans
+joint torques `u ∈ R^7` directly; it is retained only for falsification
+runs.)
+
+#### Step 3 — the physics we start from
+
+Everything is derived from the standard manipulator equation that Drake
+evaluates for the coupled arm/object/table plant:
+
+```text
+M(q) v̇ + C(q, v) v = τ_g(q) + B u + J_nᵀ λ_n + J_tᵀ λ_t
+```
+
+with `M` the mass matrix, `C` Coriolis/centrifugal terms, `τ_g` gravity,
+`B` the input map, and `λ_n`/`λ_t` the unknown normal and tangential
+contact forces.
+
+#### Step 4 — the matrices we infer each tick
+
+The continuous dynamics above are nonlinear in `(q, v, u)`. Each planning
+tick, `LCSFormulator` (`control/lcs_formulator.py`) linearizes them at the
+measured state via Drake **autodiff** (Aydinoglu 2024, eq. 8):
+
+```text
+f(q, v, u) = M⁻¹ (B u − C v + τ_g)          # unconstrained acceleration
+J_f = ∂f/∂(q, v, u) = [J_q  J_v  J_u]        # autodiff Jacobian
+d_v = f(q*, v*, u*) − J_f · [q*; v*; u*]     # offset making it exact at the
+                                             # linearization point
+```
+
+From the same plant context it extracts the **contact geometry**:
+
+| Symbol | Shape | Meaning |
+|---|---|---|
+| `φ` | `(n_c,)` | signed gap distance per contact pair (negative = penetrating) |
+| `J_n` | `(n_c, n_v)` | normal contact Jacobians (maps velocities to gap rates) |
+| `J_t` | `(4 n_c, n_v)` | tangential Jacobians, 4 friction-pyramid edges per contact |
+| `E_t` | `(n_c, 4 n_c)` | selector summing the four tangent forces of each contact |
+| `μ` | scalar / per-pair | friction coefficient(s) from the task config |
+
+The contact pairs are the pusher-vs-object faces plus the object-vs-ground
+witness points, so `n_c` changes with the sampled candidate and the object's
+pose — these matrices are re-inferred at every tick and for every candidate.
+
+Under the default Anitescu contact model, friction is folded into one
+combined contact Jacobian and the discrete-time LCS blocks are assembled as
+(`lcs_formulator.py:1692-1698`):
+
+```text
+J_c = E_tᵀ J_n + diag(μ) J_t                          # friction-folded Jacobian
+
+x[t+1] = A x[t] + B u[t] + D λ[t] + d                 # dynamics row
+0 ≤ λ[t] ⊥ E x[t] + F λ[t] + H u[t] + c ≥ 0           # contact row
+
+D = [ dt² · qdotNv · M⁻¹ J_cᵀ ;  dt · M⁻¹ J_cᵀ ]      # how contact forces move the state
+E = [ dt·J_c·J_q + E_tᵀ J_n · vNqdot/dt ;  J_c + dt·J_c·J_v ]
+F = dt · J_c · M⁻¹ J_cᵀ                               # contact-force coupling (Delassus)
+H = dt · J_c · J_u                                    # how the input opens/closes gaps
+c = E_tᵀ φ/dt + dt·J_c·d_v − E_tᵀ J_n · vNqdot · q/dt # gap constants
+```
+
+Reading the complementarity row as physics: `E x + F λ + H u + c` predicts
+the post-step contact velocity/gap of each friction-pyramid direction;
+`0 ≤ λ ⊥ (·) ≥ 0` says a contact force may only push (never pull) and only
+while its gap is closed. `A`, `B`, `d` are the corresponding discrete-time
+integration of `J_f` and `d_v`.
+
+#### Step 5 — what the solver minimizes over that model
+
+C3+ then solves, exactly as in the xArm section, the quadratic tracking
+problem `Σ (x_t − x_d)ᵀ Q (x_t − x_d) + Σ u_tᵀ R u_t` over the LCS, with
+ADMM consensus/projection weights `G` and `U` on the `(λ, η)` copies; the
+weights come from the per-task YAML (`config/sampling_c3_kik_t.yaml` and
+friends), including the final-QP contact boost on the last polish solve.
+
+#### Step 6 — realizing `u` on the seven-joint arm
+
+The OSC (`control/osc/operational_space_controller.py`) closes the gap
+between the planner's fiction (a free-flying force ball) and the real arm:
+it tracks the planned pusher trajectory and promotes the planner's contact
+force to its QP, producing joint torques `τ ∈ R^7` through the same
+inverse-dynamics structure as the xArm OSC. Two Franka-specific terms
+matter: the reference `joint2` posture pin (`Kp/Kd/W_joint2`,
+`joint2_target_rad = 1.1`) that kills the null-space orbit in the endgame,
+and `q_init_franka` seeding. The planner's `λ` is a *cost demand*, not a
+measured force — the OSC and simulator decide what is physically exerted.
+
 ## Single-Object Pushing
 
 The corrected protocol uses one uninterrupted manipulation session per object:
