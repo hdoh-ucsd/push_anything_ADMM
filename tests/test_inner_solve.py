@@ -34,6 +34,33 @@ def test_oim_se2_cost_uses_wrapped_yaw_and_distinct_terminal_weights():
     expected += 10000.0 * 4.0 + 1000.0 * (2 * eps) ** 2
     assert oim_se2_traj_cost(x_seq, x_ref) == pytest.approx(expected)
 
+
+def test_oim_se2_cost_adds_one_obstacle_proximity_penalty():
+    x_ref = np.zeros(19)
+    x_seq = np.zeros((2, 19))
+    x_seq[:, 4:6] = [[1.0, 0.0], [0.0, 0.0]]
+    base = oim_se2_traj_cost(x_seq, x_ref)
+    with_obstacle = oim_se2_traj_cost(
+        x_seq, x_ref,
+        obstacle_center=[0.0, 0.0],
+        obstacle_half_extents=[0.5, 0.5],
+        object_radius=0.1,
+        w_obstacle=50.0,
+        obstacle_decay=0.1,
+    )
+    # Signed clearances are 0.4 m and -0.6 m, respectively; the terminal
+    # point is intentionally much more expensive because it intersects the
+    # inflated obstacle footprint.
+    expected = 50.0 * (np.exp(-4.0) + np.exp(6.0))
+    assert with_obstacle == pytest.approx(base + expected)
+
+
+def test_oim_obstacle_cost_requires_geometry_when_enabled():
+    with pytest.raises(ValueError, match="obstacle_center"):
+        oim_se2_traj_cost(
+            np.zeros((2, 19)), np.zeros(19), w_obstacle=1.0
+        )
+
 def test_traj_cost_zero_at_reference():
     """When x_seq ≡ x_ref and u_seq ≡ 0 the cost is exactly 0."""
     n_x, n_u, N = 4, 2, 3

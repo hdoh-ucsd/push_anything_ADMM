@@ -200,7 +200,12 @@ def traj_cost(x_seq:  np.ndarray,
 def oim_se2_traj_cost(x_seq: np.ndarray, x_ref: np.ndarray,
                       q_pos: float = 1000.0, q_theta: float = 100.0,
                       qf_pos: float = 10000.0,
-                      qf_theta: float = 1000.0) -> float:
+                      qf_theta: float = 1000.0,
+                      obstacle_center=None,
+                      obstacle_half_extents=None,
+                      object_radius: float = 0.0,
+                      w_obstacle: float = 0.0,
+                      obstacle_decay: float = 0.10) -> float:
     """OIM C3's exact object-pose cost for the EE-space state layout.
 
     ``x = [qw,qx,qy,qz,x,y,z, ...]``.  Quaternion sign is immaterial and
@@ -221,7 +226,39 @@ def oim_se2_traj_cost(x_seq: np.ndarray, x_ref: np.ndarray,
     dyaw = (_yaw(xs[:, :4]) - _yaw(ref[:4]) + np.pi) % (2.0 * np.pi) - np.pi
     running = q_pos * np.sum(dxy[:-1] ** 2) + q_theta * np.sum(dyaw[:-1] ** 2)
     terminal = qf_pos * float(dxy[-1] @ dxy[-1]) + qf_theta * float(dyaw[-1] ** 2)
-    return float(running + terminal)
+
+    # OIM's one-obstacle term is a proximity cost, not a hard collision
+    # constraint: w_obstacle * exp(-d / obstacle_decay), where d is the
+    # nearest signed distance from the object footprint to the obstacle.
+    # The C3+ state carries only the object pose, so use the conservative
+    # circular footprint around the object centre and an axis-aligned box
+    # obstacle.  This is exact for the imported cube's translational SDF and
+    # conservative for the T footprint; the LCS remains responsible for
+    # contact feasibility.
+    if w_obstacle < 0.0:
+        raise ValueError("w_obstacle must be nonnegative")
+    if w_obstacle > 0.0:
+        if obstacle_center is None or obstacle_half_extents is None:
+            raise ValueError(
+                "obstacle_center and obstacle_half_extents are required "
+                "when w_obstacle is positive"
+            )
+        if obstacle_decay <= 0.0:
+            raise ValueError("obstacle_decay must be positive")
+        center = np.asarray(obstacle_center, dtype=float).reshape(2)
+        half = np.asarray(obstacle_half_extents, dtype=float).reshape(2)
+        if np.any(half < 0.0) or object_radius < 0.0:
+            raise ValueError("obstacle extents and object_radius must be nonnegative")
+        delta = np.abs(xs[:, 4:6] - center) - half
+        outside = np.maximum(delta, 0.0)
+        unsigned = np.linalg.norm(outside, axis=1)
+        inside = np.minimum(np.maximum(delta[:, 0], delta[:, 1]), 0.0)
+        signed_clearance = unsigned + inside - float(object_radius)
+        obstacle_cost = float(w_obstacle * np.sum(
+            np.exp(-signed_clearance / float(obstacle_decay))))
+    else:
+        obstacle_cost = 0.0
+    return float(running + terminal + obstacle_cost)
 
 
 def rollout_ranking_cost(x_seq, u_seq, Q, R, QN, x_ref, quad_cost) -> float:
@@ -233,6 +270,12 @@ def rollout_ranking_cost(x_seq, u_seq, Q, R, QN, x_ref, quad_cost) -> float:
             q_theta=quad_cost.oim_q_theta,
             qf_pos=quad_cost.oim_qf_pos,
             qf_theta=quad_cost.oim_qf_theta,
+            obstacle_center=getattr(quad_cost, "oim_obstacle_center", None),
+            obstacle_half_extents=getattr(
+                quad_cost, "oim_obstacle_half_extents", None),
+            object_radius=getattr(quad_cost, "oim_object_radius", 0.0),
+            w_obstacle=getattr(quad_cost, "oim_w_obstacle", 0.0),
+            obstacle_decay=getattr(quad_cost, "oim_obstacle_decay", 0.10),
         )
     return traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
 

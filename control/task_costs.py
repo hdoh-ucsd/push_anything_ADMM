@@ -149,6 +149,23 @@ class QuadraticManipulationCost:
         self.oim_q_theta = float(c.get("oim_q_theta", 100.0))
         self.oim_qf_pos = float(c.get("oim_qf_pos", 10000.0))
         self.oim_qf_theta = float(c.get("oim_qf_theta", 1000.0))
+        # Optional one-obstacle OIM ranking term.  The imported OIM task
+        # defines w_obstacle * exp(-d / obstacle_decay), with d the signed
+        # nearest distance from the object footprint to the obstacle.  These
+        # values are consumed by rollout_ranking_cost; they deliberately do
+        # not alter the convex C3+ QP unless an obstacle-aware linearization
+        # is explicitly added later.
+        self.oim_obstacle_center = (
+            None if c.get("oim_obstacle_center") is None else
+            np.asarray(c["oim_obstacle_center"], dtype=float).reshape(2)
+        )
+        self.oim_obstacle_half_extents = (
+            None if c.get("oim_obstacle_half_extents") is None else
+            np.asarray(c["oim_obstacle_half_extents"], dtype=float).reshape(2)
+        )
+        self.oim_object_radius = float(c.get("oim_object_radius", 0.0))
+        self.oim_w_obstacle = float(c.get("oim_w_obstacle", 0.0))
+        self.oim_obstacle_decay = float(c.get("oim_obstacle_decay", 0.10))
         self._target_yaw   = 0.0   # updated each build() call via target_yaw kwarg
         # Optional full goal quaternion (tasks.yaml `goal_quat`). None => the
         # goal is the yaw-only rotation built from target_yaw, which is what
