@@ -1,0 +1,49 @@
+# QP signature dump — compute_torque call idx=30000
+# ee_frame body='pusher' offset=[0,0,0]  n_arm=7 n_v=13
+# mode=c3 use_force_tracking=True c3_ref_gains_active=True
+# --- gains (as consumed by QP) ---
+  Kp_cart = array([200., 200., 200.])
+  Kd_cart = array([20., 20., 20.])
+  W_track = 1.0
+  W_posture = 0.0
+  W_torque = 0.0
+  W_acc = 1e-07
+  W_force = 1.0
+  Kp_null = array([10., 10., 10., 10., 10., 10., 10.])
+  Kd_null = array([3., 3., 3., 3., 3., 3., 3.])
+  Kp_joint2 = 200.0
+  Kd_joint2 = 10.0
+  W_joint2 = 1.0
+  joint2_target_rad = 1.1
+  joint2_idx = 1
+  tau_max = array([87., 87., 87., 87., 12., 12., 12.])
+# --- state ---
+  q       = [1.848671, 1.099934, -1.180151, -2.58065, 1.626405, 2.170614, -0.654336, 0.929807, -0.029861, 0.023937, -0.366929, 0.464228, 0.168284, 0.018331]
+  v       = [-0.001624, 1.8e-05, 0.000648, 0.006765, -0.004032, 0.000729, 0.006529, -2e-06, 3e-06, -0.016646, 0.001881, 0.001192, 0.0]
+  p_ee_now= [0.361499, 0.125908, 0.023215]
+  v_ee_now= [0.001684, 0.002435, 5e-06]
+# --- desired / errors ---
+  p_ee_desired = [0.361849, 0.126112, 0.023331]  (present=True)
+  v_ee_desired = [0.002487, 0.003467, 0.0]  (present=True)
+  a_ee_desired = [0.0, 0.0, 0.0]  (present=True)
+  lambda_des   = [0.57974, 0.521296, 0.141243]  (present=True)
+  p_err        = [0.00035, 0.000204, 0.000115]
+  v_err        = [0.000803, 0.001032, -5e-06]
+  q_arm_err    = [-0.103338, 0.095245, 0.01946, 0.164103, 0.057289, 0.066347, -8e-06]
+  v_arm_err    = [0.001624, -1.8e-05, -0.000648, -0.006765, 0.004032, -0.000729, -0.006529]
+# --- dynamics tuple summary ---
+  Cv[:n_arm]      = [0.0, -0.0, -0.0, -0.0, 0.0, 0.0, 0.0]
+  gravity[:n_arm] = [-0.0, 20.7672, 18.7756, -2.7559, -1.2125, -1.5555, -0.0]
+  bias[:n_arm]    = [0.0, -0.0, -0.0, -0.0, 0.0, 0.0, 0.0]
+  F_ff[:n_arm]    = [-0.1407, 0.1368, 0.1248, -0.4477, -0.1108, -0.0132, 0.0]
+  F_ff_for_qp[:n_arm]=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  had_lam_n=True  had_lam_t=True
+# --- QP outputs (port) ---
+  u_opt       = [0.0043, -0.0188, -0.058, 0.189, 0.0171, 0.026, 0.0158]
+  vdot_opt[:n_arm] = [-0.0273, 0.013, -0.0309, 0.1605, 0.0744, 0.1006, 0.0797]
+  lam_ext_opt = [0.5797, 0.5213, 0.1412]
+  qp_success  = True  (SolutionResult.kSolutionFound)
+  solve_ms    = 0.231
+# --- plant-side torque (u_opt + tau_g[:n_arm]) ---
+  tau_g[:n_arm]      = [0.0, -20.7672, -18.7756, 2.7559, 1.2125, 1.5555, 0.0]
+  tau_plant (u+tau_g)= [0.0043, -20.786, -18.8336, 2.9449, 1.2296, 1.5814, 0.0158]
