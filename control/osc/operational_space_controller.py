@@ -103,6 +103,11 @@ class OperationalSpaceController:
         self.q_nominal   = np.asarray(q_nominal, dtype=float).reshape(self.n_arm)
         self.log_diag    = bool(log_diag)
         self.use_force_tracking = bool(use_force_tracking)
+        # Optional task-local passive generalized force that is present in
+        # the execution plant but not represented by Drake's parsed model
+        # (e.g. OIM xArm joint stiffness ignored by the MJCF parser).  It is
+        # injected on the dynamics RHS, never folded into gravity ownership.
+        self.known_passive_force_fn = None
 
         # Load gains
         self.gains, _tau_max_yaml = _load_osc_gains(gains_yaml, self.n_arm)
@@ -308,6 +313,16 @@ class OperationalSpaceController:
             F_ff_for_qp = np.zeros(n_v)
         else:
             F_ff_for_qp = F_ff
+        known_passive_force = np.zeros(n_v)
+        if self.known_passive_force_fn is not None:
+            known_passive_force = np.asarray(
+                self.known_passive_force_fn(plant_ctx), dtype=float
+            ).reshape(n_v)
+            if not np.all(np.isfinite(known_passive_force)):
+                raise ValueError("known passive generalized force is non-finite")
+            # Physical dynamics: M vdot + Cv = B u + F_passive.  The QP uses
+            # M vdot - B u = F_external - bias, with bias=Cv.
+            F_ff_for_qp = F_ff_for_qp + known_passive_force
 
         # ONE gain set for all modes (reference osc_params.yaml semantics;
         # 2026-07-28 defaults flip removed the §7.70 c3/free gain-swap
@@ -363,6 +378,7 @@ class OperationalSpaceController:
                 # Planner feedforward
                 F_ff=F_ff.astype(float).copy(),
                 F_ff_for_qp=F_ff_for_qp.astype(float).copy(),
+                known_passive_force=known_passive_force.astype(float).copy(),
                 had_lam_n=bool(had_lam_n),
                 had_lam_t=bool(had_lam_t),
                 # Gains (from _gains_active — what the QP actually consumes)

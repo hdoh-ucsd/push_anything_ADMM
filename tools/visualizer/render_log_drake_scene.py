@@ -61,6 +61,7 @@ RE_GATE = re.compile(
 RE_STEP_MODE = re.compile(
     r"^\[STEP\] step=(\d+) mode=(\w+) t=([\d.]+)s.*?switch=(\w+)"
 )
+RE_ARM_Q = re.compile(r"^\[ARM-Q\] step=(\d+) q=\(([^)]+)\)")
 
 
 def _parse_triple(s: str) -> np.ndarray:
@@ -99,7 +100,22 @@ def parse_log(path: Path):
                     # for every other cadence (jack/push_t tick at 0.1 s).
                     sim_t=float(m.group(3)),
                 )
+            elif line.startswith("[ARM-Q]"):
+                m = RE_ARM_Q.match(line)
+                if m:
+                    frames.setdefault(int(m.group(1)), {}).update(
+                        arm_q=_parse_triple(m.group(2)))
     return frames
+
+
+def parse_static_scene(log_path: Path):
+    pat = re.compile(r"^\[OIM-SCENE\].*?sdf=(\S+)")
+    with open(log_path, errors="replace") as stream:
+        for line in stream:
+            match = pat.match(line)
+            if match:
+                return match.group(1)
+    return None
 
 
 def parse_log_goal(log_path: Path):
@@ -139,7 +155,7 @@ def parse_log_goal(log_path: Path):
 
 RE_REGOAL = re.compile(
     r"\[GOAL-GEN\] goal #\d+ REACHED at t=([\d.]+)s -> new goal "
-    r"xy=\(([-+\d.]+),([-+\d.]+)\) tripod=\w+ "
+    r"xy=\(([-+\d.]+),([-+\d.]+)\) (?:tripod|orientation)=\w+ "
     r"quat=\[([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\]")
 
 
@@ -169,6 +185,19 @@ def load_task_cfg(task_name: str, task_id, log_goal_pair):
     with open(root / "config" / "tasks.yaml") as f:
         all_tasks = yaml.safe_load(f)["tasks"]
     task_cfg = dict(all_tasks[task_name])
+    # Match main.load_task's imported-asset fallback.  Imported mesh tasks
+    # intentionally omit object_sdf from some manifests and are resolved from
+    # their deterministic sim/models layout at runtime.  Restricting this to
+    # names ending in "_block" made post-hoc renders silently build the
+    # analytic T, then fail when looking up the imported object's link name.
+    if task_cfg.get("object_sdf") is None:
+        model_dir = root / "sim" / "models" / task_name
+        inferred = model_dir / f"{task_name}.sdf"
+        linked = model_dir / f"{task_cfg.get('link_name', task_name)}.sdf"
+        if not inferred.is_file() and linked.is_file():
+            inferred = linked
+        if inferred.is_file():
+            task_cfg["object_sdf"] = str(inferred)
     if log_goal_quat is not None:
         task_cfg["goal_quat"] = log_goal_quat
         print(f"[render-log-drake] goal quat from log [GOAL-QUAT] line: "
@@ -248,6 +277,11 @@ def main():
         task_cfg.pop("goal_quat", None)
         print(f"[render-log-drake] goal override: yaw={args.goal_yaw}")
 
+    static_scene = parse_static_scene(args.log)
+    if static_scene:
+        task_cfg["static_scene_model"] = static_scene
+        print(f"[render-log-drake] static scene from log: {static_scene}")
+
     # --- goal segments: the ghost is ANCHORED world geometry, so every
     # kRandom re-goal needs an env rebuild with that segment's goal pose.
     # Single-goal logs collapse to one segment (previous behavior).
@@ -312,6 +346,11 @@ def main():
     seg_idx = -1
     K = max(1, args.interp)
     rendered = [k for k in valid if k % args.stride == 0]
+    # A result marker is attached to the final telemetry step.  Always retain
+    # that step even when stride sampling would skip it; otherwise the video
+    # can show the global verdict without the corresponding native milestone.
+    if valid and (not rendered or rendered[-1] != valid[-1]):
+        rendered.append(valid[-1])
     for r_i, step in enumerate(rendered):
         _entered_new_seg = False
         while (seg_idx + 1 < len(seg_starts)
@@ -360,14 +399,22 @@ def main():
             # during the t=440-457s flip burst and stayed wrong for the
             # remaining 140 s). The small home-pull on the seed anchors the
             # remaining 1-DOF elbow redundancy without visible snapping.
-            seed_q = 0.98 * prev_arm_q + 0.02 * INITIAL_ARM_Q
-            plant.SetPositions(plant_ctx, panda_model, seed_q)
-            q_full = plant.GetPositions(plant_ctx).copy()
-            q_sol, err, it = solve_ik_to_ee_pos(
-                plant, ee_frame, eep, q_full, plant_ctx,
-                n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
-                q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_VERT,
-            )
+            if "arm_q" in rec:
+                arm_q = rec["arm_q"]
+                if a != 0.0 and nxt is not None and "arm_q" in nxt:
+                    arm_q = (1.0 - a) * arm_q + a * nxt["arm_q"]
+                q_sol = np.asarray(arm_q, dtype=float)
+                err, it = 0.0, 0
+                plant.SetPositions(plant_ctx, panda_model, q_sol)
+            else:
+                seed_q = 0.98 * prev_arm_q + 0.02 * INITIAL_ARM_Q
+                plant.SetPositions(plant_ctx, panda_model, seed_q)
+                q_full = plant.GetPositions(plant_ctx).copy()
+                q_sol, err, it = solve_ik_to_ee_pos(
+                    plant, ee_frame, eep, q_full, plant_ctx,
+                    n_arm_dofs=n_arm_dofs, max_iter=60, damping=0.05,
+                    q_lo=q_lo_arm, q_hi=q_hi_arm, R_target=_R_VERT,
+                )
             if err > 5e-3:
                 # Retry once from the standard home pose.
                 plant.SetPositions(plant_ctx, panda_model, INITIAL_ARM_Q)

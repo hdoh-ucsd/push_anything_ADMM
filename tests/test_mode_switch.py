@@ -149,8 +149,8 @@ def test_unproductive_takes_precedence_over_cost():
 # Free → c3, kToC3ReachedReposTarget
 # ---------------------------------------------------------------------------
 
-def test_finished_repos_returns_to_c3_unconditionally():
-    p = _params(hyst_repos_to_c3=99999.0)   # huge — wouldn't switch on cost alone
+def test_finished_repos_still_requires_reference_cost_gate():
+    p = _params(hyst_repos_to_c3=99999.0)
     mode, reason = decide_mode(
         prev_mode="free",
         c3_cost=20000.0,           # WORSE than current repos
@@ -161,7 +161,24 @@ def test_finished_repos_returns_to_c3_unconditionally():
         finished_repos=True,       # forces switch
         params=p,
     )
-    assert mode   == "c3"
+    assert mode == "free"
+    assert reason == SwitchReason.kStayInRepos
+
+
+def test_inflated_repos_cost_labels_reference_arrival_transition():
+    p = _params(finished_reposition_cost=1000000.0,
+                hyst_repos_to_c3=1000.0)
+    mode, reason = decide_mode(
+        prev_mode="free",
+        c3_cost=5000.0,
+        best_other_cost=2000000.0,
+        current_repos_cost=1010000.0,
+        met_progress=True,
+        near_goal=False,
+        finished_repos=False,
+        params=p,
+    )
+    assert mode == "c3"
     assert reason == SwitchReason.kToC3ReachedReposTarget
 
 

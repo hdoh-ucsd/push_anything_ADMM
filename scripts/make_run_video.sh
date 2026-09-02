@@ -17,9 +17,10 @@
 #   --fps        output mp4 fps (default: 10)
 #   --raw-log     use the legacy dense scrolling-log panel
 #   --keep-frames keep the intermediate frames dir (default: delete)
+#   --force       explicitly permit replacing an existing render/copy
 #
 # Output: results/RUN_NAME_sidepanel.mp4, plus a copy to the D-drive sink
-# /d/projects/ERL/push_anything_ADMM/ when that mount exists.
+# /d/projects/ERL/push_anything_ADMM/results/ when that mount exists.
 #
 # Camera override example:
 #   PORT_CAM_EYE="1.25,-0.75,0.75" PORT_CAM_TARGET="0.45,0.05,0.05" \
@@ -31,26 +32,35 @@ cd "$(dirname "$0")/.."
 
 RUN_NAME="${1:?usage: make_run_video.sh RUN_NAME [--task T] [--stride N] [--fps N]}"
 shift
+[[ "$RUN_NAME" =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "RUN_NAME may contain only letters, digits, dot, underscore, and dash" >&2
+  exit 2
+}
 
 TASK="push_t"
 STRIDE=2
 FPS=10
 KEEP_FRAMES=0
+FORCE=0
 REALTIME=0
 INTERP=1
 PANEL_REALTIME=()
 PANEL_RAW=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --task)   TASK="$2";   shift 2 ;;
-    --stride) STRIDE="$2"; shift 2 ;;
-    --fps)    FPS="$2";    shift 2 ;;
+    --task)   [ $# -ge 2 ] || { echo "--task requires a value" >&2; exit 2; }; TASK="$2"; shift 2 ;;
+    --stride) [ $# -ge 2 ] || { echo "--stride requires a value" >&2; exit 2; }; STRIDE="$2"; shift 2 ;;
+    --fps)    [ $# -ge 2 ] || { echo "--fps requires a value" >&2; exit 2; }; FPS="$2"; shift 2 ;;
     --realtime) REALTIME=1; shift ;;
     --raw-log) PANEL_RAW=(--raw-log); shift ;;
     --keep-frames) KEEP_FRAMES=1; shift ;;
+    --force) FORCE=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+[[ "$STRIDE" =~ ^[1-9][0-9]*$ ]] || { echo "--stride must be a positive integer" >&2; exit 2; }
+[[ "$FPS" =~ ^[1-9][0-9]*$ ]] || { echo "--fps must be a positive integer" >&2; exit 2; }
 
 LOG="results/${RUN_NAME}.txt"
 # Stride is in the filename: renders at different strides are different
@@ -88,6 +98,10 @@ fi
 TIMING_SUFFIX=""
 [ "$REALTIME" = 1 ] && TIMING_SUFFIX="_rt"
 OUT="results/${RUN_NAME}_sidepanel_s${STRIDE}${TIMING_SUFFIX}.mp4"
+if [ -e "$OUT" ] && [ "$FORCE" != 1 ]; then
+  echo "refusing to overwrite existing video: $OUT (use --force explicitly)" >&2
+  exit 2
+fi
 
 FRAMES_DIR="$(mktemp -d /tmp/${RUN_NAME}_frames.XXXX)"
 cleanup() { [ "$KEEP_FRAMES" = 1 ] || rm -rf "$FRAMES_DIR"; }
@@ -109,7 +123,12 @@ python3 tools/visualizer/paint_log_sidepanel.py \
 
 echo "[make_run_video] wrote $OUT ($(du -h "$OUT" | cut -f1))"
 
-SINK="/d/projects/ERL/push_anything_ADMM"
+SINK="/d/projects/ERL/push_anything_ADMM/results"
 if [ -d "$SINK" ]; then
-  cp "$OUT" "$SINK/" && echo "[make_run_video] copied to $SINK/$(basename "$OUT")"
+  SINK_FILE="$SINK/$(basename "$OUT")"
+  if [ -e "$SINK_FILE" ] && [ "$FORCE" != 1 ]; then
+    echo "[make_run_video] D-drive copy already exists; left unchanged: $SINK_FILE"
+  else
+    cp "$OUT" "$SINK_FILE" && echo "[make_run_video] copied to $SINK_FILE"
+  fi
 fi

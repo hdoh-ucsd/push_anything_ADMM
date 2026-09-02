@@ -4,7 +4,7 @@
 # Output: $OUT/seed{N}.log per seed.
 set -uo pipefail
 
-OUT="${1:?usage: run_canonical_baseline_sweep.sh OUT_DIR}"
+OUT="${1:?usage: run_postfix_facepicker_sweep.sh OUT_DIR}"
 mkdir -p "$OUT"
 
 PARALLEL=8
@@ -25,7 +25,7 @@ run_one() {
         --max-time "$MAX_TIME" \
         --no-record \
         --seed "$seed" \
-        --name "canon_seed${seed}" \
+        --name "postfix_seed${seed}" \
         > "$out" 2>&1
     local rc=$?
     local dt=$(($(date +%s) - t0))
@@ -45,5 +45,5 @@ export OUT PER_RUN_TIMEOUT MAX_TIME ADMM_ITER
 
 # Use xargs -P for 8-way parallelism. Sequential within the same shell so
 # stdout lines from run_one are line-buffered.
-seq 0 $((N_SEEDS - 1)) | xargs -n 1 -P "$PARALLEL" -I{} bash -c 'run_one "$@"' _ {}
+seq 0 $((N_SEEDS - 1)) | xargs -P "$PARALLEL" -I{} bash -c 'run_one "$@"' _ {}
 echo "=== sweep complete: $OUT ==="

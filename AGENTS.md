@@ -4,6 +4,12 @@ This repository is an active robotics research project reproducing and extending
 Push Anything, C3/C3+, contact-implicit MPC, and sampling-based manipulation.
 Scientific traceability takes priority over cosmetic cleanup.
 
+## Parallel development
+
+- The Object-Informed Manipulation (OIM) import onto C3+ is being developed on
+  a separate fork. Do not merge, duplicate, or modify that work in this fork
+  unless the user explicitly requests it.
+
 ## Safety and approval
 
 - Never delete files, experiment outputs, or research notes without explicit

@@ -197,6 +197,46 @@ def traj_cost(x_seq:  np.ndarray,
     return J
 
 
+def oim_se2_traj_cost(x_seq: np.ndarray, x_ref: np.ndarray,
+                      q_pos: float = 1000.0, q_theta: float = 100.0,
+                      qf_pos: float = 10000.0,
+                      qf_theta: float = 1000.0) -> float:
+    """OIM C3's exact object-pose cost for the EE-space state layout.
+
+    ``x = [qw,qx,qy,qz,x,y,z, ...]``.  Quaternion sign is immaterial and
+    yaw error is wrapped to [-pi, pi], matching ``oim/algs/c3.py`` instead
+    of the generic C3+ half-angle quaternion surrogate.
+    """
+    xs = np.asarray(x_seq, dtype=float)
+    ref = np.asarray(x_ref, dtype=float)
+    if xs.ndim != 2 or xs.shape[1] < 7 or ref.shape[0] < 7:
+        raise ValueError("OIM SE(2) cost requires EE-space states of width >= 7")
+
+    def _yaw(q):
+        qw, qx, qy, qz = np.moveaxis(q, -1, 0)
+        return np.arctan2(2.0 * (qw * qz + qx * qy),
+                          1.0 - 2.0 * (qy * qy + qz * qz))
+
+    dxy = xs[:, 4:6] - ref[4:6]
+    dyaw = (_yaw(xs[:, :4]) - _yaw(ref[:4]) + np.pi) % (2.0 * np.pi) - np.pi
+    running = q_pos * np.sum(dxy[:-1] ** 2) + q_theta * np.sum(dyaw[:-1] ** 2)
+    terminal = qf_pos * float(dxy[-1] @ dxy[-1]) + qf_theta * float(dyaw[-1] ** 2)
+    return float(running + terminal)
+
+
+def rollout_ranking_cost(x_seq, u_seq, Q, R, QN, x_ref, quad_cost) -> float:
+    """Select the task's rollout metric without changing its inner QP."""
+    if getattr(quad_cost, "use_oim_se2_ranking_cost", False):
+        return oim_se2_traj_cost(
+            x_seq, x_ref,
+            q_pos=quad_cost.oim_q_pos,
+            q_theta=quad_cost.oim_q_theta,
+            qf_pos=quad_cost.oim_qf_pos,
+            qf_theta=quad_cost.oim_qf_theta,
+        )
+    return traj_cost(x_seq, u_seq, Q, R, QN, x_ref)
+
+
 # Shapes whose sample ranking uses the reference cost-LCS forward-sim path.
 # Audited 2026-08-18: "box" is DELIBERATELY excluded even though
 # sampling_c3_kik.yaml sets use_cost_lcs_ranking=true — the box banked its
@@ -962,8 +1002,9 @@ class InnerSolver:
                         lcp_reg=self._pgs_reg,
                         upsample_rate=_cost_lcs_rate,
                     )
-                    c_C3_raw = traj_cost(XX_sim, UU_sim,
-                                         Q_obj, R_obj, QN_obj, x_ref)
+                    c_C3_raw = rollout_ranking_cost(
+                        XX_sim, UU_sim, Q_obj, R_obj, QN_obj, x_ref,
+                        self.quad_cost)
                     # Stash sim-side motion for the [COST-LCS] trace
                     # (printed after align_score is computed, below).
                     # T motion direction: signed 2-vec end-to-end so we can
@@ -994,8 +1035,9 @@ class InnerSolver:
                                             - np.asarray(x_seq)[0, 4:6])),
                     }
                 else:
-                    c_C3_raw = traj_cost(x_seq, u_seq,
-                                         Q_obj, R_obj, QN_obj, x_ref)
+                    c_C3_raw = rollout_ranking_cost(
+                        x_seq, u_seq, Q_obj, R_obj, QN_obj, x_ref,
+                        self.quad_cost)
             else:
                 # REFCONF_SAMPLE_RANK_OBJ_ONLY=1 — rank samples by the
                 # OBJECT-slot cost only (obj quat/pos q-slots + obj ω/v
@@ -1028,17 +1070,18 @@ class InnerSolver:
                 if _ee_space:
                     Q_obj_r, QN_obj_r, R_obj_r = \
                         _object_only_cost_matrices_ee_space(Q, QN, R)
-                    c_C3_raw = traj_cost(
-                        x_seq, u_seq, Q_obj_r, R_obj_r, QN_obj_r, x_ref)
+                    c_C3_raw = rollout_ranking_cost(
+                        x_seq, u_seq, Q_obj_r, R_obj_r, QN_obj_r, x_ref,
+                        self.quad_cost)
                 else:
                     _n_x_r = Q.shape[0]
                     _obj_mask = np.zeros(_n_x_r, dtype=bool)
                     _obj_mask[self.n_u:self.n_q] = True          # obj quat+pos
                     _obj_mask[self.n_q + self.n_u:_n_x_r] = True  # obj ω+v
                     _M_r = np.outer(_obj_mask, _obj_mask)
-                    c_C3_raw = traj_cost(
-                        x_seq, u_seq,
-                        Q * _M_r, np.zeros_like(R), QN * _M_r, x_ref)
+                    c_C3_raw = rollout_ranking_cost(
+                        x_seq, u_seq, Q * _M_r, np.zeros_like(R),
+                        QN * _M_r, x_ref, self.quad_cost)
             feasible = True
             if admm_iter_k >= self.base_admm_iter:
                 self.full_solves += 1
@@ -1768,16 +1811,17 @@ class InnerSolver:
             if _ee_space:
                 _Qm, _QNm, _Rm = _object_only_cost_matrices_ee_space(
                     r.Q, r.QN, r.R)
-                c_C3_raw = traj_cost(x_seq, u_seq, _Qm, _Rm, _QNm, r.x_ref)
+                c_C3_raw = rollout_ranking_cost(
+                    x_seq, u_seq, _Qm, _Rm, _QNm, r.x_ref, self.quad_cost)
             else:
                 _n_x_r = r.Q.shape[0]
                 _obj_mask = np.zeros(_n_x_r, dtype=bool)
                 _obj_mask[self.n_u:self.n_q] = True
                 _obj_mask[self.n_q + self.n_u:_n_x_r] = True
                 _M_r = np.outer(_obj_mask, _obj_mask)
-                c_C3_raw = traj_cost(
-                    x_seq, u_seq,
-                    r.Q * _M_r, np.zeros_like(r.R), r.QN * _M_r, r.x_ref)
+                c_C3_raw = rollout_ranking_cost(
+                    x_seq, u_seq, r.Q * _M_r, np.zeros_like(r.R),
+                    r.QN * _M_r, r.x_ref, self.quad_cost)
             self.full_solves += 1
             r.u_seq    = u_seq
             r.x_seq    = x_seq

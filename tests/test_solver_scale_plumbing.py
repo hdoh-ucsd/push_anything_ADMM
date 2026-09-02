@@ -61,21 +61,27 @@ def test_env_falsification_hook_beats_yaml(monkeypatch):
 
 
 def test_params_from_dict_parses_scales():
-    p = SamplingC3Params.from_dict({"u_lambda": 4.0, "w_G": 0.03})
+    p = SamplingC3Params.from_dict(
+        {"u_lambda": 4.0, "w_G": 0.03, "w_G_position": 0.05})
     assert p.u_lambda == 4.0
     assert p.w_G == 0.03
+    assert p.w_G_position == 0.05
 
 
 def test_params_from_dict_absent_is_none():
     p = SamplingC3Params.from_dict({})
     assert p.u_lambda is None
     assert p.w_G is None
+    assert p.w_G_position is None
+    assert p.penalize_input_change is None
 
 
 def test_kik_jack_yaml_carries_jacktoy_literals():
     p = SamplingC3Params.from_yaml("config/sampling_c3_kik_jack.yaml")
     assert p.u_lambda == 4.0
     assert p.w_G == 0.03   # A2: back to the C3+ literal; A1's 0.25 falsified
+    assert p.w_G_position == 0.05
+    assert p.penalize_input_change is False
 
 
 def test_anything_lineage_yamls_leave_scales_absent():

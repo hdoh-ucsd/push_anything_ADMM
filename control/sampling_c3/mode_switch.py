@@ -42,7 +42,8 @@ class SwitchReason(IntEnum):
     kToC3Cost                = 4   # free → c3, current C3 plan beat repos
     kToC3ReachedReposTarget  = 5   # free → c3, reposition target reached
     kToBetterRepos           = 6   # free → free, switch repos target
-    kForceC3Watchdog         = 7   # free → c3, steps_since_improve watchdog
+    kForceC3Watchdog         = 7   # legacy port-only value; not emitted by
+                                   # the reference-conformant dispatcher
                                    # (re-test of 1d under F2 regime, 9.4.7
                                    # Option A — see paper_alignment_plan
                                    # Item 2.1 post-F2 reframe)
@@ -210,9 +211,16 @@ def decide_mode(prev_mode:          str,
         gap_back = _hysteresis(params, "repos_to_c3", near_goal,
                                best_other_cost)
         if c3_cost + gap_back < best_other_cost:
-            _label = (SwitchReason.kToC3ReachedReposTarget
-                      if finished_repos else SwitchReason.kToC3Cost)
-            return "c3", _label
+            # Reference cc:1319-1328 labels an arrival from the already
+            # inflated slot-1 cost, after the normal cost and altitude gates
+            # pass. The one-shot Boolean was cleared when inflation was
+            # applied, so consulting it here loses the arrival reason.
+            reached = (
+                current_repos_cost is not None
+                and current_repos_cost > params.finished_reposition_cost
+            )
+            return ("c3", SwitchReason.kToC3ReachedReposTarget
+                    if reached else SwitchReason.kToC3Cost)
 
     # repos-to-repos: fire now if the condition held and c3 didn't win.
     if _repos_to_repos_would_fire:

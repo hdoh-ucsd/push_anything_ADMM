@@ -204,6 +204,8 @@ class ProgressParams:
     # Default 0.030m; CP1 of the combined-fix plan pins the YAML value
     # against working-seed wobble. Set <= 0 to disable.
     pos_regression_threshold:            float = 0.030
+    yaw_regression_threshold:            float = 0.0
+    regression_consecutive_steps:        int = 1
 
     # kConfigCostDrop variant: required object-config cost drop over a
     # sim-time window. 2026-06-25 reconciliation: source-of-truth in
@@ -234,11 +236,8 @@ class ProgressParams:
     hyst_repos_to_repos:                 float = 500.0
     hyst_repos_to_repos_position:        float = 2500.0
 
-    # Steps-since-improve watchdog (1d, 9.4.7 Option A re-test).
-    # When > 0, the wrapper overrides mode_switch and forces "c3" with
-    # SwitchReason.kForceC3Watchdog once steps_since_improve >= this
-    # threshold. 0 disables (default). Set to 100 in
-    # config/sampling_c3_{params,kik}.yaml for the F2-regime re-test.
+    # Legacy port-only watchdog setting. Retained for YAML compatibility but
+    # intentionally not consumed by the reference-conformant dispatcher.
     watchdog_steps_since_improve_threshold: int = 0
 
     # Relative hysteresis (used when use_relative_hysteresis is True)
@@ -328,6 +327,16 @@ class SamplingParams:
     unsuccessful_pos_error_sample_retention:  float = 0.006   # m — ref
     unsuccessful_ang_error_sample_retention:  float = 0.05    # rad — ref
 
+    # Optional port-side recovery for execution backends that can plateau
+    # just outside the reference's hard 20 mm reposition-arrival predicate.
+    # Zero window keeps the reference behavior. When enabled, an unchanged
+    # target that improves by less than ``reposition_stall_min_progress``
+    # over the window is either accepted inside the arrival-hysteresis band
+    # or invalidated so the sampler must choose a fresh target.
+    reposition_stall_window_s:          float = 0.0
+    reposition_stall_min_progress:      float = 0.002
+    reposition_stall_arrival_tolerance: float = 0.025
+
     # Geometry shared across multiple strategies
     sampling_radius:                     float = 0.13   # m, candidate-ring radius for cost eval (samples 1..n-1)
     # kRandomOnSphere / kRandomOnShell elevation band, measured from the
@@ -406,6 +415,13 @@ class SamplingParams:
     # to the reference's generic mesh sampler; that's a documented fidelity
     # boundary, not a shortcut. Adding the mesh sampler unlocks the shape zoo.
     object_shape:                        str   = "box"
+    # Geometry variant for a T-shaped object. ``reference`` preserves the
+    # Push-Anything T exactly; ``oim_lab`` uses the measured 89 x 99 x
+    # 59.6 mm OIM block while retaining the same Sampling-C3 algorithm.
+    tshape_geometry_variant:             str   = "reference"
+    # Physical radius used by reference perimeter projection. None keeps the
+    # repository end-effector radius; imported robots may provide their own.
+    pusher_radius_override:               float | None = None
 
     # Face-selection bias toward goal-aligned faces (Stage 2B Mode-B fix).
     # When > 0, each face's draw probability is weighted by
@@ -683,8 +699,36 @@ class SamplingC3Params:
     # the task has w_yaw > 0 (i.e. cost has a rotation goal); inert otherwise.
     w_rot:              float = 0.0
 
+    # Port-only safety guard for tasks whose controller/evaluator assumes the
+    # manipuland remains planar even though the Drake execution body is free.
+    # None preserves the reference behavior.  When set, C3 execution is
+    # refused (or exited) once the object's body-z axis tilts farther than
+    # this angle from world-z.
+    max_planar_object_tilt_rad: Optional[float] = None
+
+    # Use wrapped world-z yaw, rather than the full quaternion geodesic, for
+    # planar progress accounting.  This is required by imported SE(2)
+    # evaluators such as OIM, whose score intentionally ignores transient
+    # roll/pitch while the separate tilt guard remains responsible for
+    # planar safety.  False preserves the Push-Anything reference metric.
+    use_planar_yaw_progress: bool = False
+
+    # Populate UnsuccessfulSampleBuffer only after an observed failure
+    # (regression/contact-loss/stall), rather than pre-emptively on ordinary
+    # C3 entry. OIM enables this; False preserves reference bookkeeping.
+    unsuccessful_only_on_observed_failure: bool = False
+
+    # Keep failed contacts attached to a translating/rotating planar object.
+    unsuccessful_body_relative: bool = False
+
+
     # Inner-solver knobs
     surrogate_admm_iters: int = 1   # for the K-1 cheap sample evaluations
+
+    # Whether R penalizes (u - u_previous_solve) instead of u itself.
+    # None keeps main.py's legacy task default. The reference files choose
+    # this per experiment, independently of the C3/C3+ projection.
+    penalize_input_change: Optional[bool] = None
 
     # Per-task planner u-force limits — reference sampling_c3plus_options
     # `u_horizontal_limits` / `u_vertical_limits` (push_t: ±50/±50 @ :34-35;
@@ -721,6 +765,7 @@ class SamplingC3Params:
     # PORT_U_LAMBDA / PORT_W_G env hooks keep highest precedence.
     u_lambda: Optional[float] = None
     w_G:      Optional[float] = None
+    w_G_position: Optional[float] = None
     # Paper-era plain-C3 G structure (user-directed experiment 2026-08-17):
     # per-slot x binding + lambda/u/eta scalar overrides. None = C3+
     # class defaults (g_x 0, g_lambda 2, g_u 0, g_eta 1).
@@ -1146,7 +1191,16 @@ class SamplingC3Params:
             w_align              = float(raw.get("w_align", 30_000.0)),
             w_travel             = float(raw.get("w_travel", 200.0)),
             w_rot                = float(raw.get("w_rot", 0.0)),
+            use_planar_yaw_progress = bool(raw.get(
+                "use_planar_yaw_progress", False)),
+            unsuccessful_only_on_observed_failure = bool(raw.get(
+                "unsuccessful_only_on_observed_failure", False)),
+            unsuccessful_body_relative = bool(raw.get(
+                "unsuccessful_body_relative", False)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
+            penalize_input_change = (
+                bool(raw["penalize_input_change"])
+                if raw.get("penalize_input_change") is not None else None),
             final_augmented_cost_contact_scaling = (
                 float(raw["final_augmented_cost_contact_scaling"])
                 if raw.get("final_augmented_cost_contact_scaling") is not None
@@ -1157,6 +1211,9 @@ class SamplingC3Params:
             w_G = (
                 float(raw["w_G"])
                 if raw.get("w_G") is not None else None),
+            w_G_position = (
+                float(raw["w_G_position"])
+                if raw.get("w_G_position") is not None else None),
             g_x_vector = (
                 [float(v) for v in raw["g_x_vector"]]
                 if raw.get("g_x_vector") is not None else None),

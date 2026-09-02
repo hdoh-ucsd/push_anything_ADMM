@@ -6,12 +6,33 @@ here we test traj_cost and traj_cost_breakdown numerically.
 import numpy as np
 import pytest
 
-from control.sampling_c3.inner_solve import traj_cost, traj_cost_breakdown
+from control.sampling_c3.inner_solve import (
+    oim_se2_traj_cost,
+    traj_cost,
+    traj_cost_breakdown,
+)
 
 
 # ---------------------------------------------------------------------------
 # traj_cost
 # ---------------------------------------------------------------------------
+
+
+def test_oim_se2_cost_uses_wrapped_yaw_and_distinct_terminal_weights():
+    # EE-space object layout: [qw,qx,qy,qz,x,y,z,...].  +pi-eps and
+    # -pi+eps differ by 2*eps after wrapping, not almost 2*pi.
+    eps = 0.01
+    x_ref = np.zeros(19)
+    goal_yaw = -np.pi + eps
+    x_ref[:4] = [np.cos(goal_yaw / 2), 0, 0, np.sin(goal_yaw / 2)]
+    x_seq = np.zeros((2, 19))
+    yaw = np.pi - eps
+    x_seq[:, :4] = [np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]
+    x_seq[0, 4:6] = [1.0, 0.0]
+    x_seq[1, 4:6] = [2.0, 0.0]
+    expected = 1000.0 * 1.0 + 100.0 * (2 * eps) ** 2
+    expected += 10000.0 * 4.0 + 1000.0 * (2 * eps) ** 2
+    assert oim_se2_traj_cost(x_seq, x_ref) == pytest.approx(expected)
 
 def test_traj_cost_zero_at_reference():
     """When x_seq ≡ x_ref and u_seq ≡ 0 the cost is exactly 0."""

@@ -259,3 +259,13 @@ def test_pos_regression_independent_of_variant():
         t.update(_step(pos=0.10))
         t.update(_step(pos=0.15))
         assert abs(t.pos_regression() - 0.05) < 1e-9, f"failed for {variant}"
+
+
+def test_rot_regression_reports_current_minus_best():
+    t = ProgressTracker(_params())
+    assert t.rot_regression() == 0.0
+    t.update(_step(rot=0.40))
+    t.update(_step(rot=0.15))
+    assert t.rot_regression() == 0.0
+    t.update(_step(rot=0.27))
+    assert t.rot_regression() == pytest.approx(0.12)

@@ -95,3 +95,49 @@ def test_fresh_samples_still_appended_without_labels():
     c._update_buffer(results, _OBJ_XY, _QUAT)
     assert len(c.buffer) == 1
     assert c.buffer.best_with_position().result is results[1]
+
+
+def test_remove_near_purges_all_cached_failed_contact_neighbors():
+    b = SampleBuffer(capacity=10, pos_threshold=10.0, ang_threshold=10.0)
+    for x in (0.645, 0.651, 0.720):
+        b.append(BufferedSample(
+            position=np.array([x, -0.185, 0.04]), cost=x,
+            obj_pos_xy=_OBJ_XY.copy(), obj_quat=_QUAT.copy()))
+    removed = b.remove_near(np.array([0.645, -0.189, 0.04]), 0.05)
+    assert removed == 2
+    assert len(b) == 1
+    assert b.best_with_position().position[0] == 0.720
+
+
+def test_body_relative_bad_spot_follows_object_translation_and_yaw():
+    b = UnsuccessfulSampleBuffer(unsuccessful_radius=0.02)
+    b.append(BufferedSample(
+        position=np.array([0.60, 0.00, 0.04]), cost=1.0,
+        obj_pos_xy=np.array([0.50, 0.00]), obj_quat=_QUAT.copy(),
+        position_body_xy=np.array([0.10, 0.00])))
+
+    # Object moved and rotated +90 degrees: local +x is now world +y.
+    q_yaw_90 = np.array([np.sqrt(0.5), 0.0, 0.0, np.sqrt(0.5)])
+    obj_now = np.array([0.70, -0.20])
+    assert not b.sample_avoids_bad_spots(
+        np.array([0.70, -0.10, 0.04]), obj_now, q_yaw_90)
+    assert b.sample_avoids_bad_spots(
+        np.array([0.60, 0.00, 0.04]), obj_now, q_yaw_90)
+
+    # Pose retention must not erase a body-relative memory as it moves.
+    assert b.prune(obj_now, q_yaw_90) == 0
+    assert len(b) == 1
+
+
+def test_world_relative_reposition_stall_is_pose_pruned():
+    """Planner/arm stalls must expire as the object moves away."""
+    b = UnsuccessfulSampleBuffer(
+        unsuccessful_pos_retention=0.05,
+        unsuccessful_ang_retention=0.50,
+    )
+    b.append(BufferedSample(
+        position=np.array([0.60, 0.00, 0.04]), cost=1.0,
+        obj_pos_xy=np.array([0.50, 0.00]), obj_quat=_QUAT.copy(),
+        position_body_xy=None))
+    assert b.prune(np.array([0.56, 0.00]), _QUAT) == 1
+    assert len(b) == 0

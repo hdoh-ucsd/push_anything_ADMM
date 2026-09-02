@@ -21,11 +21,6 @@ dist/
 .coverage
 htmlcov/
 
-# Media artifacts
-*.mp4
-*.gif
-*.html
-
 # Milestones
 milestones/
 
@@ -47,16 +42,6 @@ scripts/probe_e_inspect.py
 scripts/probe_ik_lock.py
 scripts/verify_deck_numbers.py
 
-# docs/ are local working notes for the project author, except for the
-# reproducible README figures and their generator.
-# Not tracked because they are session-scratch (investigation receipts,
-# design drafts) that clutter diffs without serving collaborators.
-# The author keeps them locally and pastes relevant ones into Claude
-# conversations as needed.
-docs/*
-!docs/figures/
-!docs/figures/**
-
 # Local Claude Code settings (developer-scoped hooks, permissions)
 .claude/settings.local.json
 
@@ -68,3 +53,5 @@ gurobi.log
 audit_output/admm_corpus/
 audit_output/gpu_golden/
 audit_output/perf_snapshots/
+# Local upstream DAIRLab checkouts used for source comparison.
+/reference_repos/

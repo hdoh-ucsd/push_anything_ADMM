@@ -2,7 +2,7 @@
 # Driver: wait for baseline-ext (seeds 5..19) to finish, then apply the
 # face-picker patch and launch the post-fix 20-seed sweep (seeds 0..19).
 # Final step: aggregate baseline contact-rate vs post-fix contact-rate.
-set -uo pipefail
+set -euo pipefail
 
 BASELINE_EXT_DIR="$(ls -dt results/baseline_ext_* 2>/dev/null | head -1)"
 if [ -z "$BASELINE_EXT_DIR" ]; then
@@ -21,10 +21,19 @@ while pgrep -f "run_baseline_seed_extension.sh" >/dev/null; do
 done
 echo "baseline-ext driver exited"
 
-# 2. Apply the face-picker patch.
-echo "applying face-picker patch"
+# 2. Verify that the face-picker patch was applied explicitly before launch.
+# Experiment orchestration must not mutate the source tree itself.
 cd /root/push_anything_ADMM
-git apply /tmp/face_picker_fix.patch
+PATCH=/tmp/face_picker_fix.patch
+if [ ! -f "$PATCH" ]; then
+    echo "ERROR: missing $PATCH; apply and record the intended change explicitly" >&2
+    exit 1
+fi
+if ! git apply --reverse --check "$PATCH"; then
+    echo "ERROR: face-picker patch is not present in the working tree" >&2
+    echo "Apply it explicitly, review the diff, then rerun this driver." >&2
+    exit 1
+fi
 echo "wrapper.py now has the fix:"
 sed -n '1500,1525p' control/sampling_c3/wrapper.py
 
@@ -37,13 +46,16 @@ echo "post-fix sweep → $POSTFIX_DIR"
 for seed in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19; do
     out="$POSTFIX_DIR/stepc_seed${seed}_postfix.log"
     t0=$(date +%s)
-    timeout 600 python main.py pushing \
-        --task-id 4 --solver c3plus --sampling-c3 \
-        --admm-iter 25 --max-time 2.5 --no-record \
-        --seed "$seed" \
-        --name "stepc_seed${seed}_postfix" \
-        > "$out" 2>&1
-    rc=$?
+    if timeout 600 python main.py pushing \
+          --task-id 4 --solver c3plus --sampling-c3 \
+          --admm-iter 25 --max-time 2.5 --no-record \
+          --seed "$seed" \
+          --name "stepc_seed${seed}_postfix" \
+          > "$out" 2>&1; then
+        rc=0
+    else
+        rc=$?
+    fi
     dt=$(($(date +%s) - t0))
     nc=$(grep -c "contact=Y" "$out" || true)
     echo "POSTFIX seed=$seed rc=$rc ${dt}s contact_steps=$nc"

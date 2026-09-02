@@ -60,7 +60,11 @@ class LCSFormulator:
                  controller_object_mass: float | None = None,
                  controller_inertia: dict | None = None,
                  tshape_mesh_witnesses: bool = False,
-                 mesh_ground_witnesses_body=None):
+                 tshape_geometry_variant: str = "reference",
+                 mesh_ground_witnesses_body=None,
+                 ee_body_name: str = _EE_BODY_NAME,
+                 manipuland_body_names=None,
+                 ee_point_B=None):
         """
         mu_per_pair_type : optional dict mapping contact-pair tag
             ("EE-BOX", "BOX-GND", "EE-GND") to a per-pair friction
@@ -70,8 +74,20 @@ class LCSFormulator:
         """
         self.plant = plant
         self.mu    = float(mu)
+        self._ee_body_name = str(ee_body_name)
+        self._ee_point_B = np.zeros(3) if ee_point_B is None else np.asarray(
+            ee_point_B, dtype=float).reshape(3)
+        self._manipuland_body_names = (
+            None if manipuland_body_names is None
+            else tuple(str(name) for name in manipuland_body_names)
+        )
         # Select the legacy mesh-derived fallback table when requested.
         self._tshape_mesh_witnesses = bool(tshape_mesh_witnesses)
+        self._tshape_geometry_variant = str(tshape_geometry_variant)
+        if self._tshape_geometry_variant not in ("reference", "oim_lab"):
+            raise ValueError(
+                "tshape_geometry_variant must be 'reference' or 'oim_lab'"
+            )
         # Fig 8 campaign (2026-08-15): per-task ground-witness table — the
         # 3 sphere positions from the object's reference *_controller.sdf,
         # passed via the task's `ground_witness_points_body`. Takes
@@ -250,9 +266,13 @@ class LCSFormulator:
             # block-T rot plateau: 17,721/17,721 sim contacts on the
             # crossbar, all post-60 s bursts rot-adverse). Identical
             # behavior for single-body objects (mesh-T, box, jack).
-            _obj_mi = obj_body.model_instance()
-            _obj_bodies = [plant.get_body(bi)
-                           for bi in plant.GetBodyIndices(_obj_mi)]
+            if self._manipuland_body_names is not None:
+                _obj_bodies = [plant.GetBodyByName(name)
+                               for name in self._manipuland_body_names]
+            else:
+                _obj_mi = obj_body.model_instance()
+                _obj_bodies = [plant.get_body(bi)
+                               for bi in plant.GetBodyIndices(_obj_mi)]
             for _b in _obj_bodies:
                 for gid in plant.GetCollisionGeometriesForBody(_b):
                     self._manipuland_geom_ids.add(gid)
@@ -263,13 +283,13 @@ class LCSFormulator:
 
         # EE contact filter: dedicated spherical pusher only — no fallbacks.
         print("[FILTER INIT] Building EE geometry ID set:")
-        ee_body = plant.GetBodyByName(_EE_BODY_NAME)
+        ee_body = plant.GetBodyByName(self._ee_body_name)
         gids    = list(plant.GetCollisionGeometriesForBody(ee_body))
         for gid in gids:
             self._ee_geom_ids.add(gid)
-        print(f"  {_EE_BODY_NAME}: {len(gids)} collision geom(s)")
+        print(f"  {self._ee_body_name}: {len(gids)} collision geom(s)")
         assert self._ee_geom_ids, (
-            f"No collision geometry on '{_EE_BODY_NAME}' — "
+            f"No collision geometry on '{self._ee_body_name}' — "
             "check build_environment() registers pusher_collision before Finalize()"
         )
 
@@ -279,7 +299,7 @@ class LCSFormulator:
         for gid in plant.GetCollisionGeometriesForBody(plant.world_body()):
             self._ground_geom_ids.add(gid)
 
-        print(f"[FILTER INIT] EE body: {_EE_BODY_NAME}  "
+        print(f"[FILTER INIT] EE body: {self._ee_body_name}  "
               f"geom IDs: {list(self._ee_geom_ids)}")
         print(f"[FILTER INIT] Manipuland geom IDs : {len(self._manipuland_geom_ids)}")
         print(f"[FILTER INIT] Ground geom IDs     : {len(self._ground_geom_ids)}  "
@@ -528,6 +548,20 @@ class LCSFormulator:
             # Per-task table (imported anything object): the 3 sphere
             # positions from the object's reference *_controller.sdf.
             return self._mesh_ground_witnesses_body
+        if self._tshape_geometry_variant == "oim_lab":
+            # Measured OIM T (tee_real.xml / tee_sampling_c3plus.xml):
+            #   crossbar x=[-.0445,+.0445], y=[0,.0198]
+            #   stem     x=[-.0099,+.0099], y=[-.0794,0]
+            #   bottom z=-.0298
+            # The two crossbar ends plus the stem tip are the convex-hull
+            # support triangle.  Its interior contains the composite CoM
+            # (0,-.0149), unlike the canonical Push-Anything witnesses whose
+            # moment arms are up to 2.9x too large for this object.
+            return np.array([
+                [-0.0445, +0.0099, -0.0298],
+                [+0.0445, +0.0099, -0.0298],
+                [ 0.0000, -0.0794, -0.0298],
+            ]).T
         if self._tshape_mesh_witnesses:
             # FALLBACK ONLY (superseded by each task's
             # `ground_witness_points_body` reference literal):
@@ -1992,17 +2026,17 @@ class LCSFormulator:
         # (a state-space coordinate). It does NOT enter B_ctrl, H_lcs, or
         # the LCS dynamics. After Stage D, the planner's solved x_seq will
         # carry p_ee directly; the OSC will track that.
-        ee_body  = self.plant.GetBodyByName(_EE_BODY_NAME)
+        ee_body  = self.plant.GetBodyByName(self._ee_body_name)
         ee_frame = ee_body.body_frame()
         W        = self.plant.world_frame()
         p_ee = self.plant.CalcPointsPositions(
-            context, ee_frame, np.zeros((3, 1)), W
+            context, ee_frame, self._ee_point_B.reshape(3, 1), W
         ).flatten()
         # EE velocity from arm: J_arm · v_arm. Same caveat — used only to
         # set the linearization point. Not folded into B/H.
         J_ee_full = self.plant.CalcJacobianTranslationalVelocity(
             context, ad.JacobianWrtVariable.kV,
-            ee_frame, np.zeros(3), W, W,
+            ee_frame, self._ee_point_B, W, W,
         )  # (3, n_v_full)
         v_ee = J_ee_full @ v_full
 
