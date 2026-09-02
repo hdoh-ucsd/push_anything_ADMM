@@ -1,0 +1,47 @@
+<mujoco model="xarm6_pusht_open_table_point">
+  <!-- Point-robot twin of open_table.xml -- see common_point.xml. No
+       obstacles, so the pusher's start behind the block is clear by
+       construction. -->
+  <include file="common_point.xml"/>
+  <include file="tee.xml"/>
+
+  <worldbody>
+    <camera name="front" pos="1.5592 0.0000 0.6494"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+
+    <!-- Declared after tee.xml's `block`, matching pusht_clutter.xml's
+         ordering -- oim/tasks/pusht.py relies on the point robot's block
+         appearing first in qpos. z matches the block's own (0.0298) for
+         side contact at the same height, and xy sits 0.08 m up-corridor of
+         the block's start -- behind it, since the push runs towards -y --
+         clear of the crossbar by 0.04 m. -->
+    <body name="pusher" pos="0.381 0.480 0.0298">
+      <joint name="root_x" type="slide" axis="1 0 0" damping="0.05"/>
+      <joint name="root_y" type="slide" axis="0 1 0" damping="0.05"/>
+      <!-- solref softer than the scene default (0.004 1): the block's
+           sustained push force is pinned at mu*m*g = 0.294 N by the limit
+           surface and no actuator setting changes it, but first contact
+           spikes far above that at the 0.6 m/s command limit. A 0.02 s
+           reference time constant absorbs the spike over a few mm of
+           squish at no cost in pushing speed. It also narrows a stiffness
+           mismatch: MuJoCo clamps that constant to 2*timestep, so the
+           planner already sees 0.1 s at planning_dt=0.05 while execution
+           ran 0.004 s. -->
+      <geom name="pusher" type="sphere" size="0.02" mass="1.0" rgba="1 0 0 1" solref="0.02 1"/>
+      <site name="pusher" pos="0 0 0" rgba="0 0 0 0"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <velocity name="x_motor" joint="root_x" ctrllimited="true" ctrlrange="-0.6 0.6" kv="100" forcerange="-60 60"/>
+    <velocity name="y_motor" joint="root_y" ctrllimited="true" ctrlrange="-0.6 0.6" kv="100" forcerange="-60 60"/>
+  </actuator>
+
+  <!-- The block's SE(2) start (0.381, 0.343, 0) and its vertical DoF, then
+       the pusher at zero displacement from its own declared `pos` above.
+       Without this keyframe oim/runtime/mjcf.py's point_start_qpos falls
+       back to POINT_START_QPOS (clutter's own offset), not this scene's. -->
+  <keyframe>
+    <key name="start" qpos="0.381 0.400 0 0 0 0"/>
+  </keyframe>
+</mujoco>

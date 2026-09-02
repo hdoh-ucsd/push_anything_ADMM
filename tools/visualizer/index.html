@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Push-Anything Attribution Visualizer</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-size: 13px;
+  }
+  header {
+    padding: 8px 16px;
+    background: #2a2a2a;
+    border-bottom: 1px solid #3a3a3a;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 14px; margin: 0; }
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 1fr 170px;
+    gap: 8px;
+    padding: 8px;
+    height: calc(100vh - 56px);
+  }
+  .stage {
+    grid-column: 1; grid-row: 1;
+    background: #232323; border: 1px solid #3a3a3a; border-radius: 4px;
+    padding: 6px; position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .stage .stage-title {
+    font-size: 11px; color: #888; padding: 0 4px 4px 4px;
+  }
+  .panel {
+    grid-column: 2; grid-row: 1 / 3;
+    background: #232323; border: 1px solid #3a3a3a; border-radius: 4px;
+    padding: 12px; overflow-y: auto;
+  }
+  .timeline {
+    grid-column: 1; grid-row: 2;
+    background: #232323; border: 1px solid #3a3a3a; border-radius: 4px;
+    padding: 8px;
+  }
+  svg.stage-svg, svg.timeline-svg { display: block; width: 100%; height: 100%; }
+  svg.stage-svg { flex: 1; }
+  .controls {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .controls button {
+    background: #3a3a3a; color: #e0e0e0; border: 1px solid #555;
+    padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;
+  }
+  .controls button:hover { background: #4a4a4a; }
+  .controls button.primary { background: #2c5e8f; }
+  .controls input[type="range"] { flex: 1; min-width: 80px; }
+  .controls select {
+    background: #3a3a3a; color: #e0e0e0; border: 1px solid #555;
+    padding: 2px 6px;
+  }
+  .metric {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; border-bottom: 1px solid #2a2a2a;
+  }
+  .metric .label { color: #aaa; }
+  .metric .value { color: #fff; font-family: monospace; }
+  .metric.big .value { font-size: 16px; font-weight: bold; }
+  .badge {
+    display: inline-block; padding: 3px 8px; border-radius: 3px;
+    font-size: 11px; font-weight: bold;
+  }
+  .badge.free { background: #6f9fd8; color: #fff; }
+  .badge.c3 { background: #d86f6f; color: #fff; }
+  .badge.idle { background: #555; color: #aaa; }
+  .attribution-legend {
+    margin-top: 12px; padding: 8px;
+    background: #1a1a1a; border-radius: 3px;
+  }
+  .leg-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; margin-bottom: 4px;
+  }
+  .swatch {
+    width: 14px; height: 14px; border-radius: 3px; border: 1px solid #555;
+  }
+  .swatch.planned-productive { background: #4caf50; }
+  .swatch.planned-unproductive { background: #ff9800; }
+  .swatch.accidental-contact { background: #f44336; }
+  .swatch.no-contact-free { background: #555; }
+  section h2 {
+    font-size: 11px; color: #888;
+    margin: 14px 0 4px 0;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .drake-frame {
+    grid-column: 1; grid-row: 1;
+    background: #232323; border: 1px solid #3a3a3a; border-radius: 4px;
+    overflow: hidden; display: none;
+  }
+  .drake-frame.show { display: block; }
+  .drake-frame iframe { width: 100%; height: 100%; border: 0; }
+  #summary-content {
+    font-family: monospace; font-size: 11px; color: #aaa;
+    white-space: pre-wrap; line-height: 1.4;
+  }
+  header input[type="file"] {
+    color: #aaa; font-size: 12px;
+  }
+  header input[type="text"] {
+    width: 260px; background: #3a3a3a; color: #e0e0e0;
+    border: 1px solid #555; padding: 3px 6px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Push-Anything Attribution Visualizer</h1>
+  <input type="file" id="jsonl-input" accept=".jsonl,.json,.txt">
+  <span id="file-status" style="color:#888; font-size:12px;">No file loaded</span>
+  <span style="flex:1"></span>
+  <label style="font-size:12px; color:#aaa;">
+    <input type="checkbox" id="show-drake-frame"> Drake iframe
+  </label>
+  <input type="text" id="drake-url" placeholder="path/to/verdict_west.html">
+</header>
+
+<div class="layout">
+  <div class="drake-frame" id="drake-frame-container">
+    <iframe id="drake-iframe" src="" title="Drake Meshcat replay"></iframe>
+  </div>
+
+  <div class="stage" id="stage-container">
+    <div class="stage-title">Top-down view (XY). EE colored by attribution; box trail in white.</div>
+    <svg class="stage-svg" id="stage-svg" viewBox="-0.5 -0.3 1 0.6"
+         preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <button class="primary" id="btn-play">▶ Play</button>
+      <button id="btn-step-back">⏮</button>
+      <button id="btn-step-fwd">⏭</button>
+      <select id="speed-sel">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </div>
+
+    <section>
+      <div class="metric big">
+        <span class="label">Mode</span>
+        <span class="value"><span id="mode-badge" class="badge idle">—</span></span>
+      </div>
+      <div class="metric big">
+        <span class="label">Attribution</span>
+        <span class="value" id="attr-text">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">Step / Time</span>
+        <span class="value" id="step-time">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">Switch reason</span>
+        <span class="value" id="switch-reason">—</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <div class="metric">
+        <span class="label">Active</span>
+        <span class="value" id="contact-active">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">EE↔box dist</span>
+        <span class="value" id="ee-to-box">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">Normal (xy)</span>
+        <span class="value" id="contact-normal">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">λ_n_max (planned)</span>
+        <span class="value" id="lambda-n">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">|u_arm|</span>
+        <span class="value" id="u-arm">—</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Box motion</h2>
+      <div class="metric">
+        <span class="label">Box position</span>
+        <span class="value" id="box-pos">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">Cumulative West progress</span>
+        <span class="value" id="cum-progress">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">Distance to goal</span>
+        <span class="value" id="goal-dist">—</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Cost gate</h2>
+      <div class="metric">
+        <span class="label">curr_cost</span>
+        <span class="value" id="curr-cost">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">best_other_cost</span>
+        <span class="value" id="best-other">—</span>
+      </div>
+      <div class="metric">
+        <span class="label">ratio</span>
+        <span class="value" id="cost-ratio">—</span>
+      </div>
+    </section>
+
+    <div class="attribution-legend">
+      <div class="leg-item"><span class="swatch planned-productive"></span> Planned productive (rich + λ_n > 0.5 + correct normal)</div>
+      <div class="leg-item"><span class="swatch planned-unproductive"></span> Planned but unproductive</div>
+      <div class="leg-item"><span class="swatch accidental-contact"></span> Accidental contact (free-mode plowing)</div>
+      <div class="leg-item"><span class="swatch no-contact-free"></span> No contact / free-mode tracking</div>
+    </div>
+
+    <section>
+      <h2>Summary</h2>
+      <div id="summary-content">Load a file to see summary.</div>
+    </section>
+  </div>
+
+  <div class="timeline">
+    <svg class="timeline-svg" id="timeline-svg" viewBox="0 0 1000 150"
+         preserveAspectRatio="none"></svg>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- State ----------
+  let records = [];
+  let meta = null;
+  let summary = null;
+  let currentIdx = 0;
+  let playing = false;
+  let speed = 1.0;
+  let cumProgress = [];
+  let goalXY = [-0.3, 0];
+  let stageBounds = null;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  const $ = (id) => document.getElementById(id);
+  const stage = $("stage-svg");
+  const timeline = $("timeline-svg");
+
+  const ATTR_COLORS = {
+    "planned_productive":   "#4caf50",
+    "planned_unproductive": "#ff9800",
+    "accidental_contact":   "#f44336",
+    "no_contact_free":      "#777777",
+  };
+  const ATTR_LABELS = {
+    "planned_productive":   "PRODUCTIVE",
+    "planned_unproductive": "UNPRODUCTIVE",
+    "accidental_contact":   "ACCIDENTAL",
+    "no_contact_free":      "NO CONTACT",
+  };
+
+  // ---------- File load ----------
+  $("jsonl-input").addEventListener("change", async (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    $("file-status").textContent = `Loading ${file.name}...`;
+    const text = await file.text();
+    const lines = text.split("\n").filter(l => l.trim());
+    const parsed = [];
+    let parsedMeta = null, parsedSummary = null;
+    for (const line of lines) {
+      try {
+        const obj = JSON.parse(line);
+        if (obj._meta) {
+          parsedMeta = obj._meta;
+          parsedSummary = obj._summary || null;
+        } else {
+          parsed.push(obj);
+        }
+      } catch (e) {}
+    }
+    records = parsed;
+    meta = parsedMeta;
+    summary = parsedSummary;
+    if (meta && meta.goal) goalXY = meta.goal;
+    currentIdx = 0;
+    precompute();
+    $("file-status").textContent = `${file.name}: ${records.length} steps`;
+    renderSummary();
+    renderTimeline();
+    render(0);
+  });
+
+  // ---------- Precomputation ----------
+  function precompute() {
+    cumProgress = [];
+    let lastObj = null;
+    let g_hat = null;
+    let total = 0;
+    for (const r of records) {
+      if (r.g_hat) g_hat = r.g_hat;
+      if (r.obj_pos && lastObj && g_hat) {
+        const dx = r.obj_pos[0] - lastObj[0];
+        const dy = r.obj_pos[1] - lastObj[1];
+        total += dx * g_hat[0] + dy * g_hat[1];
+      }
+      if (r.obj_pos) lastObj = r.obj_pos;
+      cumProgress.push(total);
+    }
+    // Spatial bounds: include start, end, goal, and trail
+    let minx = -0.05, maxx = 0.15, miny = -0.15, maxy = 0.15;
+    if (goalXY) {
+      minx = Math.min(minx, goalXY[0] - 0.05);
+      maxx = Math.max(maxx, goalXY[0] + 0.05);
+    }
+    for (const r of records) {
+      if (r.obj_pos) {
+        minx = Math.min(minx, r.obj_pos[0] - 0.08);
+        maxx = Math.max(maxx, r.obj_pos[0] + 0.08);
+        miny = Math.min(miny, r.obj_pos[1] - 0.08);
+        maxy = Math.max(maxy, r.obj_pos[1] + 0.08);
+      }
+      if (r.ee_pos) {
+        minx = Math.min(minx, r.ee_pos[0] - 0.03);
+        maxx = Math.max(maxx, r.ee_pos[0] + 0.03);
+        miny = Math.min(miny, r.ee_pos[1] - 0.03);
+        maxy = Math.max(maxy, r.ee_pos[1] + 0.03);
+      }
+    }
+    const margin = 0.02;
+    stageBounds = {
+      minx: minx - margin, miny: miny - margin,
+      w: (maxx - minx) + 2*margin, h: (maxy - miny) + 2*margin
+    };
+    stage.setAttribute("viewBox",
+      `${stageBounds.minx} ${stageBounds.miny} ${stageBounds.w} ${stageBounds.h}`);
+  }
+
+  // ---------- Stage rendering ----------
+  function el(tag, attrs) {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      e.setAttribute(k, v);
+    }
+    return e;
+  }
+
+  function render(idx) {
+    if (records.length === 0) return;
+    currentIdx = Math.max(0, Math.min(records.length - 1, idx));
+    const r = records[currentIdx];
+
+    while (stage.firstChild) stage.removeChild(stage.firstChild);
+
+    // Grid (light, every 5 cm)
+    if (stageBounds) {
+      for (let x = Math.ceil(stageBounds.minx*20)/20; x <= stageBounds.minx + stageBounds.w; x += 0.05) {
+        stage.appendChild(el("line", {
+          x1: x, y1: stageBounds.miny, x2: x, y2: stageBounds.miny + stageBounds.h,
+          stroke: "#2a2a2a", "stroke-width": "0.001"
+        }));
+      }
+      for (let y = Math.ceil(stageBounds.miny*20)/20; y <= stageBounds.miny + stageBounds.h; y += 0.05) {
+        stage.appendChild(el("line", {
+          x1: stageBounds.minx, y1: y, x2: stageBounds.minx + stageBounds.w, y2: y,
+          stroke: "#2a2a2a", "stroke-width": "0.001"
+        }));
+      }
+    }
+
+    // Goal marker
+    if (goalXY) {
+      stage.appendChild(el("circle", {
+        cx: goalXY[0], cy: goalXY[1], r: 0.012,
+        fill: "none", stroke: "#ffd700", "stroke-width": "0.003"
+      }));
+      stage.appendChild(el("circle", {
+        cx: goalXY[0], cy: goalXY[1], r: 0.005,
+        fill: "#ffd700"
+      }));
+      const lbl = el("text", {
+        x: goalXY[0], y: goalXY[1] - 0.025,
+        fill: "#ffd700", "font-size": "0.014",
+        "text-anchor": "middle"
+      });
+      lbl.textContent = "GOAL";
+      stage.appendChild(lbl);
+    }
+
+    // Box trail (white, faint)
+    const boxTrail = el("polyline", {
+      points: "", fill: "none", stroke: "#fff",
+      "stroke-width": "0.0015", opacity: "0.4"
+    });
+    let pts = "";
+    for (let i = 0; i <= currentIdx; i++) {
+      const rr = records[i];
+      if (rr.obj_pos) pts += `${rr.obj_pos[0]},${rr.obj_pos[1]} `;
+    }
+    boxTrail.setAttribute("points", pts.trim());
+    stage.appendChild(boxTrail);
+
+    // EE trail colored by attribution, segmented
+    for (let i = 1; i <= currentIdx; i++) {
+      const a = records[i-1], b = records[i];
+      if (!a.ee_pos || !b.ee_pos) continue;
+      stage.appendChild(el("line", {
+        x1: a.ee_pos[0], y1: a.ee_pos[1],
+        x2: b.ee_pos[0], y2: b.ee_pos[1],
+        stroke: ATTR_COLORS[b.attribution] || "#777",
+        "stroke-width": "0.0018", opacity: "0.75"
+      }));
+    }
+
+    // Current box (10×10 cm rectangle at obj_pos)
+    if (r.obj_pos) {
+      stage.appendChild(el("rect", {
+        x: r.obj_pos[0] - 0.05, y: r.obj_pos[1] - 0.05,
+        width: 0.10, height: 0.10,
+        fill: "#bbb", "fill-opacity": "0.3",
+        stroke: "#fff", "stroke-width": "0.002"
+      }));
+    }
+
+    // Current EE (circle, colored by attribution)
+    if (r.ee_pos) {
+      const eeColor = ATTR_COLORS[r.attribution] || "#777";
+      stage.appendChild(el("circle", {
+        cx: r.ee_pos[0], cy: r.ee_pos[1], r: 0.012,
+        fill: eeColor, stroke: "#fff", "stroke-width": "0.002"
+      }));
+      // pusher dot
+      stage.appendChild(el("circle", {
+        cx: r.ee_pos[0], cy: r.ee_pos[1], r: 0.003,
+        fill: "#fff"
+      }));
+    }
+
+    // Repos target (small × if mode=free)
+    if (r.mode === "free" && r.p_repos) {
+      const pr = r.p_repos;
+      const x = pr[0], y = pr[1], s = 0.008;
+      stage.appendChild(el("line", {
+        x1: x - s, y1: y - s, x2: x + s, y2: y + s,
+        stroke: "#6f9fd8", "stroke-width": "0.0015"
+      }));
+      stage.appendChild(el("line", {
+        x1: x - s, y1: y + s, x2: x + s, y2: y - s,
+        stroke: "#6f9fd8", "stroke-width": "0.0015"
+      }));
+    }
+
+    // Contact normal arrow at EE position
+    if (r.contact_active && r.contact_normal && r.ee_pos) {
+      const n = r.contact_normal;
+      const len = 0.04;
+      // Normal points box→EE; force on box is -normal direction
+      const x1 = r.ee_pos[0], y1 = r.ee_pos[1];
+      const x2 = x1 - n[0] * len, y2 = y1 - n[1] * len;
+      stage.appendChild(el("line", {
+        x1, y1, x2, y2,
+        stroke: "#ffeb3b", "stroke-width": "0.002",
+        "marker-end": "url(#arrow)"
+      }));
+      // Defs for arrow head
+      const defs = el("defs", {});
+      const marker = el("marker", {
+        id: "arrow", viewBox: "0 0 10 10",
+        refX: "8", refY: "5", markerWidth: "3", markerHeight: "3",
+        orient: "auto"
+      });
+      const tri = el("path", {
+        d: "M 0 0 L 10 5 L 0 10 z", fill: "#ffeb3b"
+      });
+      marker.appendChild(tri);
+      defs.appendChild(marker);
+      stage.appendChild(defs);
+    }
+
+    // Goal direction arrow (faint, from box)
+    if (r.g_hat && r.obj_pos) {
+      const g = r.g_hat;
+      const x1 = r.obj_pos[0], y1 = r.obj_pos[1];
+      const x2 = x1 + g[0] * 0.04, y2 = y1 + g[1] * 0.04;
+      stage.appendChild(el("line", {
+        x1, y1, x2, y2,
+        stroke: "#ffd700", "stroke-width": "0.0015",
+        opacity: "0.5", "stroke-dasharray": "0.005,0.003"
+      }));
+    }
+
+    renderPanel(r);
+    renderTimelineCursor();
+  }
+
+  function renderPanel(r) {
+    const mode = r.mode || "—";
+    const badge = $("mode-badge");
+    badge.textContent = mode.toUpperCase();
+    badge.className = "badge " + (mode === "c3" ? "c3" : (mode === "free" ? "free" : "idle"));
+
+    const attr = r.attribution || "—";
+    const attrEl = $("attr-text");
+    attrEl.textContent = ATTR_LABELS[attr] || "—";
+    attrEl.style.color = ATTR_COLORS[attr] || "#fff";
+
+    $("step-time").textContent = `${r.step} / ${(r.sim_t || 0).toFixed(2)}s`;
+    $("switch-reason").textContent = r.switch_reason || "—";
+
+    $("contact-active").textContent = r.contact_active ? "Yes" : "No";
+    $("ee-to-box").textContent = r.ee_to_box != null ? `${(r.ee_to_box*1000).toFixed(1)} mm` : "—";
+
+    if (r.contact_normal) {
+      const n = r.contact_normal;
+      $("contact-normal").textContent = `[${n[0].toFixed(2)}, ${n[1].toFixed(2)}, ${n[2].toFixed(2)}]`;
+    } else {
+      $("contact-normal").textContent = "—";
+    }
+    $("lambda-n").textContent = r.lambda_n_max != null ? `${r.lambda_n_max.toFixed(3)} N` : "—";
+    $("u-arm").textContent = r.u_arm_norm != null ? `${r.u_arm_norm.toFixed(2)} Nm` : "—";
+
+    if (r.obj_pos) {
+      $("box-pos").textContent = `(${(r.obj_pos[0]*1000).toFixed(1)}, ${(r.obj_pos[1]*1000).toFixed(1)}) mm`;
+    } else {
+      $("box-pos").textContent = "—";
+    }
+    const cp = cumProgress[currentIdx] || 0;
+    $("cum-progress").textContent = `${(cp * 1000).toFixed(2)} mm`;
+    if (r.obj_pos && goalXY) {
+      const dx = r.obj_pos[0] - goalXY[0];
+      const dy = r.obj_pos[1] - goalXY[1];
+      $("goal-dist").textContent = `${(Math.sqrt(dx*dx + dy*dy) * 1000).toFixed(1)} mm`;
+    } else {
+      $("goal-dist").textContent = "—";
+    }
+
+    $("curr-cost").textContent = r.curr_cost != null ? r.curr_cost.toFixed(2) : "—";
+    $("best-other").textContent = r.best_other_cost != null ? r.best_other_cost.toFixed(2) : "—";
+    if (r.curr_cost && r.best_other_cost) {
+      $("cost-ratio").textContent = (r.best_other_cost / r.curr_cost).toFixed(3);
+    } else {
+      $("cost-ratio").textContent = "—";
+    }
+  }
+
+  // ---------- Timeline ----------
+  function renderTimeline() {
+    while (timeline.firstChild) timeline.removeChild(timeline.firstChild);
+    if (records.length === 0) return;
+    const W = 1000, H = 150;
+    const n = records.length;
+    // Band heights
+    const modeY = 6, modeH = 24;
+    const lamY = 38, lamH = 50;
+    const progY = 96, progH = 46;
+
+    // Mode/attribution bands — one rect per step
+    const bandWidth = W / n;
+    for (let i = 0; i < n; i++) {
+      const r = records[i];
+      timeline.appendChild(el("rect", {
+        x: i * bandWidth, y: modeY,
+        width: Math.max(bandWidth, 1.0), height: modeH,
+        fill: ATTR_COLORS[r.attribution] || "#444",
+        opacity: "0.9"
+      }));
+    }
+
+    // λ_n trace
+    let lamMax = 0;
+    for (const r of records) {
+      if (r.lambda_n_max != null && r.lambda_n_max > lamMax) lamMax = r.lambda_n_max;
+    }
+    if (lamMax > 0) {
+      const lamScale = (v) => lamY + lamH - (v / lamMax) * lamH;
+      let pts = "";
+      for (let i = 0; i < n; i++) {
+        const r = records[i];
+        const v = r.lambda_n_max != null ? r.lambda_n_max : 0;
+        pts += `${i * bandWidth},${lamScale(v)} `;
+      }
+      timeline.appendChild(el("polyline", {
+        points: pts.trim(),
+        fill: "none", stroke: "#4caf50", "stroke-width": "1"
+      }));
+      // y-axis label
+      const lbl = el("text", {
+        x: 4, y: lamY + 10, fill: "#888", "font-size": "10"
+      });
+      lbl.textContent = `λ_n (peak ${lamMax.toFixed(2)} N)`;
+      timeline.appendChild(lbl);
+    }
+
+    // Cumulative West progress
+    let progMax = Math.max(...cumProgress.map(Math.abs)) || 0.001;
+    const progScale = (v) => progY + progH/2 - (v / progMax) * (progH/2);
+    let pts = "";
+    for (let i = 0; i < n; i++) {
+      pts += `${i * bandWidth},${progScale(cumProgress[i])} `;
+    }
+    timeline.appendChild(el("polyline", {
+      points: pts.trim(),
+      fill: "none", stroke: "#6f9fd8", "stroke-width": "1.2"
+    }));
+    // Zero line
+    timeline.appendChild(el("line", {
+      x1: 0, y1: progY + progH/2, x2: W, y2: progY + progH/2,
+      stroke: "#444", "stroke-width": "0.5", "stroke-dasharray": "2,2"
+    }));
+    const plbl = el("text", {
+      x: 4, y: progY + 10, fill: "#888", "font-size": "10"
+    });
+    plbl.textContent = `cum. West progress (max ${(progMax*1000).toFixed(1)} mm)`;
+    timeline.appendChild(plbl);
+
+    // Cursor
+    timeline.appendChild(el("line", {
+      id: "cursor",
+      x1: 0, y1: 0, x2: 0, y2: H,
+      stroke: "#fff", "stroke-width": "1.5", opacity: "0.8"
+    }));
+  }
+
+  function renderTimelineCursor() {
+    const cursor = timeline.querySelector("#cursor");
+    if (!cursor || records.length === 0) return;
+    const W = 1000;
+    const x = (currentIdx / Math.max(records.length - 1, 1)) * W;
+    cursor.setAttribute("x1", x);
+    cursor.setAttribute("x2", x);
+  }
+
+  timeline.addEventListener("click", (ev) => {
+    if (records.length === 0) return;
+    const rect = timeline.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const frac = x / rect.width;
+    render(Math.round(frac * (records.length - 1)));
+  });
+
+  // ---------- Summary ----------
+  function renderSummary() {
+    if (!summary) {
+      $("summary-content").textContent = "(no summary in file)";
+      return;
+    }
+    const sc = summary.step_counts || {};
+    const gpc = summary.goal_progress_mm_by_category || {};
+    const total = summary.total_steps || 0;
+    const pct = (n) => total > 0 ? `${(100*n/total).toFixed(1)}%` : "0%";
+    const lines = [
+      `Total steps:      ${total}`,
+      `Total progress:   ${(summary.total_progress_mm || 0).toFixed(2)} mm West`,
+      ``,
+      `By attribution category:`,
+      `  Productive:     ${sc.planned_productive || 0} steps (${pct(sc.planned_productive || 0)}) → ${(gpc.planned_productive || 0).toFixed(2)} mm`,
+      `  Unproductive:   ${sc.planned_unproductive || 0} steps (${pct(sc.planned_unproductive || 0)}) → ${(gpc.planned_unproductive || 0).toFixed(2)} mm`,
+      `  Accidental:     ${sc.accidental_contact || 0} steps (${pct(sc.accidental_contact || 0)}) → ${(gpc.accidental_contact || 0).toFixed(2)} mm`,
+      `  No contact:     ${sc.no_contact_free || 0} steps (${pct(sc.no_contact_free || 0)}) → ${(gpc.no_contact_free || 0).toFixed(2)} mm`,
+    ];
+    $("summary-content").textContent = lines.join("\n");
+  }
+
+  // ---------- Playback ----------
+  $("btn-play").addEventListener("click", () => {
+    playing = !playing;
+    $("btn-play").textContent = playing ? "❚❚ Pause" : "▶ Play";
+    if (playing) requestAnimationFrame(tick);
+  });
+  $("btn-step-back").addEventListener("click", () => render(currentIdx - 1));
+  $("btn-step-fwd").addEventListener("click", () => render(currentIdx + 1));
+  $("speed-sel").addEventListener("change", (e) => { speed = parseFloat(e.target.value); });
+
+  let lastFrameTime = 0;
+  function tick(t) {
+    if (!playing) return;
+    const dt_real = (t - lastFrameTime) / 1000;
+    lastFrameTime = t;
+    if (dt_real > 0 && dt_real < 1) {
+      const dt_sim = 0.01;  // matches meta.dt_ctrl
+      const stepsToAdvance = Math.max(1, Math.round(dt_real * speed / dt_sim));
+      const next = currentIdx + stepsToAdvance;
+      if (next >= records.length - 1) {
+        render(records.length - 1);
+        playing = false;
+        $("btn-play").textContent = "▶ Play";
+        return;
+      }
+      render(next);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Keyboard
+  document.addEventListener("keydown", (ev) => {
+    if (ev.target.tagName === "INPUT") return;
+    if (ev.key === " ") { ev.preventDefault(); $("btn-play").click(); }
+    if (ev.key === "ArrowLeft") render(currentIdx - 1);
+    if (ev.key === "ArrowRight") render(currentIdx + 1);
+    if (ev.key === "Home") render(0);
+    if (ev.key === "End") render(records.length - 1);
+  });
+
+  // ---------- Drake iframe ----------
+  $("show-drake-frame").addEventListener("change", (e) => {
+    const c = $("drake-frame-container");
+    const s = $("stage-container");
+    if (e.target.checked) {
+      c.classList.add("show");
+      s.style.display = "none";
+      const url = $("drake-url").value.trim();
+      if (url) $("drake-iframe").src = url;
+    } else {
+      c.classList.remove("show");
+      s.style.display = "flex";
+    }
+  });
+  $("drake-url").addEventListener("change", (e) => {
+    if ($("show-drake-frame").checked) {
+      $("drake-iframe").src = e.target.value.trim();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>

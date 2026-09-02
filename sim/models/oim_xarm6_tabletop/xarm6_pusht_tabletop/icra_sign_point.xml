@@ -1,0 +1,190 @@
+<mujoco model="xarm6_pusht_icra_sign_point">
+  <!-- Point-robot twin of icra_sign.xml -- see common_point.xml. Every
+       glyph obstacle sits at x=0.2; the pusher's start at (0, -0.18) is
+       0.2 m away in x alone, before y is even considered -- clear of all
+       of them, including digit_6 at (0.2, -0.15), the nearest in y. -->
+  <include file="common_point.xml"/>
+
+  <asset>
+    <!-- Paths are relative to *this* file, matching xarm6.xml's convention.
+         digit_2 and digit_2b share one mesh: "2026" has two 2s.
+
+         Every mesh here is a `normalize_glyphs.py` output: already metres,
+         already in this scene's convention (x = width, y = cap height,
+         z = thickness), every glyph at the same 0.103 m cap height and
+         0.025 m thickness with its own width.
+
+         `scale="1 1 3"` on the OBSTACLE glyphs, and only in z: at their
+         authored 0.025 m they stood exactly as tall as the pushed C, so
+         riding over one cost the block no lift at all and runs were
+         observed pushing the C straight across a letter. At 0.075 m an
+         obstacle is three times the C's own height. The x/y factors stay
+         1 deliberately -- a scale there would mean the asset and the row
+         disagreed about the typeface, which is what `normalize_glyphs.py`
+         exists to prevent, and it would silently invalidate the 2D hulls
+         `oim/utils/scenes.py` carries.
+
+         `glyph_c` is NOT scaled: it is the pushed object (the block's
+         visual geom, plus the goal and local_goal markers), so scaling it
+         would grow the thing being pushed rather than what it must go
+         around. Re-run `glyph_hulls.py` after touching any of this;
+         MuJoCo re-frames a mesh on load, so even a z-only scale moves the
+         plan hull by a few tenths of a millimetre. -->
+    <mesh name="glyph_i" file="assets/glyph_i.obj" maxhullvert="32" scale="1 1 3"/>
+    <mesh name="glyph_a" file="assets/glyph_a.obj" maxhullvert="32" scale="1 1 3"/>
+    <!-- The pushed C. Visual only -- see the `block` body below. -->
+    <mesh name="glyph_c" file="assets/glyph_c.obj"/>
+    <mesh name="glyph_r" file="assets/glyph_r.obj" maxhullvert="32" scale="1 1 3"/>
+    <mesh name="glyph_0" file="assets/glyph_0.obj" maxhullvert="32" scale="1 1 3"/>
+    <mesh name="glyph_2" file="assets/glyph_2.obj" maxhullvert="32" scale="1 1 3"/>
+    <mesh name="glyph_6" file="assets/glyph_6.obj" maxhullvert="32" scale="1 1 3"/>
+  </asset>
+
+  <worldbody>
+    <geom name="table" type="box" size="0.70 1.25 0.07" pos="0.3 0.40 -0.07"
+      rgba="0.95 0.95 0.95 1"/>
+
+    <camera name="front" pos="2.3033 0.0400 1.0375"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+
+    <body name="goal" mocap="true" pos="0.5 -0.40 0.0125" quat="0.70711 0 0 0.70711">
+      <geom class="goal" name="goal_c" type="mesh" mesh="glyph_c"/>
+    </body>
+
+    <!-- Ghost of the pushed object at the object block's horizon endpoint
+         x^{o*}_H, moved every control step by the runners (mocap, so it is
+         written straight into mocap_pos/mocap_quat and never simulated).
+         Geoms mirror `block`'s exactly, at the same z, so its overlap with
+         the block reads the same way the goal marker's does. `pos`/`quat`
+         here are only the pre-first-plan placeholder; oim/runtime/mjcf.py
+         parks it on the block's start pose. -->
+    <body name="local_goal" mocap="true" pos="0.0 0.0 0.0125" quat="1 0 0 0">
+      <geom class="local_goal" name="local_goal_c" type="mesh"
+            mesh="glyph_c"/>
+    </body>
+
+    <body name="block" pos="0.0 0.0 0.0125">
+      <joint name="T_x" type="slide" axis="1 0 0" damping="0.0"/>
+      <joint name="T_y" type="slide" axis="0 1 0" damping="0.0"/>
+      <joint name="T_z" type="hinge" axis="0 0 1" damping="0.0"/>
+      <!-- Out-of-plane DoFs, so the block falls when it leaves the table
+           instead of hovering. Declared after T_x/T_y/T_z so the SE(2) pose
+           stays at the first three qpos entries, which oim/tasks/pusht.py
+           reads positionally. No frictionloss: planar resistance stays the
+           three calibrated values above -- see the <contact> pairs below. -->
+      <joint name="T_zs" type="slide" axis="0 0 1" damping="0.0"/>
+      <!-- VISUAL ONLY (contype/conaffinity 0), and mass 0 so the three
+           boxes below still carry the whole 2.0 kg -- mu*m*g = 7.848 has
+           to keep matching the frictionloss above, so a visual geom must
+           not add inertia.
+
+           The collision geometry stays the three boxes. A mesh geom would
+           be collided by MJX as its CONVEX HULL, which for a C is a filled
+           rectangle: the notch -- the one feature this whole task turns
+           on, since the goal is the empty C slot in the row -- would exist
+           in the render and not in the physics. Three boxes are a convex
+           decomposition, so the notch survives into contact. The boxes are
+           drawn transparent rather than deleted; restore an alpha to see
+           what is actually being collided.
+
+           0.0966 x 0.103 m with a 0.032 m stroke, matching glyph_c.obj:
+           its spine spans x in [-0.0482, -0.0163] at mid-height, which is
+           half_width 0.0483 and half_stroke 0.016. Masses are the three
+           boxes' raw areas in proportion, as before, which for this
+           decomposition is independent of the stroke: 0.696 / 0.652 /
+           0.652 summing to the 2.0 kg the friction budget assumes. -->
+      <geom name="c_visual" type="mesh" mesh="glyph_c" contype="0"
+            conaffinity="0" mass="0" rgba="0.2 0.45 0.85 1"/>
+      <geom name="c_spine" type="box" size="0.0160 0.0515 0.0125" pos="-0.0323 0.0 0.0" mass="0.0348" rgba="0.2 0.45 0.85 0"/>
+      <geom name="c_top_bar" type="box" size="0.0483 0.0160 0.0125" pos="0.0 0.0355 0.0" mass="0.0326" rgba="0.2 0.45 0.85 0"/>
+      <geom name="c_bot_bar" type="box" size="0.0483 0.0160 0.0125" pos="0.0 -0.0355 0.0" mass="0.0326" rgba="0.2 0.45 0.85 0"/>
+    </body>
+
+    <!-- Declared after `block`, matching pusht_clutter.xml's ordering --
+         see common_point.xml. z=0.0125 matches the C-block's own height. -->
+    <body name="pusher" pos="0.3 0.58 0.0125">
+      <joint name="root_x" type="slide" axis="1 0 0" damping="0.05"/>
+      <joint name="root_y" type="slide" axis="0 1 0" damping="0.05"/>
+      <!-- 0.008, not 0.02 like the T-block scenes: the C's own strokes
+           (c_spine/c_top_bar/c_bot_bar) are only 0.02 m thick, half the
+           default pusher's 0.04 m diameter -- a sphere wider than the
+           material it pushes gives unstable, glancing contact, measured
+           directly as the realized wrench (qfrc_constraint-based, see
+           PushT._consensus_from_contact) pinning at the ADMM clip far
+           more often here than in any other scene (mean |realized| 19.3
+           vs. object's own mean request 13.8 -- the opposite of every
+           working scene, where realized stays below what the object
+           asks for). 0.008 keeps the same pusher-diameter:material-
+           thickness ratio (0.8) the T-block scenes have (0.04 m / 0.05 m
+           there; 0.016 m / 0.02 m here). -->
+      <!-- solref softer than the scene default (0.004 1): the block's
+           sustained push force is pinned at mu*m*g = 7.85 N by the limit
+           surface and no actuator setting changes it, but first contact
+           spikes to 254 N at the 0.6 m/s command limit. 0.02 s cuts that to
+           130 N for 1.3 mm of squish (was 0.6 mm) and no loss of pushing
+           speed. 0.01 here, not the T scenes' 0.02: this pusher is 8 mm, so
+           the same softness would squish it 31% of its radius. Also narrows a stiffness mismatch: MuJoCo clamps the
+           reference time constant to 2*timestep, so the planner already
+           sees 0.1 s at planning_dt=0.05 while execution ran 0.004 s. -->
+      <geom name="pusher" type="sphere" size="0.008" mass="1.0" rgba="1 0 0 1" solref="0.01 1"/>
+      <site name="pusher" pos="0 0 0" rgba="0 0 0 0"/>
+    </body>
+
+    <geom class="tabletop_obstacle" name="letter_I" type="mesh"
+      mesh="glyph_i" pos="0.5 -0.55 0.0375" euler="0 0 90"/>
+    <geom class="tabletop_obstacle" name="letter_R" type="mesh"
+      mesh="glyph_r" pos="0.5 -0.25 0.0375" euler="0 0 90"/>
+
+    <!-- The A is now the source's own mesh like every other glyph; it
+         used to be three boxes because `alphabets/` shipped no A. -->
+    <geom class="tabletop_obstacle" name="letter_A" type="mesh"
+      mesh="glyph_a" pos="0.5 -0.1 0.0375" euler="0 0 90"/>
+
+    <geom class="tabletop_obstacle" name="digit_2" type="mesh"
+      mesh="glyph_2" pos="0.5 0.15 0.0375" euler="0 0 90"/>
+    <geom class="tabletop_obstacle" name="digit_0" type="mesh"
+      mesh="glyph_0" pos="0.5 0.3 0.0375" euler="0 0 90"/>
+    <geom class="tabletop_obstacle" name="digit_2b" type="mesh"
+      mesh="glyph_2" pos="0.5 0.45 0.0375" euler="0 0 90"/>
+    <geom class="tabletop_obstacle" name="digit_6" type="mesh"
+      mesh="glyph_6" pos="0.5 0.6 0.0375" euler="0 0 90"/>
+  </worldbody>
+
+  <actuator>
+    <velocity name="x_motor" joint="root_x" ctrllimited="true" ctrlrange="-0.6 0.6" kv="100" forcerange="-60 60"/>
+    <velocity name="y_motor" joint="root_y" ctrllimited="true" ctrlrange="-0.6 0.6" kv="100" forcerange="-60 60"/>
+  </actuator>
+
+  <!-- The letter's planar resistance is the table CONTACT's, not a constant
+       `frictionloss` bound on its joints: condim="3" with mu = 0.3, the lab
+       table's own coefficient and the same mu the analytic limit surface
+       assumes, so friction is mu*N and rises when the pusher presses down.
+       `frictionloss` is a fixed force bound instead, so pressing on the
+       letter would cost nothing and the simulator could not represent the
+       one thing that makes top-riding expensive.
+
+       `solimp` stays stiff because a soft normal constraint lets the letter
+       sink into the table under a press, silently reducing N.
+
+       mu*m*g = 0.2943 N is the NOMINAL budget that
+       `PlanarPushingObject.wrench_limit` and every ADMM normalization read.
+       The torque channel is an outcome of the footprint's geometry rather
+       than a number declared here, so `limit_surface_radius` in
+       oim/utils/scenes.py is measured against this letter. -->
+  <contact>
+    <pair geom1="c_spine" geom2="table" condim="3" friction="0.3 0.3 0.005 0.0001 0.0001" solimp="0.999 0.9999 0.0001"/>
+    <pair geom1="c_top_bar" geom2="table" condim="3" friction="0.3 0.3 0.005 0.0001 0.0001" solimp="0.999 0.9999 0.0001"/>
+    <pair geom1="c_bot_bar" geom2="table" condim="3" friction="0.3 0.3 0.005 0.0001 0.0001" solimp="0.999 0.9999 0.0001"/>
+  </contact>
+
+  <sensor>
+    <framepos name="position" objtype="body" objname="block" reftype="body" refname="goal"/>
+    <framequat name="orientation" objtype="body" objname="block" reftype="body" refname="goal"/>
+  </sensor>
+
+  <keyframe>
+    <key name="start" qpos="0.3 0.400 0 0 0 0"/>
+  </keyframe>
+
+  <statistic center="0.40 0.04 0" extent="1.0"/>
+</mujoco>

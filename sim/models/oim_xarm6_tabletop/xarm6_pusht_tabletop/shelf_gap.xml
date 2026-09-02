@@ -1,0 +1,49 @@
+<mujoco model="xarm6_pusht_shelf_gap">
+  <!-- Push the T between two shelves -- open_table plus two large static
+       blocks that leave a gap between them.
+
+       IsaacGym conf/task/sim_task03.yaml, re-scaled onto the lab table and
+       the measured T-block (see tee.xml's header).
+
+       THE GAP IS THE TASK, so it is sized against the T rather than in
+       absolute metres. It is now 0.200 m -- 2.2 T-crossbars, up from the
+       0.1335 m (1.5x) squeeze -- centred on x = 0.381, the corridor's own
+       x, so straight through stays the centred route.
+
+       The shelves run PARALLEL TO THE ARM (long axis along x, the reach
+       direction) and are shorter and smaller than before: 0.26 x 0.16 x
+       0.14 m and 0.10 x 0.16 x 0.14 m, against the 0.14 x 0.25 x 0.20 m
+       they were. The far one hugs the far table edge at x = 0.75, closing
+       that bypass outright. The near one CANNOT hug the near edge -- the
+       arm is bolted to it, at the origin -- so it stops at x = 0.19,
+       0.099 m clear of the 0.0912 m base shell, and what is left between
+       the base and it is a 0.099 m slot: passable by the 0.089 m crossbar
+       with 1 cm to spare, which keeps "go around the outside" alive as a
+       genuinely tighter alternative to the gap.
+
+       The gate sits at y = 0, dead centre of the table and 0.4 m from
+       both ends of the corridor, so the block starts and finishes well
+       clear of it.
+
+       oim/utils/scenes.py carries the matching Boxes; tests/test_scenes.py
+       fails if the two drift apart. -->
+  <include file="common.xml"/>
+  <include file="tee.xml"/>
+  <include file="tee_start.xml"/>
+
+  <worldbody>
+    <!-- Own camera, steeper than the other three tabletop scenes': at the
+         shared elevation=-25 the shelves block the view of the gap and the
+         pusher between them, even though nothing falls outside the frame --
+         elevation dropped to -60 fixes that. Same azimuth=180 and
+         distance=1.30 as the shared camera, with the lookat translated
+         +0.045 along the camera's own right axis (world +y at azimuth=180)
+         to bring the arm closer to frame centre: lookat (0.381, 0.045,
+         0.10) instead of the shared (0.381, 0, 0.10). -->
+    <camera name="front" pos="1.0310 0.0450 1.2258"
+      xyaxes="0.0000 1.0000 0.0000 -0.8660 0.0000 0.5000"/>
+
+    <geom class="tabletop_obstacle" name="shelf_1" type="box" size="0.13 0.08 0.07" pos="0.62 0.0 0.07"/>
+    <geom class="tabletop_obstacle" name="shelf_2" type="box" size="0.05 0.08 0.07" pos="0.24 0.0 0.07"/>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,41 @@
+<mujoco model="xarm6_pusht_tabletop_tee_start">
+  <!-- The four T-block scenes' shared starting pose, read generically by
+       oim/runtime/mjcf.py (it looks for a keyframe named "start" and falls
+       back to its own clutter-tuned constant otherwise).
+
+       Its own file, not common.xml's, because icra_sign includes common.xml
+       too and pushes a different object from a different pose -- and not
+       tee.xml's, because the "_point" twins include tee.xml and declare
+       their own keyframe over the pusher's joints instead.
+
+       qpos is arm joints 1-5, then the block's SE(2) start pose, then its
+       vertical DoF. Angles here are radians: <compiler angle="degree"> (from
+       ../xarm6/xarm6.xml) converts angle-valued *attributes*, not keyframe
+       qpos.
+
+       The five joint values are the standard forward-facing work pose,
+       [0, -45, -45, 0, 90] deg: the arm reaches out over the middle of the
+       table with the stick pointing straight down (0.0 deg off vertical),
+       tip at (0.255, 0, 0.323) -- centred in y, 0.32 m above the surface
+       and 0.43 m from the block, so ADMM has to drive the arm out to first
+       contact the way a real deployment would.
+
+       It replaces the lab's own home pose, which put the tip at
+       (0.381, 0.440) -- 4 cm from the block's start, i.e. already parked
+       against it before the first plan. ../xarm6_pusht_tabletop_real/
+       keeps the lab pose, since that is where the real arm actually homes.
+
+       The block's vertical DoF is 0: its body sits at the geoms' own
+       half-height (0.0298), so at T_zs = 0 the bottom face is exactly on the
+       table top and it starts resting.
+
+       tests/test_scenes.py re-checks, per scene, that this pose starts clear
+       of every obstacle, tip-down, above the table and not already on the
+       object -- a shared pose has to work in all four, and one tuned against
+       single_obstacle alone once started 3.7 cm *inside* shelf_gap's
+       shelf_2. -->
+  <keyframe>
+    <key name="start"
+      qpos="0.0 -0.785 -0.785 0.0 1.5708 0.381 0.400 0.0 0.0"/>
+  </keyframe>
+</mujoco>
