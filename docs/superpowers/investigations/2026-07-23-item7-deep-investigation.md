@@ -228,7 +228,7 @@ All runs use `git=6f2d74a` or `git=fc582aa`, `push_t` task, `admm_iter=3` unless
 
 2. **G-matrix isolation at ρ=1.** Enable `_use_g_matrix=True` with ρ=1 (not 100). Reference-conformant λ/η augmentation should be `1·0.01·2=0.02` on λ, matching reference iter 0 exactly. Q stays at port's sparse-huge. If ADMM converges here, the "G matrix destabilizes" narrative is falsified — it was only destabilizing because of the ρ=100 amplification.
 
-3. **Q-only migration at ρ=1 + G-on.** Add `use_reference_q_vector=True` on top of step 2. Reference-conformant Q + reference-conformant G + reference-conformant ρ. This is the actual reference regime. Compare to reference C++ push_t runs (if available in reference_repos) for the sanity check.
+3. **Q-only migration at ρ=1 + G-on.** Add `use_reference_q_vector=True` on top of step 2. Reference-conformant Q + reference-conformant G + reference-conformant ρ. This is the actual reference regime. Compare to reference C++ push_t runs (if available in external) for the sanity check.
 
 4. **Regression coverage.** Only after step 3 shows convergence, run box regression to confirm box path isn't broken (box uses different task cfg but shares the C3Solver / _use_g_matrix flag).
 

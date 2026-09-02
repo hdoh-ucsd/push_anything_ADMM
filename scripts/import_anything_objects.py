@@ -27,7 +27,7 @@ import re
 import shutil
 import sys
 
-REF = "/root/reference_repos/dairlib_sampling_c3/examples/sampling_c3/urdf"
+REF = "/root/external/dairlib_sampling_c3/examples/sampling_c3/urdf"
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TASKS_YAML = os.path.join(REPO, "config", "tasks.yaml")
 

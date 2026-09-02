@@ -12,7 +12,7 @@ Example:
     # writes results/tight_goal_p19_240def_run1_4x.mp4
 
 Reference source:
-    /root/reference_repos/dairlib_sampling_c3/examples/sampling_c3/process_lcm_logs.py
+    /root/external/dairlib_sampling_c3/examples/sampling_c3/process_lcm_logs.py
     lines 478-499 (speed_up_video method).
 """
 import sys

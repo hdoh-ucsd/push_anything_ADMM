@@ -1,7 +1,7 @@
 # DAIR-lib OSC executor — port re-implementation target
 
 **Source:** `dairlib_sampling_c3` @ `push_anything_dev` `257e3ed` on disk at
-`/root/reference_repos/dairlib_sampling_c3/`.
+`/root/external/dairlib_sampling_c3/`.
 **Purpose:** Phase-1 (Cartesian-force OSC) implementation target per
 Originally captured for the completed reproduce-dairlib arc. Retained as a
 technical reference; current implementation status lives in

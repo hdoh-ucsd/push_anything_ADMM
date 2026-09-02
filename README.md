@@ -284,7 +284,7 @@ in a clean Git worktree:
 
 - published branch (README, math, gate ledgers):
   [hdoh-ucsd/dairlib@`oim_c++_anything`](https://github.com/hdoh-ucsd/dairlib/blob/oim_c++_anything/README.md)
-- local worktree: `reference_repos/oim_c++_anything` (gitignored — clone the
+- local worktree: `external/oim_c++_anything` (gitignored — clone the
   branch above if it is missing)
 - branch: `oim_c++_anything`
 - baseline/design commit: `854a8afc`

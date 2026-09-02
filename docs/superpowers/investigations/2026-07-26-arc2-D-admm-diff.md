@@ -8,13 +8,13 @@ port ADMM despite being the reference default.
 - Port  : `/root/push_anything_ADMM/control/admm_solver.py`
   (2526 lines; `_solve_c3plus` at 927..; uncommitted G-fix diff live in the
   worktree — captured below.)
-- Ref C : `/root/reference_repos/c3/core/c3.cc` (596 lines)
-             `/root/reference_repos/c3/core/c3_plus.cc` (222 lines)
-             `/root/reference_repos/c3/core/c3.h` (443 lines)
-             `/root/reference_repos/c3/core/c3_plus.h` (74 lines)
-             `/root/reference_repos/c3/core/c3_options.h` (203 lines)
-             `/root/reference_repos/c3/core/configs/solver_options_default.yaml`
-- Ref YAML: `/root/reference_repos/dairlib_sampling_c3/examples/sampling_c3/push_t/parameters/sampling_c3plus_options.yaml`
+- Ref C : `/root/external/c3/core/c3.cc` (596 lines)
+             `/root/external/c3/core/c3_plus.cc` (222 lines)
+             `/root/external/c3/core/c3.h` (443 lines)
+             `/root/external/c3/core/c3_plus.h` (74 lines)
+             `/root/external/c3/core/c3_options.h` (203 lines)
+             `/root/external/c3/core/configs/solver_options_default.yaml`
+- Ref YAML: `/root/external/dairlib_sampling_c3/examples/sampling_c3/push_t/parameters/sampling_c3plus_options.yaml`
 
 Uncommitted-in-port at time of diff (`git diff control/admm_solver.py`):
 1. `_osqp_refopts` gate (env `REFCONF_OSQP_OPTS=1`) with the ref
