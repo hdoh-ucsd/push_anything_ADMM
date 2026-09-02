@@ -224,18 +224,58 @@ continuously underneath it.
    *Output:* the single executed candidate — each plan is forward-simulated
    through its LCS and scored with the same quadratic error
    `Σ eᵀ Q e + e_Nᵀ Q e_N`, `e = x_t − x_d` (`dynamic_rollout_cost`); the
-   argmin wins. The controller then emits either a pushing trajectory (the
-   plan's first interval) or a contact-acquisition trajectory (collision-aware
-   IK to reach the sampled placement).
+   argmin wins.
 
-7. **`xarm6_osc_controller` — operational-space control (500 Hz).**
-   *Input:* the selected tip trajectory and the measured `(q, q̇)`.
-   *Output:* joint torques `τ` from the DAIRLab inverse-dynamics QP tracking
-   the tip with `kp = 200`, `kd = 20`, a 0.01-weight posture regularizer, and
-   the source velocity-servo bridge. These torques close the loop into
-   block 1.
+7. **`xarm6_sampling_c3_controller` output — the execution plan.**
+   What the controller *gives* is not torques and not the raw C3 solution:
+   it publishes one timestamped LCM trajectory
+   (`lcmt_timestamped_saved_traj`) holding three time-aligned tracks sampled
+   from the winning plan's first execution interval:
 
-8. **Goal gate (each planning cycle).**
+   - `end_effector_position_target` — tip position knots `p_des(t) ∈ R^3`,
+     from the plan's state trajectory `x_t*` (pushing) or from the
+     collision-aware acquisition IK waypoints (repositioning);
+   - `end_effector_stick_axis_target` — the commanded stick axis (vertical),
+     the orientation reference;
+   - `end_effector_force_target` — the feedforward Cartesian force
+     `f*(t) ∈ R^3`, which is the C3+ input solution `u_t*` passed through
+     one-to-one; this is how the planned contact force reaches execution.
+
+   Only the first interval is executed before the loop replans from the
+   measured state (receding horizon).
+
+8. **`xarm6_osc_controller` — operational-space control (500 Hz).**
+   *Input:* the three-track plan above and the measured `(q, q̇)` from the
+   simulator.
+   *What the OSC gives:* the six joint torques `τ ∈ R^6` — it is the only
+   block that talks to the motors. Each control tick solves DAIRLab's
+   inverse-dynamics QP with decision variables `(v̇, τ, λ)`:
+
+   ```text
+   minimize    Σ_i (ÿ_i^cmd − J_i v̇ − J̇_i q̇)ᵀ W_i (ÿ_i^cmd − J_i v̇ − J̇_i q̇)  +  v̇ᵀ W_accel v̇
+   subject to  M(q) v̇ + C(q, q̇) = B τ + τ_g + J_extᵀ f*        (inverse dynamics)
+               |τ| ≤ τ_max                                       (effort limits)
+   ```
+
+   with the commanded task accelerations from PD on each tracking objective:
+
+   ```text
+   ÿ_i^cmd = ÿ_i^des + kp (y_i^des − y_i) + kd (ẏ_i^des − ẏ_i)
+   ```
+
+   The tracking objectives `y_i` are the tip position (`kp = 200`,
+   `kd = 20`), the stick-axis orientation (weighted `0.35² = 0.1225`
+   relative to translation, yaw component zeroed for the axisymmetric
+   stick), and a 0.01-weight joint-posture regularizer;
+   `W_accel = 10⁻⁷ I` regularizes accelerations. The planner's
+   `end_effector_force_target` `f*` enters the dynamics constraint as an
+   external force, so planned contact forces are actively pressed, not just
+   implied by position error. The resulting torque passes through the source
+   xArm velocity-servo bridge (gains 300/300/200/200/200/200, MuJoCo
+   force-clamp ordering, joint-4 passive spring) before publication. These
+   torques close the loop into block 1.
+
+9. **Goal gate (each planning cycle).**
    *Input:* the measured object pose.
    *Equation measured:* `e_p = ||(x, y) − (x_g, y_g)||₂` and
    `e_θ = |wrap(θ − θ_g)|` (see the task definition below). The run ends when
