@@ -88,6 +88,75 @@ the slack
 3. consensus/dual and penalty updates;
 4. a final QP/trajectory extraction.
 
+### The C3 algorithm (consensus complementarity control)
+
+This is the formulation of Aydinoglu, Wei & Posa, *Consensus Complementarity
+Control for Multi-Contact MPC* ([arXiv:2304.11259](https://arxiv.org/abs/2304.11259),
+§IV), restated in this repository's notation. The paper is the authoritative
+source; what follows is our summary of its math and how each piece maps to
+this port.
+
+**The problem.** Contact-implicit MPC over the LCS is the finite-horizon
+program
+
+```text
+minimize    Σ_{k=0..N-1} c_k(x_k, λ_k, u_k)  +  c_N(x_N)
+subject to  x_{k+1} = A x_k + B u_k + D λ_k + d
+            0 ≤ λ_k ⊥ E x_k + F λ_k + H u_k + c ≥ 0
+            x_0 = x(0)
+```
+
+with quadratic stage costs. The complementarity constraint is what makes
+this hard: it is nonconvex and combinatorial (each contact is either open
+with zero force or closed with nonnegative force), so the feasible set is a
+union of exponentially many pieces — solving it exactly is a mixed-integer
+program.
+
+**The consensus split.** Stack each step's variables as
+`z_k = (x_k, λ_k, u_k)` and write the feasible set as the intersection of
+two sets: `D`, everything that satisfies the *linear* dynamics and input
+bounds, and `H`, everything that satisfies the *complementarity* (contact)
+conditions. C3 introduces a consensus copy `w_k` of `z_k` (the paper's
+δ) and a scaled dual `v_k`, and requires `z ∈ D`, `w ∈ H`, `z = w`. The
+nonconvexity is now quarantined inside `H`.
+
+**The ADMM iteration.** With per-step penalty matrices `G_k` (and the
+projection metric `U_k`), each iteration alternates three steps:
+
+```text
+1. QP step (couples all time steps, convex):
+   z^{i+1} = argmin_{z ∈ D}  Σ_k c_k(z_k) + ‖z_k − w_k^i + v_k^i‖²_{G_k}
+
+2. Projection step (decouples per time step, nonconvex but tiny):
+   w_k^{i+1} = Π_H( z_k^{i+1} + v_k^i )   for each k independently
+
+3. Dual update:
+   v_k^{i+1} = v_k^i + z_k^{i+1} − w_k^{i+1}
+```
+
+Step 1 is one convex QP over the whole horizon — this is where the
+trajectory is optimized. Step 2 is where contact decisions are made: each
+time step's copy is projected onto the complementarity set, and because the
+steps decouple, the projections can run in parallel. The paper solves the
+projection either exactly (a small per-step MIQP) or with a fast heuristic;
+after a fixed number of iterations the first input of the latest QP solution
+is applied and the horizon recedes.
+
+**What this buys.** The consensus structure never linearizes the
+complementarity away — contact mode sequences are *chosen* by the
+projection, not assumed — yet everything expensive is convex. That is what
+lets C3 run as real-time MPC through contact.
+
+**Mapping to this port.** `control/admm_solver.py` implements the loop with
+the C3+ variant: the slack `η = E x + F λ + H u + c` is added as an explicit
+variable, so step 2 becomes a *componentwise* `(λ, η)` projection (each
+scalar pair is resolved by a case split) instead of a per-step MIQP —
+cheaper, at the cost of a looser projection. `G` and `U` above are exactly
+the `consensus_cost_scale`/`projection_cost_scale` matrices in the task
+YAMLs, the dual update is the consensus/penalty update in the solver, and
+the "final QP" polish (with its contact-weight boost) extracts the executed
+trajectory after the last iteration.
+
 The candidate objective feeds the sampling-C3 dispatcher. As in receding-horizon
 MPC, only the first execution interval is applied before the state and local
 contact model are refreshed. See `control/admm_solver.py`,
