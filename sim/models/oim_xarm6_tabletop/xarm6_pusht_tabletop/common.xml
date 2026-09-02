@@ -1,0 +1,104 @@
+<mujoco model="xarm6_pusht_tabletop_common">
+  <!-- Shared by all five tabletop pushing scenes:
+
+         open_table.xml       nothing in the way
+         single_obstacle.xml  one cube
+         shelf_gap.xml        two shelves with a narrow gap
+         ycb_clutter.xml      that cube plus three YCB objects
+         icra_sign.xml        a letter pushed into a sign reading "ICRA 2026"
+
+       Converted from the Object-Informed-Manipulation (IsaacGym) repo's
+       conf/task/sim_task01..05.yaml, in that order. Everything in this
+       file is identical across those five tasks in the source repo too:
+       the same arm at the same base, the same physics, the same room. What
+       differs is only the obstacle field (and, for icra_sign, the pushed
+       object), so that -- and nothing else -- lives in the per-scene
+       files.
+
+       COORDINATE CONVENTIONS
+       ======================
+       The world frame IS the robot base frame: the arm is at the origin
+       and `world_frame="xarm_device"` on every one of these scene specs,
+       so nothing has to publish a world -> base transform and
+       FoundationPose's TF reads straight into the planner. Same convention
+       as ../xarm6_pusht_tabletop_real/, which these scenes were re-scaled
+       onto on 2026-08-25 (see tee.xml's header for what changed and why).
+
+       In z, the tabletop's *top surface* is z = 0. The table is the lab's
+       own 0.91 m-tall slab, so the room floor is at z = -0.91.
+
+       The pushed object's body anchor is (0, 0) and its start pose lives
+       in a "start" keyframe -- tee_start.xml for the four T scenes,
+       icra_sign.xml's own for the fifth -- not in the body's `pos`. That is
+       required, not cosmetic: `PushT._block_pose` reads `qpos`, the
+       T_x/T_y joints' displacement from that anchor, and treats it as the
+       world pose.
+
+       See oim/utils/scenes.py, which carries the same numbers on the
+       planner's side and must stay in sync with the geoms in these files.
+       tests/test_scenes.py fails if the two drift apart. -->
+
+  <!-- integrator="implicitfast" (not the default "Euler"), same as
+       ../xarm6_pusht_clutter/: at the plan_dt ~0.05 the ADMM planner uses,
+       Euler is only stable for dt < 2*m/kv and diverged outright on the
+       point-mass pusher. -->
+  <option timestep="0.01" gravity="0 0 -9.81" iterations="20" ls_iterations="20" integrator="implicitfast"/>
+
+  <include file="../xarm6/xarm6.xml"/>
+
+  <default>
+    <geom friction="0.5 0.005 0.0001" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+    <default class="goal">
+      <geom conaffinity="0" contype="0" rgba="0 1 0 0.3"/>
+    </default>
+    <!-- The object block's horizon endpoint x^{o*}_H, drawn as a ghost of
+         the pushed object -- what the robot block aims at under
+         `local_goal` tracking (see oim/tasks/pusht.py). Blue, not the
+         goal's green: it is the last pose of the object block's own plan,
+         which oim/runtime/overlay.py already draws in blue. Fainter
+         than the goal, because it moves every control step and must not
+         compete with the fixed target. -->
+    <default class="local_goal">
+      <geom conaffinity="0" contype="0" rgba="0 0.30 0.95 0.25"/>
+    </default>
+    <default class="obstacle">
+      <geom conaffinity="1" contype="1" rgba="0.5 0.5 0.5 1"/>
+    </default>
+    <!-- IsaacGym renders every static obstacle in these tasks orange
+         (color: [1.0, 0.647, 0.0] on block/shelf_*/spamCan/dominoSugar/
+         mustardBottle and on all seven letters), so obstacles read as one
+         class on camera rather than as scene furniture. -->
+    <default class="tabletop_obstacle">
+      <geom conaffinity="1" contype="1" rgba="1.0 0.647 0.0 1"/>
+    </default>
+  </default>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.3 0.0 1"/>
+    <!-- Room floor at the lab table's own foot (0.91 m below the top), so it
+         reads as a floor the table stands on rather than z-fighting with the
+         surface everything sits on.
+
+         contype/conaffinity 2, against the arm's default 1: MuJoCo collides a
+         pair when (contype1 & conaffinity2) || (contype2 & conaffinity1), so
+         (2&1)|(1&2) = 0 and the 7 arm link meshes stop being tested against
+         this plane every step -- they cannot reach it. The block and the
+         table carry 3, so (2&3)|(3&2) = 2 and the floor still catches
+         anything that leaves the table. -->
+    <geom name="floor" size="0 0 .125" type="plane" pos="0 0 -0.91"
+      contype="2" conaffinity="2" material="groundplane"/>
+  </worldbody>
+
+</mujoco>

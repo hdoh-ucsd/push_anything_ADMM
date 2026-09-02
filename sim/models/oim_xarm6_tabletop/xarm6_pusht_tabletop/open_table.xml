@@ -1,0 +1,27 @@
+<mujoco model="xarm6_pusht_open_table">
+  <!-- Push the T across an empty table. No obstacles at all -- the
+       unobstructed baseline the other scenes add clutter to. Arm, table,
+       block and goal come from common.xml + tee.xml unchanged, which is
+       exactly the relationship sim_task01.yaml has to sim_task02..04 in
+       the source repo.
+
+       IsaacGym conf/task/sim_task01.yaml, re-scaled onto the lab table and
+       the measured T-block (see tee.xml's header). -->
+  <include file="common.xml"/>
+  <include file="tee.xml"/>
+  <include file="tee_start.xml"/>
+
+  <worldbody>
+    <!-- Fixed recording camera, front-on: the arm reaches towards the
+         camera with block, obstacles and goal laid out across frame.
+         Equivalent to a free camera at azimuth=180, elevation=-25,
+         distance=1.30, lookat (0.381, 0, 0.10) -- the midpoint of the
+         start -> goal corridor -- converted to explicit pos/xyaxes, since
+         MJCF <camera> has no azimuth/elevation/distance/lookat form.
+         Shared verbatim with
+         single_obstacle and ycb_clutter; shelf_gap uses a steeper
+         elevation instead (see its own comment). -->
+    <camera name="front" pos="1.5592 0.0000 0.6494"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+  </worldbody>
+</mujoco>

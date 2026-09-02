@@ -1,0 +1,88 @@
+<mujoco model="xarm6_pusht_ycb_clutter">
+  <!-- Push the T through household clutter -- single_obstacle's cube plus
+       three YCB objects scattered around the workspace.
+
+       IsaacGym conf/task/sim_task04.yaml, re-scaled onto the lab table and
+       the measured T-block (see tee.xml's header).
+
+       EVERY OBSTACLE KEEPS ITS SIZE. The YCB meshes are scans of real
+       objects and the cube is a real 0.1 m cube; only the table and the T
+       were oversized, so nothing here is rescaled. What moved is where
+       they sit: the whole field is now confined to |y| <= 0.3, the middle
+       third of the table, so the corridor's two ends (y = +/-0.4) are
+       clear of clutter and the block only meets it once it is under way.
+
+       Laid out so every lane is passable. Measured on the compiled scene,
+       the free lanes across the table at each obstacle row are
+
+           y = +0.20 (sugar)          0.183 / 0.442 m
+           y =  0.00 (cube)           0.209 / 0.350 m
+           y = -0.17 (mustard, spam)  0.152 / 0.351 / 0.099 m
+
+       against an 0.089 m crossbar, so the block can get through on either
+       side of every one of them. The cube must NOT move independently:
+       `_TABLETOP_CUBE` is shared with single_obstacle.
+
+       THE REAL YCB MESHES, WHERE THE SOURCE USES ONE. spamCan.urdf and
+       mustardBottle.urdf both point at `nontextured.stl`, so those two are
+       that mesh, vendored under assets/. dominoSugar.urdf does *not* --
+       it declares `<box size="0.06 0.095 0.175"/>` -- so it stays a box
+       here, which is the faithful reading, not a simplification.
+
+       MJX collides a mesh as its convex hull, so `maxhullvert` caps that
+       hull and `oim/utils/scenes.py` carries the matching 2D hull rather
+       than a bounding box. That is a real gain for these two: the hull is
+       0.82x the bounding box in plan for the can and 0.71x for the bottle,
+       so the planner no longer refuses space the simulator allows.
+       tests/test_scenes.py checks the two representations against each
+       other, mesh hull included.
+
+       Each mesh is pre-centred on its own bounding box when vendored, so
+       `pos` below is that bbox's centre -- not the link origin, since the
+       YCB meshes are not centred on it. -->
+  <include file="common.xml"/>
+  <include file="tee.xml"/>
+  <include file="tee_start.xml"/>
+
+  <asset>
+    <!-- Paths are relative to *this* file, matching xarm6.xml's convention
+         (a relative meshdir would resolve against the top-level file
+         instead and break when this scene is included from elsewhere). -->
+    <mesh name="spam_can" file="assets/spam_can.obj" maxhullvert="32"/>
+    <mesh name="mustard_bottle" file="assets/mustard_bottle.obj"
+      maxhullvert="32"/>
+  </asset>
+
+  <worldbody>
+    <!-- Same camera as open_table (see its comment); shared verbatim by
+         every tabletop scene except shelf_gap. -->
+    <camera name="front" pos="1.5592 0.0000 0.6494"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+
+    <!-- conf/actors/block.yaml, identical to single_obstacle's. -->
+    <geom class="tabletop_obstacle" name="obs_box" type="box" size="0.05 0.05 0.05" pos="0.35 0.0 0.05"/>
+
+    <!-- conf/actors/spamCan.yaml -> ycb/spamCan/nontextured.ply. Mesh bbox
+         0.1021 x 0.0601 x 0.0835 m. Far side of the table, on the goal half
+         of the clutter band. -->
+    <geom class="tabletop_obstacle" name="spam_can" type="mesh"
+      mesh="spam_can" pos="0.60 -0.16 0.0418"/>
+
+    <!-- conf/actors/dominoSugar.yaml. This one is genuinely a box in the
+         URDF (full size 0.06 x 0.095 x 0.175 m, centred on the link
+         origin), with init_ori [0, -0.707, 0, 0.707] (xyzw) = -90 degrees
+         about y, which lays it on its side: full extents become
+         0.175 x 0.095 x 0.06. Written pre-rotated and axis-aligned here,
+         which is the identical volume. Near side, on the start half of the
+         clutter band: it is the first thing the block meets. -->
+    <geom class="tabletop_obstacle" name="domino_sugar" type="box"
+      size="0.0875 0.0475 0.0300" pos="0.22 0.20 0.0300"/>
+
+    <!-- conf/actors/mustardBottle.yaml -> ycb/mustardBottle/nontextured.stl.
+         Mesh bbox 0.0972 x 0.0666 x 0.1913 m. The tallest obstacle in any of
+         these scenes, on the near side opposite the spam can so the two
+         stagger rather than forming a second gate. -->
+    <geom class="tabletop_obstacle" name="mustard_bottle" type="mesh"
+      mesh="mustard_bottle" pos="0.15 -0.18 0.0957"/>
+  </worldbody>
+</mujoco>

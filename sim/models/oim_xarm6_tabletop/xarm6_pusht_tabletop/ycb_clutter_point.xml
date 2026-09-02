@@ -1,0 +1,51 @@
+<mujoco model="xarm6_pusht_ycb_clutter_point">
+  <!-- Point-robot twin of ycb_clutter.xml -- see common_point.xml. Nearest
+       obstacle (domino_sugar) is at (0.3753, 0.1241); the pusher starts
+       behind the block at (0.381, 0.423), 0.25 m clear of its near face. -->
+  <include file="common_point.xml"/>
+  <include file="tee.xml"/>
+
+  <asset>
+    <mesh name="spam_can" file="assets/spam_can.obj" maxhullvert="32"/>
+    <mesh name="mustard_bottle" file="assets/mustard_bottle.obj"
+      maxhullvert="32"/>
+  </asset>
+
+  <worldbody>
+    <camera name="front" pos="1.5592 0.0000 0.6494"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+
+    <geom class="tabletop_obstacle" name="obs_box" type="box" size="0.05 0.05 0.05" pos="0.35 0.0 0.05"/>
+    <geom class="tabletop_obstacle" name="spam_can" type="mesh"
+      mesh="spam_can" pos="0.60 -0.16 0.0418"/>
+    <geom class="tabletop_obstacle" name="domino_sugar" type="box"
+      size="0.0875 0.0475 0.0300" pos="0.22 0.20 0.0300"/>
+    <geom class="tabletop_obstacle" name="mustard_bottle" type="mesh"
+      mesh="mustard_bottle" pos="0.15 -0.18 0.0957"/>
+
+    <body name="pusher" pos="0.381 0.480 0.0298">
+      <joint name="root_x" type="slide" axis="1 0 0" damping="0.05"/>
+      <joint name="root_y" type="slide" axis="0 1 0" damping="0.05"/>
+      <!-- solref softer than the scene default (0.004 1): the block's
+           sustained push force is pinned at mu*m*g = 0.294 N by the limit
+           surface and no actuator setting changes it, but first contact
+           spikes far above that at the 0.6 m/s command limit. A 0.02 s
+           reference time constant absorbs the spike over a few mm of
+           squish at no cost in pushing speed. It also narrows a stiffness
+           mismatch: MuJoCo clamps that constant to 2*timestep, so the
+           planner already sees 0.1 s at planning_dt=0.05 while execution
+           ran 0.004 s. -->
+      <geom name="pusher" type="sphere" size="0.02" mass="1.0" rgba="1 0 0 1" solref="0.02 1"/>
+      <site name="pusher" pos="0 0 0" rgba="0 0 0 0"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <velocity name="x_motor" joint="root_x" ctrllimited="true" ctrlrange="-0.6 0.6" kv="100" forcerange="-60 60"/>
+    <velocity name="y_motor" joint="root_y" ctrllimited="true" ctrlrange="-0.6 0.6" kv="100" forcerange="-60 60"/>
+  </actuator>
+
+  <keyframe>
+    <key name="start" qpos="0.381 0.400 0 0 0 0"/>
+  </keyframe>
+</mujoco>

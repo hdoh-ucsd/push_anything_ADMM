@@ -1,0 +1,11 @@
+<mujoco model="xarm6_pusht_open_table_sampling_c3plus">
+  <!-- Sampling-C3+ variant. It preserves the OIM arm, table, exact T
+       geometry and goal, while tee_sampling_c3plus exposes the object as
+       the free body required by the production 7+6 object-state contract. -->
+  <include file="common.xml"/>
+  <include file="tee_sampling_c3plus.xml"/>
+  <worldbody>
+    <camera name="front" pos="1.5592 0.0000 0.6494"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+  </worldbody>
+</mujoco>

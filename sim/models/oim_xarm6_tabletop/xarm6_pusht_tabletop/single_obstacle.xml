@@ -1,0 +1,30 @@
+<mujoco model="xarm6_pusht_single_obstacle">
+  <!-- Push the T past one cube -- open_table plus the single static
+       "block" actor, sitting between the T's start and its goal.
+
+       IsaacGym conf/task/sim_task02.yaml, re-scaled onto the lab table and
+       the measured T-block (see tee.xml's header). -->
+  <include file="common.xml"/>
+  <include file="tee.xml"/>
+  <include file="tee_start.xml"/>
+
+  <worldbody>
+    <!-- Same camera as open_table (see its comment); shared verbatim by
+         every tabletop scene except shelf_gap. -->
+    <camera name="front" pos="1.5592 0.0000 0.6494"
+      xyaxes="0.0000 1.0000 -0.0000 -0.4226 0.0000 0.9063"/>
+
+    <!-- conf/actors/block.yaml: a 0.1 m cube, KEPT AT FULL SIZE -- it is a
+         real object, and only the table and the T were oversized. It is now
+         larger than the T's 0.089 m crossbar rather than half of it, so it
+         blocks more of the route than it used to.
+
+         Parked mid-table at y = 0, squarely across the corridor's own
+         x = 0.381: the block has to leave the straight line to get past it,
+         and both ends of the task sit 0.35 m clear of it. Free lanes either
+         side are 0.209 m (arm base to cube) and 0.350 m (cube to far edge),
+         both far wider than the 0.089 m crossbar. Its height is unchanged,
+         so the stick can still hit it, which is the point of the task. -->
+    <geom class="tabletop_obstacle" name="obs_box" type="box" size="0.05 0.05 0.05" pos="0.35 0.0 0.05"/>
+  </worldbody>
+</mujoco>
