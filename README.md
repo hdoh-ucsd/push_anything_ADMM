@@ -106,7 +106,7 @@ finite-horizon LCS problem:
 
 ```math
 \begin{aligned}
-\underset{\{x_k,u_k,\lambda_k\}}{\operatorname{minimize}}\quad
+\underset{\{x_k,u_k,\lambda_k\}}{\mathrm{minimize}}\quad
   & \sum_{k=0}^{N-1} \ell_k(x_k,\lambda_k,u_k) + \ell_N(x_N) \\
 \text{subject to}\quad
   & x_{k+1}=Ax_k+Bu_k+D\lambda_k+d,
@@ -130,7 +130,7 @@ $z\in\mathcal{D}$, $\delta\in\mathcal{H}$, and $z=\delta$ through
 ```math
 \begin{aligned}
 z^{i+1}
-  &=\underset{z\in\mathcal{D}}{\operatorname{argmin}}
+  &=\underset{z\in\mathcal{D}}{\mathrm{arg\,min}}
     \left[J(z)+\frac{1}{2}\sum_{k=0}^{N-1}
     \left\|z_k-\delta_k^i+\omega_k^i\right\|_{G_k}^2\right], \\
 \delta_k^{i+1}
@@ -185,7 +185,7 @@ C3+ then applies the same ADMM scaffold to the augmented variables:
 ```math
 \begin{aligned}
 \bar z^{i+1}
-  &=\underset{\bar z\in\mathcal{D}_+}{\operatorname{argmin}}
+  &=\underset{\bar z\in\mathcal{D}_+}{\mathrm{arg\,min}}
     \left[J(\bar z)+\frac{1}{2}\sum_{k=0}^{N-1}
     \left\|\bar z_k-\bar\delta_k^i+\bar\omega_k^i\right\|_{G_k}^2\right], \\
 \bar\delta_k^{i+1}
@@ -249,7 +249,7 @@ complementarity conditions on the post-step velocity $v^+$:
   E_t^\top\gamma+J_t v^+ \geq 0,
   && \text{(maximum dissipation)}, \\
 0 &\leq \gamma \perp
-  \operatorname{Diag}(\boldsymbol\mu)\lambda_n-E_t\lambda_t \geq 0,
+  \mathrm{diag}(\boldsymbol\mu)\lambda_n-E_t\lambda_t \geq 0,
   && \text{(friction-pyramid bound)}.
 \end{aligned}
 ```
@@ -272,7 +272,7 @@ $\bar{\boldsymbol\mu}:=E_t^\top\boldsymbol\mu\in\mathbb{R}^{4n_c}$. Then
 \begin{aligned}
 J_c
   &:= E_t^\top J_n
-      +\operatorname{Diag}(\bar{\boldsymbol\mu})J_t
+      +\mathrm{diag}(\bar{\boldsymbol\mu})J_t
       \in\mathbb{R}^{4n_c\times n_v}, \\
 0 &\leq \lambda \perp
   \frac{E_t^\top\phi}{\Delta t}+J_c v^+ \geq 0,
@@ -283,7 +283,7 @@ J_c
 Each $\lambda_j$ is now a force along a *cone edge* (normal tilted by $\mu$
 into a tangent direction); the normal component is $E_t\lambda$, while the
 tangential edge coefficients are
-$\operatorname{Diag}(\bar{\boldsymbol\mu})\lambda$. The Coulomb cone is
+$\mathrm{diag}(\bar{\boldsymbol\mu})\lambda$. The Coulomb cone is
 satisfied by construction — no third complementarity row and no $\gamma$.
 
 **What is gained and what is given up.** The gain: the per-contact
@@ -305,7 +305,7 @@ first ($\gamma$/$\lambda_n$/$\lambda_t$ rows) and, when
 folded formulation (`lcs_formulator.py:1692-1698`); the Stewart–Trinkle
 path is preserved behind `_contact_model == "stewart_trinkle"` for
 falsification. The per-pair-type friction map (`mu_per_pair_type`) enters
-through $\operatorname{Diag}(\bar{\boldsymbol\mu})$ in $J_c$.
+through $\mathrm{diag}(\bar{\boldsymbol\mu})$ in $J_c$.
 
 The candidate objective feeds the sampling-C3 dispatcher. As in receding-horizon
 MPC, only the first execution interval is applied before the state and local
@@ -390,7 +390,7 @@ spherical pusher's isotropic point-mass model:
 \mathcal{M}(r)\dot\nu+h_r(r,\nu)
 =\tau_{g,r}(r)+B_u u+J_n^\top\lambda_n+J_t^\top\lambda_t,
 \qquad
-\mathcal{M}:=\operatorname{Diag}(M_O,m_{EE}I_3).
+\mathcal{M}:=\mathrm{diag}(M_O,m_{EE}I_3).
 ```
 
 Thus $u\in\mathbb{R}^3$ is Cartesian force in the planner, while the OSC
@@ -437,10 +437,10 @@ The contact pairs are the pusher-vs-object faces plus the object-vs-ground
 witness points, so `n_c` changes with the sampled candidate and the object's
 pose — these matrices are re-inferred at every tick and for every candidate.
 
-Write $\mathcal{N}_{r\nu}:=\operatorname{Diag}(N_O,I_3)$ for the map
+Write $\mathcal{N}_{r\nu}:=\mathrm{diag}(N_O,I_3)$ for the map
 $\dot r=\mathcal{N}_{r\nu}\nu$, and let $\mathcal{N}_{\nu r}$ denote its
 configuration-rate-to-velocity counterpart. The reduced inertia is
-$\mathcal{M}=\operatorname{Diag}(M_O,m_{EE}I_3)$ defined above: the object
+$\mathcal{M}=\mathrm{diag}(M_O,m_{EE}I_3)$ defined above: the object
 uses its spatial inertia $M_O$, while the planner models the pusher as an
 isotropic point mass $m_{EE}$. All quantities below are evaluated at the current
 linearization point; the $\star$ superscripts are suppressed for readability.
@@ -453,7 +453,7 @@ $J_c=[J_{c,O}\;J_{c,EE}]$ gives
 
 ```math
 J_c:=E_t^\top J_n
-  +\operatorname{Diag}(E_t^\top\boldsymbol\mu)J_t,
+  +\mathrm{diag}(E_t^\top\boldsymbol\mu)J_t,
 ```
 
 ```math
@@ -619,7 +619,7 @@ continuously underneath it.
 2. **State reduction (inside `xarm6_sampling_c3_controller`).**
    *Input:* the measured six-joint arm state and object spatial state.
    *Output:* the reduced planning state
-   $x:=\operatorname{col}({}^W\!p_P,q_{WO},{}^W\!p_O,{}^W\!v_P,
+   $x:=\mathrm{col}({}^W\!p_P,q_{WO},{}^W\!p_O,{}^W\!v_P,
    {}^W\!\omega_O,{}^W\!v_O)\in\mathbb{R}^{19}$, where the arm is
    collapsed to its stick-tip point ${}^W\!p_P$ via forward kinematics. The six
    joints never enter the optimization.
@@ -686,7 +686,7 @@ continuously underneath it.
 
    ```math
    \begin{aligned}
-   \underset{\dot v,\tau,\lambda}{\operatorname{minimize}}\quad
+   \underset{\dot v,\tau,\lambda}{\mathrm{minimize}}\quad
      & \sum_i
        \left\|\ddot y_i^{\mathrm{cmd}}-J_i\dot v-\dot J_i\dot q\right\|_{W_i}^2
        +\lVert\dot v\rVert_{W_{\mathrm{accel}}}^2 \\
@@ -721,7 +721,7 @@ continuously underneath it.
 9. **Goal gate (each planning cycle).**
    *Input:* the measured object pose.
    *Equation measured:* $e_p=\lVert(x,y)-(x_g,y_g)\rVert_2$ and
-   $e_\theta=\lvert\operatorname{wrap}(\theta-\theta_g)\rvert$ (see the task
+   $e_\theta=\lvert\mathrm{wrap}(\theta-\theta_g)\rvert$ (see the task
    definition below). The run ends when
    both pass their tolerances simultaneously, or when the update budget is
    exhausted.
@@ -759,7 +759,7 @@ e_p:=\left\lVert
 -\begin{bmatrix}x_g\\y_g\end{bmatrix}
 \right\rVert_2<0.05\ \mathrm{m},
 \qquad
-e_\theta:=\left|\operatorname{wrap}(\theta-\theta_g)\right|
+e_\theta:=\left|\mathrm{wrap}(\theta-\theta_g)\right|
 <0.10\ \mathrm{rad}.
 ```
 
@@ -772,7 +772,7 @@ The orientation error is computed in three steps
    $q_{WO}=(q_w,q_x,q_y,q_z)$ is normalized and reduced to its heading:
 
    ```math
-   \theta=\operatorname{atan2}
+   \theta=\mathrm{atan2}
    \!\left(2(q_wq_z+q_xq_y),\ 1-2(q_y^2+q_z^2)\right).
    ```
 
@@ -790,8 +790,8 @@ The orientation error is computed in three steps
 3. **Wrapping.**
 
    ```math
-   \operatorname{wrap}(\Delta\theta)
-   :=\operatorname{atan2}\!\left(\sin\Delta\theta,\cos\Delta\theta\right)
+   \mathrm{wrap}(\Delta\theta)
+   :=\mathrm{atan2}\!\left(\sin\Delta\theta,\cos\Delta\theta\right)
    \in(-\pi,\pi].
    ```
 
@@ -829,7 +829,7 @@ $\lambda\in\mathbb{R}^{20}$, and the horizon is $N=5$:
 
 ```math
 \begin{aligned}
-\underset{\{x_k,u_k,\lambda_k\}}{\operatorname{minimize}}\quad
+\underset{\{x_k,u_k,\lambda_k\}}{\mathrm{minimize}}\quad
   & \sum_{k=0}^{N}\lVert x_k-x_d\rVert_Q^2
     +\sum_{k=0}^{N-1}\lVert u_k\rVert_R^2 \\
 \text{subject to}\quad
@@ -851,7 +851,7 @@ matrices are assembled in `RunSolveAtSampledPusher`
 ```math
 \begin{aligned}
 Q
-  &= 50\,\operatorname{Diag}\!\left(
+  &= 50\,\mathrm{diag}\!\left(
      \underbrace{0.01\,\mathbf{1}_3}_{\text{pusher position}},
      \underbrace{0.1\,\mathbf{1}_4}_{\text{object quaternion}},
      \underbrace{(200,200,120)}_{\text{object position}},
@@ -866,8 +866,8 @@ R
 so translation error is weighted at an effective 10,000 per m² on object x/y
 and orientation enters through the quaternion-error terms. ADMM additionally
 carries consensus and projection penalties
-$G=0.01\,\operatorname{Diag}(g_{\mathrm{ADMM}})$ and
-$U=0.26\,\operatorname{Diag}(u_{\mathrm{proj}})$ on the
+$G=0.01\,\mathrm{diag}(g_{\mathrm{ADMM}})$ and
+$U=0.26\,\mathrm{diag}(u_{\mathrm{proj}})$ on the
 $(\lambda,\eta)$ copies (weights 2/1 and 20/1); these enforce
 the complementarity structure and are not part of the task objective.
 
