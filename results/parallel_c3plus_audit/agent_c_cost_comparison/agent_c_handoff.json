@@ -1,0 +1,37 @@
+{
+  "base_commit": "4316b1ea7325b14f1de3dac6fa197e3b6aa4a0d3",
+  "controller_repo": "external/oim_c++_anything worktree obstacle-lcs-contact, branch c3plus-channel-route-v1",
+  "controller_probe_commit": "43d5efb96",
+  "controller_head_at_audit": "0abc0eb7c",
+  "variant_registry_path": "results/parallel_c3plus_audit/agent_c_cost_comparison/variant_registry.csv",
+  "probe_states": [
+    "probe_states/S0_open_table/state.json (open-table reposition churn, t=9.0s, run later succeeded at 86.5s)",
+    "probe_states/S1_single_obstacle/state.json (north-face fixed point, t=119.7s, goal south)",
+    "probe_states/S2_shelf_gap/state.json (corridor plateau, t=150.0s, zero southward transport)"
+  ],
+  "candidate_banks": [
+    "candidate_banks/S0_bank.json",
+    "candidate_banks/S1_bank.json",
+    "candidate_banks/S2_bank.json"
+  ],
+  "winner_by_score": {
+    "S0": {"J_rank": "logged_0", "delta_v_cal": "logged_0", "transaction": "logged_0", "L1_task": "logged_0", "L1_route": "logged_0", "L1_txn": "logged_0", "actual_best": "logged_2 (dense bank: bank_stem_east_1, +37mm)"},
+    "S1": {"all_scores": "logged_0", "actual_best": "logged_0 among drawn; only productive contact (bank_stem_tip, circumnavigation) never drawn and all alternates hard-filtered"},
+    "S2": {"J_rank": "logged_1", "delta_v_cal": "logged_1", "transaction": "logged_1", "L1_task": "logged_1", "L1_route": "logged_1", "L1_txn": "logged_0", "actual_best": "bank_stem_tip (+24mm) / bank_stem_west (+22mm); pursued contact moved object 25mm backward"}
+  },
+  "rank_correlations": {
+    "summary": "Spearman = +1.0 among J_rank, delta_v_cal, L1_task, L1_route at every state (all consume the same predicted terminal state); L1_txn and R_rate anti-correlate at S0/S2 only via the reposition-time term; full table in candidate_rank_comparison/candidate_rank_correlation.csv",
+    "top1_agreement": "6/6 scores agree at S0 and S1; 5/6 at S2",
+    "actual_vs_predicted": "predicted best is actually WORST-or-last at S0; predictions flat (2% spread, max 9mm displacement) at S2 while replays show up to 340mm-predicted vs <80mm realized"
+  },
+  "actual_replay_available": true,
+  "actual_replay_source": "deterministic kinematic pydrake replays of the full dense banks (results/c3plus_variant_cost_probe/deterministic_replays, copied as actual_replay_performance.csv); Agent B full-plant replays still pending — see replay_candidate_manifest.json",
+  "primary_cost_verdict": "ALL_COSTS_DEPEND_ON_INACCURATE_PREDICTIONS",
+  "secondary_verdict": "DIFFERENT_SCENES_HAVE_DIFFERENT_PRIMARY_FAILURES (S1 = candidate generation/filter starvation, not cost; S2 = prediction flatness + generation; S0 = prediction error healed by outer-loop retries)",
+  "recommended_live_cost_change": null,
+  "required_prediction_fix_before_cost_change": [
+    "Make PD-impedance rollout predictions honest at plateau states (S2 flat-landscape mechanism; in-contact rho~0.61, traveling-promise~0)",
+    "Ensure route-forward stem-tip-class contacts enter the candidate pool at S1/S2-type states (pool emptied by hard filters; productive contact never drawn)",
+    "Guard the (0,0,0) placeholder on obstacle-free scenes (currently argmin-eligible when no obstacles present)"
+  ]
+}

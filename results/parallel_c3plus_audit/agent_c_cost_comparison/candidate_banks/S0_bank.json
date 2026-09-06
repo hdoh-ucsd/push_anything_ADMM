@@ -1,0 +1,325 @@
+{
+ "state": "S0",
+ "object": [
+  0.6359737664,
+  0.06258967308,
+  2.074814665
+ ],
+ "candidates": [
+  {
+   "id": "bank_crossbar_top_0",
+   "face": "crossbar_top_0",
+   "world_xy": [
+    0.6202664658795963,
+    0.020046967224908466
+   ],
+   "obj_frame_pt": [
+    -0.029666666666666668,
+    0.0198
+   ],
+   "push_dir": [
+    0.8756489879449444,
+    0.4829480820036401
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_crossbar_top_1",
+   "face": "crossbar_top_1",
+   "world_xy": [
+    0.6059390061134884,
+    0.04602455386727514
+   ],
+   "obj_frame_pt": [
+    0.0,
+    0.0198
+   ],
+   "push_dir": [
+    0.8756489879449444,
+    0.4829480820036401
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_crossbar_top_2",
+   "face": "crossbar_top_2",
+   "world_xy": [
+    0.5916115463473804,
+    0.07200214050964183
+   ],
+   "obj_frame_pt": [
+    0.029666666666666668,
+    0.0198
+   ],
+   "push_dir": [
+    0.8756489879449444,
+    0.4829480820036401
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_crossbar_bottom_east_0",
+   "face": "crossbar_bottom_east_0",
+   "world_xy": [
+    0.6594162715497828,
+    0.050109230287277776
+   ],
+   "obj_frame_pt": [
+    -0.02225,
+    0.0
+   ],
+   "push_dir": [
+    -0.8756489879449444,
+    -0.4829480820036401
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_crossbar_bottom_east_1",
+   "face": "crossbar_bottom_east_1",
+   "world_xy": [
+    0.6379250819006207,
+    0.0890756102508278
+   ],
+   "obj_frame_pt": [
+    0.02225,
+    0.0
+   ],
+   "push_dir": [
+    -0.8756489879449444,
+    -0.4829480820036401
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_crossbar_east_0",
+   "face": "crossbar_east_0",
+   "world_xy": [
+    0.5988109045811303,
+    0.10947177735691568
+   ],
+   "obj_frame_pt": [
+    0.0445,
+    0.0099
+   ],
+   "push_dir": [
+    0.4829480820036401,
+    -0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_crossbar_west_0",
+   "face": "crossbar_west_0",
+   "world_xy": [
+    0.6557987782575598,
+    0.006145196779412245
+   ],
+   "obj_frame_pt": [
+    -0.0445,
+    0.0099
+   ],
+   "push_dir": [
+    -0.4829480820036401,
+    0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_east_0",
+   "face": "stem_east_0",
+   "world_xy": [
+    0.6821286079014683,
+    0.11591057314509749
+   ],
+   "obj_frame_pt": [
+    0.0099,
+    -0.06616666666666667
+   ],
+   "push_dir": [
+    0.4829480820036401,
+    -0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_east_1",
+   "face": "stem_east_1",
+   "world_xy": [
+    0.6589530980205255,
+    0.10312854724140116
+   ],
+   "obj_frame_pt": [
+    0.0099,
+    -0.0397
+   ],
+   "push_dir": [
+    0.4829480820036401,
+    -0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_east_2",
+   "face": "stem_east_2",
+   "world_xy": [
+    0.6357775881395825,
+    0.09034652133770482
+   ],
+   "obj_frame_pt": [
+    0.0099,
+    -0.01323333333333333
+   ],
+   "push_dir": [
+    0.4829480820036401,
+    -0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_west_0",
+   "face": "stem_west_0",
+   "world_xy": [
+    0.7056964743032461,
+    0.07317890253338422
+   ],
+   "obj_frame_pt": [
+    -0.0099,
+    -0.06616666666666667
+   ],
+   "push_dir": [
+    -0.4829480820036401,
+    0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_west_1",
+   "face": "stem_west_1",
+   "world_xy": [
+    0.6825209644223033,
+    0.06039687662968787
+   ],
+   "obj_frame_pt": [
+    -0.0099,
+    -0.0397
+   ],
+   "push_dir": [
+    -0.4829480820036401,
+    0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_west_2",
+   "face": "stem_west_2",
+   "world_xy": [
+    0.6593454545413603,
+    0.04761485072599153
+   ],
+   "obj_frame_pt": [
+    -0.0099,
+    -0.01323333333333333
+   ],
+   "push_dir": [
+    -0.4829480820036401,
+    0.8756489879449444
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "bank_stem_tip_0",
+   "face": "stem_tip_0",
+   "world_xy": [
+    0.7181972063680303,
+    0.1079384979801418
+   ],
+   "obj_frame_pt": [
+    0.0,
+    -0.0794
+   ],
+   "push_dir": [
+    -0.8756489879449444,
+    -0.4829480820036401
+   ],
+   "feasible_start": true,
+   "source": "dense_bank"
+  },
+  {
+   "id": "logged_0",
+   "face": "logged",
+   "world_xy": [
+    0.6434597739,
+    -0.05757929107
+   ],
+   "obj_frame_pt": null,
+   "push_dir": [
+    -0.007486007499999947,
+    0.12016896415
+   ],
+   "feasible_start": true,
+   "source": "controller_log",
+   "J_total": 7406.373894,
+   "pred_term": [
+    0.6359737228,
+    0.06258965935,
+    2.074814665
+   ]
+  },
+  {
+   "id": "logged_1",
+   "face": "logged",
+   "world_xy": [
+    0.5907452285,
+    0.02180620491
+   ],
+   "obj_frame_pt": null,
+   "push_dir": [
+    0.04522853790000003,
+    0.04078346817
+   ],
+   "feasible_start": true,
+   "source": "controller_log",
+   "J_total": 7406.373894,
+   "pred_term": [
+    0.6359737228,
+    0.06258965935,
+    2.074814665
+   ]
+  },
+  {
+   "id": "logged_2",
+   "face": "logged",
+   "world_xy": [
+    0.6638703107,
+    0.1343877434
+   ],
+   "obj_frame_pt": null,
+   "push_dir": [
+    -0.027896544299999992,
+    -0.07179807032
+   ],
+   "feasible_start": true,
+   "source": "controller_log",
+   "J_total": 7406.373894,
+   "pred_term": [
+    0.6359737228,
+    0.06258965935,
+    2.074814665
+   ]
+  }
+ ]
+}

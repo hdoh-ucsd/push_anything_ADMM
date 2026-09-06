@@ -1,0 +1,7 @@
+state,cand,actual_rank,J_rank_rank,L1_route_rank,note
+S0,logged_0,2,1,1,
+S0,logged_1,3,2,2,
+S0,logged_2,1,3,3,
+S1,logged_0,1,1,1,
+S1,logged_2,2,2,2,
+S2,logged_2,1,1,1,only one replayed logged candidate

@@ -1,0 +1,17 @@
+variant,status,physical_model,route_reference,candidate_cost,reposition_cost,recovery_safety
+H0_frozen_baseline,HISTORICAL,MODIFIED (obstacle-blind inner solve; center-to-disc exponential ranking penalty),UNCHANGED (direct lookahead),UNCHANGED (quadratic tracking + exp obstacle term),UNCHANGED (current),NOT AVAILABLE (pre-P5; no veto/timeout)
+H1_reciprocal_square,HISTORICAL,MODIFIED (PSD reciprocal-square potential in inner QP; matching recip ranking term),UNCHANGED,MODIFIED (recip ranking obstacle term),UNCHANGED,NOT AVAILABLE (pre-P5)
+H2_projected_exponential,HISTORICAL,MODIFIED (PSD exponential potential in inner QP; exact exp ranking term),UNCHANGED,MODIFIED (exp ranking obstacle term),UNCHANGED,NOT AVAILABLE (pre-P5)
+H3_qp_halfspace_legacy,HISTORICAL,MODIFIED (frozen separating halfspace in QP; exp ranking term still active),UNCHANGED,MODIFIED (exp ranking obstacle term),UNCHANGED,NOT AVAILABLE (pre-P5)
+H4_lcs_contact,CURRENT,MODIFIED (closest-footprint frictionless LCS contact; lambda_obs/eta_obs; no obstacle objective),UNCHANGED,UNCHANGED (pure object tracking),UNCHANGED,NOT AVAILABLE at landing (pre-P5)
+V0_plain_current,CURRENT,lcs_contact,UNCHANGED (direct lookahead),UNCHANGED (current tracking),UNCHANGED (current),MODIFIED (P5 veto+timeout ON)
+V1_route_reference_only,CURRENT,lcs_contact,MODIFIED (channel_v1 carrot + approach-first),UNCHANGED (current tracking),UNCHANGED (current),MODIFIED (P5 ON)
+V2_route_deltaV,CURRENT,lcs_contact,MODIFIED (channel_v1),MODIFIED (delta_v_lexicographic + calibrated_v1),UNCHANGED (current),MODIFIED (P5 ON)
+V3_transaction_only,CURRENT,lcs_contact,UNCHANGED,UNCHANGED (current tracking),MODIFIED (transaction_v1_1),MODIFIED (P5 ON)
+V4_route_deltaV_txn,CURRENT,lcs_contact,MODIFIED (channel_v1),MODIFIED (delta_v_lexicographic + calibrated_v1),MODIFIED (transaction_v1_1),MODIFIED (P5 ON)
+V5_route_approach_fix,NOT AVAILABLE as separate factor,lcs_contact,unconditional inside channel_v1 (78195e85f; no opt-out switch),-,-,-
+L1A_terminal_task_L1,SHADOW ONLY,-,-,MODIFIED (offline shadow score),-,-
+L1B_route_remaining_L1,SHADOW ONLY,-,-,MODIFIED (offline shadow score),-,-
+L1C_transaction_L1,SHADOW ONLY,-,-,-,MODIFIED (offline shadow score),-
+shadow_delta_v_mode1,CURRENT,lcs_contact,channel_v1 required,LOGGING ONLY,UNCHANGED,MODIFIED (P5 ON)
+delta_v_weighted_mode3,DEPRECATED (pilot),lcs_contact,channel_v1 required,MODIFIED (additive dV credit),UNCHANGED,MODIFIED (P5 ON)

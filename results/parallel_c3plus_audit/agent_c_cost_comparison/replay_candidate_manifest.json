@@ -1,0 +1,38 @@
+{
+  "purpose": "Minimal candidate set Agent B should replay per probe state. Winners computed on the FIXED candidate banks (candidate_banks/S*_bank.json) using the FIXED logged rollouts (score-only probe; no re-solve).",
+  "base_commit_outer": "4316b1ea7325b14f1de3dac6fa197e3b6aa4a0d3",
+  "controller_repo": "/root/push_anything_ADMM/external/oim_c++_anything/.claude/worktrees/obstacle-lcs-contact",
+  "controller_probe_commit": "43d5efb96",
+  "controller_head_at_audit": "0abc0eb7c",
+  "note": "Deterministic kinematic replays already exist for the full dense banks (actual_replay_performance.csv, deterministic_replays/ in results/c3plus_variant_cost_probe). Agent B replays are only needed to confirm under the full plant/controller.",
+  "states": {
+    "S0_open_table": {
+      "current_contact": "logged_0",
+      "current_score_winner": "logged_0",
+      "delta_v_winner": "logged_0",
+      "transaction_winner": "logged_0",
+      "l1_route_winner": "logged_0",
+      "l1_transaction_winner": "logged_0",
+      "actual_best_logged": "logged_2",
+      "actual_best_dense": "bank_stem_east_1",
+      "deliberately_poor": "bank_crossbar_east_0 (topples, tilt 28deg)",
+      "replay_set": ["logged_0", "logged_2", "bank_stem_east_1", "bank_stem_tip_0", "bank_crossbar_east_0"]
+    },
+    "S1_single_obstacle": {
+      "current_contact": "logged_0",
+      "all_score_winner": "logged_0",
+      "actual_best_dense": "bank_stem_tip (only productive contact, +8mm circumnavigation east; never drawn by controller; all drawn alternates hard-filtered to 1e12)",
+      "deliberately_poor": "any north-face crossbar contact (neutral-to-negative)",
+      "replay_set": ["logged_0", "bank_stem_tip", "one crossbar contact"]
+    },
+    "S2_shelf_gap": {
+      "current_contact": "logged_0",
+      "quadratic_and_l1_task_route_winner": "logged_1",
+      "l1_transaction_winner": "logged_0",
+      "actual_best_dense": "bank_stem_tip (+24mm south out of corridor); bank_stem_west (+22mm)",
+      "pursued_contact_outcome": "moved object 25mm BACKWARD",
+      "deliberately_poor": "crossbar contacts (topple T by 90deg; no topple filter exists)",
+      "replay_set": ["logged_0", "logged_1", "bank_stem_tip", "bank_stem_west", "one crossbar topple contact"]
+    }
+  }
+}
