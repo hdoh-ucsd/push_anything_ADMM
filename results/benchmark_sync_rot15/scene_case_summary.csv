@@ -1,0 +1,7 @@
+scene,case_count,unique_start_count,rotation_conditions_per_start,rotation_labels,goal_position_ids,summary_status
+open_task,15,5,3,rot000|rotCCW090|rotCW090,g02,PASS
+single_obstacle,15,5,3,rot000|rotCCW090|rotCW090,g02,PASS
+shelf_gap,15,5,3,rot000|rotCCW090|rotCW090,g02,PASS
+ycb_clutter,15,5,3,rot000|rotCCW090|rotCW090,g02,PASS
+icra_sign,15,5,3,rot000|rotCCW090|rotCW090,g02,PASS
+slalom,15,5,3,rot000|rotCCW090|rotCW090,g02,PASS

@@ -1,0 +1,271 @@
+<mujoco model="xarm6_policyport">
+  <!--
+  UFACTORY xArm6, 5 actuated DOF (wrist roll fixed) + a rigid pushing stick
+  end-effector. See README.md in this folder for full provenance and the
+  decisions behind this file; summary:
+
+  - Kinematic tree (body offsets/eulers) and visual meshes are taken from
+    julio-innx/xArm6-Gym-Env (MIT), which itself adapted the real xArm6
+    geometry onto an OpenAI-Gym Fetch-env scaffold. The Fetch-inherited
+    mocap body, weld equality, and 3 free "gantry" base joints have been
+    removed here -- this model is a normal fixed-base articulated arm.
+  - Per-link mass is the real xArm6 vendor value (from xarm_description's
+    xarm6_robot.urdf, not the Gym-Env source, whose masses are Fetch-scale
+    and ~2x too heavy for this robot). Inertia is intentionally left for
+    MuJoCo to auto-infer from each link's own mesh shape at the given mass,
+    rather than hand-transforming the vendor URDF's inertia tensors across
+    two different mesh authoring frames.
+  - The stick end-effector (radius/length/mount offset) is the real
+    vendor geometry from xarm6_stick.urdf, attached directly to link6.
+  -->
+
+  <!-- No meshdir here (deliberately): MuJoCo resolves a relative meshdir
+       against the *top-level* file's directory, not this file's own
+       directory, so a meshdir override here would break loading whenever
+       this file is <include>d from a scene in a different directory (e.g.
+       oim/models/xarm6_pusht_clutter/), even though it works fine
+       loaded standalone (confirmed empirically, not assumed). Each mesh
+       file="assets/..." below is written relative to *this* file's own
+       location instead, which resolves correctly in both cases. -->
+  <compiler angle="degree"/>
+
+  <default>
+    <default class="xarm6">
+      <!-- margin left at 0 (not the small 0.001 buffer used before this
+           model collided with anything else): MJX's jax backend rejects
+           any nonzero margin/gap on a contact pair involving a mesh geom
+           outright (`_put_model_jax` raises NotImplementedError), which
+           only became reachable once this model started sharing a scene
+           with other bodies (the block, obstacles) -- confirmed directly
+           against this MJX version, not assumed. Standalone loading and
+           self-collision exclusion behavior are unaffected. -->
+      <geom type="mesh" contype="1" conaffinity="1"
+            solimp="0.99 0.99 0.01" solref="0.01 1"/>
+      <!-- damping="50" restored (faithful MJX plant): the execution layer is
+           now a per-joint velocity servo (tau = kv*(qdot_cmd - qdot) + gravity
+           compensation), the same construction the source MuJoCo model uses,
+           which handles this damping exactly as MuJoCo does (steady-state
+           tracking kv/(kv+damping) ~ 80-86%). The earlier reduction to 1.0 was
+           a workaround for the torque OSC path only. -->
+      <joint damping="50" armature="1" frictionloss="0" limited="true"/>
+      <velocity ctrllimited="true" forcelimited="true"/>
+    </default>
+  </default>
+
+  <contact>
+    <!-- Adjacent links' meshes are designed to touch flush at each joint's
+         mating surface, so using full-detail meshes as collision geoms
+         (see README point on collision) makes every joint pair register a
+         spurious contact right at zero distance. Left unexcluded, that
+         contact force fights the joint -- confirmed directly: at max
+         xarm6_joint1 torque (50 N*m), the base/link1 contact alone
+         contributed -41.6 N*m of opposing constraint force, nearly
+         canceling it. Excluded per adjacent pair, same as any MJCF built
+         from full-detail (not collision-simplified) meshes needs. -->
+    <exclude body1="xarm6_link_base" body2="xarm6_link1"/>
+    <exclude body1="xarm6_link1" body2="xarm6_link2"/>
+    <exclude body1="xarm6_link2" body2="xarm6_link3"/>
+    <exclude body1="xarm6_link3" body2="xarm6_link4"/>
+    <exclude body1="xarm6_link4" body2="xarm6_link5"/>
+    <exclude body1="xarm6_link5" body2="xarm6_link6"/>
+  </contact>
+
+  <asset>
+    <material name="xarm6_gray" rgba="0.156863 0.156863 0.156863 1"/>
+    <material name="xarm6_blue" rgba="0.513725 0.647059 0.596078 1"/>
+    <material name="xarm6_red" rgba="0.984314 0.286275 0.203922 1"/>
+    <material name="xarm6_yellow" rgba="0.721569 0.733333 0.14902 1"/>
+    <material name="xarm6_green" rgba="0.407843 0.615686 0.415686 1"/>
+    <material name="xarm6_white" rgba="0.921569 0.858824 0.698039 1"/>
+    <material name="xarm6_stick" rgba="0.5 0.1 0.7 1"/>
+
+    <!-- maxhullvert caps the convex hull MuJoCo builds from each mesh for
+         collision (rendering is unaffected, still full-detail). Confirmed
+         directly: uncapped, these hulls range from ~1.4k to ~21k graph
+         elements per link (the source STLs are visual-quality, not
+         collision-simplified, matching the "coplanar face with more than
+         20 vertices" warning MuJoCo already prints for these meshes);
+         capping at 64 cuts that to a uniform ~940 elements/link (roughly a
+         12x reduction) with no visible change to collision behavior in
+         testing. Now 32, measured on the RTX 2080 Ti: 3.50 -> 3.11 ms per
+         mjx.step (1.12x) with the contact/efc row counts unchanged, so this
+         is purely narrowphase (GJK/EPA support queries scale with hull
+         vertices). 24 gives 1.20x but is not worth it -- see below.
+
+         The accuracy cost, measured with hull_loss.py (largest distance from
+         a vertex of the TRUE uncapped hull to the reduced hull's surface, per
+         link, in mm):
+
+             cap   base   l1     l2     l3     l4     l5     l6    worst
+              64  10.03  5.98  19.70   7.91  27.28  10.25   4.19  27.28
+              32  13.80 13.64  27.29  15.84  30.14  18.73   7.82  30.14
+              24  18.13 16.83  31.85  18.77  31.35  18.73  13.36  31.85
+
+         The reduced hull is the hull of a kept subset of the true hull's
+         vertices, so it is CONTAINED in it: the arm's collision proxy only
+         ever gets smaller, and the planner believes the arm can pass closer
+         to the table and the obstacle than it really can. 64 -> 32 adds at
+         most 3 mm to the worst link (link4, 27.28 -> 30.14) while 24 adds no
+         more time than the margin it costs. None of this touches the pushing
+         physics: the stick is a capsule and the block, obstacle and table are
+         boxes, so no manipulation contact goes through a mesh hull. -->
+    <mesh name="link_base_shell" file="assets/link1.obj" maxhullvert="32"/>
+    <mesh name="link1" file="assets/link2.obj" maxhullvert="32"/>
+    <mesh name="link2" file="assets/link3.obj" maxhullvert="32"/>
+    <mesh name="link3" file="assets/link4.obj" maxhullvert="32"/>
+    <mesh name="link4" file="assets/link5.obj" maxhullvert="32"/>
+    <mesh name="link5" file="assets/link6.obj" maxhullvert="32"/>
+    <mesh name="link6" file="assets/tool_flange.obj" maxhullvert="32"/>
+  </asset>
+
+  <worldbody>
+    <body name="xarm6_link_base" childclass="xarm6">
+      <geom name="xarm6_base_shell" mesh="link_base_shell" euler="0 0 180"
+            material="xarm6_blue" mass="2.7"/>
+
+      <!-- gravcomp="1" on link1..link6: with velocity actuators, ctrl=0
+           only damps velocity (kv*(0-qvel)), there's no proportional term
+           holding a pose the way a position actuator would, so gravity
+           alone would otherwise sag the arm exactly like an uncontrolled
+           torque joint. gravcomp is MuJoCo's native per-body mechanism for
+           this -- it cancels that body's own gravity-induced force
+           directly in the dynamics, independent of actuator type, so it
+           doesn't require changing the action space back to position
+           control. Confirmed directly: an isolated single-hinge-body test
+           with gravcomp=1 and zero actuation stays exactly at qpos=0. -->
+      <body name="xarm6_link1" pos="0 0 0.1538" gravcomp="1">
+        <joint name="xarm6_joint1" axis="0 0 1" range="-360 360"/>
+        <geom name="xarm6_link1" mesh="link1" euler="0 0 180"
+              material="xarm6_red" mass="2.16"/>
+
+        <body name="xarm6_link2" pos="0.000350 0.075295 0.112000" euler="-90 0 -90" gravcomp="1">
+          <joint name="xarm6_joint2" axis="0 0 1" range="-114.5916 114.5916"/>
+          <geom name="xarm6_link2" mesh="link2" euler="0 0 180"
+                material="xarm6_yellow" mass="1.71"/>
+
+          <body name="xarm6_link3" pos="0.284550 0.053312 -0.008303" euler="0 0 90" gravcomp="1">
+            <joint name="xarm6_joint3" axis="0 0 1" range="-223.4592 10.8859"/>
+            <geom name="xarm6_link3" mesh="link3" euler="0 0 0"
+                  material="xarm6_blue" mass="1.384"/>
+
+            <body name="xarm6_link4" pos="0.077700 0.169121 -0.067495" euler="-90 0 0" gravcomp="1">
+              <!-- joint4 (2026-08-18, per Shahid): this is the only arm
+                   joint given passive stiffness. It's a velocity actuator
+                   like the rest (ctrl=0 damps velocity only, no
+                   proportional position term -- see the gravcomp comment
+                   above), and with noise_level=0 (the task never needs
+                   this joint to move) MPPI has zero information to ever
+                   command a nonzero recovery velocity: every sampled u4
+                   equals the mean, so the weighted-average update can't
+                   move it regardless of cost. Confirmed via real-run
+                   telemetry that this leaves it undefended against
+                   external dynamic coupling (Coriolis/contact reaction
+                   torques from the other 4 joints moving aggressively) --
+                   it free-drifted a full uncorrected revolution over one
+                   run (see Tasks.md). noise_level 0.01/0.05/0.1 were each
+                   tried as an alternative fix and each still produced a
+                   full revolution -- the cost function has no term
+                   sensitive to joint4's own position (only the flat
+                   effort penalty, which penalizes any nonzero command
+                   symmetrically, not "away from 0" specifically), so
+                   reopening exploration alone gave MPPI no gradient to
+                   act on. stiffness=15 springref="0" (first try) gave it
+                   a real passive restoring torque independent of the
+                   control loop entirely -- NOT a position lock: it's a
+                   soft spring, not a hard constraint, so a strong enough
+                   actuator command still moves it, preserving the
+                   ability to drive it deliberately later if a task needs
+                   to. Validated against a real run: it did stop the full
+                   revolution, but 15 was too soft -- joint4 swung to
+                   +-2.1 rad (~120 degrees) and never settled, oscillating
+                   between those two extremes for the entire second half
+                   of a 100s run rather than staying near 0. Working
+                   backward (disturbing torque ~= stiffness * observed
+                   deflection ~= 15 * 2.1 =~ 31.5 N*m, near joint4's own
+                   +-32 N*m actuator ceiling) motivated raising this to
+                   150 (~10x) for a target deflection closer to 10-15
+                   degrees against a similarly-sized disturbance --
+                   verify against a real run and retune again if still
+                   too soft or now visibly fighting intentional motion.
+                   150 validated well: near 0 (<~1 degree) most of the
+                   run, with a few brief windows settling flat at a
+                   bounded +-0.21 rad (~+-12 degree) plateau rather than
+                   drifting further or oscillating -- no jumps, no full
+                   revolution. 175 (next test, per Shahid) tightens that
+                   plateau further. -->
+              <joint name="xarm6_joint4" axis="0 0 1" range="-360 360"
+                     stiffness="175" springref="0"/>
+              <geom name="xarm6_link4" mesh="link4" euler="0 0 90"
+                    material="xarm6_green" mass="1.115"/>
+
+              <body name="xarm6_link5" pos="-0.000006 0.004747 0.172996" euler="90 0 0" gravcomp="1">
+                <joint name="xarm6_joint5" axis="0 0 1" range="-94.5352 180"/>
+                <geom name="xarm6_link5" mesh="link5" euler="0 0 180"
+                      material="xarm6_red" mass="1.275"/>
+
+                <!-- joint6 (wrist roll) is fixed, not actuated -- rolling a
+                     symmetric stick about its own axis has no effect on
+                     pushing (mirrors the intended MJX model, which welds
+                     this DOF out; see oim/models/xarm6/xarm6.xml). With no
+                     <joint> element, link6 is rigid on link5 at its default
+                     pose. -->
+                <body name="xarm6_link6" pos="0.076010 0.068771 0.004339" euler="-90 0 0" gravcomp="1">
+                  <geom name="xarm6_link6" mesh="link6" euler="0 0 90"
+                        material="xarm6_white" mass="0.1096"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!-- Velocity (servo) actuators: ctrl is a target joint velocity, in
+         RADIANS/SEC (unaffected by this file's compiler angle="degree",
+         which only converts angle-valued attributes like <joint range>,
+         not actuator ctrlrange). forcerange caps output torque at the real
+         vendor per-joint effort limits from README point 9 (joint1/2=50
+         N*m, joint3/4/5=32 N*m, joint6=20 N*m).
+
+         ctrlrange/kv are NOT the real vendor max-speed spec (unsourced,
+         like the stick mass elsewhere in this file) -- they're picked to
+         be physically achievable given this file's existing joint
+         damping="50" (README point 10, itself carried over unedited from
+         the source model and flagged there as a follow-up tuning target).
+         A velocity actuator's steady-state tracking is a damping divider:
+         qvel_ss = ctrl * kv/(kv+joint_damping) (confirmed empirically by
+         direct simulation, not just algebra), so with damping=50 fixed,
+         picking a large ctrlrange with a moderate kv leaves most of that
+         range unreachable. kv=300 (50 N*m joints) / kv=200 (32 N*m
+         joints) give ~80-86% steady-state tracking of a +-1.0 rad/s
+         ctrlrange without exceeding forcerange except at the extreme edge
+         (where clipping just means slower acceleration there, not an
+         error) -- untuned beyond that, revisit once this drives an actual
+         task/controller.
+
+         ctrlrange -1.0/1.0 -> -0.5/0.5, uniform (2026-08-18, per Shahid):
+         the z-axis/contact-double-counting fix measurably doubled the
+         arm-to-object motion gain (see xarm6.yaml's sampler.mppi.
+         noise_level comment for the real-run measurement this and that
+         change are both derived from) -- this is the hard safety
+         ceiling on commanded joint speed complementing that noise
+         reduction, capping the worst case regardless of what the
+         optimizer's own mean converges to, not just how much it
+         explores around it. kv/forcerange left alone: this only lowers
+         the top of the reachable range, it doesn't change how stiffly
+         the servo tracks whatever it's asked for. -->
+    <velocity class="xarm6" name="xarm6_motor1" joint="xarm6_joint1"
+              ctrlrange="-0.5 0.5" forcerange="-50 50" kv="300"/>
+    <velocity class="xarm6" name="xarm6_motor2" joint="xarm6_joint2"
+              ctrlrange="-0.5 0.5" forcerange="-50 50" kv="300"/>
+    <velocity class="xarm6" name="xarm6_motor3" joint="xarm6_joint3"
+              ctrlrange="-0.5 0.5" forcerange="-32 32" kv="200"/>
+    <velocity class="xarm6" name="xarm6_motor4" joint="xarm6_joint4"
+              ctrlrange="-0.5 0.5" forcerange="-32 32" kv="200"/>
+    <velocity class="xarm6" name="xarm6_motor5" joint="xarm6_joint5"
+              ctrlrange="-0.5 0.5" forcerange="-32 32" kv="200"/>
+    <!-- xarm6_motor6 removed: joint6 is welded out (see link6 body). -->
+  </actuator>
+</mujoco>

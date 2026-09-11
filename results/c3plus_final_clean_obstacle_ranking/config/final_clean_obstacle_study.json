@@ -1,0 +1,262 @@
+{
+  "affinity": {
+    "osc": "6-7",
+    "planner": "2-5",
+    "recorder": "0-1",
+    "sim": "6-7",
+    "system": "0-1,8-15"
+  },
+  "cap_wall_s": 600,
+  "conditions": [
+    {
+      "config_id": "B1",
+      "family": "exponential_footprint",
+      "range_m": 0.015,
+      "range_name": "sigma",
+      "source_obstacle_id": "OC01",
+      "weight": 764.3857383844456
+    },
+    {
+      "config_id": "B2",
+      "family": "relu_footprint",
+      "range_m": 0.045,
+      "range_name": "epsilon",
+      "source_obstacle_id": "MATCHED_OC01_RELU",
+      "weight": 764.3857383844456
+    },
+    {
+      "config_id": "B3",
+      "family": "relu_footprint",
+      "range_m": 0.05,
+      "range_name": "epsilon",
+      "source_obstacle_id": "OC08",
+      "weight": 1173.2815219621552
+    }
+  ],
+  "goals": {
+    "open_task": [
+      0.397,
+      -0.431,
+      0.0008
+    ],
+    "shelf_gap": [
+      0.404,
+      -0.393,
+      0.0008
+    ],
+    "single_obstacle": [
+      0.397,
+      -0.431,
+      0.0008
+    ]
+  },
+  "inner_c3": {
+    "G": {
+      "pose_eta": 0.01,
+      "pose_lambda": 0.02,
+      "position_eta": 0.01,
+      "position_lambda": 0.01
+    },
+    "N": 5,
+    "R_diag": [
+      0.01,
+      0.01,
+      0.01
+    ],
+    "U": {
+      "eta": 0.26,
+      "lambda": 5.2
+    },
+    "admm_iterations": 3,
+    "boundary": "source_faithful_frozen",
+    "contact_model": "anitescu",
+    "cost_switch_m": 0.5,
+    "dt_pose": 0.05,
+    "dt_position": 0.1,
+    "ee_velocity_limits": [
+      -0.14,
+      0.14
+    ],
+    "friction_directions": 2,
+    "gamma": 1.0,
+    "hard_obstacle_contact": "lcs_contact",
+    "input_limits": {
+      "horizontal": [
+        -50,
+        50
+      ],
+      "vertical": [
+        -50,
+        50
+      ]
+    },
+    "pose_object_position_diag": [
+      10000,
+      10000,
+      6000
+    ],
+    "position_object_position_diag": [
+      12500,
+      12500,
+      12500
+    ],
+    "projection": "C3+",
+    "quaternion_cost": "state_dependent_quaternion_hessian",
+    "quaternion_hessian_scale": 510,
+    "rho_scale": 3,
+    "soft_obstacle_mode": "none",
+    "solver_num_threads_yaml_unchanged": 5
+  },
+  "logical_observations_per_B_config": 54,
+  "max_concurrent_live_simulations": 1,
+  "object_footprint": {
+    "boxes": [
+      {
+        "center": [
+          0.0,
+          0.0099
+        ],
+        "name": "crossbar",
+        "size": [
+          0.089,
+          0.0198
+        ]
+      },
+      {
+        "center": [
+          0.0,
+          -0.0397
+        ],
+        "name": "stem",
+        "size": [
+          0.0198,
+          0.0794
+        ]
+      }
+    ],
+    "controller_boundary_subdivisions": 10,
+    "type": "t_union_2_boxes_controller_boundary"
+  },
+  "obstacle_bearing_runs_per_B_config": 36,
+  "obstacles": {
+    "open_task": [],
+    "shelf_gap": [
+      {
+        "center": [
+          0.62,
+          0.0
+        ],
+        "half_extents": [
+          0.13,
+          0.08
+        ],
+        "name": "shelf_far",
+        "type": "aabb"
+      },
+      {
+        "center": [
+          0.24,
+          0.0
+        ],
+        "half_extents": [
+          0.05,
+          0.08
+        ],
+        "name": "shelf_near",
+        "type": "aabb"
+      },
+      {
+        "center": [
+          0.0,
+          0.0
+        ],
+        "name": "robot_base",
+        "radius": 0.09,
+        "type": "disc"
+      }
+    ],
+    "single_obstacle": [
+      {
+        "center": [
+          0.35,
+          0.0
+        ],
+        "half_extents": [
+          0.05,
+          0.05
+        ],
+        "name": "obs_box",
+        "type": "aabb"
+      },
+      {
+        "center": [
+          0.0,
+          0.0
+        ],
+        "name": "robot_base",
+        "radius": 0.09,
+        "type": "disc"
+      }
+    ]
+  },
+  "predeclared_exclusions": {
+    "MATCHED_RELU_075": "DROP: parent OC04 branch is excluded from the minimum study",
+    "OC04": "DROP: both historical shelf cells failed with large obstacle/task ratios"
+  },
+  "ranking_fixed": {
+    "buffer_feasibility_and_hysteresis": "source frozen",
+    "candidate_zero_excluded_from_best_other": true,
+    "finished_reposition_penalty": 1000000000,
+    "hard_filter_value": 1000000000000,
+    "route_weighted_term": "off",
+    "travel_cost_per_meter": 0
+  },
+  "rotations": {
+    "rot000": 0.0,
+    "rotCCW090": 1.5707963267948966,
+    "rotCW090": -1.5707963267948966
+  },
+  "scientific_question": "outer obstacle-ranking potential with source inner C3 and source A1 task ranking frozen",
+  "seeds": [
+    0,
+    1
+  ],
+  "shared_open_runs": 18,
+  "starts": {
+    "s01": [
+      0.381,
+      0.4,
+      0.0
+    ],
+    "s03": [
+      0.391,
+      0.437,
+      -0.4082
+    ],
+    "s05": [
+      0.406,
+      0.383,
+      0.2806
+    ]
+  },
+  "study": "final_clean_xarm6_c3plus_obstacle_ranking",
+  "task_ranking": {
+    "alpha_p_rank": 1.0,
+    "alpha_theta_rank": 1.0,
+    "empirically_optimal_claim": false,
+    "id": "A1_SOURCE_1_1"
+  },
+  "thread_limits": {
+    "BLIS_NUM_THREADS": 1,
+    "GOTO_NUM_THREADS": 1,
+    "MKL_NUM_THREADS": 1,
+    "NUMEXPR_NUM_THREADS": 1,
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_NUM_THREADS": 3,
+    "OMP_THREAD_LIMIT": 3,
+    "OPENBLAS_NUM_THREADS": 1,
+    "VECLIB_MAXIMUM_THREADS": 1
+  },
+  "unique_live_runs": 126,
+  "worst_case_live_runtime_s": 75600
+}

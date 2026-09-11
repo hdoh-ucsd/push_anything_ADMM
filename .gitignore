@@ -26,6 +26,16 @@ milestones/
 
 # Run outputs
 results/
+# The rot15 synchronization products are small, deterministic benchmark
+# definitions/validation evidence rather than simulation run outputs.
+!results/
+results/*
+!results/benchmark_sync_rot15/
+!results/benchmark_sync_rot15/**
+# The stopped small-cost study contains only compact prerequisite-audit and
+# planned-experiment records; no simulation streams are tracked here.
+!results/cost_tuning_small/
+!results/cost_tuning_small/**
 profiling/results/
 # Render and profiler intermediates
 *.prof

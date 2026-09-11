@@ -1,0 +1,195 @@
+benchmark_id: benchmark_v2_rot15
+legacy_benchmark_id: benchmark_v1_25pair
+source_revision:
+  oim_repository: external/Object-Informed-Manipulation-MJX
+  oim_commit: d6d80a65ba6a45079e1384ba879e54d50d25bc39
+  oim_pose_path: examples/poses/{oim_scene}.yaml
+  c3plus_worktree: external/oim_c++_anything/.claude/worktrees/oim-scene-sync-metrics
+  c3plus_commit: bd5ce7b52d7133d54065578e42874d92d3cce95c
+  c3plus_pose_path: examples/sampling_c3/{demo}/parameters/{sim_params.yaml,goal_params.yaml}
+  geometry_path: tools/scene_smoke/scene_configs/{scene}.yaml
+  geometry_controller_path: systems/controllers/sampling_based_c3_controller.cc
+
+# A task seed is intentionally a function of scene and start only.  The three
+# relative-rotation conditions within a start triplet use the same seed, and
+# C3+ and OIM use the exact same integer for a case.
+seed_policy:
+  base: 17000
+  scene_stride: 100
+  start_stride: 1
+  rotation_affects_seed: false
+
+rotations:
+  - {label: rot000, id_suffix: rot000, delta_yaw_rad: 0.0, delta_yaw_deg: 0.0}
+  - {label: rotCCW090, id_suffix: rotCCW090, delta_yaw_rad: 1.5707963267948966, delta_yaw_deg: 90.0}
+  - {label: rotCW090, id_suffix: rotCW090, delta_yaw_rad: -1.5707963267948966, delta_yaw_deg: -90.0}
+
+# Geometry is the exact orientation-aware representation used by the synced
+# C3+ scene layer: each manipulated object is the union of the listed boxes;
+# controller_boundary_10_subdivisions reproduces TFootprint/CFootprint's 11
+# endpoint-inclusive samples per rectangle edge. Obstacles reproduce the
+# exact AABB/convex-hull/disc overrides supplied by tools/scene_smoke/env_*.sh.
+scenes:
+  open_task:
+    oim_scene: open_table
+    manipulated_object: push_t_oimscale_m01
+    c3plus_family: matched_open_table_xarm6_
+    object_z: 0.0008
+    starts:
+      s01: [0.3810, 0.4000, 0.0000]
+      s02: [0.3660, 0.4310, 0.0579]
+      s03: [0.3910, 0.4370, -0.4082]
+      s04: [0.3610, 0.3570, 0.3282]
+      s05: [0.4060, 0.3830, 0.2806]
+    g02: [0.3970, -0.4310, 0.0008]
+    footprint:
+      type: t_union_2_boxes_controller_boundary
+      boxes:
+        - {name: crossbar, center: [0.0, 0.0099], size: [0.089, 0.0198]}
+        - {name: stem, center: [0.0, -0.0397], size: [0.0198, 0.0794]}
+      controller_boundary_subdivisions: 10
+    obstacles: []
+    c3plus_env_file: null
+
+  single_obstacle:
+    oim_scene: single_obstacle
+    manipulated_object: push_t_oimscale_m01
+    c3plus_family: matched_single_obstacle_xarm6_
+    object_z: 0.0008
+    starts:
+      s01: [0.3810, 0.4000, 0.0000]
+      s02: [0.3660, 0.4310, 0.0579]
+      s03: [0.3910, 0.4370, -0.4082]
+      s04: [0.3610, 0.3570, 0.3282]
+      s05: [0.4060, 0.3830, 0.2806]
+    g02: [0.3970, -0.4310, 0.0008]
+    footprint:
+      type: t_union_2_boxes_controller_boundary
+      boxes:
+        - {name: crossbar, center: [0.0, 0.0099], size: [0.089, 0.0198]}
+        - {name: stem, center: [0.0, -0.0397], size: [0.0198, 0.0794]}
+      controller_boundary_subdivisions: 10
+    obstacles:
+      - {name: obs_box, type: aabb, center: [0.35, 0.0], half_extents: [0.05, 0.05]}
+      - {name: robot_base, type: disc, center: [0.0, 0.0], radius: 0.09}
+    c3plus_env_file: tools/scene_smoke/env_single_obstacle.sh
+
+  shelf_gap:
+    oim_scene: shelf_gap
+    manipulated_object: push_t_oimscale_m01
+    c3plus_family: matched_shelf_gap_xarm6_
+    object_z: 0.0008
+    starts:
+      s01: [0.3810, 0.4000, 0.0000]
+      s02: [0.3660, 0.4310, 0.0579]
+      s03: [0.3910, 0.4370, -0.4082]
+      s04: [0.3610, 0.3570, 0.3282]
+      s05: [0.4060, 0.3830, 0.2806]
+    g02: [0.4040, -0.3930, 0.0008]
+    footprint:
+      type: t_union_2_boxes_controller_boundary
+      boxes:
+        - {name: crossbar, center: [0.0, 0.0099], size: [0.089, 0.0198]}
+        - {name: stem, center: [0.0, -0.0397], size: [0.0198, 0.0794]}
+      controller_boundary_subdivisions: 10
+    obstacles:
+      - {name: shelf_far, type: aabb, center: [0.62, 0.0], half_extents: [0.13, 0.08]}
+      - {name: shelf_near, type: aabb, center: [0.24, 0.0], half_extents: [0.05, 0.08]}
+      - {name: robot_base, type: disc, center: [0.0, 0.0], radius: 0.09}
+    c3plus_env_file: tools/scene_smoke/env_shelf_gap.sh
+
+  ycb_clutter:
+    oim_scene: ycb_clutter
+    manipulated_object: push_t_oimscale_m01
+    c3plus_family: matched_ycb_clutter_xarm6_
+    object_z: 0.0008
+    starts:
+      s01: [0.3810, 0.4000, 0.0000]
+      s02: [0.3660, 0.4310, 0.0579]
+      s03: [0.3910, 0.4370, -0.4082]
+      s04: [0.3610, 0.3570, 0.3282]
+      s05: [0.4060, 0.3830, 0.2806]
+    g02: [0.3970, -0.4310, 0.0008]
+    footprint:
+      type: t_union_2_boxes_controller_boundary
+      boxes:
+        - {name: crossbar, center: [0.0, 0.0099], size: [0.089, 0.0198]}
+        - {name: stem, center: [0.0, -0.0397], size: [0.0198, 0.0794]}
+      controller_boundary_subdivisions: 10
+    obstacles:
+      - {name: obs_box, type: aabb, center: [0.35, 0.0], half_extents: [0.05, 0.05]}
+      - {name: domino_sugar, type: aabb, center: [0.22, 0.20], half_extents: [0.0875, 0.0475]}
+      - name: spam_can
+        type: polygon
+        vertices: [[0.5530, -0.1815], [0.5704, -0.1901], [0.6343, -0.1870], [0.6510, -0.1695], [0.6503, -0.1473], [0.6301, -0.1299], [0.5670, -0.1329], [0.5490, -0.1500]]
+      - name: mustard_bottle
+        type: polygon
+        vertices: [[0.1186, -0.1945], [0.1501, -0.2104], [0.1866, -0.2115], [0.1976, -0.1831], [0.1818, -0.1655], [0.1555, -0.1506], [0.1121, -0.1493], [0.1014, -0.1732]]
+      - {name: robot_base, type: disc, center: [0.0, 0.0], radius: 0.09}
+    c3plus_env_file: tools/scene_smoke/env_ycb_clutter.sh
+
+  icra_sign:
+    oim_scene: icra_sign
+    manipulated_object: push_c_glyph
+    c3plus_family: anything_icra_c_matched_xarm6_
+    object_z: -0.016
+    starts:
+      s01: [0.3000, 0.4000, 0.0000]
+      s02: [0.2779, 0.4264, 0.0579]
+      s03: [0.3007, 0.4383, -0.4082]
+      s04: [0.2910, 0.3534, 0.3282]
+      s05: [0.3284, 0.3896, 0.2806]
+    g02: [0.5230, -0.4262, -0.016]
+    footprint:
+      type: c_glyph_union_3_boxes_controller_boundary
+      boxes:
+        - {name: spine, center: [-0.0323, 0.0], size: [0.032, 0.103]}
+        - {name: top_bar, center: [0.0, 0.0355], size: [0.0966, 0.032]}
+        - {name: bottom_bar, center: [0.0, -0.0355], size: [0.0966, 0.032]}
+      controller_boundary_subdivisions: 10
+    obstacles:
+      - {name: glyph_I, type: polygon, vertices: [[0.4680, -0.5649], [0.5503, -0.5649], [0.5511, -0.5645], [0.5515, -0.5637], [0.5515, -0.5362], [0.5503, -0.5351], [0.4496, -0.5351], [0.4485, -0.5363], [0.4485, -0.5638], [0.4496, -0.5649]]}
+      - {name: glyph_R, type: polygon, vertices: [[0.5515, -0.2996], [0.5515, -0.2004], [0.5511, -0.1994], [0.4706, -0.2083], [0.4555, -0.2160], [0.4498, -0.2292], [0.4485, -0.2465], [0.4485, -0.2996], [0.4493, -0.3006], [0.5508, -0.3006]]}
+      - {name: glyph_A, type: polygon, vertices: [[0.4485, -0.0838], [0.4485, -0.1162], [0.4499, -0.1180], [0.5499, -0.1556], [0.5511, -0.1556], [0.5515, -0.1543], [0.5515, -0.0457], [0.5511, -0.0444], [0.5499, -0.0444], [0.4499, -0.0820]]}
+      - {name: glyph_2a, type: polygon, vertices: [[0.5515, 0.1138], [0.5515, 0.1917], [0.5279, 0.1917], [0.4781, 0.1886], [0.4655, 0.1852], [0.4506, 0.1655], [0.4485, 0.1480], [0.4513, 0.1319], [0.4584, 0.1185], [0.4698, 0.1083]]}
+      - {name: glyph_0, type: polygon, vertices: [[0.4489, 0.2939], [0.4639, 0.2676], [0.4949, 0.2570], [0.5213, 0.2599], [0.5472, 0.2810], [0.5511, 0.3061], [0.5361, 0.3324], [0.4900, 0.3425], [0.4639, 0.3324], [0.4528, 0.3190]]}
+      - {name: glyph_2b, type: polygon, vertices: [[0.5515, 0.4138], [0.5515, 0.4917], [0.5279, 0.4917], [0.4781, 0.4886], [0.4655, 0.4852], [0.4506, 0.4655], [0.4485, 0.4480], [0.4513, 0.4319], [0.4584, 0.4185], [0.4698, 0.4083]]}
+      - {name: glyph_6, type: polygon, vertices: [[0.5158, 0.6416], [0.4567, 0.6390], [0.4497, 0.6219], [0.4520, 0.5887], [0.4819, 0.5612], [0.5130, 0.5591], [0.5425, 0.5745], [0.5514, 0.5998], [0.5487, 0.6196], [0.5367, 0.6356]]}
+      - {name: robot_base, type: disc, center: [0.0, 0.0], radius: 0.09}
+    c3plus_env_file: tools/scene_smoke/env_icra_sign.sh
+
+  slalom:
+    oim_scene: slalom
+    manipulated_object: push_t_oimscale_m01
+    c3plus_family: matched_slalom_xarm6_
+    object_z: 0.0008
+    starts:
+      s01: [0.3810, 0.4000, 0.0000]
+      s02: [0.3660, 0.4310, 0.0579]
+      s03: [0.3910, 0.4370, -0.4082]
+      s04: [0.3610, 0.3700, 0.3282]
+      s05: [0.4060, 0.3930, 0.2806]
+    g02: [0.4040, -0.3930, 0.0008]
+    footprint:
+      type: t_union_2_boxes_controller_boundary
+      boxes:
+        - {name: crossbar, center: [0.0, 0.0099], size: [0.089, 0.0198]}
+        - {name: stem, center: [0.0, -0.0397], size: [0.0198, 0.0794]}
+      controller_boundary_subdivisions: 10
+    obstacles:
+      - {name: fin_1_near, type: aabb, center: [0.05, 0.22], half_extents: [0.10, 0.02]}
+      - {name: fin_1_far, type: aabb, center: [0.57, 0.22], half_extents: [0.18, 0.02]}
+      - {name: fin_2_near, type: aabb, center: [0.245, 0.0], half_extents: [0.095, 0.02]}
+      - {name: fin_2_far, type: aabb, center: [0.665, 0.0], half_extents: [0.085, 0.02]}
+      - {name: fin_3_near, type: aabb, center: [0.05, -0.22], half_extents: [0.10, 0.02]}
+      - {name: fin_3_far, type: aabb, center: [0.57, -0.22], half_extents: [0.18, 0.02]}
+      - {name: robot_base, type: disc, center: [0.0, 0.0], radius: 0.09}
+    c3plus_env_file: tools/scene_smoke/env_slalom.sh
+
+method_margins:
+  c3plus:
+    hard_object_obstacle_margin_m: 0.01
+    source: systems/controllers/sampling_based_c3_controller.cc ObsExtConfig::nonpen_margin and ComputeObstacleLcsContacts phi=d_raw-margin
+  oim:
+    hard_object_obstacle_margin_m: 0.0
+    source: OIM d6d80a6 uses MuJoCo nonpenetration plus a soft exponential object-obstacle cost; no extra hard object clearance margin

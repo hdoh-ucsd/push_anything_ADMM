@@ -1,0 +1,8 @@
+scene,start_id,rotation_label,purpose,geometry rationale,historical analogue if any
+open_task,s01,rot000,OPEN_A translation control,"0.831154 m start-to-g02 distance is the median of the five open starts; no obstacles and all three targets are feasible",open-task control
+open_task,s01,rotCCW090,OPEN_A positive relative-yaw control,"same median-distance start and fixed g02 position; +90 deg is relative to s01 yaw",open-task orientation control
+open_task,s01,rotCW090,OPEN_A negative relative-yaw control,"same median-distance start and fixed g02 position; -90 deg is relative to s01 yaw",open-task orientation control
+single_obstacle,s04,rot000,SINGLE_BLOCKED,"sampled straight start-to-g02 footprint path has the strongest penetration among the five starts (-0.048326 m against obs_box); final target clearance remains positive",no exact old-pair analogue because the old pair01 used g01
+shelf_gap,s01,rot000,SHELF_CORRIDOR,"valid straight corridor route with the largest sampled minimum clearance among the five starts (0.050010 m); useful over-repulsion control",shelf corridor control
+icra_sign,s05,rot000,ICRA_BLOCK,"preserves historical ICRA05 start identity and uses the required synchronized g02; straight path intersects glyph_R while the final C-glyph target is feasible",historical ICRA05 start / new mandatory g02
+ycb_clutter,s02,rot000,YCB_F1_CONTROL,"exact s02-to-g02 translation with zero relative-yaw demand; final target feasible",historical ycb_clutter pair02 F1 task exactly
