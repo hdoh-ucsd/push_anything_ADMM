@@ -1,0 +1,6 @@
+branch: c3plus-object-ablation
+commit: 5a014855
+demo: push_t_bt010_single_obstacle
+executables: franka_sim, franka_osc_controller, franka_sampling_c3_controller
+sim_sdf: push_t_oimscale_m01.sdf
+control_sdf: push_t_oimscale_m01_control.sdf

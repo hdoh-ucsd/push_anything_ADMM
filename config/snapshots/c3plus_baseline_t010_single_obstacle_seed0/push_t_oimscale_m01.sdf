@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="push_t_oimscale_m01">
+    <link name="vertical_link">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0.0099 0 0 0 0</pose>
+        <mass>0.0528504</mass>
+        <inertia><ixx>0.0000173710</ixx><iyy>0.0000505300</iyy><izz>0.0000366120</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="crossbar_visual">
+        <pose>0 0.0099 0 0 0 0</pose>
+        <geometry><box><size>0.089 0.0198 0.0596</size></box></geometry>
+      </visual>
+      <collision name="crossbar_collision">
+        <pose>0 0.0099 0 0 0 0</pose>
+        <geometry><box><size>0.089 0.0198 0.0596</size></box></geometry>
+      </collision>
+    </link>
+    <link name="horizontal_link">
+      <pose>0 -0.0397 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.0471496</mass>
+        <inertia><ixx>0.0000387280</ixx><iyy>0.0000154970</iyy><izz>0.0000263110</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="stem_visual">
+        <geometry><box><size>0.0198 0.0794 0.0596</size></box></geometry>
+      </visual>
+      <collision name="stem_collision">
+        <geometry><box><size>0.0198 0.0794 0.0596</size></box></geometry>
+      </collision>
+    </link>
+    <joint name="fixed_joint" type="fixed">
+      <parent>vertical_link</parent><child>horizontal_link</child>
+    </joint>
+  </model>
+</sdf>
