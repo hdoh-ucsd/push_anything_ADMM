@@ -42,6 +42,8 @@ from control.sampling_c3.params import (
     SamplingC3Params, SamplingStrategy, RepositioningTrajectoryType,
 )
 from control.sampling_c3.progress import ProgressTracker, StepMetrics
+from control.sampling_c3.contact_acquisition import (
+    ContactAcquisition, measured_contact_force, resolve_acquisition_timeout)
 from control.osc import OperationalSpaceController
 from control.osc.dynamics_helpers import ee_jacobian_translational
 from control.sampling_c3.reposition import PiecewiseLinearTracker
@@ -520,6 +522,18 @@ class SamplingC3Controller:
         # 0.025 so the planner solves every 25th OSC tick.
         self._dt_osc:                   float = float(params.dt_osc)
         self._dt_mpc:                   float = float(params.dt_mpc)
+        # Robustness extension: give the existing physical approach one
+        # nominal PWL descent interval, separately from task progress.
+        self.contact_acquisition = ContactAcquisition(
+            timeout_s=resolve_acquisition_timeout(
+                params.contact_acquisition_timeout_s,
+                params.reposition_params.pwl_waypoint_height,
+                params.sampling_params.sampling_height,
+                params.reposition_params.pwl_speed, self._dt_ctrl),
+            force_threshold=params.contact_force_threshold,
+        )
+        self._physical_contact_force_norm = 0.0
+        self._contact_acquisition_timeout_pending = False
         self._last_plan_tick:           int   = -1
         self._last_plan_ctx                   = None
         self._did_lcs_dump:             bool  = False  # one-shot trigger for [MATH.LCS-DUMP]
@@ -644,6 +658,84 @@ class SamplingC3Controller:
     # Sample generation (current EE always at index 0)
     # ------------------------------------------------------------------
 
+    def _observe_physical_contact(self, plant_ctx):
+        """Latch actual force at planner/OSC cadence; never infer from LCS."""
+        self._physical_contact_force_norm = measured_contact_force(
+            self.plant, plant_ctx, self._formulator._ee_geom_ids,
+            self._formulator._manipuland_geom_ids)
+        acquired = self.contact_acquisition.observe(
+            plant_ctx.get_time(), self._physical_contact_force_norm)
+        if acquired:
+            self.progress.reset()
+            if self.log_diag:
+                print(f"[CONTACT-ACQUIRED] step={self._step} "
+                      f"t={plant_ctx.get_time():.6f} "
+                      f"force={self._physical_contact_force_norm:.9g}N "
+                      f"progress_reset=Y", flush=True)
+        return acquired
+
+    def _begin_contact_episode(self, current_q, ee_pos_now, plant_ctx, target):
+        """Preserve approach intent before the C3 executor clears its target."""
+        quat = np.asarray([current_q[self._obj_qw], current_q[self._obj_qx],
+                           current_q[self._obj_qy], current_q[self._obj_qz]])
+        xyz = np.asarray([current_q[self._obj_x_idx], current_q[self._obj_y_idx],
+                          current_q[self._obj_z_idx]])
+        # With no preceding reposition target (e.g. direct C3 startup), the
+        # executed current-location candidate itself is the attempted target.
+        target = ee_pos_now if target is None else target
+        self.contact_acquisition.begin(
+            sim_time=plant_ctx.get_time(), object_pose=np.r_[quat, xyz],
+            ee_position=ee_pos_now, target_world=target,
+            target_body_xy=planar_position_in_object_frame(target, xyz[:2], quat),
+            force_norm=self._physical_contact_force_norm)
+        self.progress.reset()
+        if self.log_diag:
+            print(f"[CONTACT-ACQUISITION-ENTRY] step={self._step} "
+                  f"t={self.contact_acquisition.entry_time:.6f} "
+                  f"state={self.contact_acquisition.phase} "
+                  f"deadline={self.contact_acquisition.timeout_time:.6f} "
+                  f"timeout_s={self.contact_acquisition.timeout_s:.6f}", flush=True)
+
+    def _candidate_avoids_failed_contacts(self, candidate, obj_xy, obj_quat):
+        buffer = getattr(self, 'unsuccessful_buffer', None)
+        return (buffer is None or buffer.sample_avoids_bad_spots(
+            candidate, obj_xy, obj_quat, contact_failures_only=True))
+
+    def _prepare_contact_cycle(self, current_q, plant_ctx):
+        """Expire/record failures BEFORE generating or reusing candidates."""
+        quat = np.asarray([current_q[self._obj_qw], current_q[self._obj_qx],
+                           current_q[self._obj_qy], current_q[self._obj_qz]])
+        obj_xy = np.asarray([current_q[self._obj_x_idx], current_q[self._obj_y_idx]])
+        self.unsuccessful_buffer.prune(obj_xy, quat)
+        state = self.contact_acquisition
+        if self._prev_mode == 'c3' and not state.active:
+            ee_now = self.plant.CalcPointsPositions(
+                plant_ctx, self.ee_frame, np.zeros(3), self.world_frame).reshape(3)
+            self._begin_contact_episode(
+                current_q, ee_now, plant_ctx, self._current_repos_target)
+        expired = self._prev_mode == 'c3' and state.expired(plant_ctx.get_time())
+        if expired and not state.acquisition_failure:
+            state.mark_failed(plant_ctx.get_time())
+            self.unsuccessful_buffer.append(BufferedSample(
+                position=state.target_world.copy(), cost=0.0,
+                obj_pos_xy=state.entry_object_pose[4:6].copy(),
+                obj_quat=state.entry_object_pose[:4].copy(),
+                contact_target_body_xy=state.target_body_xy.copy()))
+            # A target anchored to an already-changed object must not acquire
+            # a fresh lifetime just because timeout happened on this tick.
+            self.unsuccessful_buffer.prune(obj_xy, quat)
+            for entry in self.buffer.snapshot():
+                if not self._candidate_avoids_failed_contacts(
+                        entry.position, obj_xy, quat):
+                    self.buffer.remove(entry)
+            if self.log_diag:
+                print(f"[CONTACT-ACQUISITION-TIMEOUT] step={self._step} "
+                      f"t={plant_ctx.get_time():.6f} "
+                      f"deadline={state.timeout_time:.6f} "
+                      f"target_body_xy={state.target_body_xy.tolist()} "
+                      f"failed_buffer_size={len(self.unsuccessful_buffer)}", flush=True)
+        return bool(expired)
+
     def _get_persistent_samples(self,
                                 *,
                                 obj_quat:   Optional[np.ndarray] = None,
@@ -671,9 +763,13 @@ class SamplingC3Controller:
         # against the unsuccessful-buffer can reject bad-spot samples
         # without leaving us short.  Reference generate_samples.cc:154 has
         # a retry loop; port draws once and filters at the end.
-        _draw_n = int(n_strategy) * 3 if (
-            self._avoid_unsuccessful and len(self.unsuccessful_buffer) > 0
-        ) else int(n_strategy)
+        # Verified acquisition failures remain excluded even if the legacy
+        # unsuccessful-sample heuristic is disabled.
+        _filter_unsuccessful = len(self.unsuccessful_buffer) > 0 and (
+            self._avoid_unsuccessful or any(
+                entry.contact_target_body_xy is not None
+                for entry in self.unsuccessful_buffer))
+        _draw_n = int(n_strategy) * 3 if _filter_unsuccessful else int(n_strategy)
         _raw_samples = generate_samples(
             strategy  = sp.sampling_strategy,
             n_samples = _draw_n,
@@ -701,15 +797,15 @@ class SamplingC3Controller:
                   f"raw=[{_raw_str}]",
                   flush=True)
         # Apply the unsuccessful-buffer filter — reference
-        # generate_samples.cc:181-205 SampleAvoidsBadSpots.  Only fires
-        # when `avoid_choosing_unsuccessful_samples` is on AND the buffer
-        # has entries.
-        if self._avoid_unsuccessful and len(self.unsuccessful_buffer) > 0:
+        # generate_samples.cc:181-205 SampleAvoidsBadSpots, extended to
+        # verified acquisition failures independently of the legacy flag.
+        if _filter_unsuccessful:
             _samples = []
             _rejected = []
             for s in _raw_samples:
                 if self.unsuccessful_buffer.sample_avoids_bad_spots(
-                        s, obj_xy, obj_quat):
+                        s, obj_xy, obj_quat,
+                        contact_failures_only=not self._avoid_unsuccessful):
                     _samples.append(s)
                     if len(_samples) >= int(n_strategy):
                         break
@@ -1194,6 +1290,8 @@ class SamplingC3Controller:
         # [current, retreat, retreat, ...] so best_other = retreat.
         if (prev_mode == "free" and self._current_repos_target is not None
                 and not in_collision
+                and self._candidate_avoids_failed_contacts(
+                    self._current_repos_target, obj_xy, obj_quat)
                 and not getattr(self, "_achieved_fixed_goal", False)):
             positions.append(self._current_repos_target.copy())
             labels.append("prev_repos")
@@ -1347,6 +1445,8 @@ class SamplingC3Controller:
         except AttributeError:
             pass
         self._repos_progress_watchdog.reset()
+        self.contact_acquisition.end()
+        self._contact_acquisition_timeout_pending = False
 
     # ------------------------------------------------------------------
     # Main control entry
@@ -1913,6 +2013,10 @@ class SamplingC3Controller:
         self.plant.SetPositions(plant_ctx,  current_q)
         self.plant.SetVelocities(plant_ctx, current_v)
 
+        self._observe_physical_contact(plant_ctx)
+        self._contact_acquisition_timeout_pending = self._prepare_contact_cycle(
+            current_q, plant_ctx)
+
         # --- Deferred [PLAN-VS-EXEC] dump --------------------------------
         # If we recorded a planner prediction on the previous control step,
         # the actual one-step outcome is now in (current_q, current_v).
@@ -2199,9 +2303,9 @@ class SamplingC3Controller:
             # best is admissible (or the cache is empty).
             _best_buf = self.buffer.best_with_position()
             while (_best_buf is not None
-                   and self._avoid_unsuccessful
                    and not self.unsuccessful_buffer.sample_avoids_bad_spots(
-                       _best_buf.position, obj_xy, obj_quat)):
+                       _best_buf.position, obj_xy, obj_quat,
+                       contact_failures_only=not self._avoid_unsuccessful)):
                 self.buffer.remove(_best_buf)
                 if self.log_diag:
                     print(f"[BUFFER-UNSUCC-FILTER] step={self._step} "
@@ -2361,7 +2465,7 @@ class SamplingC3Controller:
         # polluting the history with free-mode ticks. The metric-drop
         # test (kConfigCostDrop) is designed to detect C3-mode stalls;
         # free-mode ticks skew the front/back window.
-        if self._prev_mode == "c3":
+        if self._prev_mode == "c3" and self.contact_acquisition.contact_acquired:
             # Feed progress tracker the pure C3 quadratic cost, not the
             # ranking score. Reference sampling_based_c3_controller.cc:2236-2240
             # uses all_sample_costs_[kCurrentLocation] which for the reference
@@ -2826,6 +2930,9 @@ class SamplingC3Controller:
             params             = self.params.progress_params,
             ee_z_gate_pass     = _ee_z_gate_pass,
         )
+        if self._contact_acquisition_timeout_pending:
+            mode = "free"
+            reason = SwitchReason.kToReposContactAcquisitionTimeout
         # 2026-07-22: expose the applied hysteresis margin so [GS] can
         # print the decision arithmetic (best_other + gap vs curr_cost)
         # rather than just the raw costs. Answers "why is a cheaper raw
@@ -2850,31 +2957,16 @@ class SamplingC3Controller:
             mode = "free"
             reason = SwitchReason.kToReposUnproductive
 
-        # Unsuccessful-buffer maintenance — reference cc:1276 & 1308 add
-        # arm's current EE-pos to the unsuccessful buffer at the free→c3
-        # transition (kToC3Cost / kToC3ReachedReposTarget).  Port also
-        # fires on kToBetterRepos: when the dispatcher abandons the
-        # previous repos target for a new one, the previous target is
-        # marked as "arm went here but it didn't produce progress" — the
-        # sample generator will avoid re-picking within
-        # `unsuccessful_radius` next tick.  This is off-reference in the
-        # trigger (reference only fires at c3 entry) but the buffer
-        # mechanism itself is byte-conformant with cc:2161-2205.
+        # Arrival is not failure. Acquisition failures were recorded before
+        # sampling above; retain the existing observed-regression bookkeeping
+        # separately. Legacy unsuccessful_only_on_observed_failure remains a
+        # parsed compatibility key, but no arrival/retarget now poisons memory.
         _mark_failed_c3_contact = (
             self._prev_mode == "c3"
             and reason == SwitchReason.kToReposUnproductive
             and _se2_regression_forced
         )
-        _legacy_unsuccessful_transition = reason in (
-                SwitchReason.kToC3Cost,
-                SwitchReason.kToC3ReachedReposTarget,
-                SwitchReason.kToBetterRepos)
-        _observed_failures_only = bool(getattr(
-            self.params, "unsuccessful_only_on_observed_failure", False))
-        if self._avoid_unsuccessful and (
-                _mark_failed_c3_contact
-                or (_legacy_unsuccessful_transition
-                    and not _observed_failures_only)):
+        if self._avoid_unsuccessful and _mark_failed_c3_contact:
             _obj_xy_now = np.array([
                 float(current_q[self._obj_x_idx]),
                 float(current_q[self._obj_y_idx]),
@@ -3096,6 +3188,10 @@ class SamplingC3Controller:
         # required _approach_override_phase == "C_approach", which the
         # unreachable LTD override could never set, so neither the stall nor
         # the hard-cap condition could ever fire.)
+
+        if mode == "c3" and self._prev_mode == "free":
+            self._begin_contact_episode(
+                current_q, ee_pos_now, plant_ctx, self._current_repos_target)
 
         if mode != self._prev_mode:
             self._n_switches += 1
@@ -5558,6 +5654,7 @@ class SamplingC3Controller:
             # brief free->c3 re-entry immediately re-triggers
             # kToReposUnproductive instead of getting a fresh grinding budget.
             self.progress.reset()
+            self.contact_acquisition.end()
             if self.log_diag:
                 print(f"[RICH-EXIT] step={self._step} "
                       f"mode {self._prev_mode}->{mode} reason={reason.name} "
@@ -5608,6 +5705,7 @@ class SamplingC3Controller:
                                  current_v: np.ndarray,
                                  plant_ctx,
                                  t_sim: float) -> np.ndarray:
+        self._observe_physical_contact(plant_ctx)
         if self._last_osc_call is None:
             n_u = int(getattr(self.executor, "n_arm", 7))
             return np.zeros(n_u)

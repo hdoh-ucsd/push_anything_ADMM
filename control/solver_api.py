@@ -65,8 +65,13 @@ class CandidateSemantics(str, Enum):
         before any candidate is solved. Keeps the useful TEMPORAL warm start
         (previous tick -> this tick) while removing candidate-to-candidate
         propagation, so candidates are independent and may be solved in any
-        order or concurrently. This is the measured recommendation for the
-        GPU backend.
+        order or concurrently. Since 2026-09-17 this is the InnerSolver default:
+        serial and parallel hypothetical solves preserve the prior committed
+        MPC horizon, and only the later execution solve advances that history.
+        This preserves the existing full-horizon input-change reference; it
+        does not reinterpret the reference as a repeated first control or
+        change ADMM primal/dual initialization. LEGACY_ORDERED remains an
+        explicit diagnostic replay option via PORT_CANDIDATE_WARMSTART.
 
     Measured 2026-08-21 (box 60 s gate / T 180 s canonical, seed 0; all six
     runs reached tight PASS(final)):

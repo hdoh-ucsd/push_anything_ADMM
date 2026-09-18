@@ -713,13 +713,19 @@ class SamplingC3Params:
     # planar safety.  False preserves the Push-Anything reference metric.
     use_planar_yaw_progress: bool = False
 
-    # Populate UnsuccessfulSampleBuffer only after an observed failure
-    # (regression/contact-loss/stall), rather than pre-emptively on ordinary
-    # C3 entry. OIM enables this; False preserves reference bookkeeping.
+    # Compatibility key: arrivals no longer populate unsuccessful memory,
+    # regardless of this legacy flag. Verified acquisition failures and the
+    # existing observed-regression path are the remaining write triggers.
     unsuccessful_only_on_observed_failure: bool = False
 
     # Keep failed contacts attached to a translating/rotating planar object.
     unsuccessful_body_relative: bool = False
+
+    # Robustness extension: approach time is separate from C3 task progress.
+    # None derives one nominal PWL descent rounded up to a planner interval.
+    contact_acquisition_timeout_s: Optional[float] = None
+    # Same precision as main.py's measured F1K contact-count threshold.
+    contact_force_threshold: float = 1e-6
 
 
     # Inner-solver knobs
@@ -1197,6 +1203,10 @@ class SamplingC3Params:
                 "unsuccessful_only_on_observed_failure", False)),
             unsuccessful_body_relative = bool(raw.get(
                 "unsuccessful_body_relative", False)),
+            contact_acquisition_timeout_s = (
+                float(raw["contact_acquisition_timeout_s"])
+                if raw.get("contact_acquisition_timeout_s") is not None else None),
+            contact_force_threshold = float(raw.get("contact_force_threshold", 1e-6)),
             surrogate_admm_iters = int(raw.get("surrogate_admm_iters", 1)),
             penalize_input_change = (
                 bool(raw["penalize_input_change"])

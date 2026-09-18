@@ -1320,6 +1320,31 @@ class InnerSolver:
     # Batch
     # ------------------------------------------------------------------
 
+    def _evaluate_sample_with_control_history(self, cycle_u_reference,
+                                              semantics, **sample_kwargs):
+        """Keep hypothetical plans out of the executed MPC input history.
+
+        The shared solver's full control horizon is the existing temporal
+        reference for the input-change penalty. Each candidate gets its own
+        copy of the same cycle reference, and even a failed solve restores
+        the original history before the committed base-MPC solve runs.
+        ADMM primal/dual initialization is left to ``C3Solver`` unchanged.
+
+        Explicit legacy ordering remains available for historical replay.
+        """
+        solver = getattr(self, "solver", None)
+        if solver is None or semantics is CandidateSemantics.LEGACY_ORDERED:
+            return self.evaluate_sample(**sample_kwargs)
+        previous_executed_u = getattr(solver, "_u_prev_solve", None)
+        try:
+            solver._u_prev_solve = (
+                cycle_u_reference.copy()
+                if (semantics is CandidateSemantics.INDEPENDENT_BATCH
+                    and cycle_u_reference is not None) else None)
+            return self.evaluate_sample(**sample_kwargs)
+        finally:
+            solver._u_prev_solve = previous_executed_u
+
     def _lazy_init_worker_kits(self, n_workers: int) -> None:
         """Idempotent pool init.  Builds `n_workers` (InnerSolver-clone,
         plant_ctx) kits and (re)populates `_worker_queue`.  Caller must
@@ -1473,7 +1498,32 @@ class InnerSolver:
         because `contextlib.redirect_stdout` swaps `sys.stdout`
         process-wide, so per-worker suppression via `suppress_io` would
         race across threads.
+
+        By default every hypothetical solve uses the SAME copied input
+        history from the previous committed MPC plan. Candidate solves do
+        not commit their controls: the subsequent base-MPC execution solve
+        alone advances that history. This also applies to persistent workers.
         """
+        _sem = CandidateSemantics.coerce(
+            os.environ.get("PORT_CANDIDATE_WARMSTART", "independent_batch"))
+        _previous_executed_u = getattr(
+            getattr(self, "solver", None), "_u_prev_solve", None)
+        _cycle_u_reference = (_previous_executed_u.copy()
+                              if _previous_executed_u is not None else None)
+        if not getattr(self, "_ws_banner", False):
+            self._ws_banner = True
+            _note = {
+                CandidateSemantics.INDEPENDENT_BATCH:
+                    "previous committed MPC horizon shared by every candidate; "
+                    "hypothetical controls discarded",
+                CandidateSemantics.REFERENCE_RESET:
+                    "zero candidate input history; committed MPC history preserved",
+                CandidateSemantics.LEGACY_ORDERED:
+                    "historical replay: order-dependent candidate control chain",
+            }[_sem]
+            print(f"[CAND-SEMANTICS] mode={_sem.value} — {_note}; "
+                  "default=independent_batch", flush=True)
+
         _resolved_threading = (use_threading
                                if use_threading is not None
                                else self._num_threads_to_use > 1)
@@ -1510,7 +1560,8 @@ class InnerSolver:
         if _resolved_threading and len(samples) > 1:
             results: list[Optional[SampleResult]] = [None] * len(samples)
             # k=0 runs serially and keeps its diagnostic stream.
-            results[0] = self.evaluate_sample(
+            results[0] = self._evaluate_sample_with_control_history(
+                _cycle_u_reference, _sem,
                 sample_pos    = samples[0],
                 current_q     = current_q,
                 current_v     = current_v,
@@ -1533,7 +1584,8 @@ class InnerSolver:
                 try:
                     self.plant.SetPositions(ctx, current_q)
                     self.plant.SetVelocities(ctx, current_v)
-                    r = clone.evaluate_sample(
+                    r = clone._evaluate_sample_with_control_history(
+                        _cycle_u_reference, _sem,
                         sample_pos    = p_sample,
                         current_q     = current_q,
                         current_v     = current_v,
@@ -1593,36 +1645,7 @@ class InnerSolver:
                 self._dump_cost_breakdown(results, labels=None)
             return results  # type: ignore[return-value]
 
-        # --- Serial path (bit-identical to prior behavior) ---------------
-        #
-        # CANDIDATE WARM-START SEMANTICS (measurement gate, 2026-08-21).
-        # `_u_prev_solve` is written at the end of EVERY C3+ solve and read
-        # by the next one via `q_ref[u] += -2*R@u_prev`, so in this serial
-        # loop candidate k warm-starts candidate k+1. The loop is therefore
-        # ORDER-DEPENDENT, and a fully parallel GPU batch cannot reproduce
-        # it by construction. PORT_CANDIDATE_WARMSTART selects:
-        #   ordered      (default) -- current behaviour, k warm-starts k+1
-        #   independent  -- every candidate sees the tick's ENTRY u_prev
-        #   reset        -- every candidate starts from u_prev = None
-        # Unset => "ordered" => byte-identical. Measurement only.
-        _sem = CandidateSemantics.coerce(
-            os.environ.get("PORT_CANDIDATE_WARMSTART", "legacy_ordered"))
-        _slv = getattr(self, "solver", None)
-        # Captured ONCE, before any candidate is solved. Under
-        # INDEPENDENT_BATCH every candidate sees exactly this value, so no
-        # candidate can influence another's initialization.
-        _u_prev_at_entry = getattr(_slv, "_u_prev_solve", None) \
-            if _slv is not None else None
-        if (_sem is not CandidateSemantics.LEGACY_ORDERED
-                and not getattr(self, "_ws_banner", False)):
-            self._ws_banner = True
-            _note = ("reproduces the C++ reference (fresh C3 per candidate, "
-                     "u_sol_=zeros)"
-                     if _sem is CandidateSemantics.REFERENCE_RESET else
-                     "one tick-entry u_prev broadcast to every candidate")
-            print(f"[CAND-SEMANTICS] mode={_sem.value} — {_note}; "
-                  f"candidate-to-candidate propagation is suppressed "
-                  f"(default is legacy_ordered)", flush=True)
+        # --- Serial path ------------------------------------------------
 
         # Candidate ORDER sweep (measurement only): PORT_CANDIDATE_ORDER
         # permutes which candidate is solved when, WITHOUT changing which
@@ -1644,12 +1667,8 @@ class InnerSolver:
         results_by_k: dict = {}
         for k in _order:
             p = samples[k]
-            if _slv is not None:
-                if _sem is CandidateSemantics.INDEPENDENT_BATCH:
-                    _slv._u_prev_solve = _u_prev_at_entry
-                elif _sem is CandidateSemantics.REFERENCE_RESET:
-                    _slv._u_prev_solve = None
-            r = self.evaluate_sample(
+            r = self._evaluate_sample_with_control_history(
+                _cycle_u_reference, _sem,
                 sample_pos    = p,
                 current_q     = current_q,
                 current_v     = current_v,

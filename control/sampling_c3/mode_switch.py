@@ -47,6 +47,7 @@ class SwitchReason(IntEnum):
                                    # (re-test of 1d under F2 regime, 9.4.7
                                    # Option A — see paper_alignment_plan
                                    # Item 2.1 post-F2 reframe)
+    kToReposContactAcquisitionTimeout = 8  # port robustness extension
 
 
 class PursuedTargetSource(IntEnum):

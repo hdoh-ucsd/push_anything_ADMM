@@ -59,6 +59,10 @@ class BufferedSample:
     result:        Optional[object]     = None  # SampleResult; typed loosely
                                                 # to avoid circular import.
     position_body_xy: Optional[np.ndarray] = None
+    # Verified acquisition failures: planar attempted TARGET, not actual EE.
+    # Unlike legacy body-relative regression entries, these retain normal
+    # object-pose expiration; they never become permanent sector bans.
+    contact_target_body_xy: Optional[np.ndarray] = None
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +256,8 @@ class UnsuccessfulSampleBuffer:
         for s in self._entries:
             # Body-relative failures remain meaningful as the object moves;
             # FIFO capacity still bounds how many are retained.
-            if s.position_body_xy is not None:
+            if (s.position_body_xy is not None
+                    and s.contact_target_body_xy is None):
                 kept.append(s)
                 continue
             d_pos = float(np.linalg.norm(obj_pos_xy_now - s.obj_pos_xy))
@@ -276,7 +281,8 @@ class UnsuccessfulSampleBuffer:
             self,
             ee_candidate: np.ndarray,
             obj_pos_xy_now: Optional[np.ndarray] = None,
-            obj_quat_now: Optional[np.ndarray] = None) -> bool:
+            obj_quat_now: Optional[np.ndarray] = None,
+            *, contact_failures_only: bool = False) -> bool:
         """Reference generate_samples.cc:187-205 sample_avoids_bad_spots.
 
         Returns True iff `ee_candidate` is at least `unsuccessful_radius`
@@ -285,6 +291,19 @@ class UnsuccessfulSampleBuffer:
         """
         p = np.asarray(ee_candidate, dtype=float).reshape(3)
         for s in self._entries:
+            if s.contact_target_body_xy is not None:
+                obj_xy = (obj_pos_xy_now if obj_pos_xy_now is not None
+                          else s.obj_pos_xy)
+                quat = obj_quat_now if obj_quat_now is not None else s.obj_quat
+                yaw = _quat_yaw(quat) if quat is not None else 0.0
+                c, sn = np.cos(yaw), np.sin(yaw)
+                body_xy = np.array([[c, sn], [-sn, c]]) @ (p[:2] - obj_xy)
+                if float(np.linalg.norm(body_xy - s.contact_target_body_xy)) \
+                        < self.unsuccessful_radius:
+                    return False
+                continue
+            if contact_failures_only:
+                continue
             failed_position = s.position
             if (s.position_body_xy is not None
                     and obj_pos_xy_now is not None
