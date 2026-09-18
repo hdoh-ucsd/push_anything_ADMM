@@ -6,9 +6,9 @@ Run the intended suite from the repository root:
 python -m pytest tests
 ```
 
-The current baseline and all non-passing nodes are documented in
-`../docs/TEST_BASELINE.md` and `baseline_failures.yaml`. Do not change tolerances,
-expected values, configs, or solver behavior merely to make the baseline green.
+Historical failure classifications remain in `baseline_failures.yaml`; the root
+README summarizes the latest validation. Do not change tolerances, expected
+values, configs, or solver behavior merely to make the baseline green.
 
 ## Current categories
 

@@ -11,6 +11,11 @@ operational-space execution in simulation.
 > benchmarks include successful and censored trials, and the current test
 > baseline is not fully green.
 
+The current validation scope is the **open-table Franka/box C3+ reproduction**.
+The latest seed-42 validation covers the candidate-independence correction and
+contact-acquisition robustness extension. OIM integration is developed in a
+separate fork; the historical OIM material below is retained for provenance.
+
 ![System architecture: sampling, local LCS construction, C3/C3+ MPC, OSC, and PyDrake simulation](docs/figures/system_architecture.svg)
 
 ## Overview
@@ -39,15 +44,12 @@ the default architecture.
 
 ## Experiments
 
-The measured experiment reports are organized into two tracks:
+Historical experiments cover two tracks:
 
 - **3D Jack Manipulation:** full SE(3) translation and support-tripod
   reorientation with the Jack object.
 - **Single-Object Pushing:** fixed-goal planar pushing for imported objects and
   the T-shaped benchmark.
-
-See [EXPERIMENTS.md](docs/EXPERIMENTS.md) for commands, measured outcomes,
-artifacts, and reporting limitations.
 
 ## Current Research
 
@@ -546,8 +548,9 @@ with another seed.
 
 The latest-model campaign reran 23 objects on August 28, 2026 and retained the
 requested prior outcomes for Eraser and Gallon Milk. The combined result is
-**17 passing sessions out of 25 objects**. Full current results and provenance
-are in [`FIG8_CONSECUTIVE_28_LATEST_SESSIONS.csv`](FIG8_CONSECUTIVE_28_LATEST_SESSIONS.csv).
+**17 passing sessions out of 25 objects**. The historical index
+`FIG8_CONSECUTIVE_28_LATEST_SESSIONS.csv` was removed during the requested output
+cleanup; the table below preserves the previously reported summary.
 
 | Object | Consecutive goals | Outcome | Failure cause |
 |---|---:|:---:|---|
@@ -588,6 +591,11 @@ Workspace targets and their tracked trajectories also need a 5–10 mm safety
 margin. Eraser requires separate non-planar topple recovery.
 
 ## Object-Informed-Manipulation
+
+This section records historical OIM work. Active OIM development belongs to the
+separate `dairlib-oim-c3plus-baseline` checkout; it is outside this repository's
+current open-table validation scope. Its native build commands and paths below
+refer to that separate C++ checkout.
 
 The job is to fetch the five tabletop scenarios from the external OIM reference,
 preserve their xArm model, scene assets, start/goal poses, and evaluation
@@ -956,8 +964,9 @@ conda activate push_anything_admm
 # Basic configured task
 python main.py pushing
 
-# Sampling-C3 with the default outer-controller configuration
-python main.py pushing --sampling-c3 --seed 0 --name pushing_seed0
+# Current open-table C3+ validation configuration
+python main.py pushing --sampling-c3 config/sampling_c3_kik.yaml \
+  --solver c3plus --seed 42 --max-time 60 --name pushing_c3plus_seed42
 
 # Stored T-object workflow configuration
 python main.py push_t --max-time 600 \
@@ -966,15 +975,13 @@ python main.py push_t --max-time 600 \
 ```
 
 Runs write `results/<name>.txt` and include Git/configuration metadata in the
-log. Result media can be rendered separately:
+log. Standalone analysis lives in `tools/`; rendering tools are documented in
+[tools/visualizer/README.md](tools/visualizer/README.md). The old `scripts/`
+directory was removed and its former video wrapper is no longer available.
 
-```bash
-scripts/make_run_video.sh push_t_seed0 --task push_t
-```
-
-See [REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) before comparing or reporting
-experiments. It records the audited dependency versions, canonical run metadata,
-result-storage policy, and current limitations.
+Before comparing experiments, record the Git commit and dirty state, exact
+command, configuration checksum, seed, dependency versions, and output location.
+Keep reported results immutable and backed up outside the working tree.
 
 ## Repository Structure
 
@@ -982,16 +989,17 @@ result-storage policy, and current limitations.
 control/                 C3/C3+, ADMM, LCS/LCP, costs, OSC, sampling-C3
 sim/                     PyDrake environment and object models
 config/                  tasks, controller settings, experiment variants
-scripts/                 launchers, diagnostics, analysis, plotting
+tools/diagnostics/       passive replay observation and comparison
 tools/visualizer/        log parsing and result/video rendering
+tools/crisp/             retained comparison-study diagnostics
+benchmarks/              benchmark implementations and definitions
+profiling/               timing utilities also imported by runtime code
 tests/                   unit, solver, model, integration, regression tests
-docs/                    conformance notes, investigations, generated figures
-results/                 ignored working outputs and stored local campaigns
+docs/                    figures, research artifacts, and agent instructions
+results/                 ignored generated run outputs
+audit_output/            ignored generated solver/contact diagnostics
 main.py                  CLI, simulation loop, logging, orchestration
 ```
-
-More detailed maps are in [REPOSITORY_GUIDE.md](docs/REPOSITORY_GUIDE.md) and
-the local indexes under `config/`, `scripts/`, and `tests/`.
 
 ## Tests
 
@@ -999,11 +1007,12 @@ the local indexes under `config/`, `scripts/`, and `tests/`.
 python -m pytest tests
 ```
 
-The recorded cleanup baseline collected 344 tests: 292 passed, 37 failed, and
-15 errored. Twenty-five non-passing nodes were blocked because the audit runner
-forbids the localhost sockets that Meshcat requires; the remaining discrepancies
-are classified without changing numerical expectations. See
-[TEST_BASELINE.md](docs/TEST_BASELINE.md) and
+The latest seed-42 check added 30 passing regression tests and introduced no new
+failed, errored, or skipped nodes. The full continuation run had 469 passes,
+49 existing failures, 16 errors, 56 skips, and one expected failure. Strict
+collection currently stops on a test that imports the removed `scripts/`
+package; the recorded continuation also includes Meshcat socket restrictions.
+Older failure classifications remain in
 [`tests/baseline_failures.yaml`](tests/baseline_failures.yaml).
 
 Before changing C3/C3+, ADMM, complementarity projection, LCS construction, or

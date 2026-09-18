@@ -24,33 +24,15 @@ htmlcov/
 # Milestones
 milestones/
 
-# Run outputs
-results/
-# The rot15 synchronization products are small, deterministic benchmark
-# definitions/validation evidence rather than simulation run outputs.
-!results/
-results/*
-!results/benchmark_sync_rot15/
-!results/benchmark_sync_rot15/**
-# The stopped small-cost study contains only compact prerequisite-audit and
-# planned-experiment records; no simulation streams are tracked here.
-!results/cost_tuning_small/
-!results/cost_tuning_small/**
+# Generated run outputs. Previously tracked deletions remain visible until
+# committed; these rules prevent new runs from repopulating source changes.
+/results/
+/audit_output/
+/logs/
 profiling/results/
 # Render and profiler intermediates
 *.prof
 frames/
-# Per-run diagnostic streams the controller rewrites every launch.
-audit_output/lambda_trace.csv
-audit_output/lambda_horizon_trace.csv
-audit_output/lcs_filter_audit.txt
-# Step 8/9 transient probe scripts (one-shot diagnostics; on-disk only)
-scripts/probe_9_1_2_deflection.py
-scripts/probe_autodiff.py
-scripts/probe_collision_filter_context.py
-scripts/probe_e_inspect.py
-scripts/probe_ik_lock.py
-scripts/verify_deck_numbers.py
 
 # Local Claude Code settings (developer-scoped hooks, permissions)
 .claude/settings.local.json
@@ -59,12 +41,10 @@ scripts/verify_deck_numbers.py
 gurobi.log
 *.tmp.*
 
-# GPU-ADMM validation corpus (regenerate with scripts/gpu/dump_admm_corpus.sh)
-audit_output/admm_corpus/
-audit_output/gpu_golden/
-audit_output/perf_snapshots/
 # Local upstream DAIRLab checkouts used for source comparison.
 /external/
+# Local diagnostic checkout copies are preserved separately from source.
+/.diagnostic_worktrees/
 
 # Local reference papers (not repo content).
 /papers/

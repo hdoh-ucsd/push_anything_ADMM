@@ -1,5 +1,0 @@
-gate,status,evidence,consequence
-benchmark_v2_rot15,PASS,"90 rows; six scenes x 15; 90/90 feasible; 90/90 C3+-OIM parity","pilot task definitions may be selected"
-forensics_logger_v2_runtime,BLOCKED,"full pool/N+1/cost/geometry smoke passed, but initial-C3 transaction bootstrap fix was compiled after the only smoke and has not been runtime-validated","Phase A acceptance gate is incomplete"
-c3plus_common_random_numbers,BLOCKED,"authoritative GenerateSampleStates path seeds mt19937 from std::random_device and accepts no experiment seed","matched one-run-per-setting cost comparisons are not scientifically valid"
-live_launch_authorization,BLOCKED,"two hard prerequisite gates remain open","zero live simulations launched"

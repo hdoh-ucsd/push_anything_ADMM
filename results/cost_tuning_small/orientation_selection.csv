@@ -1,4 +1,0 @@
-alpha_theta,implemented_quaternion_weight,planned_runs,executed_runs,successes,selection_status,reason
-0.5,255,3,0,NA,NOT_EVALUATED,matched stochastic reproducibility unavailable
-1.0,510,3,0,NA,BASELINE_UNCHANGED_PENDING_EVIDENCE,no live evidence collected
-2.0,1020,3,0,NA,NOT_EVALUATED,matched stochastic reproducibility unavailable
