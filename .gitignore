@@ -3,6 +3,7 @@ __pycache__/
 venv/
 .env
 CLAUDE.md
+AGENTS.md
 
 # Editor configs
 .vscode/
